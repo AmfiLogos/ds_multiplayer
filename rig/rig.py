@@ -351,7 +351,7 @@ def send(x, obj, timeout=90, connect_wait=60):
         s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         s.settimeout(timeout)
         try:
-            s.connect(sockpath(x)); break
+            s.connect(os.path.realpath(sockpath(x))); break
         except (ConnectionRefusedError, FileNotFoundError):
             s.close()
             if time.time() - t0 > connect_wait or not alive(read_pid(x)):

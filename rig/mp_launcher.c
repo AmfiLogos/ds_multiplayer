@@ -3,17 +3,24 @@
 // started on a quarantined copy): resolve the real app path (works under App Translocation), make the
 // MP folder, copy the starting saves on the first run, set the mod environment, exec the game binary.
 // Config: <app>/Contents/Resources/mp_launcher.conf, lines "folder=<name under CanOpener>" and "steam=0|1".
+// steam=1: if Steam is not running, start it in the background and wait until it accepts the game (a probe
+// SteamAPI_InitFlat in a child process); if it never does, show a notice instead of a game that quits at once.
 // Errors: ~/Library/Logs/DungeonSettlersMP_launcher.log
 #include <mach-o/dyld.h>
+#include <CoreFoundation/CoreFoundation.h>
 #include <copyfile.h>
+#include <dlfcn.h>
 #include <errno.h>
 #include <limits.h>
 #include <pwd.h>
+#include <signal.h>
+#include <spawn.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -37,6 +44,79 @@ static void mkdirs(const char *path) {
 static int exists(const char *p) { struct stat st; return stat(p, &st) == 0; }
 
 static void dirname_n(char *p, int n) { while (n-- > 0) { char *s = strrchr(p, '/'); if (s && s != p) *s = 0; } }
+
+extern char **environ;
+
+/* Asks the game's own libsteam_api in a child process (the launcher itself later becomes the game: it must not
+   hold a Steam connection). init=0: SteamAPI_IsSteamRunning. init=1: SteamAPI_InitFlat + Shutdown, the same
+   check the game makes (needs Steam running AND a signed-in user). 1 = yes, 0 = no, -1 = cannot ask. */
+static int steam_probe(const char *lib, int init) {
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        void *h = dlopen(lib, RTLD_NOW | RTLD_LOCAL);
+        if (!h) { logf_("dlopen %s: %s", lib, dlerror()); _exit(3); }
+        if (!init) { int (*run)(void) = (int (*)(void))dlsym(h, "SteamAPI_IsSteamRunning"); _exit(!run ? 3 : run() ? 0 : 1); }
+        int (*ini)(char *) = (int (*)(char *))dlsym(h, "SteamAPI_InitFlat");
+        void (*shut)(void) = (void (*)(void))dlsym(h, "SteamAPI_Shutdown");
+        if (!ini || !shut) _exit(3);
+        char err[1024] = "";
+        int r = ini(err);                       /* ESteamAPIInitResult: 0 = OK */
+        if (r == 0) { shut(); _exit(0); }
+        logf_("steam probe: init result %d (%s)", r, err);
+        _exit(1);
+    }
+    for (int i = 0; i < 300; i++) {             /* 15 s at most */
+        int st; pid_t w = waitpid(pid, &st, WNOHANG);
+        if (w == pid) return WIFEXITED(st) ? (WEXITSTATUS(st) == 0 ? 1 : WEXITSTATUS(st) == 1 ? 0 : -1) : -1;
+        if (w < 0) return -1;
+        usleep(50000);
+    }
+    kill(pid, SIGKILL); waitpid(pid, NULL, 0);
+    logf_("steam probe %d timed out", init);
+    return 0;
+}
+
+static void notice(const char *msg) {
+    if (getenv("DSMP_NO_DIALOG")) { logf_("notice (not shown): %s", msg); return; }
+    CFStringRef m = CFStringCreateWithCString(NULL, msg, kCFStringEncodingUTF8);
+    CFOptionFlags resp;
+    CFUserNotificationDisplayAlert(0, kCFUserNotificationStopAlertLevel, NULL, NULL, NULL,
+                                   CFSTR("Dungeon Settlers MP"), m, CFSTR("OK"), NULL, NULL, &resp);
+    if (m) CFRelease(m);
+}
+
+/* steam=1: the game needs Steam with a signed-in user. Steam not running: start it in the background and wait.
+   0 = go on, 1 = Steam never got ready (notice shown). Steam already running: no wait, same as before. */
+static int ensure_steam(const char *app) {
+    char lib[PATH_MAX]; snprintf(lib, sizeof lib, "%s/Contents/PlugIns/libsteam_api.dylib", app);
+    if (!exists(lib)) { logf_("no %s: Steam not checked", lib); return 0; }
+    int run = steam_probe(lib, 0);
+    if (run != 0) { if (run < 0) logf_("cannot ask libsteam_api: Steam not checked"); return 0; }
+    const char *sapp = getenv("DSMP_STEAM_APP"); if (!sapp || !*sapp) sapp = "Steam";   /* tests: a fake Steam */
+    const char *w = getenv("DSMP_STEAM_WAIT"); int wait_s = w ? atoi(w) : 90;
+    logf_("Steam is not running: starting %s in the background (wait up to %d s)", sapp, wait_s);
+    char *oav[] = { "/usr/bin/open", "-g", "-a", (char *)sapp, NULL };
+    pid_t op; int st = 1;
+    if (posix_spawn(&op, oav[0], NULL, NULL, oav, environ) == 0) waitpid(op, &st, 0);
+    if (!(WIFEXITED(st) && WEXITSTATUS(st) == 0)) {
+        logf_("open -a %s failed (status %d)", sapp, st);
+        notice("Steam could not be started. Install Steam, start it and sign in, then open Dungeon Settlers MP again.");
+        return 1;
+    }
+    time_t t0 = time(NULL);
+    while (time(NULL) - t0 < wait_s) {
+        sleep(2);
+        if (steam_probe(lib, 0) == 1 && steam_probe(lib, 1) == 1) {
+            logf_("Steam ready after %ld s", (long)(time(NULL) - t0));
+            sleep(1);                           /* let Steam see the probe's game session end */
+            return 0;
+        }
+    }
+    logf_("Steam not ready after %d s", wait_s);
+    notice("Steam did not get ready. Start Steam and sign in, then open Dungeon Settlers MP again.");
+    return 1;
+}
 
 int main(int argc, char **argv) {
     const char *h = getenv("HOME");
@@ -89,6 +169,7 @@ int main(int argc, char **argv) {
     if (steam) {
         FILE *f = fopen("steam_appid.txt", "w"); if (f) { fputs("2798330\n", f); fclose(f); }   /* run here, no restart through Steam */
         setenv("SteamAppId", "2798330", 1); setenv("SteamGameId", "2798330", 1);
+        if (ensure_steam(app)) return 1;
     }
     char dylib[PATH_MAX], game[PATH_MAX], plog[PATH_MAX];
     snprintf(dylib, sizeof dylib, "%s/Contents/Frameworks/dsrig.dylib", app);

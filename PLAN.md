@@ -144,7 +144,7 @@ Goal: a version the owner can play live with a friend on a Mac.
 - Units per player (1/2/3/4/6) = how many units you may OWN in base (current build is right). Dungeon team: always max 4 units in total. (Supersedes "bench + 3 per run" above.)
 - lan_v9 also fixes 2 bugs from research/ux_flow_v10.md: #1 Portal X soft-lock (others stuck paused), #2 wrong "The owner left the game" text when the guest's OWN connection dropped.
 - lan_v10 colours: your OWN units keep the game's default look (no tint). Other players get a colour: auto from a colour-blind-safe palette that avoids every game status colour; each player can CHANGE other players' colours for their own screen only (local setting).
-- lan_v10: see-through of other players' units can never be 0 (minimum ~30%).
+- ~~lan_v10: see-through of other players' units can never be 0 (minimum ~30%).~~ Replaced by owner 2026-10-15 (see below).
 - lan_v10: optional outline/contour highlight: off / own units / friends' units / both.
 - lan_v10: camera awareness + ping, "do it good": research what good co-op games do; a ping disappears when a unit reaches the spot (plus a timeout). Owner trusts the design; implement well.
 - Ping (owner 2026-10-14 01:55): NO automatic timeout. A ping stays until a unit reaches it or a player deletes it. B = place a ping; B with the mouse over an existing ping = delete it (toggle). Middle-click also places. Owner loves the "is typing" chat UX.
@@ -358,3 +358,7 @@ multiplayer tag next to the name of the save and then just put the players that 
 | Show: load list world row (SubUI_SettlerNameCase.Init post-hook, Mac 0x85E50C): after the world name, "Multiplayer" (blue #8FC4FF, as before) + "with the owner, Djigui" (#A69085, smaller). Save rows (SubUI_SaveFileButton.SetData hook) keep "[Multiplayer]" from the same file. | Load list from the title and from the Esc menu. | ~40 lines | Long name lists: cut to 3 names + "+N". |
 | Remove: a small "Remove tag" text on the tagged world row; click -> stock notice box "Remove the multiplayer tag?" [Remove] [Cancel]; Remove deletes the line and refreshes the row. It comes back only when a friend joins that world again (then with the new session's names). | One click + confirm; no save touched. | ~50 lines (hit test on mouse down, as ui_teams) | No box found: removes at once (it is the player's own click). |
 | Migration: first run without mp_tags.txt seeds it from mp_history.json rows that list other players (host + players + me). | Worlds already played with friends keep a tag. | ~15 lines | Worlds played with friends before Recent worlds (lan_v8) existed lose the tag. |
+
+## See-through Off (owner 2026-10-15; replaces the 10-14 01:40 minimum rule)
+- "Other Units See-through" steps: Off (0), 30, 50, 70, 90 %, cycling both ways. Off = alpha 1.0 like own units (colour tint stays).
+- Default stays 30. A saved 0 stays Off; an older 1..29 (25) reads as 30. Branch `seethrough`.
