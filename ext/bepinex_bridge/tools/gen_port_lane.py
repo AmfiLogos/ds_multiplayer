@@ -123,13 +123,27 @@ def must_resub(text, pat, new, name):
 # every module of the Mac build (src/build.sh) except the Mac-only bootstrap (rig_main/rig_hook/rig_win;
 # rig_sock is handled below); dsnet_steam.c is Mac-only for now (dyld/dlopen) -> port/steam_stub_win.c
 SKIP_SRC = {"rig_main.c", "rig_hook.c", "rig_win.c", "rig_sock.c"}
-FILES = sorted(f for f in os.listdir(SRC) if f.endswith(".c") and f not in SKIP_SRC) + ["ord_test/ord_smoke.c", "fe/fe_json.c", "fe/fe_save.c", "fe/fe_game.c"]
+FILES = sorted(f for f in os.listdir(SRC) if f.endswith(".c") and f not in SKIP_SRC) + ["ord_test/ord_smoke.c"]
+# Foreign Expedition (src/fe/, in the Mac build since 2026-10-15): generated flat into build/gen, "../x.h" -> "x.h"
+FILES += [f"fe/{f}" for f in ("fe_json.c", "fe_save.c", "fe_game.c") if os.path.exists(os.path.join(SRC, "fe", f))]
 for fn in FILES:
     p = os.path.join(SRC, fn)
     if not os.path.exists(p):
         continue
     t = open(p).read()
+    if fn.startswith("fe/"):
+        t = t.replace('#include "../', '#include "')
+        # Darwin stat / time: st_mtimespec -> st_mtime (seconds; no nanoseconds on msvcrt), localtime_r -> localtime_s
+        t = t.replace("st.st_mtimespec.tv_sec + st.st_mtimespec.tv_nsec / 1e9", "(double)st.st_mtime")
+        t = t.replace("localtime_r(&st.st_mtimespec.tv_sec, &tm)", "localtime_s(&tm, &st.st_mtime)")
+        t = t.replace("st.st_mtimespec.tv_sec", "st.st_mtime")
+        if "localtime_r(" in t:
+            t = re.sub(r"localtime_r\(([^,()]+), ([^()]+)\)", r"localtime_s(\2, \1)", t)
+        if "st_mtimespec" in t: problems.append(f"{fn}: st_mtimespec left (Darwin-only stat field)")
     if fn == "rig_det.c":
+        # DSRIG_RANGES names the Mac det_ranges.tsv (release gate, kit); Windows reads DSRIG_RANGES_WIN only
+        # (2026-10-15: a kit run with the Mac file on Windows differed from the first tick)
+        t = must_sub(t, 'getenv("DSRIG_RANGES")', 'getenv("DSRIG_RANGES_WIN")', fn)
         t = must_resub(t, r"#define CALLERS\(c\) do \{.*?\} while \(0\)\n",
                        "#define CALLERS(c) do { \\\n"
                        "    void *bt_[3] = { 0, 0, 0 }; USHORT n_ = RtlCaptureStackBackTrace(1, 3, bt_, NULL); \\\n"
@@ -162,6 +176,19 @@ for fn in FILES:
     t, ng = abi_rewrite(t, r"F\((\w+), (\w+) \(\*\)\(Obj, uint64_t, uint64_t, void \*\)\)\(",
                         lambda a, args: f"F({a}, void (*)(Obj, Guid, void *))({args[0]}, (Guid){{ {args[1]}, {args[2]} }}, {args[3]})")
     if ng: print(f"ABI {fn}: {ng} Guid u64-pair calls rewritten")
+    # PvP (2026-10-15): (Guid, Vector2Int) as (lo, hi, pos) and (Guid, Guid) as four u64. Only calls whose arguments are
+    # visibly a Guid's .lo / .hi are rewritten; anything else stays and the check below stops the build.
+    def g_pos(a, args):
+        if len(args) == 5 and args[1].strip().endswith(".lo") and args[2].strip().endswith(".hi"):
+            return f"F({a}, void (*)(Obj, Guid, uint64_t, void *))({args[0]}, (Guid){{ {args[1]}, {args[2]} }}, {args[3]}, {args[4]})"
+        return f"F({a}, void (*)(Obj, uint64_t, uint64_t, uint64_t, void *))({', '.join(args)})"
+    t, ngp = abi_rewrite(t, r"F\((\w+), void \(\*\)\(Obj, uint64_t, uint64_t, uint64_t, void \*\)\)\(", g_pos)
+    def g_gg(a, args):
+        if len(args) == 6 and all(args[i].strip().endswith(sfx) for i, sfx in ((1, ".lo"), (2, ".hi"), (3, ".lo"), (4, ".hi"))):
+            return f"F({a}, bool (*)(Obj, Guid, Guid, void *))({args[0]}, (Guid){{ {args[1]}, {args[2]} }}, (Guid){{ {args[3]}, {args[4]} }}, {args[5]})"
+        return f"F({a}, bool (*)(Obj, uint64_t, uint64_t, uint64_t, uint64_t, void *))({', '.join(args)})"
+    t, ngg = abi_rewrite(t, r"F\((\w+), bool \(\*\)\(Obj, uint64_t, uint64_t, uint64_t, uint64_t, void \*\)\)\(", g_gg)
+    if ngp or ngg: print(f"ABI {fn}: {ngp} (Guid, Vector2Int) and {ngg} (Guid, Guid) u64 calls rewritten")
     if re.search(r"\(\*\)\([^)]*uint64_t, uint64_t", t):
         problems.append(f"{fn}: a (.., uint64_t, uint64_t ..) prototype (split Guid?) the ABI rewrite did not catch")
     # arm64 trick: a float argument written BEFORE the object (s0 and x0 are separate register files). On x64
@@ -233,7 +260,9 @@ WIN_WRAP = {
     "ui_game.c": (["static int no_timelock(Obj popup) {", "static void hk_set_timelock(Obj p, void *mi) {",
                    "static void hk_unset_timelock(Obj p, void *mi) { if (!no_timelock(p)) o_unset_timelock(p, mi); }",
                    "static void hk_ev_click(Obj v, int idx, void *mi) {",
-                   "static void hk_sc_name(Obj parts, Obj unit, void *mi) {      /* stock sets the plain name; add the tag after */\n    o_sc_name(parts, unit, mi);\n    sc_tag(parts, unit);\n}"], """
+                   "static void hk_sc_name(Obj parts, Obj unit, void *mi) {      /* stock sets the plain name; add the tag after */\n    o_sc_name(parts, unit, mi);\n    sc_tag(parts, unit);\n}",
+                   "static void guild_button_apply(void) {",
+                   "static void hk_faction_refresh(Obj v, int map, void *mi) { o_faction_refresh(v, map, mi); if (u_gc_get(h_faction_view) != v) { u_gc_free(h_faction_view); h_faction_view = u_gc_new(v); } guild_button_apply(); }"], """
 /* ---- Windows only (appended by win/port/gen_port.py): hooks MSVC inlined into their only caller */
 /* PopUpUI_Base.Set/UnsetTimeLock are inlined into the sealed OnActivate / OnDeactivate (both test _timeLock +0x39):
    for a popup that never pauses in multiplayer, run them with _timeLock cleared (= the Mac hooks skipping both) */
@@ -278,7 +307,13 @@ int ui_win_ev_lambda_test(int idx) {             /* test: call the hooked lambda
     struct { void *k, *m; Obj view; int32_t idx; } dc = { 0, 0, v, idx };
     F(0xBEE3A0, void (*)(void *, void *))(&dc, NULL); return 0;
 }
+/* FactionManagementView.OnWorldRefresh (Foreign Expedition hub: Guild Contact button hidden with Recruiting Off) is
+   inlined into FactionManagementPresenter.WorldRefreshed(IViewUpdateData): apply the button rule after it (the view
+   handle comes from hk_faction_init / ActivateButton, both still hooked on Windows) */
+static void (*o_win_fac_world)(Obj, Obj, void *);
+static void h_win_fac_world(Obj p, Obj data, void *mi) { o_win_fac_world(p, data, mi); guild_button_apply(); }
 void ui_win_install(void) {
+    rig_hook(0xEF58E8, (void *)h_win_fac_world, (void **)&o_win_fac_world, "ui FactionManagementPresenter.WorldRefreshed (OnWorldRefresh inlined on Windows)");
     rig_hook(0xC53060, (void *)h_win_pop_act, (void **)&o_win_pop_act, "ui PopUpUI_Base.OnActivate (SetTimeLock inlined on Windows)");
     rig_hook(0xC53390, (void *)h_win_pop_deact, (void **)&o_win_pop_deact, "ui PopUpUI_Base.OnDeactivate (UnsetTimeLock inlined on Windows)");
     rig_hook(0xBEE3A0, (void *)h_win_ev_lambda, (void **)&o_win_ev_lambda, "ui EventNodeUIView choice lambda (OnClickChoice inlined on Windows)");
@@ -367,7 +402,10 @@ starts = sorted({a for a, _ in ms} | set(sj["Addresses"]))
 import bisect
 os.makedirs(f"{ROOT}/build", exist_ok=True)
 n1 = n2 = 0; done = set()
-with open("~/ds_multiplayer/ext/bepinex_bridge/build/win/det_ranges_win.tsv", "w") as f:
+# written to win/build (what the Windows copy W, the gate and the kits read) and, as before, to ROOT/build.
+# Until 2026-10-15 only ROOT/build got it: win/build kept the 2026-10-12 file (same rules until the core_next merge).
+RANGES_WIN = "~/ds_multiplayer/ext/bepinex_bridge/build/win/det_ranges_win.tsv"
+with open(RANGES_WIN, "w") as f:
     for a, n in ms:
         if a in done:           # identical-code folding: first name wins (sorted order)
             continue
@@ -402,6 +440,7 @@ for fn in sorted(os.listdir(OUT)):
             problems.append(f"{fn}: hook \"{who}\" at {a:#x} is a body shared by {len(win_names[a])} methods on Windows: add it to FILT in rig_main_win.c")
 for s in sorted(set(shared)):
     print("WARN", s)
+pass  # lane: no copy into ROOT/build
 print(f"generated {len(FILES)} files into {OUT}; det_ranges_win: view {n1}, helper {n2}")
 if problems:
     for p in problems: print("ERROR", p)

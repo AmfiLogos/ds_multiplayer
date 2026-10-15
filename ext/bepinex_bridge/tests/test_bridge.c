@@ -1,8 +1,8 @@
 /* Offline unit test of src/mp_bridge.c: stubs for mp / dsnet / rig; mp_order loops the order straight back into the
  * registered handler (what every peer does at the stamped step). Build + run: ./run_unit.sh */
-#include "../src/mp_bridge.h"
-#include "../src/mp.h"
-#include "../src/rig.h"
+#include "mp_bridge.h"
+#include "mp.h"
+#include "rig.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

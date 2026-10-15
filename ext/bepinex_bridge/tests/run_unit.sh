@@ -1,4 +1,4 @@
 #!/bin/zsh
-set -e; cd "${0:A:h}"; mkdir -p ../build
-nice -n 19 clang -O1 -g -Wall -Wno-unused-function -fsanitize=address,undefined -I../src -I../src/net -o ../build/test_bridge test_bridge.c ../src/mp_bridge.c
+set -e; cd "${0:A:h}"; mkdir -p ../build; S=${BRIDGE_SRC:-~/ds_mp_bepinex/src}
+nice -n 19 clang -O1 -g -Wall -Wno-unused-function -fsanitize=address,undefined -I$S -I$S/net -o ../build/test_bridge test_bridge.c $S/mp_bridge.c
 ../build/test_bridge

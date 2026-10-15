@@ -35,10 +35,10 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
 - Bridge plugins are not in the HELLO mod set yet (MORNING_QUESTIONS: launcher should list BepInEx DLLs).
 
 ## Build / test
-- `./build_mac.sh` -> build/dsrig_bridge.dylib; `./build_win.sh` -> build/win/baselib.dll (all outputs in the lane;
-  lane copies of gen_port/gen_def in tools/). Windows build of current src needed two lane-only workarounds:
-  zlib inflate (pvp_wiki.c, compiled from Ghidra's zlib copy with NO_GZIP) and fe/*.c added to the port with
-  localtime_s / st_mtime shims (file dates only). Told gatefix about the zlib break.
+- `./build_mac.sh` -> build/dsrig_bridge.dylib; `./build_win.sh` -> build/win/baselib.dll. Both build from the
+  worktree src (BRIDGE_SRC, default ~/ds_mp_bepinex/src); all outputs stay in the lane folder (lane copies of
+  win/port/gen_port.py and gen_def.py in tools/, output paths changed only). Since main has zlib + fe in the
+  Windows port (2026-10-15 evening) no lane workaround is needed any more.
 - C#: `cd plugin/DsmpBridgeDemo && ~/.dotnet/dotnet build -c Release -o ../../build/plugins` (refs in lib/ copied
   from the be.788 install).
 - Unit: `tests/run_unit.sh` (stubs, ASan/UBSan): all PASS.
