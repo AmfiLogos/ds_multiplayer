@@ -395,3 +395,17 @@ multiplayer tag next to the name of the save and then just put the players that 
   unit net / mp_test / ui 530 / teams / mpmenu / trn / pvp 585 / FE custom guard ALL PASS; smoke 3/3; mp2 19 PASS 0 FAIL;
   left_prompt 16 PASS 0 FAIL; PvP m4_van 7/7, m4_bring 8/8, m4_ui 9/9; FE dive 23/23 (dive_20261015-233336); multiplayer alone
   smoke 3/3; prefs identical. Windows baselib.dll + module dll compile.
+
+## v12-mvp released (ship12, 2026-10-15 23:14-23:53)
+- Release: https://github.com/AmfiLogos/ds_multiplayer/releases/tag/v12-mvp (Latest). Tags: ds_multiplayer `v12-mvp` = 6b2c5e9
+  (4a5cda6 + gen_port fix: a bare `(float, float)` own-C call, ui_panel_hit, no longer stops the Windows module build;
+  win_map.tsv regenerated), ds_launcher `v12-mvp` = b7ebb86. Mac module pinned to 4a5cda6 (src identical to 6b2c5e9).
+  Pre-M4 split: FE / PvP are inside multiplayer, as in v11.
+- Dungeon-Settlers-Modded-Mac.zip sha256 f0b3fb7df0ff1c0b014ead35302f0806730b3587bba9cc32df22c4eff46f9d22 (no custom-modes, no modmenu)
+- Dungeon-Settlers-Modded-Windows.zip sha256 36ebb3dcc7465bbd42262012d7f4c5aca649fcc72eb6c679d8fed76a2550d3c6
+- Zips checked: no saves, no game files, no /Users or user-name strings.
+- Gate: loader host tests 31/31; l1_test 15/15; rig smoke 3/3; mp2 19 PASS 0 FAIL (pair AB); left_prompt 16 PASS 0 FAIL;
+  prefs identical; Mac host + Windows guest through the loader kit (DSMP, xplay_run mp2) 19 PASS 0 FAIL.
+  gate.sh's own mp2 failed twice on pair CD: orphan copies C/D (pids 91396 / 93050, started 22:00, no lease) hold port 7811.
+- Owner's Mac: "Dungeon Settlers MP.app" and "DS Mod Launcher.app" -> ~/Applications/old_versions/*-2026-10-15-2316.app;
+  "Dungeon Settlers Modded.app" in ~/Applications (not launched).
