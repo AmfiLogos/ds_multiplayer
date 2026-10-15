@@ -1,7 +1,10 @@
 #!/bin/zsh
 # Build the Windows mod: build/baselib.dll (baselib proxy + rig + det + dsnet + mp).
+# DSMP_TARGET=module: build/multiplayer.dll instead, a module of the mod loader (~/ds_launcher loader/start/win; the
+# loader's baselib.dll proxy loads it; header dsl_sdk.h from DSL_SDK, default ~/ds_launcher/loader/sdk).
 # Needs ~/tools/llvm-mingw. Sources: src/ (shared with the Mac build, translated by port/gen_port.py) + port/.
-set -e; cd "${0:A:h}"; mkdir -p build
+set -e; export DSMP_ROOT=${0:A:h:h}   # the tools read src/ and write win/build of THIS checkout (worktrees too); before the cd (relative $0)
+cd "${0:A:h}"; mkdir -p build
 TC=~/tools/llvm-mingw/bin/x86_64-w64-mingw32-clang
 if [[ -z "$SKIP_GEN" ]]; then nice -n 5 python3 win_map.py > /dev/null
 python3 port/gen_port.py; fi
@@ -12,18 +15,41 @@ NEWINL=$(nice -n 5 python3 inline_audit.py | sed -n 's/^INLINED ON WINDOWS: \([^
 [[ -z $NEWINL ]] || { print -l "ERROR: hooks inlined on Windows with no wrapper (add a wrapper, then a line in inline_known.tsv):" $NEWINL; exit 1; }
 echo "inline audit: no new inlined hook"
 [[ -f math/build/libdsmath_win64.a ]] || math/build_math.sh
-S=${DSMP_SRC:-~/ds_multiplayer/src}   # DSMP_SRC: build from a frozen snapshot (release)
+S=${DSMP_SRC:-$DSMP_ROOT/src}   # DSMP_SRC: build from a frozen snapshot (release)
 export DSMP_SRC=$S
 MH=third_party/minhook
 ZL=third_party/zlib    # inflate only (pvp_wiki.c builder links): zlib 1.3.1 from the local Unity il2cpp sources
 INC=(-Iport/posix -Iport -Imath -I$S/ord_test -I$S/net/steam -I$S -I$S/fe -I$S/net -I$MH/include -I$ZL)
 CF=(-O2 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_STDIO=1 -fno-strict-aliasing)
+TARGET=${DSMP_TARGET:-baselib}
+if [[ $TARGET == module ]]; then CF+=(-DDSMP_MODULE); INC+=(-I${DSL_SDK:-~/ds_launcher/loader/sdk}); fi
 GEN=(build/gen/*.c build/gen/net/dsnet_link.c build/gen/net/dsnet_server.c build/gen/net/dsnet_client.c)
 NET=()
-mkdir -p build/obj; rm -f build/obj/*.o(N)
-for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do nice -n 5 $TC $CF $INC -include dswin.h -c $f -o build/obj/${f:t:r}.o; done
-for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $ZL/zutil.c; do nice -n 5 $TC -O2 -w -c $f -o build/obj/zl_${f:t:r}.o; done
-for f in port/dswin.c $MH/src/hook.c $MH/src/buffer.c $MH/src/trampoline.c $MH/src/hde/hde64.c; do nice -n 5 $TC $CF -I$MH/include -c $f -o build/obj/${f:t:r}.o; done
-nice -n 5 $TC -shared -o build/baselib.dll.tmp build/obj/*.o math/build/libdsmath_win64.a build/baselib_exports.def -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
+O=build/obj; [[ $TARGET == module ]] && O=build/obj_module
+mkdir -p $O build/old_obj; olds=($O/*.o(N)); (( ${#olds} )) && mv -f $olds build/old_obj/
+for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do nice -n 5 $TC $CF $INC -include dswin.h -c $f -o $O/${f:t:r}.o; done
+for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $ZL/zutil.c; do nice -n 5 $TC -O2 -w -c $f -o $O/zl_${f:t:r}.o; done
+if [[ $TARGET == module ]]; then
+nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o
+nice -n 5 $TC -shared -o build/multiplayer.dll.tmp $O/*.o math/build/libdsmath_win64.a -Wl,--export-all-symbols -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
+mv -f build/multiplayer.dll.tmp build/multiplayer.dll
+echo built build/multiplayer.dll
+# module folder for the loader: build/mods/multiplayer/ = the dll, its ranges and mod.json (the loader's Mac mod.json
+# from DSL_MODJSON, default ~/ds_launcher/loader/modules/multiplayer/mod.json, + platforms.win-x64 with file sha256s)
+M=build/mods/multiplayer; mkdir -p $M
+cp build/multiplayer.dll $M/multiplayer.dll.tmp && mv -f $M/multiplayer.dll.tmp $M/multiplayer.dll
+cp build/det_ranges_win.tsv $M/det_ranges_win.tsv.tmp && mv -f $M/det_ranges_win.tsv.tmp $M/det_ranges_win.tsv
+python3 - ${DSL_MODJSON:-~/ds_launcher/loader/modules/multiplayer/mod.json} $M <<'PY'
+import hashlib, json, os, sys
+m = json.load(open(sys.argv[1])); d = sys.argv[2]
+files = {f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest() for f in ("multiplayer.dll", "det_ranges_win.tsv")}
+m.setdefault("platforms", {})["win-x64"] = {"entry": "multiplayer.dll", "files": files}
+json.dump(m, open(os.path.join(d, "mod.json"), "w"), indent=1)
+print("module folder", d, files["multiplayer.dll"][:16])
+PY
+else
+for f in port/dswin.c $MH/src/hook.c $MH/src/buffer.c $MH/src/trampoline.c $MH/src/hde/hde64.c; do nice -n 5 $TC $CF -I$MH/include -c $f -o $O/${f:t:r}.o; done
+nice -n 5 $TC -shared -o build/baselib.dll.tmp $O/*.o math/build/libdsmath_win64.a build/baselib_exports.def -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/baselib.dll.tmp build/baselib.dll
 echo built build/baselib.dll
+fi

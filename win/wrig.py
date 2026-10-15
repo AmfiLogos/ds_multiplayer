@@ -60,6 +60,16 @@ def stop():
         except Exception: pass
     print("left:", dsmp_pids())
 
+if os.environ.get("DSMP_WIN_LOADER") == "1":
+    # the Windows copy through the MOD LOADER: the loader kit installed in DSMP by its own install.bat, started through
+    # "Dungeon Settlers Modded.exe" (wloader.py). Same commands; INST = that copy's profile folder (DSRIG_DIR).
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import wloader as _wl
+    INST, PORT = _wl.PROF, _wl.PORT
+    def start():
+        if _wl.start([]): raise RuntimeError("wloader: the DSMP bottle stayed busy (another wine copy)")
+    cmd, stop = _wl.cmd, _wl.stop
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a[0] == "start": start()

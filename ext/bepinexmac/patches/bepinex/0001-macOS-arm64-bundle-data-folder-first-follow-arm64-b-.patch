@@ -1,0 +1,117 @@
+From 4589a6f758e1d9201672b0b042876bc81cc38597 Mon Sep 17 00:00:00 2001
+From: bepinexmac-lane <lane@local>
+Date: Thu, 15 Oct 2026 19:59:11 +0100
+Subject: [PATCH 1/3] macOS arm64: bundle data folder first, follow arm64
+ b-thunks before detours, match Windows process filters on macOS
+
+---
+ BepInEx.Core/Bootstrap/BaseChainloader.cs     | 21 ++++++++++++++++++-
+ BepInEx.Core/Paths.cs                         | 19 +++++++++++------
+ .../Hook/INativeDetour.cs                     | 17 +++++++++++++++
+ 3 files changed, 50 insertions(+), 7 deletions(-)
+
+diff --git a/BepInEx.Core/Bootstrap/BaseChainloader.cs b/BepInEx.Core/Bootstrap/BaseChainloader.cs
+index 0776bae..d7c346c 100644
+--- a/BepInEx.Core/Bootstrap/BaseChainloader.cs
++++ b/BepInEx.Core/Bootstrap/BaseChainloader.cs
+@@ -9,11 +9,29 @@ using System.Text.RegularExpressions;
+ using BepInEx.Configuration;
+ using BepInEx.Logging;
+ using Mono.Cecil;
++using MonoMod.Utils;
+ 
+ namespace BepInEx.Bootstrap;
+ 
+ public abstract class BaseChainloader<TPlugin>
+ {
++    /// <summary>
++    ///     A Windows filter like "DungeonSettlers.exe" names the same game as the macOS player "Dungeon Settlers":
++    ///     on macOS compare letters and digits only.
++    /// </summary>
++    private static bool SameGameOnMacOS(string filter)
++    {
++        if (!PlatformHelper.Is(Platform.MacOS))
++            return false;
++        static string Key(string n)
++        {
++            if (n.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
++                n = n.Substring(0, n.Length - 4);
++            return new string(n.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
++        }
++        return Key(filter) == Key(Paths.ProcessName);
++    }
++
+     protected static readonly string CurrentAssemblyName = Assembly.GetExecutingAssembly().GetName().Name;
+     protected static readonly Version CurrentAssemblyVersion = Assembly.GetExecutingAssembly().GetName().Version;
+ 
+@@ -248,7 +266,8 @@ public abstract class BaseChainloader<TPlugin>
+                                          filters.All(x => !string.Equals(x.ProcessName.Replace(".exe", ""),
+                                                                          Paths.ProcessName,
+                                                                          StringComparison
+-                                                                             .InvariantCultureIgnoreCase));
++                                                                             .InvariantCultureIgnoreCase) &&
++                                                          !SameGameOnMacOS(x.ProcessName));
+ 
+                 if (invalidProcessName)
+                 {
+diff --git a/BepInEx.Core/Paths.cs b/BepInEx.Core/Paths.cs
+index d2569f2..3b19d0a 100644
+--- a/BepInEx.Core/Paths.cs
++++ b/BepInEx.Core/Paths.cs
+@@ -121,12 +121,19 @@ public static class Paths
+             // According to some experiments, Unity checks whether globalgamemanagers/data.unity3d exists in the data folder before picking it.
+             // 'ProcessName_Data' folder is checked first, then if that fails 'Data' folder is checked. If neither is valid, the player crashes.
+             // A simple Directory.Exists check is accurate enough while being less likely to break in case these conditions change.
+-            GameDataPath = Path.Combine(GameRootPath, $"{ProcessName}_Data");
+-            if (!Directory.Exists(GameDataPath))
+-                GameDataPath = Path.Combine(GameRootPath, "Data");
+-            // macOS keeps data inside the app bundle.
+-            if (!Directory.Exists(GameDataPath) && PlatformHelper.Is(Platform.MacOS))
+-                GameDataPath = Utility.CombinePaths(Utility.ParentDirectory(executablePath, 2), "Resources", "Data");
++            // macOS players always read the data inside the app bundle; check it first so a sibling "data"
++            // folder next to the .app (case-insensitive file system) is not taken for it.
++            var bundleData = PlatformHelper.Is(Platform.MacOS)
++                                 ? Utility.CombinePaths(Utility.ParentDirectory(executablePath, 2), "Resources", "Data")
++                                 : null;
++            if (bundleData != null && Directory.Exists(bundleData))
++                GameDataPath = bundleData;
++            else
++            {
++                GameDataPath = Path.Combine(GameRootPath, $"{ProcessName}_Data");
++                if (!Directory.Exists(GameDataPath))
++                    GameDataPath = Path.Combine(GameRootPath, "Data");
++            }
+         }
+         
+         if (string.IsNullOrEmpty(GameDataPath) || !Directory.Exists(GameDataPath))
+diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Hook/INativeDetour.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Hook/INativeDetour.cs
+index 02d73ba..57e02cd 100644
+--- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Hook/INativeDetour.cs
++++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Hook/INativeDetour.cs
+@@ -59,6 +59,23 @@ public interface INativeDetour : IDetour
+     {
+         if (func == 0) return func;
+ 
++        // arm64 (clang Mach-O): an export can be one 4-byte "b imm26" to the body, packed next to the
++        // other exports. A 16-byte detour written there overwrites the neighbouring exports.
++        if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
++        {
++            var at = func;
++            for (var hops = 0; hops < 8; hops++)
++            {
++                uint insn;
++                try { insn = (uint) Marshal.ReadInt32(at); }
++                catch { return at; }
++                if ((insn & 0xFC000000u) != 0x14000000u)
++                    break;
++                at += (nint) (((int) (insn << 6) >> 6) * 4L); // sign-extended imm26 * 4
++            }
++            return at;
++        }
++
+         // These encodings identify export thunks only on x86/x64. Leave pointers on
+         // other architectures unchanged for the selected detour provider.
+         if (RuntimeInformation.ProcessArchitecture is not (Architecture.X86 or Architecture.X64))
+-- 
+2.54.0 (Apple Git-157)
+
