@@ -3,8 +3,8 @@
 # DSMP_TARGET=module: build/multiplayer.dll instead, a module of the mod loader (~/ds_launcher loader/start/win; the
 # loader's baselib.dll proxy loads it; header dsl_sdk.h from DSL_SDK, default ~/ds_launcher/loader/sdk).
 # Needs ~/tools/llvm-mingw. Sources: src/ (shared with the Mac build, translated by port/gen_port.py) + port/.
-set -e; cd "${0:A:h}"; mkdir -p build
-export DSMP_ROOT=${0:A:h:h}   # the tools read src/ and write win/build of THIS checkout (worktrees too)
+set -e; export DSMP_ROOT=${0:A:h:h}   # the tools read src/ and write win/build of THIS checkout (worktrees too); before the cd (relative $0)
+cd "${0:A:h}"; mkdir -p build
 TC=~/tools/llvm-mingw/bin/x86_64-w64-mingw32-clang
 if [[ -z "$SKIP_GEN" ]]; then nice -n 5 python3 win_map.py > /dev/null
 python3 port/gen_port.py; fi
