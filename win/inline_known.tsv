@@ -11,3 +11,4 @@ Refactor.UI.ExpeditionPlanView$$InputOnAccept	StartExpedition / TryStartExpediti
 Refactor.UI.SubUI_UnitShortCutParts$$RefreshUnitName	RefreshUnitShortCutPartsName wrapper (WIN_WRAP ui_game.c)
 Refactor.UI.PopUpUI_Base$$SetTimeLock	OnActivate wrapper (WIN_WRAP ui_game.c)
 Refactor.UI.PopUpUI_Base$$UnsetTimeLock	OnDeactivate wrapper (WIN_WRAP ui_game.c)
+Refactor.UI.FactionManagementView$$OnWorldRefresh	FactionManagementPresenter.WorldRefreshed wrapper (WIN_WRAP ui_game.c, 2026-10-15)
