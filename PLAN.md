@@ -359,3 +359,11 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
 - steamstart / winkit: no dylib change; launcher compiles; bat files not run (no wine run in P0).
 - myunits fe/ guard: merged as branch myunits-feguard 96efe6d only (NOT 38ef920 on myunits); test_custom_guard.py ALL PASS (18), unit + smoke green.
 - Pending: viewui (lane still working), weaponslot (no commits yet).
+
+## BepInEx bridge (lane ext/bepinex_bridge, branch bepinex-bridge, 2026-10-15 ~21:20)
+- C# mods (BepInEx 6 IL2CPP be.788, Windows) see the session and send actions through the lockstep order path:
+  src/mp_bridge.c/.h = 11 C exports dsmp_bridge_* (baselib.dll / dsrig.dylib), mp order type 50 (zero owner),
+  native "dsmp.*" actions (dsmp.gold.add) run on Mac too; other channels go to the plugin's C# handlers (every peer
+  needs the plugin); MOVE / ORD pass-through with the owner check. Plugin DsmpBridge.dll (+ test DsmpBridgeDemo.dll).
+- Pair Mac host + Windows guest: AddGold(250) from the plugin applied on both at the same step, full checks equal,
+  0 desyncs, fingerprints equal. Unit test all PASS. Not merged to main. Details ext/bepinex_bridge/NOTES.md.

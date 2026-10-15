@@ -100,12 +100,14 @@ def main():
         log('apply lines', lx, '|', ly)
 
         # full-state checks (gold is in the save sections) + fingerprints, a few checks after the action
-        f0x, f0y = st(X).get('mp', {}).get('full_ok', 0), st(Y).get('mp', {}).get('full_ok', 0)
-        wait('two more full checks', lambda: st(X).get('mp', {}).get('full_ok', 0) >= f0x + 2 and st(Y).get('mp', {}).get('full_ok', 0) >= f0y + 2, timeout=240, every=3)
-        sx, sy = st(X).get('mp', {}), st(Y).get('mp', {})
-        check('full-state checks equal after the action, 0 desyncs on both',
-              sx.get('full_fails', 1) == 0 and sy.get('full_fails', 1) == 0 and sx.get('desyncs', 1) == 0 and sy.get('desyncs', 1) == 0,
-              f"X full_ok {sx.get('full_ok')} fails {sx.get('full_fails')} desyncs {sx.get('desyncs')} | W full_ok {sy.get('full_ok')} fails {sy.get('full_fails')} desyncs {sy.get('desyncs')}")
+        # the host only sends its sections; the guest compares and logs "full-state check at step N: equal|..." (mp_core.c)
+        def fulls(): return [l for l in open(os.path.join(rig.idir(Y), 'rig.log'), errors='replace') if 'full-state check at step' in l]
+        f0 = len(fulls())
+        wait('two more full checks on the guest', lambda: len(fulls()) >= f0 + 2, timeout=240, every=3)
+        new = fulls()[f0:]; sx, sy = st(X).get('mp', {}), st(Y).get('mp', {})
+        check('full-state checks equal after the action (guest compares), 0 desyncs on both',
+              all(l.rstrip().endswith('equal') for l in new) and sx.get('desyncs', 1) == 0 and sy.get('desyncs', 1) == 0,
+              f"{[l.strip()[-45:] for l in new]} desyncs X {sx.get('desyncs')} W {sy.get('desyncs')}")
         n, d = fp_equal_from(X, Y, t0)
         check('fingerprints equal on both from the join', n > 300 and d is None, f'{n} common ticks, first diff {d}')
 
@@ -118,6 +120,8 @@ def main():
         log('INFO managed channel demo.note: W applied_managed', bw.get('applied_managed'), 'notes', repr(notes), '| Mac unhandled', bx.get('unhandled'),
             '(expected: a managed channel needs the plugin on every peer)')
         results['info: managed channel runs on W, Mac counts it unhandled'] = bw.get('applied_managed') == 1 and bx.get('unhandled') == 1
+    except Exception as e:
+        check('run finished', False, repr(e))
     finally:
         for i in (Y, X):
             try: rig.stop(i)

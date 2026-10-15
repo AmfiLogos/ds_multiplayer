@@ -45,3 +45,11 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
 - Windows copy: C:\DSW_BRG (APFS clone of DSW_BIE; ExtendedHotbar and the old baselib.dll moved to disabled_plugins/),
   instance ext/bepinex_bridge/inst/W_BRG, runner tools/brg_wrig.py (winhttp=n,b).
 - Pair: `python3 rig/rig.py lease bepinex` then `python3 tools/brg_wrig.py xplay <pair> tests/bridge_xplay.py`.
+
+## Pair test result (2026-10-15 21:20, pair GH: Mac host G + Windows guest W_BRG in bottle DSMP)
+- PASS all: plugin loads next to our baselib.dll and sees the session (Guest, player 1); Mac host role Host, no
+  dispatcher; the W plugin's Multiplayer.AddGold(250) applied once on both (gold 51 -> 301 on both, same step);
+  guest full-state checks after it all "equal"; 0 desyncs on both; fingerprints equal (1225 common ticks).
+- INFO (expected limit): managed channel demo.note ran on W (applied_managed 1), Mac counted it unhandled 1.
+- Run 1 (21:08) had the same PASS for the action and 15202 equal fingerprints; its full-check wait read the host's
+  full_ok (the host only sends; the guest compares), fixed in run 2.
