@@ -49,8 +49,9 @@ Order kept: CFNetwork first (already linked by the game), libcurl second. Not ye
 rig command (rig_cmd.c is shared; wk_http_probe exists for it) and a pair.
 
 Windows: custom/units/test/http/win_run.sh builds win_probe.exe (llvm-mingw; units code + WinHTTP, links with
--lwinhttp -lbcrypt). Built clean. NOT run: wine was already running for another lane (LANE_RULES 7); run
-`custom/units/test/http/win_run.sh` when no wine runs.
+-lwinhttp -lbcrypt). Built clean; run under CrossOver wine (bottle DSMP, no other wine running): WinHTTP HTTP 200,
+wkl_resolve 4 units in 216 ms, card JSON filled, one click on the box path added the 4-unit team, dead address gave
+up after 5003 ms. Wine's WinHTTP is not Windows' own: a real Windows PC is still untested.
 
 ## For M4 / L3
 

@@ -11,7 +11,7 @@ nice -n 5 $TC -O1 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_S
   -static -lwinhttp -lbcrypt
 echo "built $O/win_probe.exe"
 [ -n "$NORUN" ] && exit 0
-if pgrep -f wine >/dev/null; then echo "wine already runs (another lane): not started"; exit 0; fi
+if pgrep -fl wine | grep -v "win_run" | grep -q .; then pgrep -fl wine | head -3; echo "wine already runs (another lane): not started"; exit 0; fi
 C=~/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin
 [ -x "$C/wine" ] || C=/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin
-cd "$O" && nice -n 19 "$C/wine" --bottle "${BOTTLE:-DSMP}" --cx-app "$O/win_probe.exe" 2>/dev/null
+cd "$O" && nice -n 19 "$C/wine" --bottle "${BOTTLE:-DSMP}" "$O/win_probe.exe" 2>/dev/null
