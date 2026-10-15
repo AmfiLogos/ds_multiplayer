@@ -60,6 +60,7 @@ def start(extra):
         subprocess.Popen(["python3", f"{H}/ds_multiplayer/win/tools/dsmp_guard.py", "7200"], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     env = dict(os.environ, DSRIG_PORT=str(PORT), DSMP_GUARD_TAG="1", DSL_NO_ALERT="1")
+    env["WINEDLLOVERRIDES"] = "winhttp=n,b"          # wine only: Doorstop's winhttp.dll from the game folder (Windows loads it anyway)
     for k in ("DSRIG_DIR", "DSRIG_RANGES", "DSL_MODS_DIR", "DSL_PROFILE", "DSL_LOG_DIR", "DSML_SESSION"): env.pop(k, None)
     args = ["nice", "-n", "19", f"{C}/wine", "--bottle", BOTTLE, "--no-wait", WROOT + "\\Dungeon Settlers Modded.exe",
             "-batchmode", "-nographics"] + extra
