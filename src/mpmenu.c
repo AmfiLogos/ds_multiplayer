@@ -767,7 +767,12 @@ static void title_build(Obj v) {
             if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);
             txt_color(l, C_START);
         }
-        if (id == MPB_WORLD) { row_height(b, 262, 44); txt_body(l); txt_style(l, 0, 17, 514, 0); txt_color(l, C_MAIN); }   /* click = the other world */
+        if (id == MPB_WORLD) {                                              /* "World  ‹ value ›" like a Rules row; click = the other world */
+            row_height(b, 262, 44); txt_body(l); txt_style(l, 0, 16, 514, 0); txt_color(l, C_MAIN); place(l, 36, 0, 150, 40);
+            Obj wl = mk_txt(tpl_txt, u_tr(b), 0, 15, 513, 0, -92, 0, 64, 40, C_SUB); tmp_set(wl, "World");
+            Obj al = mk_txt(tpl_txt, u_tr(b), 0, 16, 514, 0, -50, 0, 20, 40, C_MAIN); tmp_set(al, "\xE2\x80\xB9");
+            Obj ar = mk_txt(tpl_txt, u_tr(b), 0, 16, 514, 0, 122, 0, 20, 40, C_MAIN); tmp_set(ar, "\xE2\x80\xBA");
+        }
         if (id == MPB_SETTINGS) {                                           /* [cog] Rules  ›  + summary under it */
             row_height(b, 262, 104);
             Obj bg = first_image(u_tr(b), 0); if (bg) { stretch(bg); u_gc_free(h_title_box); h_title_box = u_gc_new(bg); }
@@ -2603,7 +2608,7 @@ static void tips_frame(const mpm_obs *o) {
     TIP(tb(MPB_HIST_PREV), "More Worlds", "Shows the next page of Recent Worlds."); TIP(tb(MPB_HIST_NEXT), "More Worlds", "Shows the next page of Recent Worlds.");
     TIP(u_gc_get(h_rw_title), "Recent Worlds", "Worlds you played in multiplayer, newest first, with the day, the players and your units.");
     /* title column (3.1, 3.2, 3.4) */
-    TIP(tb(MPB_MULTIPLAYER), "Multiplayer", "Play one world together with friends. Every player runs the game; only the orders travel, so all screens stay the same.");
+    /* Multiplayer: no tooltip (owner 2026-10-15) */
     TIP(tb(MPB_HOST), "Host a Game", "Open one of your worlds, or a new campaign, to other players. The world is saved on your computer.");
     TIP(tb(MPB_JOIN_ADDR), "Join by Address", "Join a friend's world with their address (ip:port). Use it when Steam is not available, or on the same home network.");
     TIP(tb(MPB_JOIN_FRIEND), "Join a Friend on Steam", "Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game.");

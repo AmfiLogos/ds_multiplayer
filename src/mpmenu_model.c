@@ -8,7 +8,7 @@ _Static_assert(MPB_FE_RESLIST < 64 && MPB_POP_NEXT < 80, "mpm_visible: title / l
 /* short labels (ux #17): at the stock button size 22 (design #8) the host page buttons fit on one line at 960 and 1512 */
 void mpm_settings_summary(const mpm_settings *s, char *out, size_t cap) {
     if (s->fe) {
-        snprintf(out, cap, "Foreign Expedition Â· Death: %s Â· Experience: %s Â· Dungeon loot: %s Â· Units: %d Â· Recruiting: %s",
+        snprintf(out, cap, "Foreign Expedition \xC2\xB7 Death: %s \xC2\xB7 Experience: %s \xC2\xB7 Dungeon loot: %s \xC2\xB7 Units: %d \xC2\xB7 Recruiting: %s",
                  s->fe_death ? "permanent" : "not permanent", s->fe_xp ? "counts" : "does not count", s->fe_loot ? "comes back" : "stays",
                  s->units, s->fe_recruit ? "on" : "off");
         return;
@@ -369,7 +369,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_FRIEND0: case MPB_FRIEND1: case MPB_FRIEND2: case MPB_FRIEND3: case MPB_FRIEND4: case MPB_FRIEND5:
         snprintf(out, cap, "Join %s's world", m->friends[b - MPB_FRIEND0][0] ? m->friends[b - MPB_FRIEND0] : "a friend"); break;
     case MPB_SETTINGS: snprintf(out, cap, "Rules"); break;                  /* cog left, "›" right, summary under it */
-    case MPB_WORLD: snprintf(out, cap, "World  <color=#A69085>â¹</color> %s <color=#A69085>âº</color>", m->set.fe ? "Foreign Expedition" : "Your save"); break;
+    case MPB_WORLD: snprintf(out, cap, "%s", m->set.fe ? "Foreign Expedition" : "Your save"); break;   /* the value only: "World" and the arrows are drawn by mpmenu.c */
     case MPB_SUMMARY: mpm_settings_summary(&m->set, out, cap); break;
     case MPB_SEL_PAUSE: snprintf(out, cap, "Pause"); break;
     case MPB_SEL_SPEED: snprintf(out, cap, "Speed-up"); break;
@@ -410,7 +410,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     }
 }
 
-/* lobby panel (design #6): a title line (Cinzel, set by the game side) and a body: next step, one line per player ("Â· name": Lora has no U+25CF),
+/* lobby panel (design #6): a title line (Cinzel, set by the game side) and a body: next step, one line per player ("· name": Lora has no U+25CF),
  * settings in the secondary colour, addresses. No <b> (TMP swaps in a font that is not the game's). */
 void mpm_lobby_title(const mpm_model *m, char *out, size_t cap) {
     if (m->state == MPM_GUEST_LOBBY) snprintf(out, cap, "In %s's lobby", m->host[0] ? m->host : "the host");
