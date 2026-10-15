@@ -384,6 +384,7 @@ static int tfold;
 static void fbar_build(Obj rt);
 static int scr_rect(Obj comp, float out[4]);
 static void hud_save(void); static void hud_load(void);
+static int panel_hit(V2 m);
 static uintptr_t h_tpl_box;
 static uintptr_t h_tpl_red, h_tpl_bottom, h_tpl_band, h_spr_red, h_spr_bottom, h_spr_check;   /* Recruit / Expedition Plan parts */
 static char region_line[300];                              /* the region vote as one line (state / tests) */
@@ -1381,6 +1382,7 @@ static int click_at(V2 m, int button) {
         return hit(u_gc_get(h_fbar), m, cam);
     }
     if (hit(hud, m, cam_for(hud))) { if (button == 0) close_screen(); return 1; }   /* right = drag (hud_input) */
+    if (panel_hit(m)) return 1;                              /* viewui: the Players panel is on top there */
     if (hit(u_gc_get(h_close), m, cam)) { close_screen(); return 1; }
     if (button == 0 && hit(u_gc_get(h_tfold), m, cam)) { fold_set(1); return 1; }
     if (button == 0 && hit(u_gc_get(h_info), m, cam)) return 1;   /* the info icon: hover shows "How Teams Work" */
@@ -1477,6 +1479,13 @@ static void hud_place(void) {
                && !busy();                                   /* and on the loading screen (map change, load): gamelane 2026-10-14 */
     if (u_go_active_self(u_go(hr)) != want) u_go_active(u_go(hr), want);
     if (!want) return;
+    {   /* viewui: above the open window (32000), like the player panel; else above the stock popups */
+        int o = opened && !folded() ? 32020 : 31000;
+        static uintptr_t h_cv, h_cv_of; Obj cv = u_gc_get(h_cv);
+        if (u_gc_get(h_cv_of) != hr || !u_alive(cv)) { Obj cty = type_object("UnityEngine", "Canvas"); cv = cty ? go_component(u_go(hr), cty) : NULL;
+            u_gc_free(h_cv); h_cv = u_gc_new(cv); u_gc_free(h_cv_of); h_cv_of = u_gc_new(hr); }
+        if (u_alive(cv) && tm_is(cv, K_CV) && F(0x5476320, int (*)(Obj, void *))(cv, NULL) != o) F(0x547640C, void (*)(Obj, int, void *))(cv, o, NULL);
+    }
     hud_load();
     Obj ct = u_tr_parent(hr); R4 cr = ct ? rt_rect(ct) : (R4){0, 0, 1920, 1080};
     if (!hud_dragged) {                                      /* never dragged: snapped right of the player panel, any panel size */
@@ -1836,11 +1845,11 @@ static void stock_gear_frame(void) {
 /* the proposal side panel is not modal (lan_v10): the player panel, hotkeys and Escape stay as without it */
 /* viewui: the folded Teams window is not modal (the bar only) */
 __attribute__((visibility("default"))) int ui_teams_modal_open(void) { return (opened && !folded()) || stock_mode == 2; }
-/* for the player panel (ui_game, dlsym): 1 = the Teams window (or its folded bar) is over screen point x, y (pixels) */
-__attribute__((visibility("default"))) int ui_teams_covers(float x, float y) {
-    if (!opened || !root()) return 0;
-    V2 m = { x, y }; Obj cam = cam_for(root());
-    return folded() ? hit(u_gc_get(h_fbar), m, cam) : hit(win(), m, cam);
+/* viewui: the player panel draws above the open window; its clicks and tooltips are ui_game's (ui_panel_hit, dlsym) */
+static int panel_hit(V2 m) {
+    static int (*fn)(float, float); static unsigned tries;
+    if (!fn && tries++ % 60 == 0) fn = (int (*)(float, float))dl("ui_panel_hit");
+    return fn ? fn(m.x, m.y) : 0;
 }
 static void stock_close(void) { Obj v = pres_view(); if (stock_mode && u_alive(v)) F(0xEE3384, void (*)(Obj, void *))(v, NULL); }
 /* owner lan_v7: opening the expedition plan is local. The portal interaction runs in the simulation on every peer
@@ -2075,6 +2084,7 @@ static void tips_frame(void) {
         else if (hit(u_gc_get(h_fclose), m, cam)) tip_on(u_gc_get(h_fclose), "Close", "Closes the Teams window.");
         return;
     }
+    if (panel_hit(m)) return;                                /* viewui: the Players panel's own tooltips */
     if (hit(u_gc_get(h_tfold), m, cam)) { tip_on(u_gc_get(h_tfold), "Hide", "Folds the Teams window to a small bar at the top, so you can see and play the game. Show opens it again."); return; }
     for (int i = 0; lpop_unit >= 0 && i < nlrow; i++) if (hit(u_gc_get(lrow_h[i]), m, cam)) { tip_lrow(u_gc_get(lrow_h[i]), i); return; }
     for (int i = 0; i < nchip; i++) if (hit(u_gc_get(chip_h[i]), m, cam)) { tip_chip(u_gc_get(chip_h[i]), chip_u[i]); return; }

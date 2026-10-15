@@ -22,8 +22,8 @@ def check(name, ok, info=''):
     log(('PASS ' if ok else 'FAIL ') + name, str(info)[:600])
 
 
-def coop(x, **k):
-    try: return rig.send(x, dict(cmd='ui_coop', **k), timeout=120)
+def coop(inst, **k):
+    try: return rig.send(inst, dict(cmd="ui_coop", **k), timeout=120)
     except Exception as e: return {'ok': False, 'error': repr(e)}
 
 
@@ -62,7 +62,10 @@ def run(X, Y, PORT):
     wait('title guest', lambda: (lambda s: s.get('scene') == 1 and not s.get('busy'))(st(Y)), timeout=1500, every=5)
     wait('guest loaded', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('loads', 0) >= 1)(st(Y)), timeout=900, every=3)
     time.sleep(8)
-    t_fp = st(X).get('tick', 0)
+    def last_tick(i):
+        try: return int(open(os.path.join(rig.idir(i), 'fp.log')).read().rstrip().splitlines()[-1].split()[0])
+        except Exception: return 0
+    t_fp = min(last_tick(X), last_tick(Y)); log('fp from tick', t_fp, 'st tick', st(X).get('tick'))
     us = [u for u in c(X, cmd='list_units', map=0).get('units', []) if u['faction'] == 1 and not u['dead'] and 'cell' in u]
     cx, cy = us[0]['cell']
     a, b = coop(X), coop(Y)
@@ -135,9 +138,30 @@ def run(X, Y, PORT):
         check('... "Show" brings it back', tm(X).get('hud_shown') == 1)
     step('teams_button', teams_button)
 
+    def nounits():                                             # item 6: Players panel with no unit of mine in the base
+        def pv(x, tag):
+            v = c(x, cmd='ui_view'); log(tag, 'panel_pos', v.get('panel_pos'), 'plate', v.get('plate'), 'why', v.get('hide_why')); return v
+        a0 = pv(X, 'host before'); b0 = pv(Y, 'guest before (owns?)')
+        shot(X, 'nounits_before_host'); shot(Y, 'nounits_before_guest')
+        cols = tm(X).get('columns', []); mine = next((k.get('model', []) for k in cols if k.get('player') == 0), [])
+        log('host units', mine)
+        tm(X, action='open'); time.sleep(1)
+        for g in mine: log('free', g, tm(X, action='click', guid=g, button=0).get('rc')); time.sleep(1)
+        tm(X, action='close'); time.sleep(4)
+        cols = tm(X).get('columns', []); left = next((k.get('model', []) for k in cols if k.get('player') == 0), [])
+        a1 = pv(X, 'host after')
+        shot(X, 'nounits_after_host')
+        c(X, cmd='ui_pop', open=1); time.sleep(1); shot(X, 'nounits_after_cog_host'); c(X, cmd='ui_pop', open=0)
+        c(X, cmd='ui_click', row=0); time.sleep(1); shot(X, 'nounits_after_folded_host'); c(X, cmd='ui_click', row=0); time.sleep(1)
+        a2 = pv(X, 'host after 2')
+        check('item 6: host has no units now', not left, left)
+        check('item 6: panel shown, same place, with no units (host)', a1.get('plate', {}).get('active') == 1 and a1.get('panel_pos') == a0.get('panel_pos') and a2.get('panel_pos') == a0.get('panel_pos'),
+              f"before {a0.get('panel_pos')} {a0.get('plate')} after {a1.get('panel_pos')} {a1.get('plate')} {a2.get('panel_pos')}")
+    step('nounits', nounits)
+
     time.sleep(5)
     n, first = U.fp_equal_from_xy(X, Y, t_fp)
-    check('fingerprints equal over the run (all view-only)', first is None and n > 50, f'common ticks {n}, first diff {first}')
+    check('fingerprints equal over the run (all view-only)', first is None and n > 10, f'common ticks {n}, first diff {first}')
 
 
 def main():

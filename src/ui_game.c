@@ -2211,6 +2211,8 @@ static Obj flat(Obj root, const char *hex) { Obj im = img_make(root, NULL, 10, 1
    Inside it, the panel's own group: its scale is the "Panel size" (Compact 0.75). Tooltips, the lend menu and the viewer
    box use the layer (never compact). */
 #define PL_SORT 5000
+#define PL_SORT_TEAMS 32020                                  /* viewui: above the open Teams window (32000) */
+static uintptr_t h_top_cv; static int top_order = PL_SORT;  /* the top layer's Canvas */
 static Obj layer_make(Obj tmpl, Obj parent, int canvas) {
     Obj l = u_instantiate(tmpl, parent);
     if (!ui_is(l, K_TMP)) return NULL;
@@ -2222,6 +2224,7 @@ static Obj layer_make(Obj tmpl, Obj parent, int canvas) {
         int order = canvas == 1 ? PL_SORT : canvas;          /* lan_v10: the markers layer passes its own order (no raycaster) */
         if (cv) { F(0x5476208, void (*)(Obj, bool, void *))(cv, true, NULL); F(0x547640C, void (*)(Obj, int, void *))(cv, order, NULL); }
         if (cv && tg && canvas == 1) F(0x50F2B90, Obj (*)(Obj, Obj, void *))(u_go(l), tg, NULL);
+        if (cv && canvas == 1) { u_gc_free(h_top_cv); h_top_cv = u_gc_new(cv); top_order = order; }
         rig_log("ui: %s layer %p canvas %p (sorting order %d)", canvas == 1 ? "top" : "markers", l, cv, order);   /* "top layer": uxgame_pair's check */
     }
     return u_tr(l);
@@ -2230,11 +2233,15 @@ static Obj layer_of_panel(void) { Obj hdr = u_gc_get(h_pl[PL_HDR]); return u_ali
 static Obj layer_top(void) { Obj g = layer_of_panel(); return g ? u_tr_parent(g) : NULL; }
 int ui_panel_compact(void) { settings_load(); return uiset.compact; }   /* teamsfinish (dlsym): the Teams button follows it */
 int ui_teams_button_on(void) { settings_load(); return uiset.teams_button; }   /* viewui (dlsym, ui_teams): cog "Teams button" */
-static int teams_covers(float x, float y) {                  /* viewui: the Teams window (or its bar) is over this point */
-    static int (*fn)(float, float); static unsigned tries;
-    if (!fn && tries++ % 60 == 0) fn = (int (*)(float, float))dlsym(RTLD_DEFAULT, "ui_teams_covers");
-    return fn ? fn(x, y) : 0;
+/* viewui (owner 2026-10-15): the panel stays in view while the Teams window is open: the top layer goes above it
+   (PL_SORT_TEAMS) and Teams leaves the clicks on the panel to us (ui_panel_hit, dlsym) */
+static void top_layer_order(int teams_open) {
+    Obj cv = u_gc_get(h_top_cv); int want = teams_open ? PL_SORT_TEAMS : PL_SORT;
+    if (!u_alive(cv) || want == top_order) return;
+    F(0x547640C, void (*)(Obj, int, void *))(cv, want, NULL); top_order = want;
+    rig_log("ui: top layer sorting order %d", want);
 }
+
 /* the cog's rows, in order (lan_v10: + co-op markers, outline, other players' colours; host rows last). arg = the
    player of a colour row, else -1. Returns the count. */
 static int pl_is_label(int i) { return i == PL_SEE || i == PL_NAMES || i == PL_ADMIN || i == PL_UNITS || i == PL_TIPS || i == PL_CFADE || i == PL_CJOIN || i == PL_CHAT || i == PL_SIZE
@@ -2361,8 +2368,11 @@ static void plist_frame(void) {
     int stock_window = (pc && F(0xF62338, bool (*)(Obj, void *))(pc, NULL))
         || (u_alive(csv) && F(0x50F3724, bool (*)(Obj, void *))(u_go(csv), NULL)) || (u_alive(ckv) && F(0x50F3724, bool (*)(Obj, void *))(u_go(ckv), NULL));
     (void)stock_window;                                      /* lan_v9 owner: the panel stays above the game's windows */
+    { static int (*teams_modal)(void); static unsigned tm_tries;   /* viewui: above the open Teams window */
+      if (!teams_modal && tm_tries++ % 50 == 0) teams_modal = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_modal_open");
+      top_layer_order(teams_modal && teams_modal()); }
     /* viewui (owner 2026-10-15): the panel stays while the Teams window is open (no game interface hides on a click);
-       the Teams window draws over it (sorting 32000 > 5000) */
+       the top layer goes above the Teams window while it is open (top_layer_order) */
     int hide = !on() || lobby_open() || popup_active(1) || left_prompt   /* Esc menu: design #3 */
                || busy();
     pl_hide_why = !on() | lobby_open() << 1 | popup_active(1) << 2 | (left_prompt != 0) << 3 | busy() << 5;                                    /* lan_v9: not on the loading screen (v2_v9_changing_map_guest.png) */
@@ -2719,7 +2729,6 @@ static void plist_mouse(void) {
     if (!u_alive(hdr) || !u_go_active_self(u_go(hdr))) { pl_drag_arm = pl_dragging = 0; return; }
     struct { float x, y, z; } m3 = F(0x51AD4DC, __typeof__(m3) (*)(void *))(NULL);       /* Input.mousePosition */
     float mx = m3.x, my = m3.y;
-    if (!pl_drag_arm && teams_covers(mx, my)) return;        /* viewui: the Teams window is on top of the panel there */
     /* tooltips (connection bars, header): tips_frame, the game's tooltip window (lan_v9) */
     /* move the panel: RIGHT-click + drag on its header (owner, lan_v8); left click keeps its normal action */
     if (!pl_drag_arm && F(0x51ACDD0, bool (*)(int, void *))(1, NULL) && (ui_hit(hdr, mx, my) || ui_hit(u_gc_get(h_hdrbg), mx, my))) {
@@ -3244,6 +3253,12 @@ static void lend_do(const uint8_t g[16], int act, int arg) {
     }
     else if (act >= LA_FOLLOW) { coop_act(act, arg); return; }
     rig_log("ui: lend action %d (arg %d) rc %d", act, arg, rc);
+}
+/* viewui (dlsym, ui_teams): 1 = screen point x, y is on the Players panel or its menu (Teams leaves that click to us) */
+int ui_panel_hit(float x, float y) {
+    if (pl_shown && ui_hit(u_gc_get(h_plate), x, y)) return 1;
+    for (int i = 0; i < lmenu_n && i < LM_ROWS; i++) if (ui_hit(u_gc_get(h_lrow[i]), x, y)) return 1;
+    return 0;
 }
 static void lmenu_close(void) { Obj m = u_gc_get(h_lmenu); show(m, 0); for (int i = 0; i < LM_ROWS; i++) show(u_gc_get(h_lrow[i]), 0); lmenu_n = 0; lmenu_player = -1; }
 static void lmenu_draw(void) {
@@ -4970,7 +4985,6 @@ static void tips_frame(void) {
     game_tip_frame();
     tip_done = 0; tip_shown_title[0] = 0;
     if (!on() || !game_tip_ready()) return;
-    { struct { float x, y, z; } m3 = F(0x51AD4DC, __typeof__(m3) (*)(void *))(NULL); if (teams_covers(m3.x, m3.y)) return; }   /* viewui: Teams is on top */
     ui_players p; players(&p); char nm[40], t[160], b[300];
     /* 3.9 lend menu (on top of the panel) */
     for (int i = 0; i < lmenu_n && i < LM_ROWS; i++) {
