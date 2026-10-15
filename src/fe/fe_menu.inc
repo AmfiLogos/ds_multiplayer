@@ -1,5 +1,8 @@
 /* Foreign Expedition windows, included by mpmenu.c (shares its helpers and the click registries). Boards:
- *   FEBringA          Bring Units: your saves on the left, unit cards on the right (lobby, every player)
+ *   FEBringA          Bring Units: tabs "From a save" / "My Units" (header row of the left column; the buttons
+ *                     MPB_FE_VER_EXP / MPB_FE_VER_HOME, unused in this window, are moved there). From a save: your saves
+ *                     on the left, unit cards on the right. My Units: "All units" + the library's teams on the left,
+ *                     library units on the right (fe_lib_list, read only); Bring sends copies (fe_bring_lib).
  *   FEResultsA / B    Back from the Expedition: one row per unit, dungeon loot, what will be applied, Bring home to
  *   FEResultsApplied  Expedition Results list (Multiplayer page) and the "Already Brought Home" refusal
  * One window at a time, 960 x 620, on the lobby's parent (Esc menu root) in a session or on the title view. Buttons are
@@ -13,9 +16,11 @@ enum { FT_TITLE, FT_SUB, FT_RULES, FT_LHEAD, FT_RHEAD, FT_COUNT, FT_NOTE, FT_TAB
 #define WY(y) (FEW_H / 2 - (y))
 static struct {
     int mode, esc, page, upage, sel_save, nsave, nunit, picked[64], npicked, ntarget, target, choice, applied, conflict, nres;
+    int tab, tabs_at, tpage, sel_team, nlunit, nlteam, lview[64], nlview, lpicked[64], nlpicked, allcustom;   /* tab 1 = My Units */
     uintptr_t root, view, t[FT_N], rowt[8][3], cardt[8][4];
     fe_save_info saves[64]; fe_unit_info units[64]; fe_save_info targets[16]; fe_result_info res[16];
-    char run[40], msg[400], err[300];
+    fe_lib_unit lunits[64]; fe_lib_team lteams[16];
+    char run[40], msg[400], err[300], lerr[300];
 } W;
 static Obj few_t(int k) { Obj o = u_gc_get(W.t[k]); return u_alive(o) ? o : NULL; }
 static uintptr_t *few_reg(void) { return W.esc ? h_lwr : h_tb; }
@@ -38,7 +43,7 @@ static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
     if (!root) return;
     Obj R = u_tr(root);
     u_gc_free(W.root); W.root = u_gc_new(root);
-    W.esc = esc;
+    W.esc = esc; W.tabs_at = 0;                                             /* the tab buttons are re-placed by few_sync */
     uintptr_t *reg = few_reg();
     #define T(k, cz, sz, al, wr, x, y, w, h, c) { Obj t_ = mk_txt(tpl_txt, R, cz, sz, al, wr, x, y, w, h, c); u_gc_free(W.t[k]); W.t[k] = t_ ? u_gc_new(t_) : 0; }
     #define BTN(id, spr_, x, y, w, h, fs, lab, col) { Obj b_ = mk_button(src, R, esc, spr_, C_WHITE, x, y, w, h, fs, lab, col); u_gc_free(reg[id]); reg[id] = b_ ? u_gc_new(b_) : 0; }
@@ -103,14 +108,29 @@ static void few_load_units(void) {
     W.nunit = W.sel_save >= 0 && W.sel_save < W.nsave ? fe_list_units(W.saves[W.sel_save].path, W.units, 64) : 0;
     W.npicked = 0; W.upage = 0;
 }
+/* My Units: the units the right side shows (all, or the selected team's) */
+static void few_lib_view(void) {
+    W.nlview = 0; W.upage = 0;
+    if (W.sel_team < 0 || W.sel_team >= W.nlteam) { W.sel_team = -1; for (int i = 0; i < W.nlunit; i++) W.lview[W.nlview++] = i; return; }
+    fe_lib_team *t = &W.lteams[W.sel_team];
+    for (int j = 0; j < t->n; j++) for (int i = 0; i < W.nlunit; i++) if (!strcmp(W.lunits[i].id, t->ids[j])) { W.lview[W.nlview++] = i; break; }
+}
+static void few_lib_load(void) {
+    W.lerr[0] = 0;
+    W.nlunit = fe_lib_list(W.lunits, 64, W.lteams, 16, &W.nlteam, W.lerr, sizeof W.lerr);
+    if (W.nlunit < 0) { W.nlunit = 0; W.nlteam = 0; if (!W.lerr[0]) snprintf(W.lerr, sizeof W.lerr, "My Units could not be read."); }
+    W.sel_team = -1; W.tpage = 0; W.nlpicked = 0;
+    few_lib_view();
+}
+static int few_lib_picked(int li) { for (int p = 0; p < W.nlpicked; p++) if (W.lpicked[p] == li) return p; return -1; }
 static void few_open(int mode, const char *run) {
-    W.mode = mode; W.err[0] = W.msg[0] = 0; W.page = W.upage = 0; W.applied = 0; W.conflict = 0; W.choice = 0;
+    W.mode = mode; W.err[0] = W.msg[0] = 0; W.page = W.upage = 0; W.applied = 0; W.conflict = 0; W.choice = 0; W.tab = 0; W.nlpicked = 0; W.allcustom = 0;
     if (mode == FEW_BRING) {
         W.nsave = fe_list_saves(W.saves, 64); W.sel_save = -1;
         for (int i = 0; i < W.nsave && W.sel_save < 0; i++) if (W.saves[i].ok) W.sel_save = i;
         few_load_units();
     }
-    if (mode == FEW_RESULTS) { snprintf(W.run, sizeof W.run, "%s", run ? run : ""); W.ntarget = fe_result_targets(W.run, W.targets, 16); W.target = 0; }
+    if (mode == FEW_RESULTS) { snprintf(W.run, sizeof W.run, "%s", run ? run : ""); W.ntarget = fe_result_targets(W.run, W.targets, 16); W.target = 0; W.allcustom = fe_result_all_custom(W.run); }
     if (mode == FEW_LIST) W.nres = fe_list_results(W.res, 16);
     rig_log("fe: window %d opened%s%s", mode, run ? " run " : "", run ? run : "");
 }
@@ -125,11 +145,66 @@ static void few_sync(void) {
     fe_mode_info m; fe_mode_get(&m);
     char b[1600], r[400];
     few_show(MPB_FE_CANCEL, 1); few_show(MPB_FE_OK, 1);
+    int tabs_want = W.mode == FEW_BRING ? 1 : 2;                            /* VER_EXP / VER_HOME: tabs here, version choice in Results */
+    if (W.tabs_at != tabs_want) {
+        Obj a = few_btn(MPB_FE_VER_EXP), h = few_btn(MPB_FE_VER_HOME);
+        if (a && h) {
+            if (tabs_want == 1) { place(a, WX(24 + 74), WY(138), 146, 28); place(h, WX(24 + 226), WY(138), 146, 28); }
+            else { place(a, WX(700), WY(522), 170, 30); place(h, WX(880), WY(522), 150, 30); }
+            W.tabs_at = tabs_want;
+        }
+    }
     if (W.mode == FEW_BRING) {
+        few_show(MPB_FE_VER_EXP, 1); few_show(MPB_FE_VER_HOME, 1);
+        few_label(MPB_FE_VER_EXP, W.tab == 0 ? "<color=#D9BE8F>From a save</color>" : "<color=#A69085>From a save</color>");
+        few_label(MPB_FE_VER_HOME, W.tab == 1 ? "<color=#D9BE8F>My Units</color>" : "<color=#A69085>My Units</color>");
+    }
+    if (W.mode == FEW_BRING && W.tab == 1) {
+        int cap = m.units > 0 ? m.units : 3;
+        few_set(FT_TITLE, "Bring Units");
+        few_set(FT_SUB, "Pick units or a team from My Units. Copies travel: My Units is not changed, and these units never go into your saves.");
+        few_rules_line(&m, r, sizeof r); few_set(FT_RULES, r);
+        if (W.lerr[0] || !W.nlunit) {
+            if (W.lerr[0]) snprintf(b, sizeof b, "<color=#F16071>%s</color>", W.lerr);
+            else snprintf(b, sizeof b, "No units in My Units yet. Save units in the launcher's Unit Builder, or use Paste Wiki Link in PvP Bring Units.");
+            few_set(FT_MSG, b);
+        } else {
+            int rows = 1 + W.nlteam;
+            for (int i = 0; i < 6; i++) {
+                int k = W.tpage * 6 + i; few_show(MPB_FE_SAVE0 + i, k < rows);
+                if (k >= rows) continue;
+                int sel = (k == 0 && W.sel_team < 0) || (k > 0 && W.sel_team == k - 1);
+                if (k == 0) { snprintf(b, sizeof b, "%sAll units", sel ? "<color=#D9BE8F>" : ""); tmp_set(u_gc_get(W.rowt[i][0]), b); snprintf(b, sizeof b, "%d unit%s", W.nlunit, W.nlunit == 1 ? "" : "s"); }
+                else { fe_lib_team *t = &W.lteams[k - 1]; snprintf(b, sizeof b, "%s%s", sel ? "<color=#D9BE8F>" : "", t->name[0] ? t->name : "Team"); tmp_set(u_gc_get(W.rowt[i][0]), b); snprintf(b, sizeof b, "Team \xC2\xB7 %d unit%s", t->n, t->n == 1 ? "" : "s"); }
+                tmp_set(u_gc_get(W.rowt[i][1]), b);
+            }
+            few_show(MPB_FE_SAVEPG, rows > 6);
+            if (W.sel_team >= 0) snprintf(b, sizeof b, "Team %s", W.lteams[W.sel_team].name); else snprintf(b, sizeof b, "All units in My Units");
+            few_set(FT_RHEAD, b);
+            for (int i = 0; i < 8; i++) {
+                int k = W.upage * 8 + i; few_show(MPB_FE_UNIT0 + i, k < W.nlview);
+                if (k >= W.nlview) continue;
+                fe_lib_unit *u = &W.lunits[W.lview[k]]; char race[64], teams[160] = ""; size_t o = 0;
+                snprintf(b, sizeof b, "%s  <size=80%%><color=#A69085>Level %d</color></size>", u->name[0] ? u->name : "Unit", u->level); tmp_set(u_gc_get(W.cardt[i][0]), b);
+                few_txt(u->race, race, sizeof race); tmp_set(u_gc_get(W.cardt[i][1]), race[0] ? race : "My Units");
+                for (int t = 0; t < W.nlteam && o < sizeof teams - 70; t++) for (int j = 0; j < W.lteams[t].n; j++) if (!strcmp(W.lteams[t].ids[j], u->id)) { o += (size_t)snprintf(teams + o, sizeof teams - o, "%s%s", o ? ", " : "Team: ", W.lteams[t].name); break; }
+                tmp_set(u_gc_get(W.cardt[i][2]), teams[0] ? teams : "Not in a team");
+                tmp_set(u_gc_get(W.cardt[i][3]), few_lib_picked(W.lview[k]) >= 0 ? "\xE2\x9C\x93" : "");
+            }
+            few_show(MPB_FE_UNITPG, W.nlview > 8);
+        }
+        snprintf(b, sizeof b, "%d / %d picked", W.nlpicked, cap); few_set(FT_COUNT, b);
+        snprintf(b, sizeof b, "<color=#CCBEB8>My Units:</color> not changed; bring the same units again any time.   "
+                 "<color=#CCBEB8>In the hub:</color> their copies play.   <color=#CCBEB8>After the run:</color> these units stay out of your saves: nothing comes home.%s%s",
+                 W.err[0] ? "\n<color=#F16071>" : "", W.err[0] ? W.err : "");
+        if (W.err[0]) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "</color>"); }
+        few_set(FT_NOTE, b);
+        few_label(MPB_FE_CANCEL, "Cancel");
+        few_label(MPB_FE_OK, W.nlpicked ? "Bring these units" : "<color=#A69085>Bring these units</color>");
+    } else if (W.mode == FEW_BRING) {
         few_set(FT_TITLE, "Bring Units");
         few_set(FT_SUB, "Pick one of your saves, then the units to bring. Copies travel: your units stay at home and keep working.");
         few_rules_line(&m, r, sizeof r); few_set(FT_RULES, r);
-        few_set(FT_LHEAD, "Your Saves");
         for (int i = 0; i < 6; i++) {
             int k = W.page * 6 + i; few_show(MPB_FE_SAVE0 + i, k < W.nsave);
             if (k >= W.nsave) continue;
@@ -226,6 +301,7 @@ static void few_sync(void) {
         few_set(FT_LOOT, b);
         if (ni && ao < sizeof ap - 80) ao += (size_t)snprintf(ap + ao, sizeof ap - ao, "%d dungeon item%s: storage first, then backpacks.", ni, ni == 1 ? "" : "s");
         snprintf(b, sizeof b, "<color=#D9BE8F>What will be applied</color>\n%s", ap); few_set(FT_APPLY, b);
+        if (W.allcustom) { few_set(FT_TARGET, "<color=#A69085>My Units / wiki link copies: nothing comes home.</color>"); few_set(FT_CONFLICT, "These units came from My Units or a wiki link: nothing to bring home (your saves are not changed)."); few_set(FT_NOTE, ""); few_label(MPB_FE_CANCEL, "Close"); few_show(MPB_FE_OK, 0); return; }
         if (W.ntarget) {
             fe_save_info *t = &W.targets[W.target];
             snprintf(b, sizeof b, "<color=#A69085>Bring home to</color>   %s  <size=80%%><color=#A69085>Day %d \xC2\xB7 %s</color></size>", t->clan, t->day, t->folder); few_set(FT_TARGET, b);
@@ -246,6 +322,43 @@ static int few_click(int c) {
     if (c == MPB_FE_CANCEL) {
         if (W.mode == FEW_LIST && W.msg[0]) { W.msg[0] = 0; return 1; }
         rig_log("fe: window %d closed (Cancel / Later)", W.mode); W.mode = FEW_NONE; return 1;
+    }
+    if (W.mode == FEW_BRING && (c == MPB_FE_VER_EXP || c == MPB_FE_VER_HOME)) {      /* tabs */
+        int t = c == MPB_FE_VER_HOME;
+        if (t != W.tab) { W.tab = t; W.err[0] = 0; W.upage = 0; if (t) few_lib_load(); rig_log("fe: Bring Units tab %s%s", t ? "My Units" : "From a save", t ? (W.lerr[0] ? " (library error)" : "") : ""); }
+        return 1;
+    }
+    if (W.mode == FEW_BRING && W.tab == 1) {
+        if (c >= MPB_FE_SAVE0 && c <= MPB_FE_SAVE5) {
+            int k = W.tpage * 6 + c - MPB_FE_SAVE0;
+            if (k > W.nlteam) return 1;
+            W.sel_team = k - 1; few_lib_view(); W.err[0] = 0;
+            if (W.sel_team >= 0) {                                          /* a team: its units are picked (up to the cap) */
+                W.nlpicked = 0;
+                for (int i = 0; i < W.nlview && W.nlpicked < cap; i++) W.lpicked[W.nlpicked++] = W.lview[i];
+                if (W.nlview > cap) snprintf(W.err, sizeof W.err, "Up to %d units each in this hub: the first %d of this team are picked.", cap, cap);
+            }
+            return 1;
+        }
+        if (c == MPB_FE_SAVEPG) { W.tpage = (W.tpage + 1) * 6 < 1 + W.nlteam ? W.tpage + 1 : 0; return 1; }
+        if (c == MPB_FE_UNITPG) { W.upage = (W.upage + 1) * 8 < W.nlview ? W.upage + 1 : 0; return 1; }
+        if (c >= MPB_FE_UNIT0 && c <= MPB_FE_UNIT7) {
+            int k = W.upage * 8 + c - MPB_FE_UNIT0;
+            if (k >= W.nlview) return 1;
+            int li = W.lview[k], at = few_lib_picked(li);
+            if (at >= 0) { W.lpicked[at] = W.lpicked[--W.nlpicked]; W.err[0] = 0; }
+            else if (W.nlpicked < cap) { W.lpicked[W.nlpicked++] = li; W.err[0] = 0; }
+            else snprintf(W.err, sizeof W.err, "Up to %d units each in this hub.", cap);
+            return 1;
+        }
+        if (c == MPB_FE_OK && W.nlpicked) {
+            char ids[64][17]; for (int p = 0; p < W.nlpicked; p++) snprintf(ids[p], 17, "%s", W.lunits[W.lpicked[p]].id);
+            int rc = fe_bring_lib((const char (*)[17])ids, W.nlpicked, W.err, sizeof W.err);
+            rig_log("fe: Bring these units (%d from My Units): rc %d", W.nlpicked, rc);
+            if (!rc) W.mode = FEW_NONE;
+            return 1;
+        }
+        return 1;
     }
     if (W.mode == FEW_BRING) {
         if (c >= MPB_FE_SAVE0 && c <= MPB_FE_SAVE5) { int k = W.page * 6 + c - MPB_FE_SAVE0; if (k < W.nsave && W.saves[k].ok && few_version_ok(&W.saves[k], &m)) { W.sel_save = k; few_load_units(); W.err[0] = 0; } return 1; }
@@ -332,9 +445,12 @@ static void few_tips(void) {
     #define TIPW(id, t, b) tip_try(few_btn(id), (t), (b))
     if (W.mode == FEW_NONE) return;
     if (W.mode == FEW_BRING) {
-        for (int i = 0; i < 6; i++) TIPW(MPB_FE_SAVE0 + i, "Your save", "Units come from this save. It is only read: nothing in it changes until you bring the results home.");
+        if (W.tab == 1) for (int i = 0; i < 6; i++) TIPW(MPB_FE_SAVE0 + i, "My Units", "All units, or one team: picking a team picks its units.");
+        else for (int i = 0; i < 6; i++) TIPW(MPB_FE_SAVE0 + i, "Your save", "Units come from this save. It is only read: nothing in it changes until you bring the results home.");
         for (int i = 0; i < 8; i++) TIPW(MPB_FE_UNIT0 + i, "Bring this unit", "Click to add or remove it. A copy travels with its gear and backpack; the unit itself stays at home and keeps working.");
         TIPW(MPB_FE_OK, "Bring these units", "Sends copies of the picked units to the host. You can bring other units instead until the host presses Start.");
+        TIPW(MPB_FE_VER_EXP, "From a save", "Bring units from one of your saves. After the run, their results can come home into a new save.");
+        TIPW(MPB_FE_VER_HOME, "My Units", "Bring copies of units from My Units (the launcher's Unit Builder, wiki links). My Units is not changed, and these units never go into your saves.");
         TIPW(MPB_FE_CANCEL, "Cancel", "Closes this window. Nothing is sent.");
     }
     if (W.mode == FEW_RESULTS) {
@@ -360,6 +476,9 @@ static char *few_status(void) {
     for (int i = 0; i < W.nsave; i++) { bput(&b, "%s{\"clan\":", i ? "," : ""); bstr(&b, W.saves[i].clan); bput(&b, ",\"path\":"); bstr(&b, W.saves[i].path); bput(&b, ",\"ok\":%d,\"version\":", W.saves[i].ok && few_version_ok(&W.saves[i], &m)); bstr(&b, W.saves[i].version); bput(&b, "}"); }
     bput(&b, "],\"units\":[");
     for (int i = 0; i < W.nunit; i++) { bput(&b, "%s{\"guid\":\"%s\",\"level\":%d}", i ? "," : "", W.units[i].guid, W.units[i].level); }
-    bput(&b, "],\"results\":%d,\"ntarget\":%d,\"target\":", W.nres, W.ntarget); bstr(&b, W.ntarget ? W.targets[W.target].path : ""); bput(&b, "}");
+    bput(&b, "],\"tab\":%d,\"lib_err\":", W.tab); bstr(&b, W.lerr);
+    bput(&b, ",\"sel_team\":%d,\"teams\":%d,\"lib_picked\":%d,\"lib_units\":[", W.sel_team, W.nlteam, W.nlpicked);
+    for (int i = 0; i < W.nlunit; i++) bput(&b, "%s{\"id\":\"%s\",\"level\":%d}", i ? "," : "", W.lunits[i].id, W.lunits[i].level);
+    bput(&b, "],\"all_custom\":%d,\"results\":%d,\"ntarget\":%d,\"target\":", W.allcustom, W.nres, W.ntarget); bstr(&b, W.ntarget ? W.targets[W.target].path : ""); bput(&b, "}");
     return b.p;
 }

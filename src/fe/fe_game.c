@@ -3,6 +3,7 @@
  *
  * Flow:
  *   every player: fe_bring {file, guids}  -> export from a save (read only), keep the export locally, mail it to the host
+ *   every player: fe_bring_lib {ids}      -> copies of My Units library units (library only read), then the same path
  *   host:         fe_start {death, xp, items} -> gear mode Own storage, DSNET_FE_START (new owners); at the next join
  *                 point the host's save IS the hub (built from the live world + the units) and every peer loads it
  *   host:         fe_end -> hold, save, results per player, mailed (again on each rejoin until acknowledged)
@@ -15,6 +16,7 @@
 #include "../net/dsnet.h"
 #include "fe_save.h"
 #include "fe_ui_api.h"
+#include "../myunits.h"
 #include <dirent.h>
 #include <stdarg.h>
 #include <errno.h>
@@ -115,6 +117,28 @@ static void host_take_entries(const char *uid_hex, jv *entries) {
         jpush(recv_entries, e);
     }
 }
+/* the export kept locally (data/fe/exports/<export_id>.json; source_file = the save it came from, absent for My Units /
+   wiki copies), then the entries go to the host (mail) or straight into the host's list. Returns the JSON answer. */
+static char *send_entries(jv *entries, const char *me, const char *file, const char *what) {
+    Buf b = { 0 }; dsnet_client *c = cli();
+    char dir[1300]; fe_path(dir, sizeof dir, "exports"); mkdirs(dir);
+    for (size_t i = 0; i < entries->cnt; i++) {
+        jv *keep = jcopy(entries->v[i]);
+        if (file) jset(keep, "source_file", jstrv(file));                       /* raw path: test paths have no quotes */
+        char p[1500]; snprintf(p, sizeof p, "%s/%s.json", dir, jget(jget(entries->v[i], "manifest"), "export_id")->s);
+        write_json(p, keep); jfree(keep);
+    }
+    int rc = 0; size_t sz = 0;
+    if (dsnet_is_host(c)) host_take_entries(me, entries);
+    else {
+        jv *m = jobj(); jset(m, "entries", jcopy(entries));
+        char *s = jdump(m, 0, &sz); jfree(m);
+        rc = dsnet_mail_send(c, NULL, FE_M_UNITS, s, sz); free(s);
+    }
+    say("brought %zu unit(s) from %s (%s, %zu bytes)", entries->cnt, what, dsnet_is_host(c) ? "kept on the host" : rc ? "MAIL FAILED" : "mailed to the host", sz);
+    bput(&b, "{\"ok\":%s,\"n\":%zu,\"bytes\":%zu}", rc ? "false" : "true", entries->cnt, sz);
+    return b.p;
+}
 static char *cmd_bring(const char *line) {
     char file[1024] = "", gl[2048] = "", err[400] = "", me[33];
     Buf b = { 0 };
@@ -124,29 +148,44 @@ static char *cmd_bring(const char *line) {
     jv *save = jload(file, err, sizeof err);
     if (!save) { bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, err); bput(&b, "}"); return b.p; }
     jv *entries = jarr();
-    char dir[1300]; fe_path(dir, sizeof dir, "exports"); mkdirs(dir);
     char *sp = NULL;
     for (char *t = strtok_r(gl, ",", &sp); t; t = strtok_r(NULL, ",", &sp)) {
         while (*t == ' ') t++;
         jv *e = fe_export_entry(save, t, me, err, sizeof err);
         if (!e) { jfree(entries); jfree(save); bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, err); bput(&b, "}"); return b.p; }
-        jv *keep = jcopy(e); jset(keep, "source_file", jstrv(file));             /* raw path: test paths have no quotes */
-        char p[1500]; snprintf(p, sizeof p, "%s/%s.json", dir, jget(jget(e, "manifest"), "export_id")->s);
-        write_json(p, keep); jfree(keep);
         jpush(entries, e);
     }
     jfree(save);
-    int rc = 0; size_t sz = 0;
-    if (dsnet_is_host(c)) host_take_entries(me, entries);
-    else {
-        jv *m = jobj(); jset(m, "entries", jcopy(entries));
-        char *s = jdump(m, 0, &sz); jfree(m);
-        rc = dsnet_mail_send(c, NULL, FE_M_UNITS, s, sz); free(s);
-    }
-    say("brought %zu unit(s) from %s (%s, %zu bytes)", entries->cnt, file, dsnet_is_host(c) ? "kept on the host" : rc ? "MAIL FAILED" : "mailed to the host", sz);
-    bput(&b, "{\"ok\":%s,\"n\":%zu,\"bytes\":%zu}", rc ? "false" : "true", entries->cnt, sz);
+    char *r = send_entries(entries, me, file, file);
     jfree(entries);
-    return b.p;
+    return r;
+}
+/* fe_bring_lib {"ids":"id1,id2"}: copies of My Units library units (mu_entries: closure + manifest, source "wiki" +
+   library_id), then the same path as fe_bring. The library file is only read here, never saved. */
+#define FE_LIB_MAX 64
+static char *cmd_bring_lib(const char *line) {
+    static char il[FE_LIB_MAX * 18 + 64]; char err[400] = "", me[33], notes[1000] = "";
+    static char ids[FE_LIB_MAX][17];
+    Buf b = { 0 };
+    if (!jstr(line, "ids", il, sizeof il) || !il[0]) { bput(&b, "{\"ok\":false,\"error\":\"need ids (comma separated)\"}"); return b.p; }
+    dsnet_client *c = cli();
+    if (!c || my_uid_hex(me)) { bput(&b, "{\"ok\":false,\"error\":\"not in a multiplayer session\"}"); return b.p; }
+    int n = 0; char *sp = NULL;
+    for (char *t = strtok_r(il, ",", &sp); t && n < FE_LIB_MAX; t = strtok_r(NULL, ",", &sp)) {
+        while (*t == ' ') t++;
+        if (!*t) continue;
+        snprintf(ids[n++], 17, "%s", t);
+    }
+    if (!n) { bput(&b, "{\"ok\":false,\"error\":\"need ids (comma separated)\"}"); return b.p; }
+    jv *lib = mu_load(err, sizeof err);
+    if (!lib) { bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, err); bput(&b, "}"); return b.p; }
+    jv *entries = mu_entries(lib, ids, n, me, notes, sizeof notes, err, sizeof err);
+    jfree(lib);
+    if (!entries) { bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, err); bput(&b, "}"); return b.p; }
+    if (notes[0]) say("My Units: %s", notes);
+    char *r = send_entries(entries, me, NULL, "My Units");
+    jfree(entries);
+    return r;
 }
 
 /* ---------------------------------------------------------------- start (host) */
@@ -362,7 +401,7 @@ static jv *my_manifests(void) {
         if (!strstr(e->d_name, ".json")) continue;
         char p[1500]; snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
         jv *x = read_json(p); if (!x) continue;
-        jv *man = jcopy(jget(x, "manifest")); jset(man, "source_file", jcopy(jget(x, "source_file")));
+        jv *man = jcopy(jget(x, "manifest")); if (jget(x, "source_file")) jset(man, "source_file", jcopy(jget(x, "source_file")));
         jset(m, jget(man, "export_id")->s, man); jfree(x);
     }
     if (d) closedir(d);
@@ -425,8 +464,16 @@ static char *cmd_apply(const char *line) {
     jv *res = read_json(p);
     if (!res) { bput(&b, "{\"ok\":false,\"error\":\"no results for this run\"}"); return b.p; }
     jv *mans = my_manifests(), *u = jget(res, "units");
-    const char *cg = NULL, *src = NULL;
-    for (size_t i = 0; u && i < u->cnt && !cg; i++) { jv *m = jget(mans, jget(u->v[i], "export_id")->s); if (m) { cg = jget(m, "home_campaign_guid")->s; src = jget(m, "source_file") ? jget(m, "source_file")->s : NULL; } }
+    const char *cg = NULL, *src = NULL; int mine = 0, custom = 0;
+    for (size_t i = 0; u && i < u->cnt; i++) {
+        jv *m = jget(mans, jget(u->v[i], "export_id")->s);
+        if (!m) continue;
+        mine++;
+        if (fe_manifest_custom(m)) { custom++; continue; }        /* owner rule: never the home of a custom unit */
+        if (!cg) { cg = jget(m, "home_campaign_guid")->s; src = jget(m, "source_file") ? jget(m, "source_file")->s : NULL; }
+    }
+    /* every unit is a My Units / wiki copy: refused BEFORE the backup and the home lookup (nothing to bring home) */
+    if (mine && custom == mine) { say("apply refused: %s", FE_CUSTOM_REFUSE); jfree(res); jfree(mans); bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, FE_CUSTOM_REFUSE); bput(&b, "}"); return b.p; }
     if (!cg) { jfree(res); jfree(mans); bput(&b, "{\"ok\":false,\"error\":\"These results are not for your units.\"}"); return b.p; }
     char saves[1200]; snprintf(saves, sizeof saves, "%s/data/Saves", rig_dir);
     char *home_p = target[0] ? strdup(target) : newest_with_campaign(saves, cg);
@@ -598,6 +645,50 @@ int fe_bring_units(const char *path, const char (*guids)[40], int n, char *err, 
     free(r); return ok ? 0 : -1;
 }
 
+/* ---- My Units (library) for the Bring window: read only */
+_Static_assert(FE_LIB_TEAM_MAX >= MU_TEAM_MAX, "fe_lib_team holds a whole team");
+int fe_lib_list(fe_lib_unit *units, int max, fe_lib_team *teams, int tmax, int *nteams, char *err, size_t errn) {
+    if (nteams) *nteams = 0;
+    jv *lib = mu_load(err, errn);
+    if (!lib) return -1;
+    int n = 0;
+    for (size_t i = 0; i < mu_count(lib) && n < max; i++) {
+        mu_info mi; if (mu_info_at(lib, i, &mi)) continue;
+        fe_lib_unit *x = &units[n++]; memset(x, 0, sizeof *x);
+        snprintf(x->id, sizeof x->id, "%s", mi.id); snprintf(x->name, sizeof x->name, "%s", mi.name);
+        snprintf(x->race, sizeof x->race, "%s", mi.race); snprintf(x->portrait, sizeof x->portrait, "%s", mi.portrait); x->level = mi.lvl;
+    }
+    for (size_t i = 0; teams && nteams && i < mu_team_count(lib) && *nteams < tmax; i++) {
+        fe_lib_team *t = &teams[*nteams]; memset(t, 0, sizeof *t);
+        char ids[MU_TEAM_MAX][17];
+        int k = mu_team_at(lib, i, t->name, sizeof t->name, ids);
+        if (k <= 0) continue;
+        for (int j = 0; j < k && j < FE_LIB_TEAM_MAX; j++) snprintf(t->ids[t->n++], 17, "%s", ids[j]);
+        (*nteams)++;
+    }
+    jfree(lib);
+    return n;
+}
+int fe_bring_lib(const char (*ids)[17], int n, char *err, size_t errn) {
+    static char line[FE_LIB_MAX * 18 + 64]; size_t o = (size_t)snprintf(line, sizeof line, "{\"cmd\":\"fe_bring_lib\",\"ids\":\"");
+    for (int i = 0; i < n && o < sizeof line - 30; i++) o += (size_t)snprintf(line + o, sizeof line - o, "%s%s", i ? "," : "", ids[i]);
+    snprintf(line + o, sizeof line - o, "\"}");
+    char *r = cmd_bring_lib(line); int ok = r && strstr(r, "\"ok\":true");
+    if (!ok) {
+        char e[200]; jv *j = r ? jparse(r, strlen(r), e, sizeof e) : NULL; jv *m = jget(j, "error");
+        snprintf(err, errn, "Could not bring these units%s%s", m && m->t == JN_STR ? ": " : ".", m && m->t == JN_STR ? m->s : "");
+        jfree(j);
+    }
+    free(r); return ok ? 0 : -1;
+}
+int fe_result_all_custom(const char *run) {
+    char p[1500], sub[200]; snprintf(sub, sizeof sub, "results/%s.json", run); fe_path(p, sizeof p, sub);
+    jv *r = read_json(p), *mans = my_manifests(), *u = jget(r, "units"); int mine = 0, custom = 0;
+    for (size_t i = 0; u && i < u->cnt; i++) { jv *m = jget(mans, jget(u->v[i], "export_id")->s); if (m) { mine++; custom += fe_manifest_custom(m) != 0; } }
+    jfree(r); jfree(mans);
+    return mine && custom == mine;
+}
+
 /* ---- results for the results window */
 int fe_list_results(fe_result_info *out, int max) {
     char dir[1300]; fe_path(dir, sizeof dir, "results"); int n = 0;
@@ -647,7 +738,7 @@ int fe_result_targets(const char *run, fe_save_info *out, int max) {
     char p[1500], sub[200]; snprintf(sub, sizeof sub, "results/%s.json", run); fe_path(p, sizeof p, sub);
     jv *r = read_json(p), *mans = my_manifests(); char cg[64] = ""; char src[1024] = "";
     jv *u = jget(r, "units");
-    for (size_t i = 0; u && i < u->cnt && !cg[0]; i++) { jv *m = jget(mans, jget(u->v[i], "export_id")->s); if (m) { snprintf(cg, sizeof cg, "%s", jget(m, "home_campaign_guid")->s); if (jget(m, "source_file")) snprintf(src, sizeof src, "%s", jget(m, "source_file")->s); } }
+    for (size_t i = 0; u && i < u->cnt && !cg[0]; i++) { jv *m = jget(mans, jget(u->v[i], "export_id")->s); if (m && !fe_manifest_custom(m)) { snprintf(cg, sizeof cg, "%s", jget(m, "home_campaign_guid")->s); if (jget(m, "source_file")) snprintf(src, sizeof src, "%s", jget(m, "source_file")->s); } }
     jfree(r); jfree(mans);
     fe_save_info all[64]; int na = fe_list_saves(all, 64), n = 0;
     for (int i = 0; i < na && n < max; i++) {
@@ -755,6 +846,7 @@ char *fe_exec(const char *cmd, const char *line) {
     if (!strcmp(cmd, "fe_stats")) return cmd_stats(line);
     if (!strcmp(cmd, "fe_save")) { char nm[200] = "fe_test"; jstr(line, "name", nm, sizeof nm); Buf b = { 0 }; bput(&b, "{\"ok\":%s}", rig_save_campaign(nm) ? "true" : "false"); return b.p; }
     if (!strcmp(cmd, "fe_bring")) return cmd_bring(line);
+    if (!strcmp(cmd, "fe_bring_lib")) return cmd_bring_lib(line);
     if (!strcmp(cmd, "fe_start")) return cmd_start(line);
     if (!strcmp(cmd, "fe_end")) return cmd_end(line);
     if (!strcmp(cmd, "fe_apply")) return cmd_apply(line);

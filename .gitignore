@@ -66,3 +66,7 @@ saves/
 /ext/*/src_base/
 fixtures/
 /win/tools/il2cppdumper_nokey/
+# lane test binaries and scratch
+/ext/*/tests/*_bin
+/ext/*/tests/*.dSYM/
+/ext/*/tests/tmp/

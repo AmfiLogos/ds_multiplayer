@@ -12,6 +12,14 @@ typedef struct { char key[64]; int amount; } fe_res_item;
 int  fe_list_saves(fe_save_info *out, int max);                  /* own Saves + the game's Saves (read only), newest first */
 int  fe_list_units(const char *path, fe_unit_info *out, int max);
 int  fe_bring_units(const char *path, const char (*guids)[40], int n, char *err, size_t errn);   /* 0 ok */
+/* My Units (the unit library, src/myunits.h; only read here). portrait = a key, empty when the library has none */
+#define FE_LIB_TEAM_MAX 8
+typedef struct { char id[17], name[64], race[64], portrait[96]; int level; } fe_lib_unit;
+typedef struct { char name[64]; char ids[FE_LIB_TEAM_MAX][17]; int n; } fe_lib_team;
+/* units (count) and teams (*nteams); -1 + err when the library file is damaged / newer. An absent file = 0 units */
+int  fe_lib_list(fe_lib_unit *units, int max, fe_lib_team *teams, int tmax, int *nteams, char *err, size_t errn);
+int  fe_bring_lib(const char (*ids)[17], int n, char *err, size_t errn);                       /* 0 ok: copies sent */
+int  fe_result_all_custom(const char *run);                      /* 1 = every unit of this result is a My Units / wiki copy */
 int  fe_mode_get(fe_mode_info *m);                               /* 1 = this session is a Foreign Expedition lobby / hub */
 void fe_host_mode(int on, int death, int xp, int loot, int units, int recruit, const char *host_name);   /* host, each frame */
 int  fe_brought_of(int slot);                                    /* units this player brought (-1 unknown) */

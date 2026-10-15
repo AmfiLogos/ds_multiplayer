@@ -45,3 +45,10 @@ const char *wk_race_key(int i);
 const char *wk_item_key(int i);
 const char *wk_slot_name(int i);
 uint64_t wk_hash(const wk_build *b, int n);   /* FNV over the decoded fields (every copy must get the same value) */
+/* a builder JSON build (keys: My Units library, #b=<JSON> links) -> wk_build, the way builder.js dsbEncBuild packs it
+ * (tag values to the link's 1/255 steps, manual stats to 1/100), so a library unit and the team link of the same build
+ * give the SAME unit. A key this game data does not have = an error (the unit was made with other wiki data). */
+/* the data fingerprint written in a team code (header bytes 1-2), or -1 when it is not a readable code */
+int wk_code_fp(const char *code);
+struct jv;
+int wk_from_json(const struct jv *build, wk_build *out, char *err, size_t errn);
