@@ -1,0 +1,69 @@
+Dungeon Settlers multiplayer: Mac host + Windows player on this Mac (CrossOver)
+
+What this test does
+The Mac game hosts. A Windows copy of the game runs in CrossOver on the same Mac and joins it.
+Both copies run on this Mac, so the address is 127.0.0.1 (this computer).
+
+The Windows copy is in its own CrossOver bottle: "DS Windows Test".
+Do not use the bottles "Steam", "Wollay" or "DSMP". "DSMP" is for hidden tests only. It has no picture and no sound.
+
+
+1. Start the Mac host
+1.1 Open "Dungeon Settlers MP (LAN)".
+1.2 Click Multiplayer.
+1.3 Click Host a game.
+1.4 Click Host from a save, then pick a save. (Or click Host a new campaign.)
+1.5 The lobby opens. It shows "Local: <address>:47777". The number after the colon is the port. It is usually 47777.
+    If the port is not 47777, write it down. You need it in step 3.4.
+1.6 Do not click Start yet.
+
+
+2. Start the Windows copy
+2.1 Open CrossOver.
+2.2 In the left list, click the bottle "DS Windows Test".
+2.3 In the menu bar, click Bottle, then click Run Command.
+2.4 In the Command field, type this line exactly:
+    C:\DSW\Play_Multiplayer.bat
+2.5 Click Run.
+2.6 Wait. The first start can take one minute. The game window opens.
+2.7 If the game window fills the screen and you want a smaller window, press Option + Return.
+
+Optional, to make step 2 one click next time:
+In the Run Command window, before you click Run, click "Save Command as a Launcher".
+Next time, double-click that launcher in the bottle "DS Windows Test".
+
+
+3. Join the Mac host from the Windows copy
+3.1 This copy has its own empty profile. If the game asks first-start questions (language, settings), answer them.
+3.2 On the title screen, click Multiplayer.
+3.3 Click Join by address.
+3.4 Click the address field and type:
+    127.0.0.1:47777
+    (If the lobby on the Mac showed another port in step 1.5, type that port in place of 47777.)
+3.5 Click Connect.
+3.6 Wait until the Windows copy loads the host's world.
+
+
+4. Play
+4.1 On the Mac host, click Start in the lobby.
+4.2 Play as usual on both windows. Things to try:
+    - Take units with right-click on a portrait, and give orders on both sides.
+    - Type in the chat on the Windows copy. While you type, the game keys must do nothing.
+    - Open the recruitment window on the Windows copy. The game must not pause for the Mac player.
+    - Answer a story event from the Windows copy.
+    - Lend a unit, then take it back.
+
+
+5. Quit
+5.1 Windows copy: press Escape and use the game's own quit buttons (quit to the title, then quit the game).
+5.2 If the Windows copy does not close: in CrossOver, click the bottle "DS Windows Test",
+    then in the menu bar click Bottle, then click Force Quit Bottle.
+5.3 Mac host: quit the game as usual.
+
+
+If something goes wrong
+Send these two files:
+- Windows copy log: in CrossOver, click the bottle "DS Windows Test", click Bottle > Open C: Drive,
+  then open the folder DSMP_Play. Send the file rig.log.
+- Mac host log: the rig.log of the Mac app (the same file as for earlier tests).
+Tell the time when the problem happened.

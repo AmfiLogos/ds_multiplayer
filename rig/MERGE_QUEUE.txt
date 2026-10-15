@@ -1,0 +1,5 @@
+Slot + merge queue (lead keeps this current). 09:12
+Merged: corenext (07:31, fog fix 08:36), spectator (src 09:10, gate pending)
+Slots now: corenext_rand (random det test), fe (owner bug + dives), then spectator gate, then spectator 3-copy (both slots)
+Waiting for a slot: gatefix Windows test (wintools), pvp regression set (resume), launcher merge gate
+Merge order after spectator: launcher (ready), foreignexp (after owner bug), pvp (after FE)

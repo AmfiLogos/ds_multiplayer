@@ -1,0 +1,8 @@
+19:36:55 pair CD dylib ~/ds_multiplayer/ext/spectator/build/dsrig.dylib
+C: started pid 13882 (batchmode), guard pid 13881
+D: started pid 13900 (batchmode), guard pid 13896
+19:40:27 FAIL flow completed RuntimeError('timeout: both running')
+C: stopped
+D: stopped
+19:40:27 prefs identical: True
+19:40:27 RESULTS {"flow completed": false}

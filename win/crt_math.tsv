@@ -1,0 +1,23 @@
+win_rva	fma3_dispatch	reached_from
+0x2030	no	Math.Max
+0x459020	no	Mathf.CorrelatedColorTemperatureToRGB Mathf.CorrelatedColorTemperatureToRGB_Injected Mathf.FloatToHalf Mathf.GammaToLinearSpace Mathf.LinearToGammaSpace Mathf.PerlinNoise
+0x48dc60	no	Math.ThrowAbsOverflow
+0x4da490	no	Math.ModF Math.Round Math.Truncate Mathf.Round Mathf.RoundToInt
+0x4da620	no	Mathf.DeltaAngle Mathf.LerpAngle Mathf.MoveTowardsAngle Mathf.PingPong Mathf.Repeat
+0x4da770	no	Math.Ceiling Mathf.Ceil Mathf.CeilToInt
+0x4da820	yes	Math.Cos MathF.Cos Mathf.Cos
+0x4dada0	yes	Math.Sin MathF.Sin Mathf.Sin
+0x4db330	no	Math.Floor Mathf.Floor Mathf.FloorToInt
+0x4dbc90	yes	Math.Acos MathF.Acos Mathf.Acos
+0x4dc190	yes	Math.Atan2 Mathf.Atan2
+0x4dd8d0	yes	Math.Asin
+0x4de430	yes	Math.Tan MathF.Tan Mathf.Tan
+0x4ded66	no	Math.IEEERemainder
+0x4dee90	yes	Math.Log Mathf.Log
+0x4df3c0	yes	Math.Atan Mathf.Atan
+0x4df610	yes	Math.Cosh
+0x4dfbe0	no	Math.Exp Mathf.Exp
+0x4dfe20	yes	Math.Log10 Mathf.DiscardLeastSignificantDecimal Mathf.GetNumberOfDecimalsForMinimumDifference Mathf.Log10 Mathf.RoundBasedOnMinimumDifference
+0x4e03d0	yes	Math.Sinh
+0x4e0800	yes	Math.Tanh
+0x4e8890	no	Math.Pow

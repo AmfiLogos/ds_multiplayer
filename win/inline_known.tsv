@@ -1,0 +1,13 @@
+# Hooks MSVC inlined on Windows (inline_audit.py: mac_callers > 0, win_callers == 0) that have a Windows fix.
+# build_win.sh stops when the audit finds an inlined hook NOT listed here (review 2026-10-14 finding 5).
+# Add a line only after the Windows wrapper exists and is tested (NOTES.md inline table).
+# method	fix
+Refactor.Control.MoveOrder$$All	CommandFlow.Move replaced (NOTES s9)
+Refactor.Control.WaypointOrder$$ClearWayPoint	CommandFlow.Move replaced (NOTES s9)
+Refactor.Main.InputModule.KeyInputDispatcher$$IsTextInputFocused	UpdateKeyStream wrapper (NOTES s16)
+Refactor.Main.Event.TaskFinishEventHandler$$TryCraft	CRAFT_WIN wrapper (gen_port.py)
+Refactor.UI.EventNodeUIView$$OnClickChoice	choice lambda wrapper (NOTES s15)
+Refactor.UI.ExpeditionPlanView$$InputOnAccept	StartExpedition / TryStartExpedition path (NOTES 352)
+Refactor.UI.SubUI_UnitShortCutParts$$RefreshUnitName	RefreshUnitShortCutPartsName wrapper (WIN_WRAP ui_game.c)
+Refactor.UI.PopUpUI_Base$$SetTimeLock	OnActivate wrapper (WIN_WRAP ui_game.c)
+Refactor.UI.PopUpUI_Base$$UnsetTimeLock	OnDeactivate wrapper (WIN_WRAP ui_game.c)

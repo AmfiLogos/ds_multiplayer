@@ -1,0 +1,25 @@
+symbol	win_rva	dsm	note
+atan2f	0x4DB470	dsm_atan2f	SnapTo8Direction, GridHelper 8-direction
+atan2	0x4DC190	dsm_atan2	Math.Atan2, Pathfinding
+atanf	0x4DD6D0	dsm_atanf
+atan	0x4DF3C0	dsm_atan
+acosf	0x4DBF50	dsm_acosf
+acos	0x4DBC90	dsm_acos	GridHelper.FindPositionsInCone
+asin	0x4DD8D0	dsm_asin
+sinf	0x4DA140	dsm_sinf	also the sin half of Mac __sincosf_stret
+cosf	0x4D9850	dsm_cosf	also the cos half of Mac __sincosf_stret
+sin	0x4DADA0	dsm_sin
+cos	0x4DA820	dsm_cos
+tanf	0x4DDE80	dsm_tanf
+tan	0x4DE430	dsm_tan
+expf	0x4DE2D0	dsm_expf
+exp	0x4DFA00	dsm_exp
+logf	0x4E0D00	dsm_logf
+log	0x4DEE90	dsm_log
+log10f	0x4DBA90	dsm_log10f
+log10	0x4DFE20	dsm_log10
+powf	0x4DC810	dsm_powf	Mac exp2f calls land here too (powf(2,x) on Windows)
+pow	0x4E88A0	dsm_pow	behind the Math.Pow icall 0x4659E0 (Edgar dungeon generator)
+sinh	0x4E03D0	dsm_sinh
+cosh	0x4DF610	dsm_cosh
+tanh	0x4E0800	dsm_tanh
