@@ -473,9 +473,12 @@ static uint64_t g_deep(void *u) { (void)u; return rig_deep_hash(); }
    skipped), written as Saves/mp_fullcheck.json, read back, deleted (save list refreshed). One FNV hash per top-level
    section ("  \"Key\": ...", 2-space indent) and per second-level key (4 spaces), as "name hash" lines. Not compared
    (local to each player, not simulation): CampaignSaveHeader (the save's own time) and in CampaignSettingSaveData the
-   GameSpeed, CameraSettingSaveData and CampaignUISettingSaveData (soak 2026-10-14: the camera differed at once). */
+   GameSpeed, CameraSettingSaveData and CampaignUISettingSaveData (soak 2026-10-14: the camera differed at once).
+   Also PlayerUnitsSaveData/QuickSlots: the skill bar layout, which the client-side weapon-slot mod changes (5 slots on
+   its host, 4 on a stock guest; the casts replay the same, ~/ds_launcher/NOTES_weaponslot.md). Owner 2026-10-15. */
 static int full_local(const char *top, const char *sub) {
     if (!strcmp(top, "CampaignSaveHeader")) return 1;
+    if (!strcmp(top, "PlayerUnitsSaveData") && !strcmp(sub, "QuickSlots")) return 1;
     return !strcmp(top, "CampaignSettingSaveData") && (!strcmp(sub, "GameSpeed") || !strcmp(sub, "CameraSettingSaveData") || !strcmp(sub, "CampaignUISettingSaveData"));
 }
 #define FULL_NAME "mp_fullcheck"
