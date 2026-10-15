@@ -370,4 +370,5 @@ multiplayer tag next to the name of the save and then just put the players that 
   pre-merge branch build (ccc33ba), so not a merge fault; the lowest alpha matches every step (Off, 30-90). Test check or extra sprite: open.
 - steamstart / winkit: no dylib change; launcher compiles; bat files not run (no wine run in P0).
 - myunits fe/ guard: merged as branch myunits-feguard 96efe6d only (NOT 38ef920 on myunits); test_custom_guard.py ALL PASS (18), unit + smoke green.
+- wp-menu (M2, 6468eaa; includes mptag + uifix11): merged f718245. Unit + smoke green; menu_pair.py 17/17, 0 desync (fake-mouse build).
 - Pending: viewui (lane still working), weaponslot (no commits yet).
