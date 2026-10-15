@@ -1453,7 +1453,7 @@ static int hud_show = 1;                                     /* hud_frame's rule
 static uintptr_t h_sysmenu;
 static int sysmenu_open(void) {                              /* the game's Esc menu (SystemMenuView) is up */
     static unsigned n; static int last;
-    if (n++ % 5) return last;
+    if (n++ % 30) return last;                                /* viewui: FindObjectOfType is slow on a big base (host frames starved, run 3) */
     Obj v = find_view(&h_sysmenu, "Refactor.UI", "SystemMenuView");
     last = v && F(0x50F3724, bool (*)(Obj, void *))(u_go(v), NULL);
     return last;

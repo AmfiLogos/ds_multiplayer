@@ -38,6 +38,8 @@ def vw(r, pl): return next((v for v in r.get('views', []) if v['player'] == pl),
 
 
 def step(name, fn):
+    only = os.environ.get('VIEWONLY')
+    if only and name not in only.split(','): return
     log('--- step', name)
     try: fn()
     except Exception: check('step ' + name + ' ran', False, traceback.format_exc()[-600:])
@@ -68,12 +70,18 @@ def run(X, Y, PORT):
     t_fp = min(last_tick(X), last_tick(Y)); log('fp from tick', t_fp, 'st tick', st(X).get('tick'))
     us = [u for u in c(X, cmd='list_units', map=0).get('units', []) if u['faction'] == 1 and not u['dead'] and 'cell' in u]
     cx, cy = us[0]['cell']
+    def ready():
+        a_, b_ = coop(X), coop(Y)
+        log('ready?', {k: a_.get(k) for k in ('ok', 'coop_ok', 'error', 'me', 'net')}, {k: b_.get(k) for k in ('ok', 'coop_ok', 'error', 'me')}, 'host tick', st(X).get('tick'))
+        return a_.get('coop_ok') == 1 and b_.get('coop_ok') == 1
+    wait('views known', ready, timeout=420, every=10)
     a, b = coop(X), coop(Y)
     check('setup: markers on, dsnet views present', a.get('coop_ok') == 1 and b.get('coop_ok') == 1 and a.get('net') == 1, f"{a.get('coop_ok')} {b.get('coop_ok')} {a.get('net')}")
 
     def same():
         coop(X, action='zoom', x=10); coop(Y, action='zoom', x=10)
-        coop(X, action='camera', x=cx + 0.5, y=cy + 0.5); coop(Y, action='camera', x=cx + 0.5, y=cy + 0.5); time.sleep(4)
+        coop(X, action='camera', x=cx + 0.5, y=cy + 0.5); coop(Y, action='camera', x=cx + 0.5, y=cy + 0.5)
+        wait('host knows the guest view', lambda: bool(vw(coop(X), 1)), timeout=120, every=2); time.sleep(2)
         v = vw(coop(X), 1)
         check('item 2: same spot -> "sees this too" (same 1, no corners)', v.get('same') == 1 and v.get('brackets') == 0, v)
         shot(X, 'same_spot_host')
@@ -158,6 +166,19 @@ def run(X, Y, PORT):
         check('item 6: panel shown, same place, with no units (host)', a1.get('plate', {}).get('active') == 1 and a1.get('panel_pos') == a0.get('panel_pos') and a2.get('panel_pos') == a0.get('panel_pos'),
               f"before {a0.get('panel_pos')} {a0.get('plate')} after {a1.get('panel_pos')} {a1.get('plate')} {a2.get('panel_pos')}")
     step('nounits', nounits)
+
+    def emptybar():                                            # item 6: the portrait bar empty (no unit at the base)
+        coop(X, action='camera', x=cx + 0.5, y=cy + 0.5)
+        a0 = c(X, cmd='ui_view'); t0 = tm(X)
+        for hide, tag in ((1, 'cards'), (2, 'view')):
+            r = c(X, cmd='ui_bar_test', hide=hide); time.sleep(2)
+            a1 = c(X, cmd='ui_view'); t1 = tm(X)
+            log('empty bar', tag, r, 'panel', a1.get('panel_pos'), a1.get('plate'), 'why', a1.get('hide_why'), 'teams hud', t1.get('hud_shown'), t1.get('hud_pos'))
+            shot(X, f'emptybar_{tag}_host'); c(X, cmd='ui_pop', open=1); time.sleep(1); shot(X, f'emptybar_{tag}_cog_host'); c(X, cmd='ui_pop', open=0)
+            check(f'item 6 ({tag}): panel shown at the same place, Teams button shown', a1.get('plate', {}).get('active') == 1 and a1.get('panel_pos') == a0.get('panel_pos') and t1.get('hud_shown') == 1,
+                  f"before {a0.get('panel_pos')} after {a1.get('panel_pos')} plate {a1.get('plate')} hud {t1.get('hud_shown')}")
+            c(X, cmd='ui_bar_test', hide=0); time.sleep(2)
+    step('emptybar', emptybar)
 
     time.sleep(5)
     n, first = U.fp_equal_from_xy(X, Y, t_fp)

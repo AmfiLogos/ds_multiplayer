@@ -1573,7 +1573,7 @@ static char *ui_buildings_cmd(const char *line) {
     bput(&b, "]}");
     return b.p;
 }
-static char *ui_view_cmd(void);
+static char *ui_view_cmd(void); static char *ui_bar_test_cmd(const char *line);
 static uintptr_t h_banner[2]; static int n_dis;
 static void hk_cn_confirm(Obj v, void *mi); static void hk_cn_cancel(Obj v, void *mi);
 static int dbg_foreign = -9, dbg_view_active[2] = {-9, -9};
@@ -1625,6 +1625,7 @@ char *ui_exec(const char *cmd, const char *line) {
         return b.p;
     }
     if (!strcmp(cmd, "ui_result")) return ui_result_cmd(line);
+    if (!strcmp(cmd, "ui_bar_test")) return ui_bar_test_cmd(line);   /* viewui test: {hide} empty portrait bar (view only) */
     if (!strcmp(cmd, "ui_pop")) {                            /* ui_pop {open}: the panel's settings box (cog) */
         double o = 1; jnum(line, "open", &o); pl_pop = o != 0; plist_frame();
         Buf b = {0}; bput(&b, "{\"ok\":true,\"pop\":%d}", pl_pop); return b.p;
@@ -2954,7 +2955,7 @@ static char *ui_view_cmd(void) {
     int dim = 0, full = 0;
     for (int i = 0; i < MAX_UO; i++) { if (!u_alive(u_gc_get(uo[i].uo))) continue; if (uo[i].shown == 0) dim++; else if (uo[i].shown == 1) full++; }
     /* other_alpha: the real SpriteRenderer alpha on the units you do not control (lowest, highest; -1 = none) */
-    float amin = -1, amax = -1; int on_n = 0; Obj srt = u_gc_get(h_srtype);
+    float amin = -1, amax = -1; int on_n = 0, solid_n = 0; char solid[6][100]; Obj srt = u_gc_get(h_srtype);
     for (int i = 0; i < MAX_UO && srt; i++) {
         Obj o = u_gc_get(uo[i].uo); if (!u_alive(o) || !uo[i].other) continue;
         Obj arr = F(0x50EDFD0, Obj (*)(Obj, Obj, void *))(o, srt, NULL); int n = arr ? AT(arr, 0x18, int32_t) : 0;
@@ -2962,10 +2963,18 @@ static char *ui_view_cmd(void) {
             Obj sr = AT(arr, 0x20 + 8 * k, Obj); if (!u_alive(sr)) continue;
             float a = F(0x507413C, Col (*)(Obj, void *))(sr, NULL).a;
             if (amin < 0 || a < amin) amin = a; if (a > amax) amax = a;
+            if (uiset.see_through && a > 1.0f - (float)uiset.see_through / 100.0f + 0.01f && solid_n < 6) {   /* viewui: which sprite stays solid */
+                char gn[48] = "", pn[48] = ""; Obj go = u_go(sr), pt = u_tr_parent(u_tr(sr));
+                str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(go, NULL), gn, sizeof gn);
+                if (pt) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(u_go(pt), NULL), pn, sizeof pn);
+                snprintf(solid[solid_n++], 100, "%s/%s a=%.2f en=%d", pn, gn, a, (int)F(0x509E968, bool (*)(Obj, void *))(sr, NULL));
+            }
         }
         on_n++;
     }
-    bput(&b, "],\"world_dimmed\":%d,\"world_full\":%d,\"other_units\":%d,\"other_alpha\":[%.3f,%.3f],\"bar\":[", dim, full, on_n, amin, amax);
+    bput(&b, "],\"world_dimmed\":%d,\"world_full\":%d,\"other_units\":%d,\"other_alpha\":[%.3f,%.3f],\"other_solid\":[", dim, full, on_n, amin, amax);
+    for (int q = 0; q < solid_n; q++) { if (q) bput(&b, ","); bstr(&b, solid[q]); }
+    bput(&b, "],\"bar\":[");
     int k = 0;
     for (int i = 0; i < MAX_SC; i++) {
         Obj pa = u_gc_get(sc[i].parts), u = u_gc_get(sc[i].unit);
@@ -3273,6 +3282,18 @@ static void lend_do(const uint8_t g[16], int act, int arg) {
     }
     else if (act >= LA_FOLLOW) { coop_act(act, arg); return; }
     rig_log("ui: lend action %d (arg %d) rc %d", act, arg, rc);
+}
+/* viewui test: {hide: 1|0} the portrait bar's cards (an empty base, view only) */
+static char *ui_bar_test_cmd(const char *line) {
+    double hd = 1; jnum(line, "hide", &hd); int n = 0;
+    Obj v = find_view(&h_bar_view, "Refactor.UI", "PlayerUnitShortCutView"), bar = v ? AT(v, 0x30, Obj) : NULL;
+    int cnt = u_alive(bar) ? F(0x510EAE4, int (*)(Obj, void *))(bar, NULL) : 0;
+    if (v && (hd == 2 || hd == 0)) u_go_active(u_go(v), hd == 0);   /* 2: the whole bar view off */
+    if (hd == 2) cnt = 0;
+    for (int i = 0; i < cnt; i++) { Obj ch = F(0x510FC60, Obj (*)(Obj, int, void *))(bar, i, NULL); if (u_alive(ch)) { u_go_active(u_go(ch), hd == 0); n++; } }
+    Obj hd0 = u_gc_get(h_pl[PL_HDR]), cv = ui_is(hd0, K_GR) ? F(0x5260544, Obj (*)(Obj, void *))(hd0, NULL) : NULL;
+    if (cv) cv = F(0x5476FAC, Obj (*)(Obj, void *))(cv, NULL);
+    Buf b = {0}; bput(&b, "{\"ok\":true,\"cards\":%d,\"bar_y\":%.1f}", n, cv ? bar_bottom_y(u_tr(cv)) : 0.0f); return b.p;
 }
 /* viewui (dlsym, ui_teams): 1 = screen point x, y is on the Players panel or its menu (Teams leaves that click to us) */
 int ui_panel_hit(float x, float y) {
@@ -4307,7 +4328,7 @@ static void follow_chip(int on_) {                           /* "Following the o
     for (int k = 0; k < 4; k++) { Obj e = u_gc_get(h_fedge[k]); place(e, ex[k], ey[k], ew[k], eh[k]); graphic_color(e, hex_col("#d9be8f", 0.55f)); }
 }
 /* viewui (owner 2026-10-15): "Ben sees this too" when my screen lies inside a friend's view: one quiet line at the top
-   centre under the HUD row (under the spectator's "Following" chip when it is up), names in their colour, no clicks */
+   centre, under the portrait bar (under the spectator's "Following" chip when it is up), names in their colour, no clicks */
 static uintptr_t h_sees_t, h_sees_bg; static uint32_t sees_shown;
 static void sees_draw(uint32_t who, ui_players *p) {
     Obj root = layer_top();
@@ -4333,7 +4354,9 @@ static void sees_draw(uint32_t who, ui_players *p) {
     line_text(t, tx);
     float w = tmp_pref_w(t) + 28; if (w < 140) w = 140;
     float x0, y0, x1, y1; scr_to_layer(root, 0, (float)scr_h(), &x0, &y0); scr_to_layer(root, (float)scr_w(), 0, &x1, &y1); (void)x1; (void)y1;
-    float cy = y0 - 64 - (u_go_active_self(u_go(u_gc_get(h_fchip_t))) ? 36 : 0);   /* the follow chip's place, or under it */
+    Obj fc = u_gc_get(h_fchip_t);                           /* (u_go on null throws: the 22:03 run hung ui_coop on the host) */
+    float cy = pl_y0 - 2;                                    /* under the portrait bar, level with the Players panel's top */
+    if (u_alive(fc) && u_go_active_self(u_go(fc)) && cy > y0 - 100) cy = y0 - 100;   /* under the spectator's "Following" chip */
     place(bg, -w / 2, cy, w, 26); place(t, -w / 2, cy, w, 26);
     graphic_color(bg, hex_col("#222025", 0.75f));
 }
