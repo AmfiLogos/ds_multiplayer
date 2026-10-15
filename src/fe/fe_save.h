@@ -31,6 +31,12 @@ jv   *fe_build_hub(const jv *host, const jv *entries, const char *run_id, const 
 jv   *fe_extract_results(const jv *hub_end, const jv *run, fe_rules r, const char *player_uid, const jv *loot,
                          const jv *last_alive, char *err, size_t errn);
 int   fe_result_hash_ok(const jv *result);
+/* owner rule: a custom unit (My Units library / wiki link) never enters a regular save. Custom = manifest source "wiki"
+   or "library", a library_id, or a home campaign guid of all zeros (or none). fe_apply_results skips such units (report
+   line FE_CUSTOM_LINE) and refuses with FE_CUSTOM_REFUSE when every unit of the result is custom. */
+#define FE_CUSTOM_LINE "custom unit (My Units / wiki link): stays out of your saves"
+#define FE_CUSTOM_REFUSE "These units came from My Units or a wiki link: nothing to bring home (your saves are not changed)."
+int   fe_manifest_custom(const jv *manifest);
 /* returns the new file's path (malloc) or NULL with err; report: array of strings (or NULL) */
 char *fe_apply_results(const jv *home, const jv *result, const jv *manifests, const char *ledger_path, const char *out_dir,
                        const jv *choices, jv *report, char *err, size_t errn);

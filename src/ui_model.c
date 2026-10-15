@@ -496,8 +496,8 @@ static int hex32(const char *h) { for (int i = 0; i < 32; i++) if (!isxdigit((un
 void ui_settings_parse(const char *j, ui_settings *s) {
     int v;
     if (!j) return;
-    /* lan_v10: the see-through never goes under the minimum (an older file's 0 / 25 becomes 30) */
-    if (jint(j, "see_through", &v) && v >= 0 && v <= 100) s->see_through = v < UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : v > 90 ? 90 : v;
+    /* 0 = Off (owner 2026-10-15); 1..29 (an older 25) reads as 30; over 90 reads as 90 */
+    if (jint(j, "see_through", &v) && v >= 0 && v <= 100) s->see_through = v == 0 ? 0 : v < UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : v > 90 ? 90 : v;
     if (jint(j, "names", &v) && v >= UI_NAMES_OFF && v <= UI_NAMES_ALL) s->names = v;
     if (jint(j, "list_open", &v)) s->list_open = v != 0;
     if (jint(j, "pos_set", &v)) s->pos_set = v != 0;
@@ -517,6 +517,7 @@ void ui_settings_parse(const char *j, ui_settings *s) {
     if (jint(j, "mini_pos_set", &v)) s->mini_pos_set = v != 0;
     if (jint(j, "mini_x", &v) && v > -5000 && v < 5000) s->mini_x = v;
     if (jint(j, "mini_y", &v) && v > -5000 && v <= 0) s->mini_y = v;
+    if (jint(j, "fast_join", &v)) s->fast_join = v != 0;
     /* "colors":"<uid 32 hex>:<idx>,..." */
     const char *c = strstr(j, "\"colors\"");
     if (c && (c = strchr(c + 8, ':')) && (c = strchr(c, '"'))) {
@@ -534,10 +535,10 @@ void ui_settings_parse(const char *j, ui_settings *s) {
 int ui_settings_format(const ui_settings *s, char *out, size_t cap) {
     int n = snprintf(out, cap, "{\"see_through\":%d,\"names\":%d,\"list_open\":%d,\"pos_set\":%d,\"pos_x\":%d,\"pos_y\":%d,\"tooltips\":%d,\"compact\":%d,"
                      "\"pings\":%d,\"ping_sound\":%d,\"ping_chat\":%d,\"views\":%d,\"offscreen\":%d,\"outline\":%d,\"teams_button\":%d,"
-                     "\"mini\":%d,\"mini_size\":%d,\"mini_pos_set\":%d,\"mini_x\":%d,\"mini_y\":%d,\"colors\":\"",
+                     "\"mini\":%d,\"mini_size\":%d,\"mini_pos_set\":%d,\"mini_x\":%d,\"mini_y\":%d,\"fast_join\":%d,\"colors\":\"",
                      s->see_through, s->names, s->list_open, s->pos_set, s->pos_x, s->pos_y, s->tooltips, s->compact,
                      s->pings, s->ping_sound, s->ping_chat, s->views, s->offscreen, s->outline, s->teams_button,
-                     s->mini, s->mini_size, s->mini_pos_set, s->mini_x, s->mini_y);
+                     s->mini, s->mini_size, s->mini_pos_set, s->mini_x, s->mini_y, s->fast_join);
     for (int i = 0; i < s->ncol && n > 0 && (size_t)n < cap; i++) n += snprintf(out + n, cap - (size_t)n, "%s%s:%d", i ? "," : "", s->col_uid[i], s->col_idx[i]);
     if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "\"}\n");
     return n;
@@ -592,8 +593,8 @@ int ui_mini_rect(const ui_mini_view *v, float w, float h, float cx, float cy, fl
     return 1;
 }
 const char *ui_outline_text(int m) { return m == UI_OUTLINE_OWN ? "Your units" : m == UI_OUTLINE_FRIENDS ? "Friends' units" : m == UI_OUTLINE_BOTH ? "Both" : "Off"; }
-int ui_see_through_next(int v) { return v < 50 ? 50 : v < 70 ? 70 : v < 90 ? 90 : UI_SEE_THROUGH_MIN; }
-int ui_see_through_prev(int v) { return v > 70 ? 70 : v > 50 ? 50 : v > UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : 90; }
+int ui_see_through_next(int v) { return v <= 0 ? UI_SEE_THROUGH_MIN : v < 50 ? 50 : v < 70 ? 70 : v < 90 ? 90 : 0; }
+int ui_see_through_prev(int v) { return v <= 0 ? 90 : v > 70 ? 70 : v > 50 ? 50 : v > UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : 0; }
 const char *ui_names_text(int m) { return m == UI_NAMES_ALL ? "All" : m == UI_NAMES_OFF ? "Off" : "Others"; }
 int ui_name_tag_visible(int mode, int owner, int me) {
     if (owner < 0 || mode == UI_NAMES_OFF) return 0;

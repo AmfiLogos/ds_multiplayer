@@ -88,7 +88,7 @@ def run(X, Y, PORT):
         d = os.path.join(rig.idir(i), 'data', 'mp_owners')
         if os.path.isdir(d): os.rename(d, d + time.strftime('.prev_%Y%m%d_%H%M%S'))
         os.makedirs(os.path.join(rig.idir(i), 'data'), exist_ok=True)
-        # an old file with see-through 0: lan_v10 reads it as the 30 % minimum
+        # see-through 0 = Off (owner 2026-10-15; replaces the lan_v10 30 % minimum)
         open(os.path.join(rig.idir(i), 'data', 'mp_ui.json'), 'w').write('{"see_through":0,"names":1,"list_open":1}\n')
     U.start(X, 1512, 982)
     wait('title host', lambda: (lambda s: s.get('scene') == 1 and not s.get('busy'))(st(X)), timeout=1500, every=5)
@@ -112,7 +112,7 @@ def run(X, Y, PORT):
         a, b = coop(X), coop(Y)
         log('coop host', a); log('coop guest', b)
         check('coop: both peers see the same map key, markers on', a.get('coop_ok') == 1 and b.get('coop_ok') == 1 and a.get('key') == b.get('key'), f"{a.get('key')} {b.get('key')}")
-        check('see-through: an old 0 reads as the 30 % minimum', a.get('see_through') == 30 and b.get('see_through') == 30, f"{a.get('see_through')} {b.get('see_through')}")
+        check('see-through: a saved 0 stays Off', a.get('see_through') == 0 and b.get('see_through') == 0, f"{a.get('see_through')} {b.get('see_through')}")
         S['net'] = a.get('net') == 1 and b.get('net') == 1
         log('dsnet marker API present:', S['net'])
     step('probe', probe)
