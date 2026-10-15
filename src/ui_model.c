@@ -495,8 +495,8 @@ static int hex32(const char *h) { for (int i = 0; i < 32; i++) if (!isxdigit((un
 void ui_settings_parse(const char *j, ui_settings *s) {
     int v;
     if (!j) return;
-    /* lan_v10: the see-through never goes under the minimum (an older file's 0 / 25 becomes 30) */
-    if (jint(j, "see_through", &v) && v >= 0 && v <= 100) s->see_through = v < UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : v > 90 ? 90 : v;
+    /* 0 = Off (owner 2026-10-15); 1..29 (an older 25) reads as 30; over 90 reads as 90 */
+    if (jint(j, "see_through", &v) && v >= 0 && v <= 100) s->see_through = v == 0 ? 0 : v < UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : v > 90 ? 90 : v;
     if (jint(j, "names", &v) && v >= UI_NAMES_OFF && v <= UI_NAMES_ALL) s->names = v;
     if (jint(j, "list_open", &v)) s->list_open = v != 0;
     if (jint(j, "pos_set", &v)) s->pos_set = v != 0;
@@ -591,8 +591,8 @@ int ui_mini_rect(const ui_mini_view *v, float w, float h, float cx, float cy, fl
     return 1;
 }
 const char *ui_outline_text(int m) { return m == UI_OUTLINE_OWN ? "Your units" : m == UI_OUTLINE_FRIENDS ? "Friends' units" : m == UI_OUTLINE_BOTH ? "Both" : "Off"; }
-int ui_see_through_next(int v) { return v < 50 ? 50 : v < 70 ? 70 : v < 90 ? 90 : UI_SEE_THROUGH_MIN; }
-int ui_see_through_prev(int v) { return v > 70 ? 70 : v > 50 ? 50 : v > UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : 90; }
+int ui_see_through_next(int v) { return v <= 0 ? UI_SEE_THROUGH_MIN : v < 50 ? 50 : v < 70 ? 70 : v < 90 ? 90 : 0; }
+int ui_see_through_prev(int v) { return v <= 0 ? 90 : v > 70 ? 70 : v > 50 ? 50 : v > UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : 0; }
 const char *ui_names_text(int m) { return m == UI_NAMES_ALL ? "All" : m == UI_NAMES_OFF ? "Off" : "Others"; }
 int ui_name_tag_visible(int mode, int owner, int me) {
     if (owner < 0 || mode == UI_NAMES_OFF) return 0;

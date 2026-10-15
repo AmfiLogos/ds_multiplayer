@@ -26,6 +26,9 @@ leased() { python3 rig.py leases | grep -vc ' free$'; }
 pgrep -fl '[a-z0-9_]+_(test|pair)\.py' && { echo "rig tests still running (above): stop them first"; exit 1; }
 
 T=$(date +%Y%m%d-%H%M)
+# Foreign Expedition results left in a copy's data/fe open a results window over the game at load and take Escape
+# (v11 candidate round 1: uxgame + teams_v10 Escape checks). The gate starts every copy without them (moved, not deleted).
+for d in $ROOT/instances/[A-J]/data/fe(N/) $ROOT/win/instances/W/data/fe(N/); do mv $d ${d}_gatestash_$T; done
 echo "gate.sh $(date +%T)"
 zsh gate.sh > det_out/release_gate_gate_$T.out 2>&1; GRC=$?
 SHA=$(shasum -a 256 $ROOT/build/dsrig.dylib | cut -d' ' -f1); S16=${SHA:0:16}
@@ -60,6 +63,8 @@ if [[ $WRC == 0 ]]; then
 fi
 WSHA=$(shasum -a 256 $W/build/baselib.dll | cut -d' ' -f1)
 print "windows_build $([[ $WRC == 0 ]] && echo PASS || echo FAIL)  baselib.dll sha256 $WSHA  log $L/build_win.out" >> $SUM
+# fail fast (lead 2026-10-15): a failed build makes every later suite of that build meaningless
+if grep -qE '^(mouse_build|windows_build) FAIL' $SUM; then print "NOT GREEN: build failed (fail fast, no suites run)" >> $SUM; cat $SUM; exit 1; fi
 
 # one suite: run <name> <dir> <command...>; verdict line into $L/<name>.res
 verdict() {   # log rc -> PASS|FAIL + counts
@@ -108,6 +113,7 @@ lane3() {
   run win_partial $W python3 xplay_run.py $P xplay_wrap.py --math --pin-dylib $D $R/desync_partial_test.py --runs 2 --fallback 1
   run win_floorgen10 $W python3 xplay_run.py $P xplay_wrap.py --math $U/teams_desync_pair.py --rounds 10 --dylib $D
   # base-work save cross-play (review 2026-10-14 finding 3): 15 min of normal base play, full-state check every 600 steps
+  (cd $W && python3 wrig.py stop >/dev/null 2>&1)     # the soak starts its own guest at the title
   run win_base_soak $W python3 xplay_run.py $P xplay_wrap.py --math --pin-dylib $D $R/soak_test.py --minutes 15 --full-every 600
   python3 rig.py stop $P >/dev/null 2>&1; (cd $W && python3 wrig.py stop >/dev/null 2>&1)
   # kit dry run = the friend's Windows kit, recorded on the Mac and replayed alone in the DSMP bottle: IDENTICAL every tick

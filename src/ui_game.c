@@ -1577,7 +1577,7 @@ static char *ui_view_cmd(void);
 static uintptr_t h_banner[2]; static int n_dis;
 static void hk_cn_confirm(Obj v, void *mi); static void hk_cn_cancel(Obj v, void *mi);
 static int dbg_foreign = -9, dbg_view_active[2] = {-9, -9};
-static void plist_click(int i);
+static void plist_click(int i); static void plist_prev(int i);
 static void hk_activate_view(Obj cont, int type, void *mi);
 static int pl_pop; static void plist_frame(void); int ui_debug_units(int dir);
 static char *ui_panel_move_cmd(const char *line);
@@ -1618,8 +1618,9 @@ char *ui_exec(const char *cmd, const char *line) {
         if (c) hk_activate_view(c, (int)t, NULL);
         Buf b = {0}; bput(&b, "{\"ok\":%s,\"active\":%d}", c ? "true" : "false", c ? popup_active((int)t) : -1); return b.p;
     }
-    if (!strcmp(cmd, "ui_click")) {                          /* ui_click {row: 0 header, 2 see-through, 3 names} */
-        double r = 0; jnum(line, "row", &r); plist_click((int)r);
+    if (!strcmp(cmd, "ui_click")) {                          /* ui_click {row: 0 header, 2 see-through, 3 names; dir -1: the "<" arrow} */
+        double r = 0, d = 1; jnum(line, "row", &r); jnum(line, "dir", &d);
+        if (d < 0) plist_prev((int)r); else plist_click((int)r);
         Buf b = {0}; bput(&b, "{\"ok\":true,\"see_through\":%d,\"names\":%d,\"list_open\":%d}", uiset.see_through, uiset.names, uiset.list_open);
         return b.p;
     }
@@ -2445,7 +2446,8 @@ static void plist_frame(void) {
     plist_set(PL_NAMES, "<color=#a69085>Names above units</color>");
     plist_set(PL_UNITS, "<color=#a69085>Units per player</color>");
     plist_set(PL_ADMIN, "<color=#a69085>Admin mode (host)</color>");
-    snprintf(row, sizeof row, "<color=#ccbeb8>%d%%</color>", uiset.see_through); plist_set(PL_SEER, row);
+    if (uiset.see_through) snprintf(row, sizeof row, "<color=#ccbeb8>%d%%</color>", uiset.see_through); else snprintf(row, sizeof row, "<color=#ccbeb8>Off</color>");
+    plist_set(PL_SEER, row);
     snprintf(row, sizeof row, "<color=#ccbeb8>%s</color>", ui_names_text(uiset.names)); plist_set(PL_NAMESR, row);
     snprintf(row, sizeof row, "<color=#ccbeb8>%d</color>", ui_max_owned); plist_set(PL_UNITSR, row);
     {   int nw = 0; for (int i = 0; i < UI_MAX_PLAYERS; i++) nw += ui_spectators >> i & 1u;
@@ -2801,7 +2803,8 @@ static Guid local_order[MAX_LOCAL]; static int local_n;
 /* 7c. World: units you do not control are see-through (SpriteRenderer alpha 0.55; own units 1.0).
    UnitObject.SetHUD 0xE26CFC pairs the unit's object with its HUD (UnitEntityHUD._entity +0x118). */
 #define MAX_UO 256
-static struct { uintptr_t uo, hud, eg; int shown, ol_sig; } uo[MAX_UO];
+static struct { uintptr_t uo, hud, eg; int shown, ol_sig, other; } uo[MAX_UO];   /* other: a player unit you do not control */
+static uintptr_t h_srtype;                           /* UnityEngine.SpriteRenderer type */
 static void (*o_uo_sethud)(Obj, Obj, void *);
 static void hk_uo_sethud(Obj o, Obj h, void *mi) {
     o_uo_sethud(o, h, mi);
@@ -2843,7 +2846,6 @@ static void ol_set(Obj eg, int on_, GCol c) {
     if (o_eg_apply) o_eg_apply(eg, NULL);
 }
 static void world_frame(int force) {
-    static uintptr_t h_srtype;
     Obj srt = u_gc_get(h_srtype);
     if (!srt) { srt = type_of("UnityEngine", "SpriteRenderer"); if (!srt) return; h_srtype = u_gc_new(srt); }
     for (int i = 0; i < MAX_UO; i++) {
@@ -2871,6 +2873,7 @@ static void world_frame(int force) {
                                   eg = et ? F(0x50EDDF4, Obj (*)(Obj, Obj, bool, void *))(o, et, true, NULL) : NULL; u_gc_free(uo[i].eg); uo[i].eg = u_gc_new(eg); }
               if (u_alive(eg)) { Col cc = hex_col(hx, 1); ol_set(eg, want_ol, (GCol){ cc.r, cc.g, cc.b, 1 }); uo[i].ol_sig = sig; }
           } }
+        uo[i].other = !mine;
         int want = mine || !uiset.see_through;
         if (!on() && uo[i].shown < 0) continue;
         if (want == uo[i].shown && !force) continue;
@@ -2930,7 +2933,19 @@ static char *ui_view_cmd(void) {
     for (int k = 0; k < local_n; k++) { char gs[40]; guid_str(local_order[k], gs); bput(&b, "%s\"%s\"", k ? "," : "", gs); }
     int dim = 0, full = 0;
     for (int i = 0; i < MAX_UO; i++) { if (!u_alive(u_gc_get(uo[i].uo))) continue; if (uo[i].shown == 0) dim++; else if (uo[i].shown == 1) full++; }
-    bput(&b, "],\"world_dimmed\":%d,\"world_full\":%d,\"bar\":[", dim, full);
+    /* other_alpha: the real SpriteRenderer alpha on the units you do not control (lowest, highest; -1 = none) */
+    float amin = -1, amax = -1; int on_n = 0; Obj srt = u_gc_get(h_srtype);
+    for (int i = 0; i < MAX_UO && srt; i++) {
+        Obj o = u_gc_get(uo[i].uo); if (!u_alive(o) || !uo[i].other) continue;
+        Obj arr = F(0x50EDFD0, Obj (*)(Obj, Obj, void *))(o, srt, NULL); int n = arr ? AT(arr, 0x18, int32_t) : 0;
+        for (int k = 0; k < n; k++) {
+            Obj sr = AT(arr, 0x20 + 8 * k, Obj); if (!u_alive(sr)) continue;
+            float a = F(0x507413C, Col (*)(Obj, void *))(sr, NULL).a;
+            if (amin < 0 || a < amin) amin = a; if (a > amax) amax = a;
+        }
+        on_n++;
+    }
+    bput(&b, "],\"world_dimmed\":%d,\"world_full\":%d,\"other_units\":%d,\"other_alpha\":[%.3f,%.3f],\"bar\":[", dim, full, on_n, amin, amax);
     int k = 0;
     for (int i = 0; i < MAX_SC; i++) {
         Obj pa = u_gc_get(sc[i].parts), u = u_gc_get(sc[i].unit);
@@ -4949,7 +4964,7 @@ static void tips_frame(void) {
     /* 3.6 panel: cog rows first (they sit inside the panel frame) */
     if (pl_pop) {
         static const struct { int id; const char *t, *b; } rows[] = {
-            { PL_SEE, "Other Units See-through", "Makes the units you do not control see-through (30 to 90%), so your own units stand out. They never become fully solid. Only on your screen." },
+            { PL_SEE, "Other Units See-through", "Makes the units you do not control see-through, so your own units stand out. Off shows them normally. Only on your screen." },
             { PL_OUTL, "Unit Outline", "Draws an outline around units. Your units: in the game's gold. Friends' units: in each friend's colour. Both, or Off. Only on your screen." },
             { PL_PINGS, "Show Pings", "Show the spots other players mark. Mark a spot yourself: click the middle mouse button, or press B. B over a ping removes it." },
             { PL_PSOUND, "Ping Sound", "Play a short sound when someone pings." },

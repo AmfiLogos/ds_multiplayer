@@ -237,7 +237,7 @@ void ui_player_row(const ui_players *p, int player, int me, int ping_ms, int sta
 enum { UI_NAMES_OFF = 0, UI_NAMES_OTHERS = 1, UI_NAMES_ALL = 2 };
 #define UI_MAX_COLOR_OVR 16
 typedef struct ui_settings {
-    int see_through;      /* % for other players' units in the world: 30 (default, lan_v10 minimum), 50, 70, 90 */
+    int see_through;      /* % for other players' units in the world: 0 (Off), 30 (default), 50, 70, 90 */
     int names;            /* player names above units: UI_NAMES_* (default OTHERS) */
     int list_open;        /* player list expanded (default 0) */
     int pos_set;          /* the player dragged the panel (lan_v8): pos_x / pos_y are used, else the default place */
@@ -261,7 +261,7 @@ const char *ui_outline_text(int mode);                          /* "Off" / "Your
 /* colour override for a uid (32 hex): palette index or -1; set: idx < 0 removes it */
 int  ui_settings_color_get(const ui_settings *s, const char *uid_hex);
 void ui_settings_color_set(ui_settings *s, const char *uid_hex, int idx);
-#define UI_SEE_THROUGH_MIN 30           /* lan_v10 (owner 01:40): other players' units are never fully opaque */
+#define UI_SEE_THROUGH_MIN 30           /* lowest see-through step above Off (owner 2026-10-15: Off allowed again) */
 void ui_settings_default(ui_settings *s);
 /* spectator mini overview geometry (pure): the world rectangle the mini camera shows (the whole map, 2 cells around,
    the window's aspect kept), world <-> mini pixels (from the map area's top-left, y down) */
@@ -277,8 +277,8 @@ void ui_mini_m2w(const ui_mini_view *v, float w, float h, float mx, float my, fl
 int ui_mini_rect(const ui_mini_view *v, float w, float h, float cx, float cy, float hw, float hh, float out[4]);
 void ui_settings_parse(const char *json, ui_settings *s);       /* missing / bad keys keep their value */
 int  ui_settings_format(const ui_settings *s, char *out, size_t cap);
-int  ui_see_through_next(int v);                                /* 30 -> 50 -> 70 -> 90 -> 30 */
-int  ui_see_through_prev(int v);                                /* 30 -> 90 -> 70 -> 50 -> 30 */
+int  ui_see_through_next(int v);                                /* 0 -> 30 -> 50 -> 70 -> 90 -> 0 */
+int  ui_see_through_prev(int v);                                /* 0 -> 90 -> 70 -> 50 -> 30 -> 0 */
 const char *ui_names_text(int mode);                            /* "Others" / "All" / "Off" */
 int  ui_name_tag_visible(int mode, int owner, int me);          /* owner tag above a unit? */
 /* Multi-unit select (select all, box): keep[i] = 0 for player units this player may not order, when at least
