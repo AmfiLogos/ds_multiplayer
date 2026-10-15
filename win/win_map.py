@@ -18,7 +18,7 @@ Output: win_map.tsv (kind, name, mac, win, status, note, used_in).
 import argparse, bisect, collections, json, os, re, struct, sys
 
 HOME = os.path.expanduser("~")
-ROOT = os.path.join(HOME, "ds_multiplayer")
+ROOT = os.environ.get("DSMP_ROOT") or os.path.join(HOME, "ds_multiplayer")
 ap = argparse.ArgumentParser()
 ap.add_argument("--mac-dump", default=os.path.join(HOME, "ds_skill_truth/dump_25846389"))
 ap.add_argument("--mac-bin", default=os.path.join(HOME, "ds_skill_truth/GA_arm64_25846389.dylib"))

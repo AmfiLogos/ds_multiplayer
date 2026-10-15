@@ -86,3 +86,9 @@ fail:
     closesocket(l);
     return -1;
 }
+
+int dsw_rename(const char *from, const char *to) {
+    if (MoveFileExA(from, to, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED)) return 0;
+    errno = EACCES;
+    return -1;
+}

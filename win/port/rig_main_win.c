@@ -3,9 +3,18 @@
 // (baselib_exports.def). GameAssembly.dll imports baselib, so our DllMain runs while GameAssembly is mapped
 // but before any of its code. Does nothing unless DSRIG_DIR is set (a stock copy behaves like the original).
 // Hooks: MinHook (x64 inline, trampolines). Control channel: TCP 127.0.0.1 (rig_sock_win.c).
+// DSMP_MODULE: the same file builds multiplayer.dll, a module of the mod loader (~/ds_launcher loader, start/win):
+// no DllMain; the loader calls dsl_module_load / dsl_module_early, hooks go through the loader's one engine
+// (host->hook_rva), and the loader owns the save-folder redirect (persistentDataPath) and the Steam choice.
 #include "dswin.h"
 #include "rig.h"
+#ifdef DSMP_MODULE
+#include "dsl_sdk.h"
+static const DSLHost *DH;
+static DSLPlugin *DME;
+#else
 #include "MinHook.h"
+#endif
 #include <stdarg.h>
 
 uintptr_t ds_base;
@@ -77,9 +86,23 @@ static Filt FILT[] = {
 };
 #define NFILT 7
 static HookRec hooks[512]; static int nhooks;
-int rig_hook(uintptr_t rva, void *repl, void **orig, const char *who) {
+/* one site: MinHook (own baselib.dll) or the loader's engine (module); 0 = ok */
+static int hook_raw(uintptr_t rva, void *repl, void **orig, const char *who) {
+#ifdef DSMP_MODULE
+    int r = DH->hook_rva(DME, rva, repl, orig, who);
+    if (r) rig_log("hook %s at %#llx refused by the loader engine (see dsload.log)", who, (unsigned long long)rva);
+    return r;
+#else
     static int inited;
     if (!inited) { MH_STATUS s = MH_Initialize(); if (s != MH_OK && s != MH_ERROR_ALREADY_INITIALIZED) { rig_log("MH_Initialize %d", s); return -1; } inited = 1; }
+    void *target = (void *)(ds_base + rva);
+    MH_STATUS s = MH_CreateHook(target, repl, orig);
+    if (s == MH_OK) s = MH_EnableHook(target);
+    if (s != MH_OK) { rig_log("hook %s at %#llx failed (MinHook %d)", who, (unsigned long long)rva, s); return -1; }
+    return 0;
+#endif
+}
+int rig_hook(uintptr_t rva, void *repl, void **orig, const char *who) {
     for (int i = 0; i < nhooks; i++) if (hooks[i].rva == rva) {
         *orig = hooks[i].orig;
         rig_log("hook %s: address %#llx already hooked by %s (identical-code folding); sharing", who, (unsigned long long)rva, hooks[i].who);
@@ -96,22 +119,17 @@ int rig_hook(uintptr_t rva, void *repl, void **orig, const char *who) {
         rig_log("hook %s: not installed on Windows (arm64-only argument layout, trace only)", who);
         return 0;
     }
-    void *target = (void *)(ds_base + rva);
     /* MSVC folded these bodies with other methods (QuitToTitleSceneRequested..ctor shares its code with
        TickRequested..ctor and 16 others). The detour only runs when `this` is of the expected class; every
        other caller goes straight to the original. All three take only integer/pointer arguments. */
     for (int i = 0; i < NFILT; i++) if (!strcmp(who, FILT[i].who)) {
-        MH_STATUS fs = MH_CreateHook(target, FILT[i].fn, &FILT[i].orig);
-        if (fs == MH_OK) fs = MH_EnableHook(target);
-        if (fs != MH_OK) { rig_log("hook %s (class-filtered) failed (MinHook %d)", who, fs); return -1; }
+        if (hook_raw(rva, FILT[i].fn, &FILT[i].orig, who)) { rig_log("hook %s (class-filtered) failed", who); return -1; }
         FILT[i].repl = repl; *orig = FILT[i].orig;
         if (nhooks < 512) hooks[nhooks++] = (HookRec){ rva, *orig, who };
         rig_log("hook %s: shared body on Windows, detour filtered to class %s; hooked %#llx", who, FILT[i].cls, (unsigned long long)rva);
         return 0;
     }
-    MH_STATUS s = MH_CreateHook(target, repl, orig);
-    if (s == MH_OK) s = MH_EnableHook(target);
-    if (s != MH_OK) { rig_log("hook %s at %#llx failed (MinHook %d)", who, (unsigned long long)rva, s); return -1; }
+    if (hook_raw(rva, repl, orig, who)) return -1;
     if (nhooks < 512) hooks[nhooks++] = (HookRec){ rva, *orig, who };
     rig_log("%s: hooked %#llx", who, (unsigned long long)rva);   /* the full hook list (win/inline_audit.py --log) */
     return 0;
@@ -248,9 +266,13 @@ static void install(HMODULE ga) {
     zero_fma3_flag("load");
     int bad = 0;
     bad |= rig_hook(W_MAINFLOW_UPDATE, (void *)my_update, (void **)&o_update, "MainFlow.Update");
+#ifndef DSMP_MODULE                                                /* module: the loader's start part does both */
     bad |= rig_hook(W_PERSISTENT_PATH, (void *)my_pdp, (void **)&o_pdp, "Application.get_persistentDataPath");
     { extern int kit_mode;                                          /* the test kit runs on the player's real Steam */
       if (!kit_mode || getenv("DSMP_KIT_NOSTEAM")) bad |= rig_hook(W_STORE_START, (void *)my_store_start, (void **)&o_store_start, "StoreRuntimeHandler.Start"); }
+#else
+    (void)my_pdp; (void)my_store_start;
+#endif
     if (bad) rig_log("hook install failed: the rig will not answer game commands");
     if (getenv("DSW_DEBUG_ORD")) {
         rig_hook(0xAC7F00, (void *)dbg_oe, (void **)&o_dbg_oe, "DBG PlayerControlEventHandler.OnEvent(InteractGridRequested)");
@@ -273,6 +295,7 @@ static void install(HMODULE ga) {
     ui_install();
     ui_teams_install();
     mpmenu_install();
+    { extern void pvp_install(void); pvp_install(); }               /* PvP hostility hooks (src/rig_main.c has it since v11) */
     { extern void ord_win_craft_install(void); ord_win_craft_install(); }
     { extern void ui_win_install(void), mpmenu_win_install(void); ui_win_install(); mpmenu_win_install(); }
     { extern void win_test_install(void); win_test_install(); }
@@ -283,6 +306,42 @@ static void install(HMODULE ga) {
     rig_sock_start(port && *port ? port : "47811");
 }
 
+#ifdef DSMP_MODULE
+/* ---------------------------------------------------------------- loader module entry points */
+DSL_PLUGIN();
+
+DSL_EXPORT int dsl_module_load(const DSLHost *host, DSLPlugin *self) {
+    DH = host; DME = self;
+    const char *d = getenv("DSRIG_DIR");
+    if (!d || !*d) { host->log(self, "DSRIG_DIR not set: multiplayer inactive"); return 1; }
+    if (!host->game_build || strcmp(host->game_build, RIG_BUILD)) { host->log(self, "game build %s is not %s", host->game_build ? host->game_build : "?", RIG_BUILD); return 2; }
+    snprintf(rig_dir, sizeof rig_dir, "%s", d);
+    for (char *p = rig_dir; *p; p++) if (*p == '\\') *p = '/';
+    InitializeCriticalSection(&loglock);
+    char lp[1100]; snprintf(lp, sizeof lp, "%s/rig.log", rig_dir);
+    lf = fopen(lp, "a");
+    rig_log("---- rig start pid %lu (windows, loader module %s)", (unsigned long)GetCurrentProcessId(), host->plugin_id(self));
+    if (getenv("DSRIG_LIVE")) rig_log("DSRIG_LIVE: normal game (sound, frame rate, windows untouched)");
+    dsw_net_init();
+    host->log(self, "rig log %s", lp);
+    return 0;
+}
+
+DSL_EXPORT int dsl_module_early(const DSLHost *host, DSLPlugin *self) {
+    HMODULE m = GetModuleHandleA("GameAssembly.dll");
+    if (!m || (uintptr_t)m != host->ga_base || !check_ga(m)) { host->log(self, "GameAssembly is not build %s: multiplayer off", RIG_BUILD); return 3; }
+    install(m);
+    host->log(self, "multiplayer started (control port %s)", getenv("DSRIG_PORT") ? getenv("DSRIG_PORT") : "47811");
+    return 0;
+}
+
+/* World check (dsload, mods per world): a guest loading the host's world is checked by the join (HELLO) instead. */
+#include "mp_game.h"
+DSL_EXPORT int dsl_world_check_skip(void) {
+    mp_session *s = mp_game_session();
+    return s && mp_server_port(s) == 0;
+}
+#else
 /* GameAssembly is normally already in the module list when our DllMain runs (we are its import);
    if not, a thread waits for it (the first game code we care about runs seconds later). */
 static DWORD WINAPI wait_ga(LPVOID arg) {
@@ -315,3 +374,4 @@ BOOL WINAPI DllMain(HINSTANCE h, DWORD reason, LPVOID res) {
     else CloseHandle(CreateThread(NULL, 0, wait_ga, NULL, 0, NULL));
     return TRUE;
 }
+#endif
