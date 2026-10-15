@@ -145,7 +145,24 @@ static void *accept_thread(void *arg) {
     return NULL;
 }
 
+/* A unix socket path must fit sun_path (104 bytes on macOS); a longer one was cut silently (".../ctl.soc") and
+   nobody could connect. Long path: bind at /tmp/dsrig-<uid>-<hash of the path>.sock and put a symlink at the asked
+   path, so clients that resolve the link (rig.py, launcher tests) still find it. Short paths are unchanged. */
+static void short_sock_path(const char *path, char *out, size_t n) {
+    unsigned long long h = 1469598103934665603ULL;           /* FNV-1a 64 */
+    for (const unsigned char *p = (const unsigned char *)path; *p; p++) { h ^= *p; h *= 1099511628211ULL; }
+    snprintf(out, n, "/tmp/dsrig-%u-%016llx.sock", (unsigned)getuid(), h);
+}
+
 void rig_sock_start(const char *path) {
-    snprintf(sock_path, sizeof sock_path, "%s", path);
+    struct sockaddr_un probe;
+    if (strlen(path) >= sizeof probe.sun_path) {
+        short_sock_path(path, sock_path, sizeof sock_path);
+        unlink(path);
+        if (symlink(sock_path, path)) rig_log("socket path %s is too long; link to %s failed (%s)", path, sock_path, strerror(errno));
+        else rig_log("socket path %s is too long (%zu bytes): listening at %s (linked)", path, strlen(path), sock_path);
+    } else {
+        snprintf(sock_path, sizeof sock_path, "%s", path);
+    }
     pthread_t t; pthread_create(&t, NULL, accept_thread, NULL); pthread_detach(t);
 }

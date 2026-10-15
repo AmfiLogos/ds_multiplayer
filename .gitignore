@@ -73,3 +73,6 @@ fixtures/
 /ext/*/tests/tmp/
 /custom/*/test/tmp/
 /custom/*/test/old/
+# own test binaries
+*_bin
+*.dSYM/

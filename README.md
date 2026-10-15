@@ -16,7 +16,7 @@ Mac: download `DungeonSettlersMP_friend_kit.zip`, unzip it in Downloads, quit th
 zsh ~/Downloads/DungeonSettlersMP/make_mp_app.sh
 ```
 
-Start "Dungeon Settlers MP" from the Applications folder in your home folder. Keep Steam open and signed in. Your normal game, saves and settings do not change; the MP app uses a copy of your saves.
+Start "Dungeon Settlers MP" from the Applications folder in your home folder. If Steam is not open, it starts by itself in the background; sign in if Steam asks. Your normal game, saves and settings do not change; the MP app uses a copy of your saves.
 
 Windows kit: coming.
 

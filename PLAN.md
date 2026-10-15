@@ -144,7 +144,7 @@ Goal: a version the owner can play live with a friend on a Mac.
 - Units per player (1/2/3/4/6) = how many units you may OWN in base (current build is right). Dungeon team: always max 4 units in total. (Supersedes "bench + 3 per run" above.)
 - lan_v9 also fixes 2 bugs from research/ux_flow_v10.md: #1 Portal X soft-lock (others stuck paused), #2 wrong "The owner left the game" text when the guest's OWN connection dropped.
 - lan_v10 colours: your OWN units keep the game's default look (no tint). Other players get a colour: auto from a colour-blind-safe palette that avoids every game status colour; each player can CHANGE other players' colours for their own screen only (local setting).
-- lan_v10: see-through of other players' units can never be 0 (minimum ~30%).
+- ~~lan_v10: see-through of other players' units can never be 0 (minimum ~30%).~~ Replaced by owner 2026-10-15 (see below).
 - lan_v10: optional outline/contour highlight: off / own units / friends' units / both.
 - lan_v10: camera awareness + ping, "do it good": research what good co-op games do; a ping disappears when a unit reaches the spot (plus a timeout). Owner trusts the design; implement well.
 - Ping (owner 2026-10-14 01:55): NO automatic timeout. A ping stays until a unit reaches it or a player deletes it. B = place a ping; B with the mouse over an existing ping = delete it (toggle). Middle-click also places. Owner loves the "is typing" chat UX.
@@ -346,3 +346,16 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
   "DS Windows Test": baselib.dll 2938e216 + det_ranges_win a505e493 (old in win/old_versions/*DSWindowsTest-2026-10-15-1758*).
   Windows test kit win/kit/DSMP_WindowsTestKit_25846389.zip (DLL 2938e216, ranges a505e493, payload from the 17:33 v11 kit dry run; old one in win/old_versions).
 - GitHub: tag lan_v11, release kit-lan_v11 https://github.com/AmfiLogos/ds_multiplayer/releases/tag/kit-lan_v11
+
+## See-through Off (owner 2026-10-15; replaces the 10-14 01:40 minimum rule)
+- "Other Units See-through" steps: Off (0), 30, 50, 70, 90 %, cycling both ways. Off = alpha 1.0 like own units (colour tint stays).
+- Default stays 30. A saved 0 stays Off; an older 1..29 (25) reads as 30. Branch `seethrough`.
+
+## P0 merges (merger lane, 2026-10-15 18:10-18:45)
+- Merged into main (each: main merged into the branch first, build/merge_<lane>.dylib, unit mp/ui/mpmenu/pvp/trn/teams + rig smoke on one leased pair):
+  sockpath, steamstart, winkit (= steamstart-win 09cf1bc), seethrough (+ seethrough_pair), latejoin (+ fastjoin_pair off and on: PASS).
+- seethrough_pair reports FAIL on the "highest alpha" check: one sprite on other units stays at 1.0. The same result on the
+  pre-merge branch build (ccc33ba), so not a merge fault; the lowest alpha matches every step (Off, 30-90). Test check or extra sprite: open.
+- steamstart / winkit: no dylib change; launcher compiles; bat files not run (no wine run in P0).
+- myunits fe/ guard: merged as branch myunits-feguard 96efe6d only (NOT 38ef920 on myunits); test_custom_guard.py ALL PASS (18), unit + smoke green.
+- Pending: viewui (lane still working), weaponslot (no commits yet).
