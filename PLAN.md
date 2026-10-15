@@ -376,3 +376,22 @@ multiplayer tag next to the name of the save and then just put the players that 
   hidden once with the empty portrait bar (hud 0), then shown on the rerun: possible intermittent, watch in WP-HUD.
   seethrough_pair "highest alpha" FAIL explained: the 1.0 sprites are EmotionBubble icons with en=0 (disabled, not drawn): test check, not a bug.
 - weaponslot: no src change (verdict GAMEPLAY); its test-only commit is in ds_launcher main.
+
+## M4 SPLIT merged (lane m4split, 2026-10-15 22:40-23:45; details ext/m4split/NOTES.md)
+- Multiplayer API src/mp_api.h (mp_api_get -> mp_api_table, MASTER_PLAN 2.2 B + register_frame / register_save_keep / register_menu).
+  Every place multiplayer called FE / PvP by name now calls a registry at the same place, in the old order (FE, then PvP).
+  The menu helpers the FE / PvP windows use are exported (src/mpmenu_kit.h, only `static` removed).
+- `git mv`: src/fe -> custom/fe, src/pvp_* -> custom/pvp, PvP units / wiki / build -> custom/units (fe_menu.inc, pvp_ui.inc -> .c).
+  Custom Modes = custom-modes.dylib (loader module, SDK entry points) + custom-modes-mp.dylib (FE + PvP, loaded only when multiplayer
+  is active, linked to @rpath/multiplayer.dylib). Both are built by src/build.sh next to dsrig.dylib. The rig loads them like the
+  loader does (DSRIG_CUSTOM=0 = multiplayer alone). dsrig install name = @rpath/multiplayer.dylib. .gitignore: !/custom/, !/sdk/.
+- Windows: Custom Modes is compiled into the same DLL (-DCM_SAME_IMAGE; separate custom-modes.dll left to L3). Found: in the v11 DLL,
+  fe_menu.inc / pvp_ui.inc were #included raw, so the FE / PvP windows called Mac RVAs on Windows. Now they are translated.
+- Loader busy flag: ds_launcher branch m4-busy d473870 (pushed, not merged): mp_module.c -> dsl_set_session_busy while a game runs or
+  starts; loader build.sh archives custom/ + sdk/ and builds mods/custom-modes.
+- RELEASE TOOLS NOT CHANGED: release_gate.sh / release_all.sh / make_mp_app.sh ship dsrig.dylib only. Without custom-modes*.dylib
+  next to it, a kit has no FE / PvP. The release gate must add them.
+- Gate on build/merge_m4split (= shared build/ since 23:43; old one build/old_versions/dsrig-2026-10-15-2343-before-m4split.dylib):
+  unit net / mp_test / ui 530 / teams / mpmenu / trn / pvp 585 / FE custom guard ALL PASS; smoke 3/3; mp2 19 PASS 0 FAIL;
+  left_prompt 16 PASS 0 FAIL; PvP m4_van 7/7, m4_bring 8/8, m4_ui 9/9; FE dive 23/23 (dive_20261015-233336); multiplayer alone
+  smoke 3/3; prefs identical. Windows baselib.dll + module dll compile.
