@@ -2110,6 +2110,7 @@ enum { PL_HDR, PL_BODY, PL_SEE, PL_NAMES, PL_ADMIN, PL_STATUS, PL_NOTE, PL_BODYR
        PL_PINGS, PL_PINGSR, PL_PSOUND, PL_PSOUNDR, PL_PCHAT, PL_PCHATR, PL_VIEWS, PL_VIEWSR, PL_OFFS, PL_OFFSR, PL_OUTL, PL_OUTLR,
        PL_SPECT, PL_SPECTR,                                  /* host: spectators allowed (owner 2026-10-14) */
        PL_MINI, PL_MINIR, PL_MSIZE, PL_MSIZER,               /* spectator: mini overview shown / its size (8k) */
+       PL_FJOIN, PL_FJOINR,                                  /* Fast join (owner 2026-10-15): this copy's own mp loads */
        PL_COL0, PL_COLR0 = PL_COL0 + 7, PL_N = PL_COLR0 + 7 };
 #define PL_SETMAX 24                                         /* settings rows at most (each: label, value, < >) */
 static uintptr_t h_pl[PL_N], h_plate;                      /* h_plate: the panel frame */
@@ -2227,17 +2228,18 @@ static Obj layer_make(Obj tmpl, Obj parent, int canvas) {
 }
 static Obj layer_of_panel(void) { Obj hdr = u_gc_get(h_pl[PL_HDR]); return u_alive(hdr) ? u_tr_parent(u_tr(hdr)) : NULL; }
 static Obj layer_top(void) { Obj g = layer_of_panel(); return g ? u_tr_parent(g) : NULL; }
-int ui_panel_compact(void) { settings_load(); return uiset.compact; }   /* teamsfinish (dlsym): the Teams button follows it */
+int ui_panel_compact(void) { settings_load(); return uiset.compact; }
+int ui_fast_join(void) { settings_load(); return uiset.fast_join; }   /* mp_game.c (dlsym): "Fast join" cog row, mp_ui.json */   /* teamsfinish (dlsym): the Teams button follows it */
 /* the cog's rows, in order (lan_v10: + co-op markers, outline, other players' colours; host rows last). arg = the
    player of a colour row, else -1. Returns the count. */
 static int pl_is_label(int i) { return i == PL_SEE || i == PL_NAMES || i == PL_ADMIN || i == PL_UNITS || i == PL_TIPS || i == PL_CFADE || i == PL_CJOIN || i == PL_CHAT || i == PL_SIZE
-                                     || i == PL_PINGS || i == PL_PSOUND || i == PL_PCHAT || i == PL_VIEWS || i == PL_OFFS || i == PL_OUTL || i == PL_SPECT || i == PL_MINI || i == PL_MSIZE || (i >= PL_COL0 && i < PL_COL0 + 7); }
+                                     || i == PL_PINGS || i == PL_PSOUND || i == PL_PCHAT || i == PL_VIEWS || i == PL_OFFS || i == PL_OUTL || i == PL_SPECT || i == PL_MINI || i == PL_MSIZE || i == PL_FJOIN || (i >= PL_COL0 && i < PL_COL0 + 7); }
 static int pl_is_value(int i) { return i == PL_SEER || i == PL_NAMESR || i == PL_UNITSR || i == PL_ADMINR || i == PL_TIPSR || i == PL_CFADER || i == PL_CJOINR || i == PL_CHATR || i == PL_SIZER
-                                     || i == PL_PINGSR || i == PL_PSOUNDR || i == PL_PCHATR || i == PL_VIEWSR || i == PL_OFFSR || i == PL_OUTLR || i == PL_SPECTR || i == PL_MINIR || i == PL_MSIZER || (i >= PL_COLR0 && i < PL_COLR0 + 7); }
+                                     || i == PL_PINGSR || i == PL_PSOUNDR || i == PL_PCHATR || i == PL_VIEWSR || i == PL_OFFSR || i == PL_OUTLR || i == PL_SPECTR || i == PL_MINIR || i == PL_MSIZER || i == PL_FJOINR || (i >= PL_COLR0 && i < PL_COLR0 + 7); }
 static int set_rows(int *lab, int *val, int *arg) {
     static const int fixed[][2] = { { PL_SEE, PL_SEER }, { PL_NAMES, PL_NAMESR }, { PL_OUTL, PL_OUTLR }, { PL_TIPS, PL_TIPSR }, { PL_SIZE, PL_SIZER },
         { PL_CFADE, PL_CFADER }, { PL_CJOIN, PL_CJOINR }, { PL_CHAT, PL_CHATR },
-        { PL_PINGS, PL_PINGSR }, { PL_PSOUND, PL_PSOUNDR }, { PL_PCHAT, PL_PCHATR }, { PL_VIEWS, PL_VIEWSR }, { PL_OFFS, PL_OFFSR } };
+        { PL_PINGS, PL_PINGSR }, { PL_PSOUND, PL_PSOUNDR }, { PL_PCHAT, PL_PCHATR }, { PL_VIEWS, PL_VIEWSR }, { PL_OFFS, PL_OFFSR }, { PL_FJOIN, PL_FJOINR } };
     int n = 0;
     for (size_t k = 0; k < sizeof fixed / sizeof fixed[0]; k++) { lab[n] = fixed[k][0]; val[n] = fixed[k][1]; arg[n++] = -1; }
     if (spect()) { lab[n] = PL_MINI; val[n] = PL_MINIR; arg[n++] = -1; lab[n] = PL_MSIZE; val[n] = PL_MSIZER; arg[n++] = -1; }
@@ -2472,6 +2474,8 @@ static void plist_frame(void) {
       for (int k = 0; k < 5; k++) { snprintf(row, sizeof row, "<color=#a69085>%s</color>", onoff[k].txt); plist_set(onoff[k].lab, row);
                                     plist_set(onoff[k].val, vals[k] ? "<color=#ccbeb8>On</color>" : "<color=#ccbeb8>Off</color>"); }
       plist_set(PL_OUTL, "<color=#a69085>Unit outline</color>");
+      plist_set(PL_FJOIN, "<color=#a69085>Fast join</color>");
+      plist_set(PL_FJOINR, uiset.fast_join ? "<color=#ccbeb8>On</color>" : "<color=#ccbeb8>Off</color>");
       plist_set(PL_MINI, "<color=#a69085>Mini overview (O)</color>");
       plist_set(PL_MINIR, uiset.mini ? "<color=#ccbeb8>Show</color>" : "<color=#ccbeb8>Hide</color>");
       plist_set(PL_MSIZE, "<color=#a69085>Overview size</color>");
@@ -2755,6 +2759,7 @@ static void plist_mouse(void) {
                 *f = !*f; settings_save();
             }
             else if (i == PL_MINI) { uiset.mini = !uiset.mini; settings_save(); }
+            else if (i == PL_FJOIN) { uiset.fast_join = !uiset.fast_join; settings_save(); rig_log("ui: fast join %s", uiset.fast_join ? "on" : "off"); }
             else if (i == PL_MSIZE) { uiset.mini_size = (uiset.mini_size + (k % 2 ? 1 : 2)) % 3; settings_save(); }
             else if (i == PL_UNITS) units_step(k % 2 ? 1 : -1);
             else if (i == PL_CFADE || i == PL_CJOIN || i == PL_CHAT) chat_step(i, k % 2 ? 1 : -1);
@@ -4522,7 +4527,7 @@ static char *ui_coop_cmd(const char *line) {
         char k2[24] = ""; double v = 0; jstr(line, "key", k2, sizeof k2); jnum(line, "value", &v);
         int *f = !strcmp(k2, "pings") ? &uiset.pings : !strcmp(k2, "ping_sound") ? &uiset.ping_sound : !strcmp(k2, "ping_chat") ? &uiset.ping_chat
                : !strcmp(k2, "views") ? &uiset.views : !strcmp(k2, "offscreen") ? &uiset.offscreen : !strcmp(k2, "outline") ? &uiset.outline
-               : !strcmp(k2, "see_through") ? &uiset.see_through : NULL;
+               : !strcmp(k2, "see_through") ? &uiset.see_through : !strcmp(k2, "fast_join") ? &uiset.fast_join : NULL;
         if (f) { *f = (int)v; settings_save(); force_world = 1; if (f == &uiset.outline) world_frame(1); } else rc = -1;
     }
     else if (!strcmp(a, "chatlink")) rc = ui_chat_link_click(1 + ((int)pl << 8 | ((int)x & 255))) ? 0 : -1;   /* chatlink {player, x: id}: the chat line's click */
@@ -4956,6 +4961,7 @@ static void tips_frame(void) {
             { PL_CFADE, "Chat Fade Time", "How long a chat message stays on screen (3 to 120 seconds). Press Enter to see the recent messages again." },
             { PL_CJOIN, "Join and Leave Lines", "Shows a chat line when a player joins, leaves or reconnects." },
             { PL_CHAT, "Chat", "Turns the chat on or off on your screen." },
+            { PL_FJOIN, "Fast Join", "On: your loading screen ends as soon as the world is ready, without the game's 1.5 to 3.5 second settle wait. Joins, resyncs and reloads finish sooner; the first moments can stutter. Only your own loads change, never the game." },
             { PL_UNITS, "Units per Player", "The most units each player can control (1, 2, 3, 4 or 6). Changes apply to everyone at once." },
             { PL_ADMIN, "Admin Mode", "On: you can order every unit and release the units of absent players." },
             { PL_SPECT, "Spectators", "On: anyone you invite can join to watch (at most 8). They see everything, can chat and ping, own no units, and cannot pause or vote. Off: nobody can watch; turning it off removes the spectators (you are asked first)." } };
