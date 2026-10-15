@@ -357,4 +357,5 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
 - seethrough_pair reports FAIL on the "highest alpha" check: one sprite on other units stays at 1.0. The same result on the
   pre-merge branch build (ccc33ba), so not a merge fault; the lowest alpha matches every step (Off, 30-90). Test check or extra sprite: open.
 - steamstart / winkit: no dylib change; launcher compiles; bat files not run (no wine run in P0).
-- Pending: viewui (lane still working), weaponslot (no commits yet), myunits fe/ guard (lane stopped; C1/C2 take it over).
+- myunits fe/ guard: merged as branch myunits-feguard 96efe6d only (NOT 38ef920 on myunits); test_custom_guard.py ALL PASS (18), unit + smoke green.
+- Pending: viewui (lane still working), weaponslot (no commits yet).
