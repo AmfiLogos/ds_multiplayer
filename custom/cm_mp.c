@@ -11,15 +11,18 @@
 #include <stdio.h>
 #include <string.h>
 
-static const DSLHost *H;
-static DSLPlugin *ME;
+static const DSLHost *H __attribute__((unused));
+static DSLPlugin *ME __attribute__((unused));
 
-/* hooks of this module go through the loader's engine as Custom Modes' own (the rig host maps them to rig_hook) */
+#ifndef CM_SAME_IMAGE
+/* hooks of this module go through the loader's engine as Custom Modes' own (the rig host maps them to rig_hook).
+   CM_SAME_IMAGE (Windows: one DLL with multiplayer): multiplayer's own rig_hook is used. */
 int rig_hook(uintptr_t rva, void *repl, void **orig, const char *who) {
     int r = H && H->hook_rva ? H->hook_rva(ME, rva, repl, orig, who) : -1;
     if (r) rig_log("%s: hook %#lx refused (custom-modes)", who, (unsigned long)rva);
     return r;
 }
+#endif
 
 /* Foreign Expedition (fe/fe_game.c, fe/fe_menu.c) */
 void fe_on_start(const uint8_t *payload, size_t len);
