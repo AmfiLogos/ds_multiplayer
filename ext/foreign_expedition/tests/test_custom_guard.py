@@ -16,7 +16,9 @@ FIX = os.path.join(ROOT, 'fixtures')
 if not os.path.exists(os.path.join(FIX, 'home_Elven.json')):
     FIX = os.path.expanduser('~/ds_multiplayer/ext/foreign_expedition/fixtures')
 HOME_P, NORM_P = os.path.join(FIX, 'home_Elven.json'), os.path.join(FIX, 'hub_Moonlight_normal.json')
-BASE_SRC = os.environ.get('FE_BASE_SRC', os.path.expanduser('~/ds_multiplayer/src/fe'))   # main: before the guard
+def fe_dir(repo):                                     # M4 split: FE moved from src/fe to custom/fe
+    return os.path.join(repo, 'custom', 'fe') if os.path.isdir(os.path.join(repo, 'custom', 'fe')) else os.path.join(repo, 'src', 'fe')
+BASE_SRC = os.environ.get('FE_BASE_SRC', fe_dir(os.path.expanduser('~/ds_multiplayer')))   # main: before the guard
 BUILD = os.path.join(ROOT, 'build'); os.makedirs(BUILD, exist_ok=True)
 CLI, BASE = os.path.join(BUILD, 'fe_cli'), os.path.join(BUILD, 'fe_cli_base')
 OUT = os.path.join(ROOT, 'out', 'test_custom_guard_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
@@ -48,7 +50,7 @@ def dump(obj, name):
     json.dump(obj, open(o(name), 'w')); return o(name)
 
 
-build(os.path.join(REPO, 'src', 'fe'), CLI)
+build(fe_dir(REPO), CLI)
 build(BASE_SRC, BASE)
 if fails: sys.exit(1)
 HOME_SHA = sha(HOME_P)

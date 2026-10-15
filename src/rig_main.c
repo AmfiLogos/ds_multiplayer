@@ -9,7 +9,7 @@
 #include "ui_mp.h"
 #include "trn.h"
 void ui_teams_install(void);
-void pvp_install(void);
+#include "../sdk/dsl_sdk.h"
 #include <mach-o/dyld.h>
 #include <mach-o/loader.h>
 #include <dlfcn.h>
@@ -53,6 +53,46 @@ static void uuid_of(const struct mach_header_64 *h, char *out, size_t n) {
     }
 }
 
+/* ---- Custom Modes (custom-modes.dylib, M4 split): loaded the way the loader loads a module: dlopen RTLD_LOCAL, then its
+   dsl_module_load / dsl_module_early with a host that has what the rig can give (hooks through rig_hook, module_loaded:
+   "multiplayer" = this dylib). File: DSRIG_CUSTOM=<path>, else custom-modes.dylib next to this dylib; DSRIG_CUSTOM=0 = none. */
+struct DSLPlugin { int unused; };
+static struct DSLPlugin cm_self;
+static char cm_dir[1024], cm_ga[1024];
+static void cm_log(DSLPlugin *self, const char *fmt, ...) {
+    (void)self; char b[1200]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap);
+    rig_log("custom-modes: %s", b);
+}
+static const char *cm_id(DSLPlugin *self) { (void)self; return "custom-modes"; }
+static void *cm_rva(uintptr_t rva) { return (void *)(ds_base + rva); }
+static int cm_hook_rva(DSLPlugin *self, uintptr_t rva, void *repl, void **orig, const char *name) { (void)self; return rig_hook(rva, repl, orig, name); }
+static const char *cm_module_dir(DSLPlugin *self) { (void)self; return cm_dir; }
+static const char *cm_ga_path(void) { return cm_ga[0] ? cm_ga : NULL; }
+static int cm_module_loaded(const char *id) { return id && (!strcmp(id, "multiplayer") || !strcmp(id, "custom-modes")); }
+static DSLHost cm_host = { .api_version = DSL_API_VERSION, .size = sizeof(DSLHost), .game_build = RIG_BUILD, .log = cm_log,
+    .plugin_id = cm_id, .rva = cm_rva, .hook_rva = cm_hook_rva, .module_dir = cm_module_dir, .ga_path = cm_ga_path,
+    .module_loaded = cm_module_loaded };
+static void custom_modes_start(void) {
+    const char *e = getenv("DSRIG_CUSTOM");
+    if (e && !strcmp(e, "0")) { rig_log("custom-modes: off (DSRIG_CUSTOM=0)"); return; }
+    char p[1200];
+    if (e && *e) snprintf(p, sizeof p, "%s", e);
+    else { Dl_info di; if (!dladdr((void *)rig_log, &di) || !di.dli_fname) return; snprintf(p, sizeof p, "%s", di.dli_fname);
+           char *sl = strrchr(p, '/'); if (sl) sl[1] = 0; else p[0] = 0; strlcat(p, "custom-modes.dylib", sizeof p); }
+    snprintf(cm_dir, sizeof cm_dir, "%s", p); { char *sl = strrchr(cm_dir, '/'); if (sl) *sl = 0; }
+    if (access(p, R_OK)) { rig_log("custom-modes: %s not found: Foreign Expedition and PvP are off", p); return; }
+    void *h = dlopen(p, RTLD_NOW | RTLD_LOCAL);
+    if (!h) { rig_log("custom-modes: dlopen failed: %s", dlerror()); return; }
+    const uint32_t *api = dlsym(h, "dsl_plugin_api_version");
+    dsl_module_load_fn ld = (dsl_module_load_fn)dlsym(h, "dsl_module_load");
+    dsl_module_early_fn early = (dsl_module_early_fn)dlsym(h, "dsl_module_early");
+    if (!api || *api < 1 || *api > DSL_API_VERSION) { rig_log("custom-modes: not a module (API %d)", api ? (int)*api : -1); return; }
+    cm_host.ga_base = ds_base;
+    int r = ld ? ld(&cm_host, &cm_self) : 0;
+    if (!r && early) r = early(&cm_host, &cm_self);
+    rig_log("custom-modes: %s started (rc %d)", p, r);
+}
+
 /* ---- hooks */
 static void (*o_update)(void *, void *);
 static void my_update(void *self, void *mi) {
@@ -82,6 +122,7 @@ static void on_image(const struct mach_header *mh, intptr_t slide) {
     if (strcmp(uuid, RIG_GA_UUID)) { rig_log("GameAssembly uuid %s is not build %s: rig inactive", uuid, RIG_BUILD); return; }
     ds_base = (uintptr_t)mh;
     rig_log("GameAssembly %s mapped at %p (build %s)", di.dli_fname, (void*)ds_base, RIG_BUILD);
+    snprintf(cm_ga, sizeof cm_ga, "%s", di.dli_fname);
     int bad = 0;
     bad |= rig_hook(0xD1B648, (void*)my_update, (void**)&o_update, "MainFlow.Update");
     bad |= rig_hook(0x507B74C, (void*)my_pdp, (void**)&o_pdp, "Application.get_persistentDataPath");
@@ -97,7 +138,7 @@ static void on_image(const struct mach_header *mh, intptr_t slide) {
     ui_install();                       /* multiplayer UI (title + campaign) */
     ui_teams_install();                 /* Teams UI hooks at load (ui_teams_frame keeps a late fallback) */
     mpmenu_install();                   /* Multiplayer menu: title, lobby, Esc entries */
-    pvp_install();                      /* PvP lane (ext/pvp): hostility hooks */
+    custom_modes_start();               /* Custom Modes (FE, PvP: its own dylib, registers through mp_api.h) */
     char sp[1100]; snprintf(sp, sizeof sp, "%s/ctl.sock", rig_dir);
     rig_sock_start(sp);
 }

@@ -1,5 +1,6 @@
 /* mp core: session, tick gate, command dispatch, fingerprint, resync, speed/pause votes.
  * Game access only through mp_game_api. See mp.h and MP_NOTES.md. */
+#include "mp_api.h"
 #include "mp.h"
 #include <stdarg.h>
 #include <stdio.h>
@@ -294,11 +295,7 @@ static void on_cmd(const dsnet_cmd *cmd, void *user) {
     case DSNET_GAME_ORDER: run_order(s, cmd); s->step_orders++; break;
     case DSNET_JOIN_POINT: if (dsnet_is_host(s->c)) host_upload(s); break;
     case DSNET_PATCH_POINT: if (dsnet_is_host(s->c)) host_patch(s); break;   /* guests: dsnet stops after it */
-    case DSNET_FE_START: { extern void fe_on_start(const uint8_t *, size_t); fe_on_start(cmd->payload, cmd->len);
-        /* PvP own units (ext/pvp) use the same command; each side acts only on its own run id */
-        extern void pvp_on_units_start(const uint8_t *, size_t) __attribute__((weak_import));
-        if (pvp_on_units_start) pvp_on_units_start(cmd->payload, cmd->len);
-        break; }
+    case DSNET_FE_START: mpx_sim_cmd(cmd->type, cmd->payload, cmd->len); break;   /* Custom Modes (mp_api register_sim_cmd): FE, then PvP own units; each acts only on its own run id */
     case DSNET_PAUSE_ALL:
         if (s->cfg.auto_resume) s->resume_pending = 1;
         mlog("auto pause at step %u", cmd->tick);

@@ -1,5 +1,6 @@
-/* pvp_ui.inc - PvP windows and HUD (M4, plan research/plan_pvp.md 4.7), included by mpmenu.c (ext/pvp copy only) so it
- * uses the menu's own building blocks: stock Box frame, Cinzel titles, the body font without outline, SubUI_SystemMenuButton
+/* pvp_ui.c - PvP windows and HUD (plan research/plan_pvp.md 4.7; Custom Modes, custom-modes-mp.dylib). Included by mpmenu.c
+ * until the M4 split; now it uses the menu's exported building blocks (src/mpmenu_kit.h) and runs through the menu hooks
+ * (pvp_menu_hooks, registered by custom/cm_mp.c): stock Box frame, Cinzel titles, the body font without outline, SubUI_SystemMenuButton
  * clones (the click hook knows them), the game's tooltip window (tip_try). Rules and state: pvp_game.c (pvp_ui_* API).
  *  - Esc menu, in a multiplayer game: "PvP Match" (clone of Report bug, above Quit) opens the PvP window.
  *  - PvP window (on the Esc menu's root, its column hidden, like the lobby): Blue | Red player columns (host: click a
@@ -7,8 +8,16 @@
  *  - HUD while a match runs: a copy of the boss health bar (BossHUDView): "Blue 1 - 0 Red  Round 2  1:23", the two bars =
  *    each team's HP left. Planning pause: a Ready button under it.
  *  - Result window when the match is over and the world is back: winner, score, the rounds. */
+#include "mpmenu_kit.h"
+#include "mp.h"
+#include "mp_game.h"
+#include "net/dsnet.h"
 #include "pvp_core.h"
 #include "fe/fe_save.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
 const pvp_state *pvp_ui_state(void) __attribute__((weak_import));
 char *pvp_units_exec(const char *cmd, const char *line) __attribute__((weak_import));
 int pvp_units_received(void) __attribute__((weak_import));
@@ -700,3 +709,7 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     bput(&b, "]}");
     return b.p;
 }
+
+/* ---- menu hooks (mpmenu.c calls them where this file was called before the split) */
+static const mp_menu_hooks pvp_hooks = { .tips = pvp_ui_tips, .frame_late = pvp_ui_frame, .press = pvp_ui_press, .exec = pvp_ui_exec };
+const mp_menu_hooks *pvp_menu_hooks(void) { return &pvp_hooks; }

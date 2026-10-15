@@ -1,9 +1,8 @@
+#include "mp_api.h"
 #include "mpmenu.h"
 // Rig commands, run on Unity's main thread from the MainFlow.Update hook.
 // Every address and offset: ~/ds_multiplayer/research/rig_access_spec.md (build 25846389, arm64).
 #include "rig.h"
-char *pvp_exec(const char *cmd, const char *line);   /* PvP lane (ext/pvp, pvp_game.c) */
-void pvp_frame(void);
 #include "mp_game.h"
 #include "ui_mp.h"
 #include "trn.h"
@@ -170,7 +169,7 @@ void rig_frame(void *mainflow) {
     mp_game_poll();                     /* Steam joiner bridge / invites (title screen too) */
     ui_frame();                         /* multiplayer UI: status line, owner tags (title screen too) */
     mpmenu_frame();                     /* Multiplayer menu (title screen too) */
-    pvp_frame();                        /* PvP lane: order handler on the current session */
+    mpx_frame(MP_FRAME_ALWAYS);         /* Custom Modes (mp_api register_frame): PvP order handler, FE UI flags */
 }
 
 /* ---------------------------------------------------------------- commands */
@@ -458,17 +457,15 @@ static char *c_screenshot(const char *line) {
     return b.p;
 }
 
-char *fe_exec(const char *cmd, const char *line);        /* fe/fe_game.c (Foreign Expedition) */
 char *rig_exec(const char *line) {
     char cmd[64] = "";
     if (!jstr(line, "cmd", cmd, sizeof cmd)) return err("no cmd");
-    if (!strncmp(cmd, "fe_", 3)) { char *fr = fe_exec(cmd, line); if (fr) return fr; }
+    { char *xr = mpx_rig_cmd(cmd, line); if (xr) return xr; }       /* Custom Modes test commands (fe_*, pvp_*: mp_api register_rig_cmd) */
     char *dr = rig_det_exec(cmd, line); if (dr) return dr;
     if (!strncmp(cmd, "mpm_", 4)) { char *mm = mpmenu_exec(cmd, line); if (mm) return mm; }
     char *mr = mp_game_exec(cmd, line); if (mr) return mr;
     if (!strncmp(cmd, "trn_", 4)) { char *tr = trn_exec(cmd, line); if (tr) return tr; }
     if (!strncmp(cmd, "ui_", 3)) { char *ur = ui_exec(cmd, line); if (ur) return ur; }
-    if (!strncmp(cmd, "pvp_", 4)) { char *pv = pvp_exec(cmd, line); if (pv) return pv; }   /* PvP lane (ext/pvp) */
     if (!strcmp(cmd, "ui_map_vote")) { double a = 1; jnum(line, "accept", &a); Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", ui_debug_map_vote(a != 0)); return b.p; }
     if (!strncmp(cmd, "ord_", 4)) { char *orr = ord_smoke_exec(cmd, line); if (orr) return orr; }
     if (!strcmp(cmd, "status")) return c_status();

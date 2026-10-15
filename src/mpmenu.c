@@ -7,7 +7,7 @@
 //  In game: the Esc menu gets "Invite friends" (host) and "Leave multiplayer".
 // Clicks: two hooks, SubUI_SystemMenuButton.OnPressButton (Esc-menu clones) and SubUI_TitleMenuButton.OnPointerClick
 // (title clones; the ui lane gave the title screen to this file). Views are found with FindObjectOfType (no Init hooks).
-#include "fe/fe_ui_api.h"
+#include "mpmenu_kit.h"
 #include "mpmenu.h"
 #include "mp_fog.h"
 #include "mp_game.h"
@@ -30,7 +30,6 @@
 /* Typed calls are class-checked (lead 2026-10-13, after a Graphic.set_color on a Transform crashed a copy): mm_is(o, K_x)
  * = il2cpp_object_get_class 0x6F96C0 + il2cpp_class_is_assignable_from 0x6F8BE0; a mismatch is logged once and the call
  * is skipped (its default value is used). */
-enum { K_RT, K_TR, K_COMP, K_GO, K_TMP, K_FIELD, K_GR, K_IMG, K_BEH, K_SEL, K_SMB, K_SMV, K_TMV, K_CNV, K_N };
 static const struct { const char *ns, *name; } mm_kinds[K_N] = {
     { "UnityEngine", "RectTransform" },
     { "UnityEngine", "Transform" },
@@ -47,8 +46,8 @@ static const struct { const char *ns, *name; } mm_kinds[K_N] = {
     { "Refactor.UI", "TitleMenuView" },
     { "Refactor.UI", "CommonNoticeView" }
 };
-static void *class_by_name(const char *ns, const char *name);
-static int mm_is(Obj o, int k) {
+void *class_by_name(const char *ns, const char *name);
+int mm_is(Obj o, int k) {
     static void *kc[K_N]; static int warned[K_N];
     if (!o || !F(0x50FAF88, bool (*)(Obj, void *))(o, NULL)) return 0;    /* destroyed (scene load): its calls throw NRE (u_alive) */
     if (!kc[k]) kc[k] = class_by_name(mm_kinds[k].ns, mm_kinds[k].name);
@@ -58,25 +57,7 @@ static int mm_is(Obj o, int k) {
     return 0;
 }
 /* ---------------------------------------------------------------- Unity / il2cpp (RVAs as ui_game.c, ~/ds_multibar game.h) */
-static inline Obj u_str(const char *s) { return F(0x6F9738, Obj (*)(const char *))(s); }
-static inline uintptr_t u_gc_new(Obj o) { return o ? F(0x6F9540, uintptr_t (*)(Obj, bool))(o, false) : 0; }
-static inline Obj u_gc_get(uintptr_t h) { return h ? F(0x6F9598, Obj (*)(uintptr_t))(h) : NULL; }
-static inline void u_gc_free(uintptr_t h) { if (h) F(0x6F95E4, void (*)(uintptr_t))(h); }
-static inline bool u_alive(Obj o) { return o && F(0x50FAF88, bool (*)(Obj, void *))(o, NULL); }
-static inline Obj u_go(Obj comp) { return (mm_is(comp, K_COMP) ? F(0x50ED970, Obj (*)(Obj, void *))(comp, NULL) : NULL); }
-static inline Obj u_tr(Obj comp) { return (mm_is(comp, K_COMP) ? F(0x50ED864, Obj (*)(Obj, void *))(comp, NULL) : NULL); }
-static inline void u_go_active(Obj go, bool v) { if (go) (mm_is(go, K_GO) ? F(0x50F3520, void (*)(Obj, bool, void *))(go, v, NULL) : (void)0); }
-static inline bool u_go_active_self(Obj go) { return go && (mm_is(go, K_GO) ? F(0x50F3638, bool (*)(Obj, void *))(go, NULL) : false); }
-static inline void u_active(Obj comp, bool v) { if (u_alive(comp) && u_go_active_self(u_go(comp)) != v) u_go_active(u_go(comp), v); }
-static inline bool u_on(Obj comp) { return u_alive(comp) && u_go_active_self(u_go(comp)); }
-static inline Obj u_instantiate(Obj orig, Obj parent_tr) { return F(0x50FC30C, Obj (*)(Obj, Obj, void *))(orig, parent_tr, NULL); }
-static inline Obj u_tr_parent(Obj t) { return (mm_is(t, K_TR) ? F(0x510992C, Obj (*)(Obj, void *))(t, NULL) : NULL); }
-static inline int u_sibling(Obj t) { return (mm_is(t, K_TR) ? F(0x510F070, int (*)(Obj, void *))(t, NULL) : 0); }
-static inline void u_set_sibling(Obj t, int i) { (mm_is(t, K_TR) ? F(0x510EE44, void (*)(Obj, int, void *))(t, i, NULL) : (void)0); }
-typedef struct { float x, y; } V2;
-typedef struct { float x, y, w, h; } RectF2;
-typedef struct { float x, y, z; } V3;
-static int rect_of(Obj comp, float r[4]);
+int rect_of(Obj comp, float r[4]);
 static double mono_s(void);
 static const char *palette_color(int idx);
 static const char *cls_name(Obj o) { return o ? *(const char **)((char *)*(void **)o + 0x10) : ""; }
@@ -86,7 +67,7 @@ static Obj tmp_get(Obj t) {
     void *k = *(void **)t;
     return (*(Obj (**)(Obj, void *))((char *)k + 0x548))(t, *(void **)((char *)k + 0x550));
 }
-static void tmp_set(Obj t, const char *s) {
+void tmp_set(Obj t, const char *s) {
     if (!u_alive(t) || !mm_is(t, K_TMP)) return;
     if (!strcmp(cls_name(t), "DASText")) AT(t, 0x7C0, bool) = false;     /* DASText._useTextKey: keep our raw text */
     void *k = *(void **)t;
@@ -97,7 +78,7 @@ static void tmp_set_obj(Obj t, Obj s) {                                     /* t
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, s, *(void **)((char *)k + 0x560));
 }
-static void str_utf8(Obj s, char *out, size_t cap) {          /* ASCII-safe copy of an il2cpp string (read-back) */
+void str_utf8(Obj s, char *out, size_t cap) {          /* ASCII-safe copy of an il2cpp string (read-back) */
     size_t n = 0; if (cap) out[0] = 0;
     if (!s || !cap) return;
     int32_t len = AT(s, 0x10, int32_t); const uint16_t *c = (const uint16_t *)((char *)s + 0x14);
@@ -105,16 +86,15 @@ static void str_utf8(Obj s, char *out, size_t cap) {          /* ASCII-safe copy
     out[n] = 0;
 }
 /* class lookup over the loaded assemblies (il2cpp API exports) + FindObjectOfType(Type, includeInactive) */
-static void *class_by_name(const char *ns, const char *name);
-typedef struct { float r, g, b, a; } Col;
-static Obj image_of(Obj comp) {                                            /* GetComponent(typeof(UnityEngine.UI.Image)) */
+void *class_by_name(const char *ns, const char *name);
+Obj image_of(Obj comp) {                                            /* GetComponent(typeof(UnityEngine.UI.Image)) */
     static void *k; if (!k) k = class_by_name("UnityEngine.UI", "Image");
     if (!k || !u_alive(comp)) return NULL;
     Obj ty = F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k));
     return (mm_is(comp, K_COMP) ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(comp, ty, NULL) : NULL);
 }
 
-static void *class_by_name(const char *ns, const char *name) {
+void *class_by_name(const char *ns, const char *name) {
     void *dom = F(0x6F91F4, void *(*)(void))();
     size_t n = 0;
     void **as = F(0x6F9200, void **(*)(void *, size_t *))(dom, &n);
@@ -125,7 +105,7 @@ static void *class_by_name(const char *ns, const char *name) {
     }
     return NULL;
 }
-static Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
+Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
     if (!*kcache) *kcache = class_by_name(ns, name);
@@ -142,11 +122,14 @@ static Obj find_view(uintptr_t *h, void **k, const char *ns, const char *name) {
 int ui_parse_address(const char *in, char *host, size_t host_cap, uint16_t *port, uint16_t def_port);   /* ui_model.c */
 
 /* ---------------------------------------------------------------- state */
-static mpm_model M;
+mpm_model M;
+/* Custom Modes hooks (mpmenu_register_hooks, mpmenu_kit.h): the windows that were included here before the M4 split */
+#define MAX_HOOKS 8
+static mp_menu_hooks hooks[MAX_HOOKS]; static int nhooks;
 static int host_failed, pending_click;
 /* title view: TitleMenuView _continueButton +0x30 .. _quitButton +0x60, _loadCampaignButton +0x40, _creditButton +0x50 */
 static uintptr_t h_title; static void *k_title;
-static uintptr_t h_tb[MPB_COUNT];                       /* title clones (SubUI_TitleMenuButton, _buttonName +0x130) */
+uintptr_t h_tb[MPB_COUNT];                       /* title clones (SubUI_TitleMenuButton, _buttonName +0x130) */
 static uintptr_t h_title_built;                         /* view the clones belong to */
 static int stock_hidden;
 static uintptr_t h_field, h_cs; static void *k_cs;           /* address field: clone of the new-campaign name field */
@@ -176,20 +159,19 @@ static Obj comp_of(Obj any, const char *ns, const char *cls) {             /* Ge
     return ty && u_alive(any) ? (mm_is(any, K_COMP) ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(any, ty, NULL) : NULL) : NULL;
 }
 /* stock assets by name: sprites of the v2 spec, the Cinzel font. Scanned once, again every 300 frames while one is missing */
-enum { S_FRAME, S_COG, S_TOG_ON, S_TOG_OFF, S_PREV, S_NEXT, S_TGL_N, S_TGL_S, S_RECRUIT, S_BOTTOM, S_BOX, S_DIV2, S_DIV, S_SLOT1, S_SLOT2, S_NBTN, S_CHK_N, S_CHK_C, S_N };
 static const char *spr_name[S_N] = { "topLineButton_Frame1", "ITEM_CogWheel", "ListToggle_On", "ListToggle_Off", "ArrrowIcon_Previous",
     "ArrrowIcon_Next", "ToggleButton_Normal", "ToggleButton_Selected", "RecruitButton", "BottomButton", "Box", "Devider_Detail2",
     "Icon_Devider", "Slot1", "Slot2", "Button_Normal", "CheckBox_Normal", "CheckBox_Checked" };
 static uintptr_t h_spr[S_N], h_cinzel, h_cog_built;      /* h_cog_built: the runtime cog (cog_built), not the stock one */
-static int64_t frames;
+int64_t frames;
 static Obj popup_prefab(int type);
 static void cog_from_bundles(void);
 static int cog_built(void);
-static void assets_scan_now(void);
+void assets_scan_now(void);
 static int64_t scan_last = -100000;
-static int scan_done, scans;
+int scan_done; static int scans;
 static void assets_scan(void) { if (!scan_done && frames - scan_last >= 300 && scans < 30) assets_scan_now(); }   /* at most 30 scans */
-static void assets_scan_now(void) {
+void assets_scan_now(void) {
     scan_last = frames; scans++;
     popup_prefab(8); popup_prefab(2); popup_prefab(13);                     /* load the Recruit / Expedition / Task Planner prefabs: their sprites too */
     static void *mi; if (!mi) mi = mth("UnityEngine", "Resources", "FindObjectsOfTypeAll", 1);
@@ -277,7 +259,7 @@ static void img_default_material(Obj im) {               /* a runtime texture: t
  * on this UI (tested 2026-10-13), so the art is rebuilt from the UI's own plain rects, which always draw. */
 static const struct { uint8_t x, y, w, c; } cog_runs[] = { {7,2,3,0}, {3,3,3,0}, {7,3,1,0}, {8,3,1,2}, {9,3,1,0}, {11,3,3,0}, {3,4,1,0}, {4,4,2,2}, {6,4,1,0}, {7,4,1,1}, {8,4,1,2}, {9,4,1,1}, {10,4,1,0}, {11,4,2,2}, {13,4,1,0}, {3,5,1,0}, {4,5,1,1}, {5,5,7,2}, {12,5,1,1}, {13,5,1,0}, {4,6,1,0}, {5,6,2,2}, {7,6,3,1}, {10,6,2,2}, {12,6,1,0}, {2,7,2,0}, {4,7,1,1}, {5,7,1,2}, {6,7,1,1}, {7,7,3,0}, {10,7,1,1}, {11,7,1,2}, {12,7,3,0}, {2,8,1,0}, {3,8,3,2}, {6,8,1,1}, {7,8,1,0}, {9,8,1,0}, {10,8,1,1}, {11,8,3,2}, {14,8,1,0}, {2,9,2,0}, {4,9,1,1}, {5,9,1,2}, {6,9,1,1}, {7,9,3,0}, {10,9,1,1}, {11,9,1,2}, {12,9,1,1}, {13,9,2,0}, {4,10,1,0}, {5,10,2,2}, {7,10,3,1}, {10,10,2,2}, {12,10,1,0}, {3,11,1,0}, {4,11,2,1}, {6,11,5,2}, {11,11,2,1}, {13,11,1,0}, {3,12,1,0}, {4,12,2,1}, {6,12,2,0}, {8,12,1,1}, {9,12,2,0}, {11,12,2,1}, {13,12,1,0}, {3,13,3,0}, {7,13,1,0}, {8,13,1,1}, {9,13,1,0}, {11,13,3,0}, {7,14,3,0} };
 static const Col cog_cols[] = { {0.133f,0.125f,0.145f,1.000f}, {0.482f,0.408f,0.435f,1.000f}, {0.682f,0.624f,0.600f,1.000f} };
-static Obj mk_img(Obj tpl_img, Obj parent_tr, int sprite, Col c, float x, float y, float w, float h);
+Obj mk_img(Obj tpl_img, Obj parent_tr, int sprite, Col c, float x, float y, float w, float h);
 static Obj mk_pixel_cog(Obj tpl_img, Obj parent_tr, float x, float y, float size) {
     Obj box = mk_img(tpl_img, parent_tr, -1, (Col){ 0, 0, 0, 0 }, x, y, size, size);
     if (!box) return NULL;
@@ -296,7 +278,7 @@ static Col spr_fallback(int k) {
     }
 }
 /* RectTransform: centre anchors + pivot, size, position from the parent's centre (y up) */
-static void place(Obj comp, float x, float y, float w, float h) {
+void place(Obj comp, float x, float y, float w, float h) {
     Obj rt = u_tr(comp); if (!mm_is(rt, K_RT)) return;
     F(0x5106B64, void (*)(Obj, V2, void *))(rt, (V2){ 0.5f, 0.5f }, NULL);  /* anchorMin */
     F(0x5106D48, void (*)(Obj, V2, void *))(rt, (V2){ 0.5f, 0.5f }, NULL);  /* anchorMax */
@@ -322,7 +304,7 @@ static void row_height(Obj comp, float w, float h) {                       /* a 
     }
 }
 static void img_default_material(Obj im);
-static void img_set(Obj im, Obj sprite, Col c) {                          /* sprite (sliced) + tint; never a click target */
+void img_set(Obj im, Obj sprite, Col c) {                          /* sprite (sliced) + tint; never a click target */
     if (!mm_is(im, K_IMG)) return;
     if (sprite && sprite == u_gc_get(h_cog_built)) img_default_material(im);   /* runtime sprite: default UI material */
     static void *mt; if (!mt) mt = mth("UnityEngine.UI", "Image", "set_type", 1);
@@ -366,7 +348,7 @@ static void txt_body(Obj t) {                                             /* the
     static void *ms; if (!ms) ms = mth("TMPro", "TMP_Text", "set_fontSharedMaterial", 1);
     if (ms) MCALL(ms, void, Obj, Obj, const void *)(t, m, ms);
 }
-static void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
+void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
     if (!mm_is(t, K_TMP)) return;
     Obj f = cinzel ? u_gc_get(h_cinzel) : NULL;
     if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);
@@ -378,11 +360,9 @@ static void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
     F(0x4F0C254, void (*)(Obj, bool, void *))(t, true, NULL);
     F(0x5260348, void (*)(Obj, bool, void *))(t, false, NULL);             /* raycastTarget off */
 }
-static const Col C_MAIN = { 0.8f, 0.745f, 0.722f, 1 }, C_SUB = { 0.651f, 0.565f, 0.522f, 1 }, C_WHITE = { 1, 1, 1, 1 },
-                 C_ORANGE = { 0.918f, 0.624f, 0.239f, 1 };                  /* #ccbeb8, #a69085, -, #ea9f3d */
-static void txt_color(Obj t, Col c) { if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(t, c, NULL); }
+void txt_color(Obj t, Col c) { if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(t, c, NULL); }
 /* new image / text under parent_tr, from a template (an Image without children, a TMP label) */
-static Obj mk_img(Obj tpl_img, Obj parent_tr, int sprite, Col c, float x, float y, float w, float h) {
+Obj mk_img(Obj tpl_img, Obj parent_tr, int sprite, Col c, float x, float y, float w, float h) {
     if (!u_alive(tpl_img) || !u_alive(parent_tr)) return NULL;
     Obj im = u_instantiate(tpl_img, parent_tr);
     if (!u_alive(im)) return NULL;
@@ -391,7 +371,7 @@ static Obj mk_img(Obj tpl_img, Obj parent_tr, int sprite, Col c, float x, float 
     place(im, x, y, w, h);
     return im;
 }
-static Obj mk_txt(Obj tpl_txt, Obj parent_tr, int cinzel, float size, int align, int wrap, float x, float y, float w, float h, Col c) {
+Obj mk_txt(Obj tpl_txt, Obj parent_tr, int cinzel, float size, int align, int wrap, float x, float y, float w, float h, Col c) {
     if (!u_alive(tpl_txt) || !u_alive(parent_tr)) return NULL;
     Obj t = u_instantiate(tpl_txt, parent_tr);
     if (!u_alive(t)) return NULL;
@@ -419,7 +399,7 @@ static uintptr_t h_title_cog, h_title_more, h_title_sum, h_title_box, h_title_pc
 static uintptr_t h_rw_root, h_rw_l1[6], h_rw_l2[6], h_rw_ul[6], h_rw_u[6], h_rw_note, h_rw_band, h_rw_line, h_rw_title;
 static uintptr_t h_rw_pf[6][6], h_rw_pi[6][6], h_rw_pp[6][6], h_rw_pn[6][6];   /* + the unit's name beside its box */   /* "Your units": 30x30 frames (copper edge), initial, portrait image */
 /* a portrait sprite by name, if loaded now (FindObjectsOfTypeAll once per title visit); NULL -> the initial */
-static Obj portrait_sprite(const char *name) {
+Obj portrait_sprite(const char *name) {
     static struct { char n[64]; uintptr_t h; } cache[48]; static int ncache; static int64_t scanned = -1;
     if (!name[0]) return NULL;
     for (int i = 0; i < ncache; i++) if (!strcmp(cache[i].n, name)) { Obj o = u_gc_get(cache[i].h); return u_alive(o) ? o : NULL; }
@@ -457,14 +437,14 @@ static const int esc_ids[] = { MPB_ESC_INVITE, MPB_LEAVE };   /* in game; the lo
 #define NT (int)(sizeof title_ids / sizeof title_ids[0])
 #define NE (int)(sizeof esc_ids / sizeof esc_ids[0])
 
-static Obj title_view(void) { return find_view(&h_title, &k_title, "Refactor.UI", "TitleMenuView"); }
-static Obj esc_view(void) { return find_view(&h_esc, &k_esc, "Refactor.UI", "SystemMenuView"); }
+Obj title_view(void) { return find_view(&h_title, &k_title, "Refactor.UI", "TitleMenuView"); }
+Obj esc_view(void) { return find_view(&h_esc, &k_esc, "Refactor.UI", "SystemMenuView"); }
 static Obj popups(void) {                               /* MainFlow._eventHandler -> CampaignLoadingEventHandler -> _popUpUIs */
     Obj eh = mf ? AT(mf, 0x50, Obj) : NULL, cl = eh ? AT(eh, 0x28, Obj) : NULL;
     return cl ? AT(cl, 0xF0, Obj) : NULL;
 }
 static bool popup_open(int type) { Obj p = popups(); return p && !strcmp(cls_name(p), "PopUpViewContainer") && F(0xF62D64, bool (*)(Obj, int, void *))(p, type, NULL); }
-static void popup_activate(int type) { Obj p = popups(); if (p && !strcmp(cls_name(p), "PopUpViewContainer")) F(0xF62554, void (*)(Obj, int, void *))(p, type, NULL); }
+void popup_activate(int type) { Obj p = popups(); if (p && !strcmp(cls_name(p), "PopUpViewContainer")) F(0xF62554, void (*)(Obj, int, void *))(p, type, NULL); }
 
 /* ---------------------------------------------------------------- observations */
 static int rules_close_frames;                          /* frames after the lobby Rules closed: the closing Escape stays ours */
@@ -519,7 +499,7 @@ static Obj tb(int id) { Obj b = u_gc_get(h_tb[id]); return u_alive(b) ? b : NULL
  * (popup 5) is opened for a moment, its field taken, and it is closed. Their listeners are runtime ones: not cloned. */
 static uintptr_t h_anyf, h_slv, h_namefield; static void *k_anyf, *k_slv;
 static int primed;
-static char my_name[64];                                                   /* current name (file / Steam / Mac user) */
+char my_name[64];                                                   /* current name (file / Steam / Mac user) */
 static Obj field_source(const char **from) {
     Obj slv = find_view_x(&h_slv, &k_slv, "Refactor", "SaveLoadView", true), fld = slv ? AT(slv, 0xB8, Obj) : NULL;
     *from = "the load list's name field";
@@ -527,7 +507,7 @@ static Obj field_source(const char **from) {
     if (!u_alive(fld)) { fld = find_view_x(&h_anyf, &k_anyf, "TMPro", "TMP_InputField", true); *from = "a scene TMP_InputField"; }
     return u_alive(fld) ? fld : NULL;
 }
-static Obj first_image(Obj tr, int depth);
+Obj first_image(Obj tr, int depth);
 static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *text) {
     Obj f = u_instantiate(src, parent);
     if (!u_alive(f)) return NULL;
@@ -593,13 +573,9 @@ static void images_off(Obj tr, int depth) {
 }
 static int fields_seen;                                 /* last texts below are valid (reset when the fields are rebuilt) */
 static char seen_addr[256], seen_name[64];
-/* approved mockups (dsdesign project: Main / LobbyGuest / HostPageA / HostPageB), owner 2026-10-13. Mockup px = canvas units. */
-static const Col C_BAND = { 0.176f, 0.165f, 0.192f, 1 }, C_ROW1 = { 0.212f, 0.196f, 0.227f, 1 }, C_ROW2 = { 0.169f, 0.157f, 0.184f, 1 },
-                 C_LINE = { 0.388f, 0.239f, 0.2f, 1 }, C_COPPER = { 0.714f, 0.514f, 0.353f, 1 }, C_GOLD = { 0.851f, 0.745f, 0.561f, 1 },
-                 C_START = { 0.918f, 0.851f, 0.812f, 1 }, C_UNLIT = { 0.29f, 0.27f, 0.314f, 1 };
 /* a clickable clone: esc = SubUI_SystemMenuButton (lobby), else SubUI_TitleMenuButton (title). Sprite on its background
  * (sliced, stretched), label centred. The caller registers it for clicks. */
-static Obj mk_button(Obj src, Obj parent, int esc, int sprite, Col tint, float x, float y, float w, float h, float fs, const char *label, Col tc) {
+Obj mk_button(Obj src, Obj parent, int esc, int sprite, Col tint, float x, float y, float w, float h, float fs, const char *label, Col tc) {
     if (!u_alive(src) || !u_alive(parent)) return NULL;
     Obj b = u_instantiate(src, parent);
     if (!u_alive(b)) return NULL;
@@ -615,7 +591,7 @@ static Obj mk_button(Obj src, Obj parent, int esc, int sprite, Col tint, float x
     place(b, x, y, w, h);
     return b;
 }
-static Obj btn_label(Obj b, int esc) { return b ? AT(b, esc ? 0x28 : 0x130, Obj) : NULL; }
+Obj btn_label(Obj b, int esc) { return b ? AT(b, esc ? 0x28 : 0x130, Obj) : NULL; }
 /* Rules panel: band "Rules" (Cinzel 24), rows [label  < value >], note, Done. Centre (cx, cy) in the parent.
  * Narrow (host page) 430 x 520: one column. Wide (lobby, RP_WIDE_W x RP_WIDE_H): Pause..Units left, Population..Admin right,
  * so it fits inside the lobby body under the title and above Start/Leave. */
@@ -670,10 +646,10 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
  * ui_tip hides it 0.2 s after the last call and follows "Show tooltips on hover". Tests name the element by title. */
 static int tip_ready(void) { return game_tip_ready(); }                      /* build matches + the scene has its TooltipUI */
 static char test_hover[64];                                                  /* test: hover the element with this title */
-static char tip_now[64];                                                     /* test status: the title shown this frame */
+char tip_now[64];                                                     /* test status: the title shown this frame */
 static int tip_hit;
 static inline bool u_on_tree(Obj comp) { Obj g = u_alive(comp) ? u_go(comp) : NULL; return g && mm_is(g, K_GO) && F(0x50F3724, bool (*)(Obj, void *))(g, NULL); }   /* activeInHierarchy */
-static int tip_try(Obj o, const char *title, const char *body) {
+int tip_try(Obj o, const char *title, const char *body) {
     if (tip_hit || !o || !u_on_tree(o)) return 0;
     int hov;
     if (test_hover[0]) hov = !strcmp(test_hover, title);
@@ -975,14 +951,14 @@ static Obj popup_prefab(int type) {
     Obj fac = find_view_x(&h, &k, "Refactor.Main.UI", "UIFactory", true), so = fac ? AT(fac, 0x20, Obj) : NULL;
     return so ? F(0xD3236C, Obj (*)(Obj, int, void *))(so, type, NULL) : NULL;
 }
-static Obj first_image(Obj tr, int depth) {                              /* the button's background (root has none) */
+Obj first_image(Obj tr, int depth) {                              /* the button's background (root has none) */
     Obj im = image_of(tr); if (im) return im;
     if (depth >= 3) return NULL;
     int k = (mm_is(tr, K_TR) ? F(0x510EAE4, int (*)(Obj, void *))(tr, NULL) : 0);
     for (int i = 0; i < k; i++) { Obj c = first_image((mm_is(tr, K_TR) ? F(0x510FC60, Obj (*)(Obj, int, void *))(tr, i, NULL) : NULL), depth + 1); if (c) return c; }
     return NULL;
 }
-static Obj eb(int id) { Obj b = u_gc_get(h_eb[id]); return u_alive(b) ? b : NULL; }
+Obj eb(int id) { Obj b = u_gc_get(h_eb[id]); return u_alive(b) ? b : NULL; }
 /* owner lan_v8: our Esc buttons (and the reason line) make the column taller downward, so the menu sat low (seed lines
  * near the screen bottom). The group (logo + version, buttons, seed lines) moves up by half of what we add: centred as
  * the stock menu. Moved: the lowest common parent of those parts, or, if that is the view itself (its dim layer), each of
@@ -1158,12 +1134,12 @@ static void esc_sync(const mpm_obs *o) {
  * opens the Rules panel (same as the host page) over the window. Mockup px from the window's top-left -> centre units. */
 enum { LW_START, LW_INVITE, LW_COPY, LW_LEAVE, LW_GEAR, LW_BRING, LW_NB };
 static const int lw_ids[LW_NB] = { MPB_START, MPB_INVITE, MPB_COPY_ADDR, MPB_LEAVE, MPB_LOBBY_SETTINGS, MPB_FE_BRINGWIN };
-static uintptr_t h_lwr[MPB_COUNT];                       /* the lobby Rules panel's arrows + Done, by button id */
+uintptr_t h_lwr[MPB_COUNT];                       /* the lobby Rules panel's arrows + Done, by button id */
 #define LW_ROWS 4
 enum { T_TITLE, T_HINT, T_GUEST, T_PLAYERS, T_INV, T_RULES, T_INV_ADDR, T_INV_NOTE, T_RULES_NOTE, T_NOTE,
        T_R0L, T_R1L, T_R2L, T_R3L, T_R4L, T_R5L, T_R6L, T_R7L, T_R8L, T_R0V, T_R1V, T_R2V, T_R3V, T_R4V, T_R5V, T_R6V, T_R7V, T_R8V, T_NT };
 _Static_assert(T_R0V - T_R0L == MPM_RULE_ROWS, "one label + one value text per rules row");
-static uintptr_t h_lw_root, h_lw_view, h_lw_area, h_lwb[LW_NB], h_lwt[T_NT];
+uintptr_t h_lw_root; static uintptr_t h_lw_view, h_lw_area, h_lwb[LW_NB], h_lwt[T_NT];
 static uintptr_t h_lw_rowbg[LW_ROWS], h_lw_dot[LW_ROWS], h_lw_name[LW_ROWS], h_lw_stat[LW_ROWS], h_lw_tagbox[LW_ROWS][2], h_lw_bar[LW_ROWS][3], h_lw_x[LW_ROWS];
 static uintptr_t h_lw_lines[6], h_lw_addrbox[2], h_lw_rrow[MPM_RULE_ROWS], h_lw_cog, h_lw_guestdot, h_lw_frame, h_lw_bbar, h_lw_bline, h_lw_body, h_lw_pcog, h_lw_rshade;
 static char lw_rowname[LW_ROWS][32];                    /* row names (tooltip titles) */
@@ -1295,11 +1271,8 @@ static void lw_texts(void) {
             int id = in.nplayers > 0 ? in.players[i].id : 0, me = in.nplayers > 0 ? in.player : 0;
             const char *nmn = in.nplayers > 0 && in.players[i].name[0] && strcmp(in.players[i].name, "player") ? in.players[i].name : in.nplayers > 0 ? "Player" : my_name;
             tmp_set(nm, nmn); snprintf(lw_rowname[i], sizeof lw_rowname[i], "%s", nmn);
-            { fe_mode_info fm; if (fe_mode_get(&fm)) {                      /* Foreign Expedition: "2 units brought" / "Choosing units..." */
-                int nb = fe_brought_of(id); char t2[160];
-                if (nb > 0) snprintf(t2, sizeof t2, "%s  <size=78%%><color=#8FD18F>%d unit%s brought</color></size>", nmn, nb, nb == 1 ? "" : "s");
-                else snprintf(t2, sizeof t2, "%s  <size=78%%><color=#A69085>Choosing units...</color></size>", nmn);
-                tmp_set(nm, t2); } }
+            for (int k = 0; k < nhooks; k++) { char t2[160];                /* Custom Modes (Foreign Expedition): "2 units brought" / "Choosing units..." */
+                if (hooks[k].lobby_name && hooks[k].lobby_name(id, nmn, t2, sizeof t2)) { tmp_set(nm, t2); break; } }
             { char d[48]; snprintf(d, sizeof d, "<color=%s>\xE2\x80\xA2</color>", ui_player_color(id)); tmp_set(dot, d); }   /* the player's colour */
             int ping = 0, behind = 0, state = DSNET_NET_IN_SYNC;
             if (c && in.nplayers > 0) dsnet_player_net(c, id, &ping, &behind, &state);
@@ -1387,9 +1360,10 @@ static void lw_sync(Obj v, int lobby) {
       if (was_open && !op) rules_close_frames = 3; else if (rules_close_frames > 0) rules_close_frames--; was_open = op; }
 }
 static void (*o_esc_press)(Obj, void *);
-static int pvp_ui_press(Obj btn);
+static int escb_press(Obj btn);
 static void h_esc_press(Obj btn, void *mi) {                                /* SubUI_SystemMenuButton.OnPressButton */
-    if (pvp_ui_press(btn)) return;                                          /* PvP lane buttons (pvp_ui.inc) */
+    for (int k = 0; k < nhooks; k++) if (hooks[k].press && hooks[k].press(btn)) return;   /* Custom Modes buttons (PvP) */
+    if (escb_press(btn)) return;                                            /* mp_api register_esc_button */
     for (int i = 0; i < NE; i++) if (btn && btn == eb(esc_ids[i])) { pending_click = esc_ids[i]; return; }
     for (int i = 0; i < LW_NB; i++) if (btn && btn == u_gc_get(h_lwb[i])) { pending_click = lw_ids[i]; return; }
     for (int i = 0; i < MPB_COUNT; i++) if (h_lwr[i] && btn == u_gc_get(h_lwr[i])) { pending_click = i; return; }
@@ -1514,7 +1488,8 @@ static void h_slot_set(Obj self, const void *hdr, bool inter, Obj act, void *mi)
 /* owner rule: no loading another world during a multiplayer session (host or guest). The Esc menu's Load button is
  * disabled with a note; its click and the quick-load key do nothing. Leaving multiplayer restores them. */
 /* the third host choice (mpmenu_register_host_choice, below) */
-static struct { int on; char id[32], label[48], tip[300]; void (*draw_page)(void *); int (*on_start)(void); } hchoice;
+static struct { int on; char id[32], label[48], tip[300]; void (*draw_page)(void *); mpm_host_start_fn on_start; } hchoice;
+
 static int in_session(void) { return mp_game_session() != NULL; }
 static void (*o_esc_load)(Obj, void *);
 static void h_esc_load(Obj v, void *mi) { if (in_session()) { rig_log("mpmenu: Load blocked during multiplayer"); return; } o_esc_load(v, mi); }
@@ -2127,7 +2102,7 @@ static struct { char text[300]; double t; int link; } chist[CH_HIST]; static int
 static char chat_buf[DSNET_CHAT_MAX + 1];
 static uintptr_t h_ch_view, h_ch_root, h_ch_box, h_ch_idle[CH_IDLE], h_ch_idlebg[CH_IDLE], h_ch_lines[CH_BOX_LINES], h_ch_input, h_ch_hint, h_ch_field, h_ch_typing, h_ch_typingbg;
 static char typing_shown[200];                           /* test status: the "is typing" line now shown */
-static void utf16_to_utf8(Obj s, char *out, size_t cap) {             /* typed text: keep accents etc. (str_utf8 is ASCII-only) */
+void utf16_to_utf8(Obj s, char *out, size_t cap) {             /* typed text: keep accents etc. (str_utf8 is ASCII-only) */
     size_t n = 0; if (cap) out[0] = 0;
     if (!s || !cap) return;
     int32_t len = AT(s, 0x10, int32_t); const uint16_t *c = (const uint16_t *)((char *)s + 0x14);
@@ -2152,13 +2127,12 @@ static int teams_modal(void) {                                             /* te
 static bool h_textfocus(void *mi) { return chat_typing || chat_close_frames > 0 || (M.state == MPM_LOBBY && M.lobby_settings_open) || rules_close_frames > 0 || teams_modal() || teams_close_frames > 0 || o_textfocus(mi); }
 /* Escape for our in-game boxes (ui lane's InputEventHandler.OnEvent(EscapeActionRequested) hook asks first, dlsym):
  * 1 = one of ours took it (chat typing: closes without sending; lobby Rules: closed), so the game's Esc menu stays shut */
-static int few_is_open(void);
 __attribute__((visibility("default"))) int mpmenu_escape_ours(void) {
     rig_log("mpmenu: Escape asked (chat %d, lobby rules %d, rules closing %d, teams %d, teams closing %d)", chat_typing,
             M.state == MPM_LOBBY && M.lobby_settings_open, rules_close_frames, teams_modal(), teams_close_frames);
     if (chat_typing) { test_chat_escape = 1; rig_log("mpmenu: Escape closed the chat"); return 1; }
     if (M.confirm_leave) { pending_click = MPB_LEAVE_CANCEL; rig_log("mpmenu: Escape = Cancel in the Leave box"); return 1; }
-    if (few_is_open()) { pending_click = MPB_FE_CANCEL; rig_log("mpmenu: Escape closed the Foreign Expedition window"); return 1; }
+    for (int k = 0; k < nhooks; k++) { int ec = hooks[k].escape ? hooks[k].escape() : 0; if (ec) { pending_click = ec; return 1; } }   /* Custom Modes windows (FE) */
     if (lbox_up > BX_LEAVE && lbox_ours(lbox_view())) {                    /* the box's own Cancel: the click hook answers it */
         rig_log("mpmenu: Escape = Cancel in our box"); F(0xF65638, void (*)(Obj, void *))(lbox_view(), NULL); return 1; }
     if (M.state == MPM_LOBBY && M.lobby_settings_open) { pending_click = MPB_RULES_DONE; rig_log("mpmenu: Escape closed the lobby Rules"); return 1; }
@@ -2469,10 +2443,8 @@ static void chat_frame(const mpm_obs *o) {
 
 /* ---------------------------------------------------------------- actions */
 void ui_notice(const char *text) __attribute__((weak_import));   /* ui_game.c */
-static void few_open_bring(void), few_open_list(void);
 static void run_actions(int a, const mpm_obs *o) {
-    if (a & MPA_FE_BRING) few_open_bring();
-    if (a & MPA_FE_RESULTS) few_open_list();
+    for (int k = 0; k < nhooks; k++) if (hooks[k].action) hooks[k].action(a);   /* Custom Modes (FE: MPA_FE_BRING, MPA_FE_RESULTS) */
     Obj tv = title_view();
     if (a & (MPA_OPEN_LOAD_LIST | MPA_OPEN_NEW)) host_failed = 0;
     if ((a & MPA_OPEN_LOAD_LIST) && tv) (mm_is(tv, K_TMV) ? F(0xE710B8, void (*)(Obj, void *))(tv, NULL) : (void)0);   /* TitleMenuView.OnLoadCampaignPressed */
@@ -2507,9 +2479,9 @@ static void run_actions(int a, const mpm_obs *o) {
     if (a & MPA_JOIN_ADDR) join_by_address();
     if ((a & MPA_JOIN_CANCEL) && conn) { dsnet_connect_free(conn); conn = NULL; rig_log("mpmenu: connect cancelled"); }
     if (a & MPA_FE_START) {                                                 /* build the hub with the Expedition Rules, then start */
-        extern int fe_menu_start(int death, int xp, int loot, int recruit, char *err, size_t errn);
         char err[200] = "";
-        int rc = hchoice.on_start ? hchoice.on_start() : fe_menu_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, sizeof err);   /* registered start (0 = started), else the built-in one */
+        int rc = hchoice.on_start ? hchoice.on_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, sizeof err) : -1;   /* the registered start (Custom Modes: Foreign Expedition); 0 = started */
+        if (!hchoice.on_start) snprintf(err, sizeof err, "No mod offers this choice.");
         rig_log("mpmenu: Foreign Expedition start rc %d %s", rc, err);
         if (rc == 0) { M.state = MPM_PLAYING; run_actions(MPA_LOBBY_HIDE | MPA_START_GAME, o); }
         else if (ui_notice) ui_notice(err);
@@ -2650,17 +2622,12 @@ static void fog_poll(void) {
     if (u != owners) { owners = u; mp_fog_owner_changed(); }
     mp_fog_frame();
 }
-#include "fe/fe_menu.inc"
-static void few_open_bring(void) { few_open(FEW_BRING, NULL); }
-static void few_open_list(void) { few_open(FEW_LIST, NULL); }
-static int few_is_open(void) { return W.mode != FEW_NONE; }
-#include "pvp_ui.inc"   /* PvP lane (ext/pvp): PvP window, HUD, result window */
 /* ---------------------------------------------------------------- Multiplayer world tag (owner 2026-10-15, PLAN.md)
  * <app data folder>/mp_tags.txt (mpm_tag_*): a world gets the tag the first time another player is in it with us (host
  * and guests each tag their own copy), with the names of everyone who was. Shown on the load list's world row
  * (SubUI_SettlerNameCase.Init post-hook) and its save rows (h_slot_set). "Remove tag" on the row asks, then deletes the
  * line; it comes back only when a friend joins that world again. The game's save is never touched. */
-static void utf16_to_utf8(Obj s, char *out, size_t cap);
+void utf16_to_utf8(Obj s, char *out, size_t cap);
 static void tag_path(char *p, size_t cap) { app_path(p, cap, "mp_tags.txt"); }
 static void tag_seed(void) {                                                /* once, no file yet: worlds in Recent worlds with other players */
     static int done; if (done) return; done = 1;
@@ -2910,13 +2877,51 @@ static void lf_frame(void) {
 }
 
 /* ---------------------------------------------------------------- the third host choice (MASTER_PLAN 2.2 B register_host_choice) */
-__attribute__((visibility("default"))) int mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), int (*on_start)(void)) {
+__attribute__((visibility("default"))) int mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), mpm_host_start_fn on_start) {
     if (!id || !label) return 0;
     if (hchoice.on && strcmp(hchoice.id, id)) { rig_log("mpmenu: host choice \"%s\" refused (\"%s\" has the place)", id, hchoice.id); return 0; }
     snprintf(hchoice.id, sizeof hchoice.id, "%s", id); snprintf(hchoice.label, sizeof hchoice.label, "%s", label);
     snprintf(hchoice.tip, sizeof hchoice.tip, "%s", tip ? tip : ""); hchoice.draw_page = draw_page; hchoice.on_start = on_start; hchoice.on = 1;
     rig_log("mpmenu: host choice \"%s\" registered (%s)", label, id);
     return 1;
+}
+
+/* Esc-menu buttons of a mod (mp_api register_esc_button): a Report bug clone above Leave multiplayer, in a multiplayer game */
+#define MAX_ESCB 4
+static struct { char label[48], tip[300]; int (*visible)(void); void (*click)(void); uintptr_t h; int pressed; } escb[MAX_ESCB]; static int nescb;
+__attribute__((visibility("default"))) int mpmenu_register_esc_button(const char *label, const char *tip, int (*visible)(void), void (*click)(void)) {
+    if (!label || !click || nescb >= MAX_ESCB) return -1;
+    snprintf(escb[nescb].label, sizeof escb[nescb].label, "%s", label); snprintf(escb[nescb].tip, sizeof escb[nescb].tip, "%s", tip ? tip : "");
+    escb[nescb].visible = visible; escb[nescb].click = click; nescb++;
+    rig_log("mpmenu: Esc button \"%s\" registered", label);
+    return 0;
+}
+static int escb_press(Obj btn) {
+    for (int i = 0; i < nescb; i++) if (btn && escb[i].h && btn == u_gc_get(escb[i].h)) { escb[i].pressed = 1; return 1; }
+    return 0;
+}
+static void escb_frame(const mpm_obs *o) {
+    Obj v = o->scene == 2 ? esc_view() : NULL;
+    int ingame = v && u_on(v) && mp_game_session() && M.state == MPM_PLAYING;
+    for (int i = 0; i < nescb; i++) {
+        if (escb[i].pressed) { escb[i].pressed = 0; escb[i].click(); }
+        if (!v || !u_on(v)) continue;
+        Obj b = u_gc_get(escb[i].h); if (!u_alive(b)) b = NULL;
+        if (!b && eb(MPB_LEAVE)) {
+            Obj src = AT(v, 0x70, Obj);
+            b = u_alive(src) ? u_instantiate(src, u_tr_parent(u_tr(src))) : NULL;
+            if (u_alive(b)) { if (mm_is(b, K_SMB)) F(0xF2DB60, void (*)(Obj, Obj, void *))(b, NULL, NULL); AT(b, 0x30, Obj) = NULL;
+                              u_set_sibling(u_tr(b), u_sibling(u_tr(eb(MPB_LEAVE)))); u_gc_free(escb[i].h); escb[i].h = u_gc_new(b); }
+            else b = NULL;
+        }
+        if (b) { int show = ingame && (!escb[i].visible || escb[i].visible()); u_active(b, show); if (show) { tmp_set(AT(b, 0x28, Obj), escb[i].label); if (escb[i].tip[0]) tip_try(b, escb[i].label, escb[i].tip); } }
+    }
+}
+
+int mpmenu_register_hooks(const mp_menu_hooks *h) {
+    if (!h || nhooks >= MAX_HOOKS) return -1;
+    hooks[nhooks++] = *h; rig_log("mpmenu: menu hooks %d registered", nhooks);
+    return 0;
 }
 
 void mpmenu_frame(void) {
@@ -2930,7 +2935,7 @@ void mpmenu_frame(void) {
     o.edited = fields_edited; fields_edited = 0;
     int c = pending_click; pending_click = MPB_NONE;
     M.host_choice = hchoice.on; snprintf(M.host_choice_label, sizeof M.host_choice_label, "%s", hchoice.label);
-    if (few_click(c)) c = MPB_NONE;                                        /* Foreign Expedition windows */
+    for (int k = 0; k < nhooks && c != MPB_NONE; k++) if (hooks[k].click && hooks[k].click(c)) c = MPB_NONE;   /* Custom Modes windows (FE) */
     int st0 = M.state;
     int a = mpm_step(&M, &o, c);
     if (M.state != st0) rig_log("mpmenu: state %d -> %d (click %d)", st0, M.state, c);
@@ -2960,8 +2965,9 @@ void mpmenu_frame(void) {
     if (M.state == MPM_TITLE_FRIENDS && frames % 60 == 0) friends_refresh();
     title_sync(&o);
     esc_sync(&o);
-    few_frame(&o);
-    { Obj lb = u_gc_get(h_lwb[LW_BRING]); fe_mode_info fm; if (u_alive(lb)) u_active(lb, (M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY) && fe_mode_get(&fm) && W.mode == FEW_NONE); }
+    for (int k = 0; k < nhooks; k++) if (hooks[k].frame) hooks[k].frame(&o);
+    { Obj lb = u_gc_get(h_lwb[LW_BRING]); int br = 0; for (int k = 0; k < nhooks && !br; k++) br = hooks[k].lobby_bring && hooks[k].lobby_bring();
+      if (u_alive(lb)) u_active(lb, (M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY) && br); }
     notice_frame(&o);
     leave_box_frame();
     invite_frame(&o);
@@ -2972,9 +2978,9 @@ void mpmenu_frame(void) {
     pick_frame(&o);
     chat_frame(&o);
     tips_frame(&o);
-    few_tips();
-    pvp_ui_tips();
-    pvp_ui_frame(&o);
+    for (int k = 0; k < nhooks; k++) if (hooks[k].tips) hooks[k].tips();
+    for (int k = 0; k < nhooks; k++) if (hooks[k].frame_late) hooks[k].frame_late(&o);
+    if (nescb) escb_frame(&o);
     if (!o.role && !conn && !mp_game_session() && joined_how[0] && M.state != MPM_GUEST_JOINING && M.state != MPM_GUEST_LOADING) { joined_how[0] = 0; joined_steamid = 0; }   /* session over */
 }
 
@@ -3020,7 +3026,7 @@ static void put_btns(Buf *b, const char *key, const int *ids, int n, uintptr_t *
     bput(b, "}");
 }
 /* ---------------------------------------------------------------- layout read-back (tests) */
-static int rect_of(Obj comp, float r[4]) {                                 /* screen-space x0,y0,x1,y1 (overlay canvas: world = pixels) */
+int rect_of(Obj comp, float r[4]) {                                 /* screen-space x0,y0,x1,y1 (overlay canvas: world = pixels) */
     if (!u_alive(comp)) return 0;
     Obj arr = F(0x6F8BA8, Obj (*)(void *, size_t))(md(0x6656B28), 4);       /* new Vector3[4] */
     (mm_is(u_tr(comp), K_RT) ? F(0x51089D0, void (*)(Obj, Obj, void *))(u_tr(comp), arr, NULL) : (void)0);      /* RectTransform.GetWorldCorners */
@@ -3193,10 +3199,8 @@ static char *ui_shot(const char *path) {
     Buf b = {0}; bput(&b, "{\"ok\":true,\"w\":%d,\"h\":%d,\"canvases\":%d,\"bytes\":%zu}", w, h, nsw, nb); return b.p;
 }
 
-static char *pvp_ui_exec(const char *cmd, const char *line);
 char *mpmenu_exec(const char *cmd, const char *line) {
-    if (!strcmp(cmd, "mpm_fewin")) return few_status();                    /* Foreign Expedition window read-back */
-    { char *pv = pvp_ui_exec(cmd, line); if (pv) return pv; }   /* PvP lane tests */
+    for (int k = 0; k < nhooks; k++) { char *r = hooks[k].exec ? hooks[k].exec(cmd, line) : NULL; if (r) return r; }   /* Custom Modes: mpm_fewin, mpm_pvp */
     if (!strcmp(cmd, "mpm_shot")) {
         char p[1024], how[32] = "camera"; if (!jstr(line, "path", p, sizeof p)) return strdup("{\"ok\":false}");
         jstr(line, "how", how, sizeof how);

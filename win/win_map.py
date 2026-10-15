@@ -6,7 +6,7 @@ Re-run after each game update:
 
 What it does
 1. Harvests every hex constant 0x10000..0x7FFFFFF from the mod sources and research docs
-   (src/, research/, rig/, PLAN.md; not win/, builds, logs, rwmt).
+   (src/, custom/, research/, rig/, PLAN.md; not win/, builds, logs, rwmt).
 2. Classifies each against the Mac dump (script.json) and the Mac dylib:
    method start | metadata slot (TypeInfo / MethodInfo / string) | il2cpp export | il2cpp internal | other.
 3. Resolves the Windows twin: method by name+signature (overload order as tie break), metadata by name,
@@ -34,7 +34,7 @@ EXTS = (".c", ".h", ".cpp", ".md", ".py", ".sh")
 HEX = re.compile(r"\b0x([0-9A-Fa-f]{5,8})\b")
 used = collections.defaultdict(list)          # value -> ["file:line"]
 idents = set()
-for top in ("src", "research", "rig", "PLAN.md"):
+for top in ("src", "custom", "research", "rig", "PLAN.md"):
     p = os.path.join(ROOT, top)
     walk = [(os.path.dirname(p), [], [os.path.basename(p)])] if os.path.isfile(p) else os.walk(p)
     for d, dirs, files in walk:

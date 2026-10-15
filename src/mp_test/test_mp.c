@@ -14,8 +14,7 @@
 #define TICK_MS 5.0f
 
 static int failures;
-void fe_on_start(const uint8_t *payload, size_t len) { (void)payload; (void)len; }
-void pvp_on_units_start(const uint8_t *payload, size_t len) { (void)payload; (void)len; }   /* PvP own units (pvp_units.c): not in these tests */   /* Foreign Expedition game side (fe/fe_game.c): not in these tests */
+int mpx_sim_cmd(int kind, const uint8_t *payload, size_t len) { (void)kind; (void)payload; (void)len; return 0; }   /* mp_api.c (Custom Modes sim commands): not in these tests */
 #define CHECK(cond, ...) do { if (!(cond)) { printf("  FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); failures++; ok = 0; } } while (0)
 static double now_ms(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
 static void sleep_ms(double ms) { if (ms > 0) usleep((useconds_t)(ms * 1000)); }

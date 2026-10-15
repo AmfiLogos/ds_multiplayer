@@ -1,5 +1,6 @@
 // mp_game: real game binding of mp_core (build 25846389, arm64). Dylib only; see mp_game.h for the
 // functions the determinism lane must expose, MP_NOTES.md for the design.
+#include "mp_api.h"
 #include "mp_game.h"
 #include "mp.h"
 #include "ord_api.h"
@@ -237,15 +238,12 @@ static int is_sync_name(Obj name) {
     for (int i = 0; i < n; i++) { uint16_t ch = c[i]; if (ch >= 'A' && ch <= 'Z') ch += 32; if (ch != (uint16_t)w[i]) return 0; }
     return 1;
 }
-int fe_join_point_save(const char *path, const char *save_name);   /* fe/fe_game.c */
-int fe_is_protected(const char *stem);
-void fe_poll(void);
 static void h_delete(Obj ld, Obj name, void *mi) {
     if (name) {                                              /* Foreign Expedition: an original we applied results over */
         char nm[300]; int32_t n = AT(name, 0x10, int32_t); const uint16_t *ch = (const uint16_t *)((char *)name + 0x14); int k = 0;
         for (int i = 0; i < n && k < (int)sizeof nm - 1; i++) nm[k++] = ch[i] < 128 ? (char)ch[i] : '?';
         nm[k] = 0;
-        if (fe_is_protected(nm)) { rig_log("mp: the game wanted to delete %s (an original kept by the Foreign Expedition): kept", nm); return; }
+        if (mpx_save_keep(nm)) { rig_log("mp: the game wanted to delete %s (an original kept by the Foreign Expedition): kept", nm); return; }
     }
     if ((S || sync_file_pending || host_reload) && is_sync_name(name)) {
         game_deletes_blocked++;
@@ -323,26 +321,34 @@ static void retry_keep(const uint8_t *det, size_t dl, const uint8_t *json, size_
     load_retries = 0; pending_since = 0;
 }
 
-/* PvP lane (pvp_game.c, ext/pvp only): tick, fingerprint and save block. Weak: absent = no PvP. */
-void pvp_sim_tick(void) __attribute__((weak_import));
-int pvp_freeze_now(void) __attribute__((weak_import));   /* test: world frozen at a stamped tick */
-uint64_t pvp_fp_mix(void) __attribute__((weak_import));
-size_t pvp_block_size(void) __attribute__((weak_import));
-size_t pvp_block_get(uint8_t *out, size_t cap) __attribute__((weak_import));
-void pvp_block_set(const uint8_t *p, size_t n) __attribute__((weak_import));
-/* PvP round reset / match end: the host's join-point save is a stored snapshot (det state + JSON) instead of the world now;
-   pvp_save_override also moves the PvP state on (next round / off), so the block written below is the new one. */
-int pvp_save_override(const uint8_t **det, size_t *dl, const uint8_t **json, size_t *jn) __attribute__((weak_import));
+/* Custom Modes (mp_api.h, PvP): tick, fingerprint and join-point blocks ("PVPB"). Nothing registered = no block.
+   A round reset / match end: the host's join-point save is a stored snapshot (det state + JSON) instead of the world now
+   (mpx_jp_override); it also moves the PvP state on (next round / off), so the blocks written below are the new ones. */
+static size_t jp_blocks_size(int always) {
+    size_t px = 0;
+    for (int i = 0; i < mpx_jp_count(); i++) { size_t pl = mpx_jp_at(i)->size(); if (pl || always) px += 8 + pl; }
+    return px;
+}
+static int jp_blocks_put(uint8_t *b, int always) {                  /* b = where the first block goes; -1 = a block came short */
+    for (int i = 0; i < mpx_jp_count(); i++) {
+        const mp_joinpoint *jp = mpx_jp_at(i); size_t pl = jp->size();
+        if (!pl && !always) continue;
+        uint32_t l32 = (uint32_t)pl; memcpy(b, jp->tag, 4); memcpy(b + 4, &l32, 4);
+        if (jp->write(b + 8, pl) != pl) return -1;
+        b += 8 + pl;
+    }
+    return 0;
+}
 /* ---------------------------------------------------------------- mp_game_api */
 /* Host reload at the join point (MP_NOTES risk, confirmed 2026-10-12): the save drops in-progress tasks and
    snaps moving units to cells, so a loaded peer differs from the host's memory. The host therefore reloads
    its own save right after the upload; every peer then starts from the same loaded state. */
 static uint8_t *host_det;
 static int g_ready(void *u) { (void)u; return !host_reload && rig_det_mp_ready(); }
-static void g_tick(void *u) { (void)u; if (pvp_freeze_now && pvp_freeze_now()) return; rig_det_sim_tick(); if (pvp_sim_tick) pvp_sim_tick(); }
+static void g_tick(void *u) { (void)u; if (mpx_tick_frozen()) return; rig_det_sim_tick(); mpx_tick(); }
 static void g_scope(void *u, int enter) { (void)u; rig_det_sim_scope(enter); }
 static uint64_t g_fp(void *u) { (void)u; uint64_t h[4]; rig_world_hash(rig_det_sim_state(), h, NULL, NULL);
-    return pvp_fp_mix ? h[0] ^ (pvp_fp_mix() * 0x9E3779B97F4A7C15ULL) : h[0]; }
+    uint64_t mix; return mpx_fp_mix(&mix) ? h[0] ^ (mix * 0x9E3779B97F4A7C15ULL) : h[0]; }
 static int g_move(void *u, const uint8_t guid[16], int32_t x, int32_t y) {
     (void)u; Guid g; memcpy(&g, guid, 16);
     return rig_order_move(g, x, y);
@@ -392,17 +398,16 @@ int mp_game_snapshot(uint8_t **det, size_t *dl, uint8_t **json, size_t *jn) {
 }
 static int g_save_override(uint8_t **data, size_t *len) {
     const uint8_t *od, *oj; size_t odl, ojn;
-    if (!pvp_save_override || !pvp_save_override(&od, &odl, &oj, &ojn)) return 0;
+    if (!mpx_jp_override(&od, &odl, &oj, &ojn)) return 0;
     if (odl != rig_det_state_size()) { rig_log("mp: pvp snapshot det size %zu, want %zu", odl, rig_det_state_size()); return -1; }
     char p[1400], tmp[1500]; snprintf(p, sizeof p, "%s/data/Saves/%s.json", rig_dir, MP_SAVE_NAME); snprintf(tmp, sizeof tmp, "%s.tmp", p);
     FILE *f = fopen(tmp, "wb"); if (!f) return -1;
     fwrite(oj, 1, ojn, f); fclose(f); rename(tmp, p);                 /* the host reloads this file after the upload */
-    size_t pl = pvp_block_size(), px = 8 + pl;
+    size_t px = jp_blocks_size(1);
     uint32_t dl = (uint32_t)odl;
     uint8_t *b = malloc(4 + dl + px + ojn);
     memcpy(b, &dl, 4); memcpy(b + 4, od, dl);
-    uint32_t l32 = (uint32_t)pl; memcpy(b + 4 + dl, "PVPB", 4); memcpy(b + 8 + dl, &l32, 4);
-    if (pvp_block_get(b + 12 + dl, pl) != pl) { free(b); return -1; }
+    if (jp_blocks_put(b + 4 + dl, 1) < 0) { free(b); return -1; }
     memcpy(b + 4 + dl + px, oj, ojn);
     *data = b; *len = 4 + dl + px + ojn;
     free(host_det); host_det = malloc(dl); memcpy(host_det, od, dl); host_reload = 1;
@@ -418,19 +423,16 @@ static int g_save(void *u, uint8_t **data, size_t *len) {
     mp_saving = 0;
     if (!saved) { rig_log("mp: CampaignSaveLoader.Save failed"); return -1; }
     char p[1400]; snprintf(p, sizeof p, "%s/data/Saves/%s.json", rig_dir, MP_SAVE_NAME);
-    if (cfg.host && fe_join_point_save(p, MP_SAVE_NAME) < 0) rig_log("mp: Foreign Expedition hub build failed: the world goes on unchanged");
-    { extern int pvp_units_join_point(const char *path) __attribute__((weak_import));   /* PvP own units: this save becomes the match world */
-      if (cfg.host && pvp_units_join_point && pvp_units_join_point(p) < 0) rig_log("mp: PvP own-units world build failed: the world goes on unchanged"); }
+    if (cfg.host) mpx_world_build(p, MP_SAVE_NAME);              /* Custom Modes: Foreign Expedition hub build, PvP own-units world */
     FILE *f = fopen(p, "rb"); if (!f) return -1;
     fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
     uint32_t dl = (uint32_t)rig_det_state_size();
-    /* PvP block (ext/pvp): "PVPB", u32 len, pvp_core save block; between the det state and the JSON (JSON starts with '{') */
-    size_t pl = pvp_block_size ? pvp_block_size() : 0, px = pl ? 8 + pl : 0;
+    /* mod blocks (mp_api joinpoint, PvP "PVPB"): tag, u32 len, bytes; between the det state and the JSON (JSON starts with '{') */
+    size_t px = jp_blocks_size(0);
     uint8_t *b = malloc(4 + dl + px + (size_t)n);
     memcpy(b, &dl, 4);
     rig_det_state_get(b + 4);
-    if (px) { uint32_t l32 = (uint32_t)pl; memcpy(b + 4 + dl, "PVPB", 4); memcpy(b + 8 + dl, &l32, 4);
-              if (pvp_block_get(b + 12 + dl, pl) != pl) { fclose(f); free(b); return -1; } }
+    if (px && jp_blocks_put(b + 4 + dl, 0) < 0) { fclose(f); free(b); return -1; }
     size_t got = fread(b + 4 + dl + px, 1, (size_t)n, f); fclose(f);
     if (got != (size_t)n) { free(b); return -1; }
     *data = b; *len = 4 + dl + px + (size_t)n;
@@ -443,13 +445,16 @@ static int g_load(void *u, const uint8_t *data, size_t len) {
     uint32_t dl; if (len < 4) return -1;
     memcpy(&dl, data, 4);
     if (dl != rig_det_state_size() || 4 + (size_t)dl > len) { rig_log("mp: det state size %u, want %zu", dl, rig_det_state_size()); return -1; }
-    size_t px = 0;                                   /* PvP block (ext/pvp), see g_save */
-    if (len >= 12 + (size_t)dl && !memcmp(data + 4 + dl, "PVPB", 4)) {
-        uint32_t pl; memcpy(&pl, data + 8 + dl, 4);
-        if (12 + (size_t)dl + pl > len) return -1;
-        px = 8 + (size_t)pl;
-        if (pvp_block_set) pvp_block_set(data + 12 + dl, pl);
-    } else if (pvp_block_set) pvp_block_set(NULL, 0);
+    size_t px = 0;                                   /* mod blocks (mp_api joinpoint), see g_save; in registration order */
+    for (int i = 0; i < mpx_jp_count(); i++) {
+        const mp_joinpoint *jp = mpx_jp_at(i);
+        if (len >= 12 + (size_t)dl + px && !memcmp(data + 4 + dl + px, jp->tag, 4)) {
+            uint32_t pl; memcpy(&pl, data + 8 + dl + px, 4);
+            if (12 + (size_t)dl + px + pl > len) return -1;
+            jp->read(data + 12 + dl + px, pl);
+            px += 8 + (size_t)pl;
+        } else jp->read(NULL, 0);
+    }
     char dir[1400], p[1500], tmp[1600];
     snprintf(dir, sizeof dir, "%s/data/Saves", rig_dir); mkdir(dir, 0755);
     snprintf(p, sizeof p, "%s/%s.json", dir, MP_SAVE_NAME);
@@ -1086,7 +1091,7 @@ void mp_game_poll(void) {
             if (now - last_try > 2000) { last_try = now; quit_to_title(); }   /* retried until the title shows */
         }
     }
-    if (S) fe_poll();
+    if (S) mpx_frame(MP_FRAME_SESSION);                /* Custom Modes (FE poll + mailbox) */
     if (!S && !steam_join && steam_ready()) {
         uint64_t lobby = dsnet_steam_take_join_request();
         if (lobby) {
