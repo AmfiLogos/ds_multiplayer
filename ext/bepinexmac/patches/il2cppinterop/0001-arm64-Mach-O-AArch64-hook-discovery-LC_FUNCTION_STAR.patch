@@ -1,7 +1,7 @@
 From 930cce8c51b46fb8a3693471ac9fc080011b0cab Mon Sep 17 00:00:00 2001
 From: bepinexmac-lane <lane@local>
 Date: Thu, 15 Oct 2026 19:59:11 +0100
-Subject: [PATCH 1/2] arm64 Mach-O: AArch64 hook discovery
+Subject: [PATCH 1/4] arm64 Mach-O: AArch64 hook discovery
  (LC_FUNCTION_STARTS), AAPCS64 return buffer (x8) and small by-value structs
  in trampolines
 

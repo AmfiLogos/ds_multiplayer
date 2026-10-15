@@ -1,5 +1,5 @@
 diff --git a/BepInEx.Core/Bootstrap/BaseChainloader.cs b/BepInEx.Core/Bootstrap/BaseChainloader.cs
-index 0776bae..d7c346c 100644
+index 0776bae..9edfd65 100644
 --- a/BepInEx.Core/Bootstrap/BaseChainloader.cs
 +++ b/BepInEx.Core/Bootstrap/BaseChainloader.cs
 @@ -9,11 +9,29 @@ using System.Text.RegularExpressions;
@@ -32,7 +32,36 @@ index 0776bae..d7c346c 100644
      protected static readonly string CurrentAssemblyName = Assembly.GetExecutingAssembly().GetName().Name;
      protected static readonly Version CurrentAssemblyVersion = Assembly.GetExecutingAssembly().GetName().Version;
  
-@@ -248,7 +266,8 @@ public abstract class BaseChainloader<TPlugin>
+@@ -155,6 +173,8 @@ public abstract class BaseChainloader<TPlugin>
+         if (!Directory.Exists(Paths.PatcherPluginPath))
+             Directory.CreateDirectory(Paths.PatcherPluginPath);
+ 
++        TypeLoader.SearchDirectories.UnionWith(Paths.ExtraPluginPaths);
++
+         _initialized = true;
+ 
+         Logger.Log(LogLevel.Message, "Chainloader initialized");
+@@ -207,7 +227,18 @@ public abstract class BaseChainloader<TPlugin>
+     /// <returns>List of plugins to be loaded.</returns>
+     protected virtual IList<PluginInfo> DiscoverPlugins()
+     {
+-        return DiscoverPluginsFrom(Paths.PluginPath);
++        var plugins = DiscoverPluginsFrom(Paths.PluginPath).ToList();
++        foreach (var dir in Paths.ExtraPluginPaths)
++            plugins.AddRange(DiscoverPluginsFrom(dir, "chainloader_" + StableHash(dir)));
++        return plugins;
++    }
++
++    private static string StableHash(string s)
++    {
++        var h = 2166136261u;
++        foreach (var c in s)
++            h = (h ^ c) * 16777619u;
++        return h.ToString("x8");
+     }
+ 
+     /// <summary>
+@@ -248,7 +279,8 @@ public abstract class BaseChainloader<TPlugin>
                                           filters.All(x => !string.Equals(x.ProcessName.Replace(".exe", ""),
                                                                           Paths.ProcessName,
                                                                           StringComparison
@@ -43,10 +72,27 @@ index 0776bae..d7c346c 100644
                  if (invalidProcessName)
                  {
 diff --git a/BepInEx.Core/Paths.cs b/BepInEx.Core/Paths.cs
-index a1a44eb..3b19d0a 100644
+index a1a44eb..e625546 100644
 --- a/BepInEx.Core/Paths.cs
 +++ b/BepInEx.Core/Paths.cs
-@@ -121,9 +121,19 @@ public static class Paths
+@@ -89,6 +89,16 @@ public static class Paths
+     /// </summary>
+     public static string PluginPath { get; private set; }
+ 
++    /// <summary>
++    ///     Extra plugin folders from the BEPINEX_PLUGIN_DIRS environment variable (separated by
++    ///     <see cref="Path.PathSeparator" />), scanned after <see cref="PluginPath" />. A mod launcher passes one
++    ///     folder per enabled mod here instead of copying them into BepInEx/plugins.
++    /// </summary>
++    public static string[] ExtraPluginPaths =>
++        (System.Environment.GetEnvironmentVariable("BEPINEX_PLUGIN_DIRS") ?? "")
++        .Split(new[] { Path.PathSeparator }, System.StringSplitOptions.RemoveEmptyEntries)
++        .Where(Directory.Exists).ToArray();
++
+     /// <summary>
+     ///     The name of the currently executing process.
+     /// </summary>
+@@ -121,9 +131,19 @@ public static class Paths
              // According to some experiments, Unity checks whether globalgamemanagers/data.unity3d exists in the data folder before picking it.
              // 'ProcessName_Data' folder is checked first, then if that fails 'Data' folder is checked. If neither is valid, the player crashes.
              // A simple Directory.Exists check is accurate enough while being less likely to break in case these conditions change.
@@ -304,6 +350,21 @@ index 690d4ef..9dfd1c8 100644
              Logger.Log(LogLevel.Info, $"Running under Unity {UnityInfo.Version}");
              Logger.Log(LogLevel.Info, $"Runtime version: {Environment.Version}");
              Logger.Log(LogLevel.Info, $"Runtime information: {RuntimeInformation.FrameworkDescription}");
+diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs
+index 4281a32..787b8b7 100644
+--- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs
++++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs
+@@ -44,6 +44,10 @@ internal static class UnityPreloaderRunner
+          || Utility.TryResolveDllAssembly(assemblyName, Paths.PluginPath, out foundAssembly))
+             return foundAssembly;
+ 
++        foreach (var dir in Paths.ExtraPluginPaths)
++            if (Utility.TryResolveDllAssembly(assemblyName, dir, out foundAssembly))
++                return foundAssembly;
++
+         return null;
+     }
+ }
 diff --git a/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/RuntimeFixes/XTermFix.cs b/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/RuntimeFixes/XTermFix.cs
 index ab33789..74bf13f 100644
 --- a/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/RuntimeFixes/XTermFix.cs

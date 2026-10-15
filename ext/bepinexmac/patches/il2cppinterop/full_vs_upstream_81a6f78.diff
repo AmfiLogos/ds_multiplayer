@@ -10,10 +10,10 @@ index ed47851..e555608 100644
 +.DS_Store
 diff --git a/Il2CppInterop.Common/XrefScans/Arm64Code.cs b/Il2CppInterop.Common/XrefScans/Arm64Code.cs
 new file mode 100644
-index 0000000..455030c
+index 0000000..368bb84
 --- /dev/null
 +++ b/Il2CppInterop.Common/XrefScans/Arm64Code.cs
-@@ -0,0 +1,223 @@
+@@ -0,0 +1,377 @@
 +using System;
 +using System.Collections.Generic;
 +using System.Runtime.InteropServices;
@@ -28,6 +28,12 @@ index 0000000..455030c
 +public static class Arm64Code
 +{
 +    public static bool IsArm64 => RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
++
++    /// <summary>
++    ///     Native code pointer -> generated method, set by Il2CppInterop.Runtime (here, not on XrefScanMethodDb,
++    ///     whose static constructor opens the interop databases that may not exist yet).
++    /// </summary>
++    public static Func<IntPtr, System.Reflection.MethodBase?>? NativePointerResolver;
 +
 +    private static readonly Dictionary<long, long[]> s_StartsByImage = new();
 +
@@ -131,6 +137,154 @@ index 0000000..455030c
 +
 +        return (IntPtr)found;
 +    }
++
++    /// <summary>
++    ///     arm64 counterpart of XrefScanner.XrefScanImpl: calls (BL), tail calls (B to a function start) and
++    ///     64-bit loads from ADRP pages (the "mov reg, [rip+x]" globals, filtered like on x86), up to the first RET.
++    ///     Runs the method's lazy runtime-metadata initialisation first so string literal slots are filled.
++    /// </summary>
++    public static IEnumerable<XrefInstance> XrefScan(IntPtr start)
++    {
++        InitRuntimeMetadata(start);
++        var starts = StartsFor(start);
++        var stop = NextStart(starts, (long)start);
++        var value = new long[32]; // known addresses per register (ADRP / ADD / MOV)
++        var result = new List<XrefInstance>();
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            if ((insn & 0xFFFFFC1Fu) == 0xD65F0000u)
++                break;
++            if ((insn & 0xFC000000u) == 0x94000000u)
++            {
++                result.Add(new XrefInstance(XrefType.Method, (IntPtr)BranchTarget(at, insn), (IntPtr)at));
++                Array.Clear(value, 0, 19); // x0-x18 do not survive a call
++                continue;
++            }
++            if ((insn & 0xFC000000u) == 0x14000000u)
++            {
++                var target = BranchTarget(at, insn);
++                if (target != (long)start && IsStart(starts, target))
++                    result.Add(new XrefInstance(XrefType.Method, (IntPtr)target, (IntPtr)at));
++                continue;
++            }
++            if ((insn & 0x9F000000u) == 0x90000000u) // ADRP
++            {
++                value[insn & 0x1F] = AdrpTarget(at, insn);
++                continue;
++            }
++            if ((insn & 0xFFC00000u) == 0x91000000u) // ADD Xd, Xn, #imm12
++            {
++                var rn = (insn >> 5) & 0x1F;
++                value[insn & 0x1F] = value[rn] != 0 ? value[rn] + ((insn >> 10) & 0xFFF) : 0;
++                continue;
++            }
++            if ((insn & 0xFFE0FFE0u) == 0xAA0003E0u) // MOV Xd, Xm
++            {
++                value[insn & 0x1F] = value[(insn >> 16) & 0x1F];
++                continue;
++            }
++            if ((insn & 0xFFC00000u) == 0xF9400000u) // LDR Xt, [Xn, #imm12*8]
++            {
++                var rn = (insn >> 5) & 0x1F;
++                if (value[rn] != 0)
++                {
++                    var target = (IntPtr)(value[rn] + ((insn >> 10) & 0xFFF) * 8);
++                    try
++                    {
++                        if (XrefScannerManager.Impl.XrefGlobalClassFilter(target))
++                            result.Add(new XrefInstance(XrefType.Global, target, (IntPtr)at));
++                    }
++                    catch (Exception)
++                    {
++                        // unreadable target: not a global
++                    }
++                }
++                value[insn & 0x1F] = 0;
++                continue;
++            }
++            // Stores and compares keep their registers; anything else with Rd in bits 0-4 forgets it.
++            if ((insn & 0x0A000000u) != 0x08000000u || (insn & 0x00400000u) != 0)
++                value[insn & 0x1F] = 0;
++        }
++
++        return result;
++    }
++
++    private static long s_InitFunction = -1;
++
++    /// <summary>
++    ///     Unity 6 IL2CPP methods start with "ldrb wN, [flag]; tbnz", then "x0 = &amp;slot; bl InitializeRuntimeMetadata"
++    ///     per metadata slot, then set the flag. Call the init function (the first call of UnityEngine.Object's
++    ///     static constructor, as on x86) for each slot; it is idempotent in libil2cpp. The flag is left alone.
++    /// </summary>
++    private static void InitRuntimeMetadata(IntPtr start)
++    {
++        if (s_InitFunction == -1)
++        {
++            var resolver = XrefScannerManager.Impl.GetMetadataResolver();
++            s_InitFunction = resolver is ({ } _, var pointer) ? (long)pointer : 0;
++        }
++
++        if (s_InitFunction == 0)
++            return;
++
++        var stop = Math.Min(NextStart(StartsFor(start), (long)start), (long)start + 4096);
++        var value = new long[32];
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            if ((insn & 0xFFFFFC1Fu) == 0xD65F0000u)
++                break;
++            if ((insn & 0x9F000000u) == 0x90000000u) // ADRP
++            {
++                value[insn & 0x1F] = AdrpTarget(at, insn);
++                continue;
++            }
++            if ((insn & 0xFFC00000u) == 0x91000000u) // ADD Xd, Xn, #imm12
++            {
++                var rn = (insn >> 5) & 0x1F;
++                value[insn & 0x1F] = value[rn] != 0 ? value[rn] + ((insn >> 10) & 0xFFF) : 0;
++                continue;
++            }
++            if ((insn & 0xFFE0FFE0u) == 0xAA0003E0u) // MOV Xd, Xm
++            {
++                value[insn & 0x1F] = value[(insn >> 16) & 0x1F];
++                continue;
++            }
++            if ((insn & 0xFC000000u) == 0x94000000u) // BL
++            {
++                if (BranchTarget(at, insn) != s_InitFunction)
++                    break; // past the metadata block
++                if (value[0] != 0)
++                    InitSlot(s_InitFunction, value[0]);
++                continue;
++            }
++            if ((insn & 0xFC000000u) == 0x14000000u)
++                break;
++            if ((insn & 0x1F) != 31)
++                value[insn & 0x1F] = 0; // anything else writing a register
++        }
++    }
++
++    private static void InitSlot(long init, long slot)
++    {
++        var fn = (InitMetadataSlot)Marshal.GetDelegateForFunctionPointer((IntPtr)init, typeof(InitMetadataSlot));
++        fn((IntPtr)slot);
++    }
++
++    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
++    private delegate void InitMetadataSlot(IntPtr slot);
++
++    private static long AdrpTarget(long at, uint insn)
++    {
++        var immlo = (insn >> 29) & 0x3;
++        var immhi = (insn >> 5) & 0x7FFFF;
++        var imm = (long)(((int)((immhi << 2 | immlo) << 11)) >> 11); // sign-extend 21 bits
++        return (at & ~0xFFFL) + (imm << 12);
++    }
++
++    public static bool IsInLoadedImage(IntPtr address) => dladdr(address, out var info) != 0 && info.dli_fbase != IntPtr.Zero;
 +
 +    private static long BranchTarget(long at, uint insn)
 +    {
@@ -238,10 +392,10 @@ index 0000000..455030c
 +    private static extern int dladdr(IntPtr addr, out DlInfo info);
 +}
 diff --git a/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs b/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
-index 3958f4a..80b0310 100644
+index 3958f4a..99c8819 100644
 --- a/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
 +++ b/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
-@@ -20,12 +20,64 @@ public static class XrefScanMethodDb
+@@ -20,19 +20,88 @@ public static class XrefScanMethodDb
              GeneratedDatabasesUtil.GetDatabasePath(MethodAddressToTokenMap.FileName));
          XrefScanCache = new MethodXrefScanCache(GeneratedDatabasesUtil.GetDatabasePath(MethodXrefScanCache.FileName));
  
@@ -283,9 +437,7 @@ index 3958f4a..80b0310 100644
 +            errorPtr = dlerror();
 +
 +            if (errorPtr != IntPtr.Zero)
-             {
--                GameAssemblyBase = (long)module.BaseAddress;
--                break;
++            {
 +                var errorMessage = Marshal.PtrToStringAnsi(errorPtr);
 +
 +                throw new EntryPointNotFoundException(
@@ -293,7 +445,9 @@ index 3958f4a..80b0310 100644
 +            }
 +
 +            if (dladdr(symbolAddress, out var info) == 0)
-+            {
+             {
+-                GameAssemblyBase = (long)module.BaseAddress;
+-                break;
 +                throw new InvalidOperationException();
              }
 +
@@ -310,7 +464,31 @@ index 3958f4a..80b0310 100644
      }
  
      public static MethodBase TryResolvePointer(IntPtr methodStart)
-@@ -64,4 +116,27 @@ public static class XrefScanMethodDb
+     {
++        // The map holds x86-64 slice addresses; arm64 resolves through the live il2cpp method table.
++        if (Arm64Code.IsArm64 && Arm64Code.NativePointerResolver != null)
++            return Arm64Code.NativePointerResolver(methodStart)!;
+         return MethodMap.Lookup((long)methodStart - GameAssemblyBase);
+     }
+ 
++    internal static IEnumerable<XrefInstance> ListUsersArm64(CachedScanResultsAttribute attribute)
++    {
++        for (var i = attribute.RefRangeStart; i < attribute.RefRangeEnd; i++)
++        {
++            var x86 = XrefScanCache.GetAt(i);
++            var method = MethodMap.Lookup(x86.Address);
++            var field = method == null ? null : Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(method);
++            var methodInfo = field?.GetValue(null);
++            if (methodInfo == null || (IntPtr)methodInfo == IntPtr.Zero) continue;
++            var code = Marshal.ReadIntPtr((IntPtr)methodInfo);
++            yield return new XrefInstance(XrefType.Method, code, code);
++        }
++    }
++
+     internal static IEnumerable<XrefInstance> ListUsers(CachedScanResultsAttribute attribute)
+     {
+         for (var i = attribute.RefRangeStart; i < attribute.RefRangeEnd; i++)
+@@ -64,4 +133,27 @@ public static class XrefScanMethodDb
  
          Marshal.WriteByte((IntPtr)(GameAssemblyBase + attribute.MetadataInitFlagRva), 1);
      }
@@ -339,7 +517,7 @@ index 3958f4a..80b0310 100644
 +    private static extern int dladdr(IntPtr addr, out DlInfo info);
  }
 diff --git a/Il2CppInterop.Common/XrefScans/XrefScanner.cs b/Il2CppInterop.Common/XrefScans/XrefScanner.cs
-index e16c22d..7932205 100644
+index e16c22d..75cb57a 100644
 --- a/Il2CppInterop.Common/XrefScans/XrefScanner.cs
 +++ b/Il2CppInterop.Common/XrefScans/XrefScanner.cs
 @@ -1,4 +1,5 @@
@@ -348,7 +526,18 @@ index e16c22d..7932205 100644
  using Iced.Intel;
  using Il2CppInterop.Common.Attributes;
  using Microsoft.Extensions.Logging;
-@@ -25,6 +26,7 @@ public static class XrefScanner
+@@ -13,6 +14,10 @@ public static class XrefScanner
+             ?.GetValue(null);
+         if (fieldValue == null) return Enumerable.Empty<XrefInstance>();
+ 
++        // arm64: the generator's cache holds x86-64 slice addresses; always scan the arm64 code live.
++        if (Arm64Code.IsArm64)
++            return Arm64Code.XrefScan(*(IntPtr*)(IntPtr)fieldValue);
++
+         CachedScanResultsAttribute? cachedAttribute = null;
+         try
+         {
+@@ -25,6 +30,7 @@ public static class XrefScanner
  
          if (cachedAttribute == null)
          {
@@ -356,7 +545,15 @@ index e16c22d..7932205 100644
              XrefScanUtil.CallMetadataInitForMethod(methodBase);
  
              return XrefScanImpl(DecoderForAddress(*(IntPtr*)(IntPtr)fieldValue));
-@@ -48,6 +50,17 @@ public static class XrefScanner
+@@ -45,9 +51,25 @@ public static class XrefScanner
+         if (cachedAttribute == null || cachedAttribute.RefRangeStart == cachedAttribute.RefRangeEnd)
+             return Enumerable.Empty<XrefInstance>();
+ 
++        // arm64: the cached call graph is keyed by x86-64 slice addresses; map each caller back to its method,
++        // then to that method's arm64 code.
++        if (Arm64Code.IsArm64)
++            return XrefScanMethodDb.ListUsersArm64(cachedAttribute);
++
          return XrefScanMethodDb.ListUsers(cachedAttribute);
      }
  
@@ -375,20 +572,24 @@ index e16c22d..7932205 100644
      {
          if (codeStart == IntPtr.Zero) throw new NullReferenceException(nameof(codeStart));
 diff --git a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
-index a8d44d7..f3007e2 100644
+index a8d44d7..785f42f 100644
 --- a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
 +++ b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
-@@ -6,6 +6,9 @@ public static class XrefScannerLowLevel
+@@ -6,6 +6,13 @@ public static class XrefScannerLowLevel
  {
      public static IEnumerable<IntPtr> JumpTargets(IntPtr codeStart, bool ignoreRetn = false)
      {
++        // arm64 process: code of a loaded image is AArch64. Anything else is the generator reading the x86-64
++        // slice of GameAssembly from a file mapping, which the x86 decoder handles.
 +        if (Arm64Code.IsArm64)
-+            return Arm64Code.JumpTargets(codeStart, ignoreRetn);
++            return Arm64Code.IsInLoadedImage(codeStart)
++                ? Arm64Code.JumpTargets(codeStart, ignoreRetn)
++                : JumpTargetsImpl(XrefScanner.DecoderForAddress(codeStart), ignoreRetn);
 +        XrefScanner.EnsureNativeCodeArchitectureSupported();
          return JumpTargetsImpl(XrefScanner.DecoderForAddress(codeStart), ignoreRetn);
      }
  
-@@ -45,6 +48,7 @@ public static class XrefScannerLowLevel
+@@ -45,6 +52,7 @@ public static class XrefScannerLowLevel
  
      public static IEnumerable<IntPtr> CallAndIndirectTargets(IntPtr pointer)
      {
@@ -1285,6 +1486,176 @@ index 9fd2abd..b9e6d5e 100644
          while (currentAddress < moduleEndAddress)
          {
              MEMORY_BASIC_INFORMATION memoryInfo = default;
+diff --git a/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs b/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
+index 3147986..9b77ac1 100644
+--- a/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
++++ b/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
+@@ -34,6 +34,8 @@ public sealed class Il2CppInteropRuntime : BaseHost
+         };
+         SetInstance(res);
+         res.AddXrefScanner<Il2CppInteropRuntime, XrefScanImpl>();
++        if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64)
++            Il2CppInterop.Common.XrefScans.Arm64Code.NativePointerResolver = Arm64MethodResolver.Resolve;
+         return res;
+     }
+ 
+diff --git a/Il2CppInterop.Runtime/XrefScans/Arm64MethodResolver.cs b/Il2CppInterop.Runtime/XrefScans/Arm64MethodResolver.cs
+new file mode 100644
+index 0000000..4cad61f
+--- /dev/null
++++ b/Il2CppInterop.Runtime/XrefScans/Arm64MethodResolver.cs
+@@ -0,0 +1,129 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Reflection;
++using System.Runtime.InteropServices;
++using Il2CppInterop.Common;
++using Il2CppInterop.Common.XrefScans;
++using Il2CppInterop.Runtime.Runtime;
++
++namespace Il2CppInterop.Runtime.XrefScans;
++
++/// <summary>
++///     arm64: the generated MethodAddressToToken map holds x86-64 slice addresses. Resolve an arm64 code pointer
++///     through the live il2cpp method table instead: pointer -> MethodInfo* -> declaring class -> generated type
++///     -> the generated method whose method-info field holds that MethodInfo*.
++/// </summary>
++internal static unsafe class Arm64MethodResolver
++{
++    private static Dictionary<IntPtr, List<IntPtr>>? s_MethodInfoByCode;
++    private static readonly Dictionary<IntPtr, MethodBase?> s_Resolved = new();
++
++    public static MethodBase? Resolve(IntPtr code)
++    {
++        lock (s_Resolved)
++        {
++            if (s_Resolved.TryGetValue(code, out var known))
++                return known;
++            s_MethodInfoByCode ??= BuildTable();
++            MethodBase? result = null;
++            if (s_MethodInfoByCode.TryGetValue(code, out var methodInfos))
++                foreach (var methodInfo in methodInfos) // folded bodies: several methods share one pointer
++                    if ((result = FromMethodInfo(methodInfo)) != null)
++                        break;
++            s_Resolved[code] = result;
++            return result;
++        }
++    }
++
++    private static Dictionary<IntPtr, List<IntPtr>> BuildTable()
++    {
++        var table = new Dictionary<IntPtr, List<IntPtr>>();
++        int total = 0, zero = 0;
++        uint count = 0;
++        var assemblies = IL2CPP.il2cpp_domain_get_assemblies(IL2CPP.il2cpp_domain_get(), ref count);
++        for (var a = 0; a < count; a++)
++        {
++            var image = IL2CPP.il2cpp_assembly_get_image(assemblies[a]);
++            var classes = IL2CPP.il2cpp_image_get_class_count(image);
++            for (uint c = 0; c < classes; c++)
++            {
++                var klass = IL2CPP.il2cpp_image_get_class(image, c);
++                var iter = IntPtr.Zero;
++                IntPtr method;
++                while ((method = IL2CPP.il2cpp_class_get_methods(klass, ref iter)) != IntPtr.Zero)
++                {
++                    var code = UnityVersionHandler.Wrap((Il2CppMethodInfo*)method).MethodPointer;
++                    total++;
++                    if (code == IntPtr.Zero) { zero++; continue; }
++                    if (!table.TryGetValue(code, out var list))
++                        table[code] = list = new List<IntPtr>();
++                    list.Add(method);
++                }
++            }
++        }
++
++        Microsoft.Extensions.Logging.LoggerExtensions.LogInformation(Logger.Instance,
++            "arm64 xref resolver: {Total} methods, {Zero} without code pointer, {Distinct} distinct pointers", total, zero, table.Count);
++        return table;
++    }
++
++    private static MethodBase? FromMethodInfo(IntPtr methodInfo)
++    {
++        var klass = IL2CPP.il2cpp_method_get_class(methodInfo);
++        var type = GeneratedType(klass);
++        if (type == null)
++        {
++            Microsoft.Extensions.Logging.LoggerExtensions.LogDebug(Logger.Instance,
++                "arm64 xref resolver: no generated type for {Ns}.{Name} in {Image}", IL2CPP.il2cpp_class_get_namespace_(klass),
++                IL2CPP.il2cpp_class_get_name_(klass), Marshal.PtrToStringUTF8(IL2CPP.il2cpp_image_get_name(IL2CPP.il2cpp_class_get_image(klass))));
++            return null;
++        }
++        const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static |
++                                 BindingFlags.Instance | BindingFlags.DeclaredOnly;
++        foreach (var m in type.GetMethods(all).Cast<MethodBase>().Concat(type.GetConstructors(all)))
++        {
++            if (m.IsAbstract) continue;
++            try
++            {
++                var field = Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(m);
++                if (field != null && field.GetValue(null) is IntPtr p && p == methodInfo)
++                    return m;
++            }
++            catch (Exception)
++            {
++                // methods without a generated method-info field
++            }
++        }
++
++        Microsoft.Extensions.Logging.LoggerExtensions.LogDebug(Logger.Instance,
++            "arm64 xref resolver: {Type} has no generated method for MethodInfo 0x{Mi}", type.FullName, methodInfo.ToString("X"));
++        return null;
++    }
++
++    private static Type? GeneratedType(IntPtr klass)
++    {
++        var declaring = IL2CPP.il2cpp_class_get_declaring_type(klass);
++        if (declaring != IntPtr.Zero)
++            return GeneratedType(declaring)?.GetNestedType(IL2CPP.il2cpp_class_get_name_(klass)!,
++                BindingFlags.Public | BindingFlags.NonPublic);
++
++        var ns = IL2CPP.il2cpp_class_get_namespace_(klass) ?? "";
++        var name = IL2CPP.il2cpp_class_get_name_(klass)!;
++        var image = Marshal.PtrToStringUTF8(IL2CPP.il2cpp_image_get_name(IL2CPP.il2cpp_class_get_image(klass)))!;
++        var assemblyName = System.IO.Path.GetFileNameWithoutExtension(image);
++        // Interop assemblies only: "mscorlib" is also the name of a .NET facade that forwards System.* types.
++        var interop = AppDomain.CurrentDomain.GetAssemblies()
++            .Where(asm => asm.GetName().Name == "Il2Cpp" + assemblyName ||
++                          (asm.GetName().Name == assemblyName && asm.GetReferencedAssemblies().Any(r => r.Name == "Il2CppInterop.Runtime")))
++            .OrderBy(asm => asm.GetName().Name == assemblyName ? 1 : 0);
++        foreach (var asm in interop)
++        {
++            var t = asm.GetType("Il2Cpp" + (ns.Length == 0 ? "." + name : ns + "." + name), false)
++                    ?? asm.GetType(ns.Length == 0 ? name : ns + "." + name, false);
++            if (t != null && t.Assembly == asm) return t;
++        }
++
++        return null;
++    }
++}
+diff --git a/Il2CppInterop.Runtime/XrefScans/XrefScanImpl.cs b/Il2CppInterop.Runtime/XrefScans/XrefScanImpl.cs
+index 5015702..cfadd53 100644
+--- a/Il2CppInterop.Runtime/XrefScans/XrefScanImpl.cs
++++ b/Il2CppInterop.Runtime/XrefScans/XrefScanImpl.cs
+@@ -14,6 +14,17 @@ internal class XrefScanImpl : IXrefScannerImpl
+ 
+     public unsafe (XrefScanUtil.InitMetadataForMethod, IntPtr)? GetMetadataResolver()
+     {
++        // arm64: find UnityEngine.Object's static constructor through the il2cpp API (the managed
++        // AppDomain.GetAssemblies route below throws with Unity 6 interop assemblies).
++        if (Arm64Code.IsArm64)
++        {
++            var objectClass = IL2CPP.GetIl2CppClass("UnityEngine.CoreModule.dll", "UnityEngine", "Object");
++            var cctor = objectClass == IntPtr.Zero ? IntPtr.Zero : IL2CPP.il2cpp_class_get_method_from_name(objectClass, ".cctor", 0);
++            if (cctor == IntPtr.Zero) return null;
++            var initPointer = XrefScannerLowLevel.JumpTargets(*(IntPtr*)cctor).First();
++            return (Marshal.GetDelegateForFunctionPointer<XrefScanUtil.InitMetadataForMethod>(initPointer), initPointer);
++        }
++
+         getAssemblies ??=
+             typeof(AppDomain).GetMethod("GetAssemblies", BindingFlags.Public | BindingFlags.Static)
+                     ?.CreateDelegate(typeof(Func<AppDomain, Il2CppReferenceArray<Assembly>>)) as
 diff --git a/tests/NativeXrefRegression/NativeXrefRegression.csproj b/tests/NativeXrefRegression/NativeXrefRegression.csproj
 new file mode 100644
 index 0000000..e0c7114

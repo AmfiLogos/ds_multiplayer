@@ -1,0 +1,84 @@
+From e92ecfc8c9b4c39f9876b893e9b8d2ba5e4920a6 Mon Sep 17 00:00:00 2001
+From: bepinexmac-lane <lane@local>
+Date: Thu, 15 Oct 2026 20:52:17 +0100
+Subject: [PATCH 2/2] BEPINEX_PLUGIN_DIRS: extra plugin folders (one per
+ launcher mod), also searched for dependencies
+
+---
+ BepInEx.Core/Bootstrap/BaseChainloader.cs         | 15 ++++++++++++++-
+ BepInEx.Core/Paths.cs                             | 10 ++++++++++
+ .../BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs    |  4 ++++
+ 3 files changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/BepInEx.Core/Bootstrap/BaseChainloader.cs b/BepInEx.Core/Bootstrap/BaseChainloader.cs
+index d7c346c..9edfd65 100644
+--- a/BepInEx.Core/Bootstrap/BaseChainloader.cs
++++ b/BepInEx.Core/Bootstrap/BaseChainloader.cs
+@@ -173,6 +173,8 @@ public abstract class BaseChainloader<TPlugin>
+         if (!Directory.Exists(Paths.PatcherPluginPath))
+             Directory.CreateDirectory(Paths.PatcherPluginPath);
+ 
++        TypeLoader.SearchDirectories.UnionWith(Paths.ExtraPluginPaths);
++
+         _initialized = true;
+ 
+         Logger.Log(LogLevel.Message, "Chainloader initialized");
+@@ -225,7 +227,18 @@ public abstract class BaseChainloader<TPlugin>
+     /// <returns>List of plugins to be loaded.</returns>
+     protected virtual IList<PluginInfo> DiscoverPlugins()
+     {
+-        return DiscoverPluginsFrom(Paths.PluginPath);
++        var plugins = DiscoverPluginsFrom(Paths.PluginPath).ToList();
++        foreach (var dir in Paths.ExtraPluginPaths)
++            plugins.AddRange(DiscoverPluginsFrom(dir, "chainloader_" + StableHash(dir)));
++        return plugins;
++    }
++
++    private static string StableHash(string s)
++    {
++        var h = 2166136261u;
++        foreach (var c in s)
++            h = (h ^ c) * 16777619u;
++        return h.ToString("x8");
+     }
+ 
+     /// <summary>
+diff --git a/BepInEx.Core/Paths.cs b/BepInEx.Core/Paths.cs
+index 3b19d0a..e625546 100644
+--- a/BepInEx.Core/Paths.cs
++++ b/BepInEx.Core/Paths.cs
+@@ -89,6 +89,16 @@ public static class Paths
+     /// </summary>
+     public static string PluginPath { get; private set; }
+ 
++    /// <summary>
++    ///     Extra plugin folders from the BEPINEX_PLUGIN_DIRS environment variable (separated by
++    ///     <see cref="Path.PathSeparator" />), scanned after <see cref="PluginPath" />. A mod launcher passes one
++    ///     folder per enabled mod here instead of copying them into BepInEx/plugins.
++    /// </summary>
++    public static string[] ExtraPluginPaths =>
++        (System.Environment.GetEnvironmentVariable("BEPINEX_PLUGIN_DIRS") ?? "")
++        .Split(new[] { Path.PathSeparator }, System.StringSplitOptions.RemoveEmptyEntries)
++        .Where(Directory.Exists).ToArray();
++
+     /// <summary>
+     ///     The name of the currently executing process.
+     /// </summary>
+diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs
+index 4281a32..787b8b7 100644
+--- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs
++++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/UnityPreloadRunner.cs
+@@ -44,6 +44,10 @@ internal static class UnityPreloaderRunner
+          || Utility.TryResolveDllAssembly(assemblyName, Paths.PluginPath, out foundAssembly))
+             return foundAssembly;
+ 
++        foreach (var dir in Paths.ExtraPluginPaths)
++            if (Utility.TryResolveDllAssembly(assemblyName, dir, out foundAssembly))
++                return foundAssembly;
++
+         return null;
+     }
+ }
+-- 
+2.54.0 (Apple Git-157)
+

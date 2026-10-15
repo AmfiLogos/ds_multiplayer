@@ -48,9 +48,18 @@ Class::FromIl2CppType 0x76801c, Class::FromName 0x76b774 (-> 0x75cb1c). Class::I
 
 ## Known gaps (not done)
 
-- `XrefScanner.XrefScan` / `UsedBy` (uncached, managed method xrefs used by some plugins) still x86-only: throws
-  PlatformNotSupported on arm64. The generator's cached xref DB is built from the x86-64 slice, so cached results
-  point at x86 code. Plugins that use XrefScanner will misbehave on arm64.
+- XrefScanner on arm64 (done 2026-10-15 evening): `XrefScan` scans the arm64 code live (BL, tail-call B,
+  ADRP+ADD/MOV+LDR globals with the string/Type filter) after running the method's lazy metadata init (the init
+  function = first call of UnityEngine.Object's .cctor, found through the il2cpp API because the managed
+  AppDomain.GetAssemblies route throws). `TryResolve` maps an arm64 pointer -> MethodInfo* (table built once from
+  il2cpp_class_get_methods, 179 688 methods) -> generated method. `UsedBy` reads the generator cache (x86-64 slice
+  addresses) and maps each caller through the x86 map to its arm64 code. Proof plugin `plugin/XrefArm64`, 5 game
+  methods: 124 call sites, every resolved name matches our arm64 method table (0 wrong); 24 unresolved = generic
+  instances (no single generated method; same on x86), 1 = struct ctor without method-info field, 90 = il2cpp
+  runtime helpers; 24 string literals read from DeserializeCampaignSaveDataSafely. Limit: the generator cache has
+  no users for these methods (UsedBy empty on every platform here), so UsedBy is unproven in practice.
+  The generator still decodes the x86-64 slice from its file mapping: JumpTargets picks the decoder by "is this
+  address inside a loaded image" (first fresh-install test failed before that).
 - Struct-return thunk refuses methods whose general-register arguments exceed x0..x7 after the shift (logs
   `arm64: ... not patched for arm64`). In Extended Hotbar all 4 struct-return patches got a thunk.
 - Injected classes (ClassInjector) with methods that take/return non-blittable structs: same ABI assumptions,
@@ -63,13 +72,27 @@ Class::FromIl2CppType 0x76801c, Class::FromName 0x76b774 (-> 0x75cb1c). Class::I
 - The launcher must keep `DYLD_INSERT_LIBRARIES` for Doorstop next to dsrig.dylib (dsrig unsets it; the test used
   `research/loadertest.noindex/envrestore.dylib`) and set the DOORSTOP_* variables (see `tools/bie_start.py`).
 
+## Package for the launcher (2026-10-15)
+
+- `tools/package.sh <ver>` -> `out.noindex/pkg/bepinex-mac-arm64-<ver>.zip` (31 MB) + `.zip.sha256` + `manifest.json`
+  inside (sha256 of every file, target_assembly / coreclr / corlib_dir / doorstop paths). Contents: `libdoorstop.dylib`,
+  `dotnet/` (.NET 6.0.36 osx-arm64), `BepInEx/core/` (our BepInEx + Il2CppInterop builds, be.788 libs, arm64
+  libdobby), `licenses/`. libdoorstop / libdobby ad-hoc signed (`codesign -s -`). No plugins, config, interop.
+- Fresh unzip test (ditto -x, no quarantine): first start downloads Unity base libs (unity.bepinex.dev), generates
+  interop (~1.5 min), then loads plugins from `BEPINEX_PLUGIN_DIRS`.
+- New BepInEx env `BEPINEX_PLUGIN_DIRS` (path list, `:` on Mac, `;` on Windows): one folder per enabled mod,
+  scanned after BepInEx/plugins and searched for dependencies. Verified with 4 plugins in separate folders.
+- dsload (l1-core build) first + libdoorstop second in DYLD_INSERT_LIBRARIES: both start; dsload logs Doorstop as
+  "other loader", keeps its entry. Not tested: a dsload hook and a Harmony patch on the same function.
+
 ## Files
 
 - `tools/build_install.sh`: rebuild `inst.noindex/bie` from `src.noindex` forks (nice 19, 4 threads).
 - `tools/bie_start.py C [--rig]`: start a rig copy hidden, batchmode, with Doorstop (+ dsrig.dylib).
+- `tools/package.sh <ver>`: release zip (see above).
 - `tools/a64scan.py GameAssembly.dylib`: offline check of the injector hook lookups on the arm64 slice.
 - `patches/bepinex/`, `patches/il2cppinterop/`: our commits (format-patch) + full diff vs upstream (incl. merged PRs).
-- `plugin/HelloArm64`: test plugin source.
+- `plugin/HelloArm64`, `plugin/XrefArm64`: test plugin sources.
 - Not in git (`*.noindex`): forks (`src.noindex`, branch `bepinex-mac` in each), builds, install, downloads, logs,
   decompiled mod (`decomp.noindex`), the hotbar test shim.
 

@@ -1,7 +1,7 @@
 From 32dd4ce543cc903581af5ef0fba58d25dcb2290d Mon Sep 17 00:00:00 2001
 From: bepinexmac-lane <lane@local>
 Date: Thu, 15 Oct 2026 20:02:05 +0100
-Subject: [PATCH 2/2] arm64 return-buffer thunk: count by-value blittable
+Subject: [PATCH 2/4] arm64 return-buffer thunk: count by-value blittable
  structs (<=16 bytes: 1-2 x regs, HFA: none)
 
 ---

@@ -1,8 +1,8 @@
 From 4589a6f758e1d9201672b0b042876bc81cc38597 Mon Sep 17 00:00:00 2001
 From: bepinexmac-lane <lane@local>
 Date: Thu, 15 Oct 2026 19:59:11 +0100
-Subject: [PATCH] macOS arm64: bundle data folder first, follow arm64 b-thunks
- before detours, match Windows process filters on macOS
+Subject: [PATCH 1/2] macOS arm64: bundle data folder first, follow arm64
+ b-thunks before detours, match Windows process filters on macOS
 
 ---
  BepInEx.Core/Bootstrap/BaseChainloader.cs     | 21 ++++++++++++++++++-

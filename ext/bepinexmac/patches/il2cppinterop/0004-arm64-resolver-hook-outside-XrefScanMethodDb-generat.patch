@@ -1,0 +1,94 @@
+From e7c52f633e255bbfa16578a23427b2e63e2306fd Mon Sep 17 00:00:00 2001
+From: bepinexmac-lane <lane@local>
+Date: Thu, 15 Oct 2026 20:52:17 +0100
+Subject: [PATCH 4/4] arm64: resolver hook outside XrefScanMethodDb; generator
+ x86 scans of file-mapped code keep the x86 decoder
+
+---
+ Il2CppInterop.Common/XrefScans/Arm64Code.cs           | 8 ++++++++
+ Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs    | 7 ++-----
+ Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs | 6 +++++-
+ Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs | 2 +-
+ 4 files changed, 16 insertions(+), 7 deletions(-)
+
+diff --git a/Il2CppInterop.Common/XrefScans/Arm64Code.cs b/Il2CppInterop.Common/XrefScans/Arm64Code.cs
+index 524594f..368bb84 100644
+--- a/Il2CppInterop.Common/XrefScans/Arm64Code.cs
++++ b/Il2CppInterop.Common/XrefScans/Arm64Code.cs
+@@ -13,6 +13,12 @@ public static class Arm64Code
+ {
+     public static bool IsArm64 => RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
+ 
++    /// <summary>
++    ///     Native code pointer -> generated method, set by Il2CppInterop.Runtime (here, not on XrefScanMethodDb,
++    ///     whose static constructor opens the interop databases that may not exist yet).
++    /// </summary>
++    public static Func<IntPtr, System.Reflection.MethodBase?>? NativePointerResolver;
++
+     private static readonly Dictionary<long, long[]> s_StartsByImage = new();
+ 
+     /// <summary>Same contract as the x86 JumpTargets: BL targets and tail-call targets up to the first RET.</summary>
+@@ -262,6 +268,8 @@ public static class Arm64Code
+         return (at & ~0xFFFL) + (imm << 12);
+     }
+ 
++    public static bool IsInLoadedImage(IntPtr address) => dladdr(address, out var info) != 0 && info.dli_fbase != IntPtr.Zero;
++
+     private static long BranchTarget(long at, uint insn)
+     {
+         var imm26 = (int)(insn << 6) >> 6;
+diff --git a/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs b/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
+index 2cb38a4..99c8819 100644
+--- a/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
++++ b/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
+@@ -80,14 +80,11 @@ public static class XrefScanMethodDb
+         }
+     }
+ 
+-    /// <summary>arm64: native code pointer -> generated method (set by Il2CppInterop.Runtime).</summary>
+-    public static Func<IntPtr, MethodBase?>? NativePointerResolver;
+-
+     public static MethodBase TryResolvePointer(IntPtr methodStart)
+     {
+         // The map holds x86-64 slice addresses; arm64 resolves through the live il2cpp method table.
+-        if (Arm64Code.IsArm64 && NativePointerResolver != null)
+-            return NativePointerResolver(methodStart)!;
++        if (Arm64Code.IsArm64 && Arm64Code.NativePointerResolver != null)
++            return Arm64Code.NativePointerResolver(methodStart)!;
+         return MethodMap.Lookup((long)methodStart - GameAssemblyBase);
+     }
+ 
+diff --git a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
+index f3007e2..785f42f 100644
+--- a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
++++ b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
+@@ -6,8 +6,12 @@ public static class XrefScannerLowLevel
+ {
+     public static IEnumerable<IntPtr> JumpTargets(IntPtr codeStart, bool ignoreRetn = false)
+     {
++        // arm64 process: code of a loaded image is AArch64. Anything else is the generator reading the x86-64
++        // slice of GameAssembly from a file mapping, which the x86 decoder handles.
+         if (Arm64Code.IsArm64)
+-            return Arm64Code.JumpTargets(codeStart, ignoreRetn);
++            return Arm64Code.IsInLoadedImage(codeStart)
++                ? Arm64Code.JumpTargets(codeStart, ignoreRetn)
++                : JumpTargetsImpl(XrefScanner.DecoderForAddress(codeStart), ignoreRetn);
+         XrefScanner.EnsureNativeCodeArchitectureSupported();
+         return JumpTargetsImpl(XrefScanner.DecoderForAddress(codeStart), ignoreRetn);
+     }
+diff --git a/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs b/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
+index d1a95be..9b77ac1 100644
+--- a/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
++++ b/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
+@@ -35,7 +35,7 @@ public sealed class Il2CppInteropRuntime : BaseHost
+         SetInstance(res);
+         res.AddXrefScanner<Il2CppInteropRuntime, XrefScanImpl>();
+         if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64)
+-            Il2CppInterop.Common.XrefScans.XrefScanMethodDb.NativePointerResolver = Arm64MethodResolver.Resolve;
++            Il2CppInterop.Common.XrefScans.Arm64Code.NativePointerResolver = Arm64MethodResolver.Resolve;
+         return res;
+     }
+ 
+-- 
+2.54.0 (Apple Git-157)
+
