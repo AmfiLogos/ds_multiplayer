@@ -49,6 +49,7 @@ def wait_free(limit=900):
         time.sleep(10)
 
 def install(kit):
+    if not wait_free(): return 1                     # install.bat refuses while any DungeonSettlers.exe runs in the bottle
     env = dict(os.environ, DSMODDED_NOPAUSE="1")
     r = subprocess.run(["nice", "-n", "19", f"{C}/wine", "--bottle", BOTTLE, "--cx-app", "cmd.exe", "/c",
                         winpath(os.path.abspath(kit)) + "\\install.bat", STEAMGAME], env=env, capture_output=True, text=True)
