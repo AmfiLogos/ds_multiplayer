@@ -15,7 +15,7 @@ import rig
 rig.DYLIB = os.path.abspath(sys.argv[sys.argv.index('--dylib') + 1]) if '--dylib' in sys.argv else os.path.join(ROOT, 'build', 'dsrig_fe.dylib')
 os.environ['DSRIG_FE_BACKUP'] = os.path.join(ROOT, 'backups')
 GAME_SAVES = None                                    # set in run(): the copies' "game folder" (copies only, never the real one)
-B = dict(MULTIPLAYER=1, HOST=2, LOAD_SAVE=7, START=10, JOIN_ADDR=14, CONNECT=15)
+B = dict(MULTIPLAYER=1, HOST=2, LOAD_SAVE=7, START=10, JOIN_ADDR=14, CONNECT=15, HOST_FE=123)
 B.update(json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), sys.argv[sys.argv.index('--ids') + 1] if '--ids' in sys.argv else 'mpm_ids.json'))))   # menu ids of that build
 OUT = os.path.join(ROOT, 'out', 'dive_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
 LOG = open(os.path.join(OUT, 'dive.log'), 'a'); results = []
@@ -134,10 +134,9 @@ def run(H, G):
     rig.start(H, fps=30, window=True); rig.start(G, fps=30, window=True)
     rig.wait_for(H, lambda s: s.get('scene') == 1 and not s.get('busy'), 'host title', timeout=1500)
     time.sleep(3)
-    press(H, 'MULTIPLAYER'); press(H, 'HOST')
+    press(H, 'MULTIPLAYER'); press(H, 'HOST_FE')                # uifix11: Foreign Expedition is chosen under "Host a game"
     # F4 host page (board FESettingsA): World -> Foreign Expedition, its Rules panel, a tooltip; frames for the owner
     want = dict(fe=1, fe_death=DEATH, fe_xp=1, fe_loot=1, fe_recruit=RECRUIT)   # the menu remembers the last values (mp_menu.json)
-    if c(H, cmd='mpm_status')['settings'].get('fe') != 1: press(H, 'WORLD')
     press(H, 'SETTINGS'); time.sleep(1)
     for k, btn in (('fe_death', 'FED_NEXT'), ('fe_xp', 'FEX_NEXT'), ('fe_loot', 'FEL_NEXT'), ('fe_recruit', 'FER_NEXT')):
         if c(H, cmd='mpm_status')['settings'].get(k) != want[k]: press(H, btn)

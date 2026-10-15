@@ -8,7 +8,7 @@ _Static_assert(MPB_FE_RESLIST < 64 && MPB_POP_NEXT < 80, "mpm_visible: title / l
 /* short labels (ux #17): at the stock button size 22 (design #8) the host page buttons fit on one line at 960 and 1512 */
 void mpm_settings_summary(const mpm_settings *s, char *out, size_t cap) {
     if (s->fe) {
-        snprintf(out, cap, "Foreign Expedition Â· Death: %s Â· Experience: %s Â· Dungeon loot: %s Â· Units: %d Â· Recruiting: %s",
+        snprintf(out, cap, "Foreign Expedition \xC2\xB7 Death: %s \xC2\xB7 Experience: %s \xC2\xB7 Dungeon loot: %s \xC2\xB7 Units: %d \xC2\xB7 Recruiting: %s",
                  s->fe_death ? "permanent" : "not permanent", s->fe_xp ? "counts" : "does not count", s->fe_loot ? "comes back" : "stays",
                  s->units, s->fe_recruit ? "on" : "off");
         return;
@@ -122,7 +122,7 @@ void mpm_init(mpm_model *m) {
     memset(m, 0, sizeof *m);
     m->state = MPM_IDLE;
     m->set.pause_mode = MPM_PAUSE_ANYONE; m->set.speedup = 1; m->set.gear = MPM_GEAR_SHARED_OWN; m->set.units = 3; m->set.spectators = 1;
-    m->set.fe_death = 1; m->set.fe_xp = 1; m->set.fe_loot = 1; m->set.fe_recruit = 0;   /* board FESettingsA defaults */
+    m->set.fe_death = 0; m->set.fe_xp = 1; m->set.fe_loot = 1; m->set.fe_recruit = 0;   /* board FESettingsA defaults; death Off (owner 2026-10-15) */
 }
 
 static int go(mpm_model *m, int st) { m->state = st; m->confirm_leave = 0; return MPA_REFRESH; }
@@ -208,8 +208,11 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
     case MPM_TITLE_MENU:
         if (o->role == 2) return go(m, MPM_GUEST_JOINING);
         if (o->scene != 1) return go(m, MPM_IDLE);
-        if (c == MPB_HOST) { m->set.fe = 0; return go(m, MPM_TITLE_HOST); }   /* World opens at "Your save" every time: an expedition is
-                                                                             chosen on purpose (left_prompt regression 2026-10-15) */
+        /* the three host choices under "Host a game" (owner 2026-10-15); MPB_HOST (the line itself) = Your save, as before.
+           An expedition is only ever chosen on purpose (left_prompt regression 2026-10-15) */
+        if (c == MPB_HOST || c == MPB_HOST_SAVE) { m->set.fe = 0; m->host_new = 0; return go(m, MPM_TITLE_HOST); }
+        if (c == MPB_HOST_NEW) { m->set.fe = 0; m->host_new = 1; return go(m, MPM_TITLE_HOST); }
+        if (c == MPB_HOST_FE && m->host_choice) { m->set.fe = 1; m->host_new = 0; return go(m, MPM_TITLE_HOST); }
         if (c == MPB_JOIN_ADDR) { m->msg[0] = 0; return go(m, MPM_TITLE_JOIN); }
         if (c == MPB_FE_RESLIST && m->fe_results) return MPA_FE_RESULTS;
         if (c >= MPB_HIST0 && c <= MPB_HIST5 && m->hist_page * 6 + (c - MPB_HIST0) < m->nhist) { m->hist_pick = m->hist_page * 6 + (c - MPB_HIST0); m->msg[0] = 0; m->watch = 0; return MPA_HIST_JOIN | MPA_REFRESH; }
@@ -242,7 +245,6 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (o->edited) m->msg[0] = 0;
         if (c == MPB_SETTINGS) { m->settings_open = !m->settings_open; return MPA_REFRESH; }
         if (c == MPB_RULES_DONE || c == MPB_FE_DONE) { m->settings_open = 0; return MPA_REFRESH; }
-        if (c == MPB_WORLD) { m->set.fe = !m->set.fe; return MPA_REFRESH; }
         if (c == MPB_FEU_PREV) { m->set.units = units_step(m->set.units, -1); return MPA_REFRESH; }
         if (c == MPB_FEU_NEXT) { m->set.units = units_step(m->set.units, 1); return MPA_REFRESH; }
         if (fe_arrow(m, c)) return MPA_REFRESH;
@@ -324,6 +326,8 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
 
 int mpm_is_visible(const mpm_model *m, const mpm_obs *o, int b) {
     if (b == MPB_WATCH) return m->state == MPM_TITLE_JOIN && !m->connecting[0];
+    if (b == MPB_HOST_SAVE || b == MPB_HOST_NEW) return m->state == MPM_TITLE_MENU;
+    if (b == MPB_HOST_FE) return m->state == MPM_TITLE_MENU && m->host_choice;   /* only once a mod registered it */
     if (b < 0 || b >= 64) return 0;
     return (int)(mpm_visible(m, o) >> b & 1u);
 }
@@ -344,9 +348,9 @@ uint64_t mpm_visible(const mpm_model *m, const mpm_obs *o) {
         return B(MPB_HEADER) | B(MPB_LABEL_ADDR) | B(MPB_LABEL_NAME) | B(MPB_DIVIDER) | (m->connecting[0] ? B(MPB_CANCEL_JOIN) : B(MPB_CONNECT)) | B(MPB_BACK)
              | (m->connecting[0] || m->msg[0] || m->no_field ? B(MPB_INFO) : 0);
     case MPM_TITLE_HOST:                                                     /* layout v2 §2a */
-        return B(MPB_HEADER) | B(MPB_LABEL_NAME) | (m->msg[0] ? B(MPB_INFO) : 0) | B(MPB_WORLD) | B(MPB_SETTINGS)
+        return B(MPB_HEADER) | B(MPB_LABEL_NAME) | (m->msg[0] ? B(MPB_INFO) : 0) | B(MPB_SETTINGS)
              /* the Rules panel (settings_open) is drawn by the game side next to the column (approved mockup B) */
-             | B(MPB_DIVIDER) | B(MPB_LOAD_SAVE) | B(MPB_NEW_CAMPAIGN) | B(MPB_BACK);
+             | B(MPB_DIVIDER) | (m->host_new ? B(MPB_NEW_CAMPAIGN) : B(MPB_LOAD_SAVE)) | B(MPB_BACK);   /* the choice made on the Multiplayer page */
     case MPM_LOBBY: return B(MPB_INVITE) | B(MPB_COPY_ADDR) | B(MPB_START) | B(MPB_LEAVE);
     case MPM_GUEST_LOBBY: return B(MPB_LEAVE);
     case MPM_PLAYING: return o->esc_open ? ((o->role == 1 ? B(MPB_ESC_INVITE) : 0) | B(MPB_LEAVE)) : 0;
@@ -364,12 +368,12 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
         else snprintf(out, cap, "Multiplayer");
         break;
     case MPB_LABEL_ADDR: snprintf(out, cap, "Host address (ip:port)"); break;
-    case MPB_HEADER: snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? "Join a multiplayer world" : m->state == MPM_TITLE_FRIENDS ? "Join a friend on Steam" : "Host a multiplayer world"); break;
+    case MPB_HEADER: snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? "Join a multiplayer world" : m->state == MPM_TITLE_FRIENDS ? "Join a friend on Steam"
+                                          : m->set.fe ? "Host a Foreign Expedition" : m->host_new ? "Host a new save" : "Host your save"); break;
     case MPB_JOIN_FRIEND: snprintf(out, cap, "%s", m->steam ? "Join a friend on Steam" : "<color=#A69085><line-height=80%>Join a friend on Steam\n<size=65%>Needs the Steam version</size></line-height></color>"); break;
     case MPB_FRIEND0: case MPB_FRIEND1: case MPB_FRIEND2: case MPB_FRIEND3: case MPB_FRIEND4: case MPB_FRIEND5:
         snprintf(out, cap, "Join %s's world", m->friends[b - MPB_FRIEND0][0] ? m->friends[b - MPB_FRIEND0] : "a friend"); break;
     case MPB_SETTINGS: snprintf(out, cap, "Rules"); break;                  /* cog left, "›" right, summary under it */
-    case MPB_WORLD: snprintf(out, cap, "World  <color=#A69085>â¹</color> %s <color=#A69085>âº</color>", m->set.fe ? "Foreign Expedition" : "Your save"); break;
     case MPB_SUMMARY: mpm_settings_summary(&m->set, out, cap); break;
     case MPB_SEL_PAUSE: snprintf(out, cap, "Pause"); break;
     case MPB_SEL_SPEED: snprintf(out, cap, "Speed-up"); break;
@@ -390,6 +394,9 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
         else out[0] = 0;
         break;
     case MPB_HOST: snprintf(out, cap, "Host a game"); break;
+    case MPB_HOST_SAVE: snprintf(out, cap, "Your save"); break;
+    case MPB_HOST_NEW: snprintf(out, cap, "New save"); break;
+    case MPB_HOST_FE: snprintf(out, cap, "%s", m->host_choice_label[0] ? m->host_choice_label : "Foreign Expedition"); break;
     case MPB_FE_RESLIST: snprintf(out, cap, "Expedition results"); break;
     case MPB_BACK: snprintf(out, cap, "Back"); break;
     case MPB_PAUSE_MODE: snprintf(out, cap, "Pause: %s", mpm_pause_text(m->set.pause_mode)); break;
@@ -410,7 +417,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     }
 }
 
-/* lobby panel (design #6): a title line (Cinzel, set by the game side) and a body: next step, one line per player ("Â· name": Lora has no U+25CF),
+/* lobby panel (design #6): a title line (Cinzel, set by the game side) and a body: next step, one line per player ("· name": Lora has no U+25CF),
  * settings in the secondary colour, addresses. No <b> (TMP swaps in a font that is not the game's). */
 void mpm_lobby_title(const mpm_model *m, char *out, size_t cap) {
     if (m->state == MPM_GUEST_LOBBY) snprintf(out, cap, "In %s's lobby", m->host[0] ? m->host : "the host");
@@ -435,4 +442,83 @@ void mpm_lobby_text(const mpm_model *m, const char *const *names, int n, char *o
         if (o < cap && m->internet[0]) o += (size_t)snprintf(out + o, cap - o, "\nInternet: %s", m->internet);
         if (o < cap) snprintf(out + o, cap - o, "\nFriends outside your home: open port %s on your router, or use Steam invite", port ? port + 1 : "47777");
     }
+}
+
+/* ---------------------------------------------------------------- load list filter */
+int mpm_list_mode(const mpm_model *m) {
+    if (m->state == MPM_PICK_SAVE) return m->set.fe ? MPM_LIST_ALL : MPM_LIST_MP;   /* hosting: Your save (an expedition copies any world) */
+    return MPM_LIST_SOLO;
+}
+int mpm_list_show(int mode, int show_other, int tagged, int current) {
+    if (mode == MPM_LIST_ALL || show_other || current) return 1;
+    return mode == MPM_LIST_MP ? tagged != 0 : tagged == 0;
+}
+const char *mpm_list_toggle_label(int mode) {
+    return mode == MPM_LIST_MP ? "Show single-player worlds" : mode == MPM_LIST_SOLO ? "Show multiplayer worlds" : "";
+}
+
+/* ---------------------------------------------------------------- Multiplayer world tag (mp_tags.txt) */
+static void tag_clean(const char *in, char out[32]) {                  /* one name: no tab / newline / control byte */
+    size_t o = 0;
+    for (; *in && o < 31; in++) if ((unsigned char)*in >= 0x20) out[o++] = *in;
+    out[o] = 0;
+}
+/* the fields of one line: guid then names (tab separated); returns the number of names, -1 for an empty / bad line */
+static int tag_split(char *line, char **guid, char names[][32], int max) {
+    line[strcspn(line, "\r\n")] = 0;
+    char *f = strtok(line, "\t"); if (!f || !*f) return -1;
+    *guid = f; int n = 0;
+    while ((f = strtok(NULL, "\t"))) { if (!*f || n >= max) continue; tag_clean(f, names[n]); if (names[n][0]) n++; }
+    return n;
+}
+int mpm_tag_get(const char *path, const char *guid, char names[][32], int max) {
+    FILE *f = fopen(path, "r"); if (!f) return -1;
+    char line[1024], tmp[MPM_TAG_NAMES][32]; int got = -1;
+    while (fgets(line, sizeof line, f)) {
+        char *g; int n = tag_split(line, &g, tmp, MPM_TAG_NAMES);
+        if (n < 0 || strcmp(g, guid)) continue;
+        got = n < max ? n : max;
+        for (int i = 0; i < got; i++) memcpy(names[i], tmp[i], 32);
+    }
+    fclose(f); return got;
+}
+/* rewrite the file without guid's line; keep != NULL: then append guid with these names. 0 written, -1 failed */
+static int tag_write(const char *path, const char *guid, char keep[][32], int nkeep, int *had) {
+    char tmp[1100]; snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *in = fopen(path, "r"), *out = fopen(tmp, "w");
+    if (!out) { if (in) fclose(in); return -1; }
+    char line[1024], copy[1024]; *had = 0;
+    while (in && fgets(line, sizeof line, in)) {
+        memcpy(copy, line, sizeof line); char *g, nm[MPM_TAG_NAMES][32];
+        if (tag_split(copy, &g, nm, MPM_TAG_NAMES) < 0) continue;
+        if (!strcmp(g, guid)) { *had = 1; continue; }
+        fputs(line, out); if (!strchr(line, '\n')) fputc('\n', out);
+    }
+    if (keep) { fputs(guid, out); for (int i = 0; i < nkeep; i++) fprintf(out, "\t%s", keep[i]); fputc('\n', out); }
+    if (in) fclose(in);
+    if (fclose(out)) return -1;
+    return rename(tmp, path) ? -1 : 0;
+}
+int mpm_tag_add(const char *path, const char *guid, const char *const *names, int n) {
+    if (!guid || !guid[0] || strpbrk(guid, "\t\r\n ")) return 0;
+    char cur[MPM_TAG_NAMES][32]; int had = mpm_tag_get(path, guid, cur, MPM_TAG_NAMES), k = had < 0 ? 0 : had, changed = had < 0;
+    for (int i = 0; i < n && k < MPM_TAG_NAMES; i++) {
+        char c[32]; tag_clean(names[i] ? names[i] : "", c);
+        if (!c[0]) continue;
+        int dup = 0; for (int j = 0; j < k; j++) if (!strcmp(cur[j], c)) dup = 1;
+        if (!dup) { memcpy(cur[k++], c, 32); changed = 1; }
+    }
+    if (!changed) return 0;
+    int was; return tag_write(path, guid, cur, k, &was) == 0;
+}
+int mpm_tag_remove(const char *path, const char *guid) {
+    char cur[1][32]; if (mpm_tag_get(path, guid, cur, 1) < 0) return 0;
+    int had; return tag_write(path, guid, NULL, 0, &had) == 0 && had;
+}
+void mpm_tag_names(char names[][32], int n, int shown, char *out, size_t cap) {
+    size_t o = 0; if (cap) out[0] = 0;
+    int k = n < shown ? n : shown;
+    for (int i = 0; i < k; i++)
+        o += (size_t)snprintf(out + o, o < cap ? cap - o : 0, "%s%s", i == 0 ? "" : (i == k - 1 && n == k) ? " and " : ", ", names[i]);
+    if (n > k) snprintf(out + (o < cap ? o : cap), o < cap ? cap - o : 0, " +%d", n - k);
 }

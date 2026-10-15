@@ -41,7 +41,7 @@ enum mpm_button {
     MPB_LABEL_ADDR, MPB_LABEL_NAME, MPB_INFO,                               /* title: text-only lines (no button frame) */
     /* layout v2 (research/ux_layout_v2.md): title page header, settings row + summary or 3 selector rows, divider */
     MPB_HEADER, MPB_SETTINGS, MPB_SUMMARY, MPB_SEL_PAUSE, MPB_SEL_SPEED, MPB_SEL_GEAR, MPB_DIVIDER,
-    MPB_WORLD,                                                              /* FE: host page "World  Your save / Foreign Expedition" (visible bit < 64) */
+    MPB_WORLD,                                                              /* unused since uifix11 (was the host page World row); kept: ids stay the same */
     MPB_FE_RESLIST,                                                         /* FE: Multiplayer page "Expedition results" (board FEResultsApplied) */
     MPB_PAUSE_PREV, MPB_PAUSE_NEXT, MPB_SPEED_PREV, MPB_SPEED_NEXT, MPB_GEAR_PREV, MPB_GEAR_NEXT,   /* selector arrows */
     MPB_LOBBY_SETTINGS, MPB_ADMIN,                                          /* lobby window: gear / toggle, admin mode */
@@ -66,6 +66,7 @@ enum mpm_button {
     MPB_FE_UNIT0, MPB_FE_UNIT1, MPB_FE_UNIT2, MPB_FE_UNIT3, MPB_FE_UNIT4, MPB_FE_UNIT5, MPB_FE_UNIT6, MPB_FE_UNIT7, MPB_FE_UNITPG,
     MPB_FE_OK, MPB_FE_CANCEL, MPB_FE_TGT_PREV, MPB_FE_TGT_NEXT, MPB_FE_VER_EXP, MPB_FE_VER_HOME,
     MPB_FE_RES0, MPB_FE_RES1, MPB_FE_RES2, MPB_FE_RES3, MPB_FE_RES4, MPB_FE_RES5,
+    MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE,                               /* Multiplayer page, under "Host a game": Your save / New save / Foreign Expedition (ids >= 64) */
     MPB_COUNT
 };
 /* what the game side sees each frame */
@@ -136,6 +137,9 @@ typedef struct mpm_model {
     int watch;              /* the join asked from the title (Connect / Watch, a Recent worlds row) is a spectator join */
     int spect;              /* last obs.spectator (labels) */
     int fe_results;         /* Foreign Expedition results kept on this computer (game side): the Multiplayer page lists them */
+    int host_new;           /* host page opened from "New save": its button is Host a new campaign (else Host from a save) */
+    int host_choice;        /* a mod registered the third choice under "Host a game" (mpmenu_register_host_choice); 0 = not shown */
+    char host_choice_label[48];   /* its label ("" = "Foreign Expedition") */
 } mpm_model;
 void mpm_init(mpm_model *m);
 /* one frame: `click` = enum mpm_button or MPB_NONE. Returns MPA_* actions to run now. */
@@ -170,6 +174,21 @@ void mpm_fe_value(const mpm_settings *s, int row, char *out, size_t cap);
 const char *mpm_fe_desc(const mpm_settings *s, int row);
 const char *mpm_fe_tip(int row);
 
+/* Load list filter (owner 2026-10-15): single player shows single-player worlds, hosting "Your save" shows multiplayer worlds
+ * (= worlds with the Multiplayer tag); one toggle shows the other kind too. Picking a save for a Foreign Expedition shows all. */
+enum { MPM_LIST_ALL = -1, MPM_LIST_SOLO = 0, MPM_LIST_MP = 1 };
+int  mpm_list_mode(const mpm_model *m);                                   /* which list the stock load list is now */
+int  mpm_list_show(int mode, int show_other, int tagged, int current);    /* 1 = show this world (current = the world being played) */
+const char *mpm_list_toggle_label(int mode);                              /* "Show multiplayer worlds" / "Show single-player worlds" / "" */
+
+/* Multiplayer world tag (owner 2026-10-15): <app data>/mp_tags.txt, one line per tagged world, "<campaign guid>\t<name>\t<name>..."
+ * = the players who were ever in that world together (a sidecar: the game's save is not touched). Line present = tag on. */
+#define MPM_TAG_NAMES 16
+int  mpm_tag_get(const char *path, const char *guid, char names[][32], int max);   /* -1 no tag, else the number of names */
+int  mpm_tag_add(const char *path, const char *guid, const char *const *names, int n);   /* union (tag on); 1 = file changed */
+int  mpm_tag_remove(const char *path, const char *guid);                          /* 1 = there was a tag */
+void mpm_tag_names(char names[][32], int n, int shown, char *out, size_t cap);    /* "The owner, Ana and Bo" / "The owner, Ana, Bo +2" */
+
 /* ---------------------------------------------------------------- game side (dylib only) */
 #ifndef MPM_NO_GAME
 void  mpmenu_install(void);                        /* add-image callback, after ui_install() */
@@ -183,4 +202,7 @@ int   mpmenu_lobby_open(void);                     /* ui lane: 1 while the lobby
  * set: on at once; off = off_ask. Both save the rule (mp_menu.json, the world's line). */
 int   mpmenu_spectators_off_ask(void);
 int   mpmenu_spectators_set(int allow);
+/* the third choice under "Host a game" (MASTER_PLAN 2.2 B register_host_choice; Custom Modes registers "Foreign Expedition").
+ * Shown only once registered. draw_page / on_start NULL = the menu's own Foreign Expedition page and Start (until the split). */
+int   mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), int (*on_start)(void));
 #endif

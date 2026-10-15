@@ -384,6 +384,9 @@ static void test_live(void) {
       ui_settings_parse("{\"pos_y\":50}", &w); CHECK(w.pos_y == -12); }   /* above the top edge: ignored */
     { ui_settings u; ui_settings_default(&u); CHECK(u.tooltips == 1); u.tooltips = 0; char b3[1024]; ui_settings_format(&u, b3, sizeof b3);
       ui_settings w; ui_settings_default(&w); ui_settings_parse(b3, &w); CHECK(w.tooltips == 0); }
+    { ui_settings u; ui_settings_default(&u); CHECK(u.fast_join == 0); u.fast_join = 1; char b4[1024]; ui_settings_format(&u, b4, sizeof b4);   /* Fast join: default Off, kept */
+      ui_settings w; ui_settings_default(&w); ui_settings_parse(b4, &w); CHECK(w.fast_join == 1);
+      ui_settings_parse("{\"see_through\":50}", &w); CHECK(w.fast_join == 1); }   /* older file without the key: unchanged */
     /* owner 2026-10-15: Off (0), 30, 50, 70, 90 cycle both ways; 0 stays Off, an older 25 reads as 30 */
     CHECK(ui_see_through_next(0) == 30 && ui_see_through_next(30) == 50 && ui_see_through_next(50) == 70 && ui_see_through_next(70) == 90 && ui_see_through_next(90) == 0);
     CHECK(ui_see_through_prev(0) == 90 && ui_see_through_prev(90) == 70 && ui_see_through_prev(70) == 50 && ui_see_through_prev(50) == 30 && ui_see_through_prev(30) == 0);
