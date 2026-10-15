@@ -1,6 +1,7 @@
 // mp_game: real game binding of mp_core (build 25846389, arm64). Dylib only; see mp_game.h for the
 // functions the determinism lane must expose, MP_NOTES.md for the design.
 #include "mp_game.h"
+#include "mp_bridge.h"
 #include "mp.h"
 #include "ord_api.h"
 #include "trn.h"
@@ -801,7 +802,7 @@ static int steam_ready(void) {
 static void end_session(const char *why) {
     rig_log("mp: session ended: %s", why);
     snprintf(ended_msg, sizeof ended_msg, "%s", why); ended = 1;
-    if (S) { ord_mp_attach(NULL); mp_stop(S); S = NULL; }
+    if (S) { ord_mp_attach(NULL); mp_bridge_attach(NULL); mp_stop(S); S = NULL; }
     if (steam_join) { dsnet_steam_join_close(steam_join); steam_join = NULL; }
     if (steam_host) { dsnet_steam_host_stop(steam_host); steam_host = NULL; }
     cfg_ok = 0; start_failed = 0; host_reload = 0; join_lobby_id = 0; played = 0; owners_restored = 0;
@@ -893,7 +894,7 @@ static int start_now(const mp_config *c) {                   /* game thread (dsn
     set_uid();
     S = mp_start(c, &api, &why);
     last_reject = S ? 0 : why; modset_unshown = last_reject == DSNET_REJ_MODSET;
-    if (S) { S_gen++; ord_mp_attach(S); trn_set_role(c->host); rig_det_arm(); }
+    if (S) { S_gen++; ord_mp_attach(S); mp_bridge_attach(S); trn_set_role(c->host); rig_det_arm(); }
     if (!S) { rig_log("mp: session did not start (reject reason %d)", why); return why ? -why : -1; }
     return 0;
 }
@@ -1056,7 +1057,7 @@ void mp_game_poll(void) {
             set_uid();
             S = mp_start(&c, &api, &why);                    /* waits for the WELCOME (connect_timeout_ms) */
             last_reject = S ? 0 : why; modset_unshown = last_reject == DSNET_REJ_MODSET;
-            if (S) { S_gen++; ord_mp_attach(S); trn_set_role(0); rig_det_arm(); }
+            if (S) { S_gen++; ord_mp_attach(S); mp_bridge_attach(S); trn_set_role(0); rig_det_arm(); }
             else end_session(reject_text(why));
         } else if (r < 0) {
             char m[160]; snprintf(m, sizeof m, "Could not join: %s", dsnet_steam_join_error(steam_join));

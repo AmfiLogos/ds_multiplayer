@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>DsmpBridgeDemo</AssemblyName><RootNamespace>DsmpBridgeDemo</RootNamespace><Version>1.0.0</Version></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(Lib)UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../DsmpBridge/DsmpBridge.csproj"><Private>false</Private></ProjectReference></ItemGroup>
+</Project>
