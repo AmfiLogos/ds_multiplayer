@@ -312,3 +312,6 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
 ## GitHub visibility (2026-10-15, replaces the 2026-10-14 "all private" rule for these 2 repos)
 - Owner, word for word: "Make them public". github.com/AmfiLogos/ds_multiplayer and github.com/AmfiLogos/ds_launcher are PUBLIC. All his other repos stay private.
 - So: never commit game files, dumps, saves, binaries or keys (LANE_RULES.md rule 5).
+
+## Distance (owner 2026-10-15)
+- "it's impossible to have 2 players on different floors atm in regular playthrough": no different-floor test. Retest only if a feature ever splits players across floors.
