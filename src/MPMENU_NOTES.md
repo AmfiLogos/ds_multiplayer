@@ -157,3 +157,11 @@ Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_men
 - Test: `mpm_tag` lists the decorated world rows (guid, name text, names, remove on + rect, case_open); `{click:i, real:1}` sends
   a real mouse click on row i's "Remove tag" (`click_px`); answer the box with `mpm_box {action}`.
   Pair test: `ext/mptag/tests/mptag_pair.py --dylib <dylib>`.
+
+## M2 menu (2026-10-15, branch wp-menu; ext/wpmenu/NOTES.md)
+- Load list split: single player = single-player worlds, "Your save" = multiplayer worlds (tagged), checkbox shows the other
+  kind; FE pick unfiltered; current world always shown. Hook SaveLoadView.RefreshLoadPanel (0x85ED7C).
+- "Foreign Expedition" under Host a game only when registered (`mpmenu_register_host_choice`); built-in FE registers itself
+  until the split. FE "Death permanent" default Off.
+- "Remove tag" text now sits under the world row (not under its open/close button): a click no longer folds the row.
+- Test: ext/wpmenu/tests/menu_pair.py (fake-mouse build), 17/17 on GH.

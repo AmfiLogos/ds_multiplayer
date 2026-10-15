@@ -176,10 +176,10 @@ static Obj comp_of(Obj any, const char *ns, const char *cls) {             /* Ge
     return ty && u_alive(any) ? (mm_is(any, K_COMP) ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(any, ty, NULL) : NULL) : NULL;
 }
 /* stock assets by name: sprites of the v2 spec, the Cinzel font. Scanned once, again every 300 frames while one is missing */
-enum { S_FRAME, S_COG, S_TOG_ON, S_TOG_OFF, S_PREV, S_NEXT, S_TGL_N, S_TGL_S, S_RECRUIT, S_BOTTOM, S_BOX, S_DIV2, S_DIV, S_SLOT1, S_SLOT2, S_NBTN, S_N };
+enum { S_FRAME, S_COG, S_TOG_ON, S_TOG_OFF, S_PREV, S_NEXT, S_TGL_N, S_TGL_S, S_RECRUIT, S_BOTTOM, S_BOX, S_DIV2, S_DIV, S_SLOT1, S_SLOT2, S_NBTN, S_CHK_N, S_CHK_C, S_N };
 static const char *spr_name[S_N] = { "topLineButton_Frame1", "ITEM_CogWheel", "ListToggle_On", "ListToggle_Off", "ArrrowIcon_Previous",
     "ArrrowIcon_Next", "ToggleButton_Normal", "ToggleButton_Selected", "RecruitButton", "BottomButton", "Box", "Devider_Detail2",
-    "Icon_Devider", "Slot1", "Slot2", "Button_Normal" };
+    "Icon_Devider", "Slot1", "Slot2", "Button_Normal", "CheckBox_Normal", "CheckBox_Checked" };
 static uintptr_t h_spr[S_N], h_cinzel, h_cog_built;      /* h_cog_built: the runtime cog (cog_built), not the stock one */
 static int64_t frames;
 static Obj popup_prefab(int type);
@@ -1445,7 +1445,8 @@ static void prefs_load(void) {
     if (jnum(b, "spectators", &v)) M.set.spectators = v != 0;
     if (jnum(b, "fog", &v)) M.set.fog = v != 0;
     /* "fe" (World) is not restored: the Host page opens at "Your save" (the expedition rules below are) */
-    if (jnum(b, "fe_death", &v)) M.set.fe_death = v != 0;
+    /* fe_death saved before 2026-10-15 was the old default (On), not a choice: kept only from files with "fe_v" 2 (death Off default) */
+    { double fv = 0; if (jnum(b, "fe_v", &fv) && fv >= 2 && jnum(b, "fe_death", &v)) M.set.fe_death = v != 0; }
     if (jnum(b, "fe_xp", &v)) M.set.fe_xp = v != 0;
     if (jnum(b, "fe_loot", &v)) M.set.fe_loot = v != 0;
     if (jnum(b, "fe_recruit", &v)) M.set.fe_recruit = v != 0;
@@ -1463,7 +1464,7 @@ static void prefs_load(void) {
 static void prefs_save(void) {
     char p[1200]; app_path(p, sizeof p, "mp_menu.json");
     FILE *f = fopen(p, "w"); if (!f) return;
-    Buf b = {0}; bput(&b, "{\"pause\":%d,\"speedup\":%d,\"gear\":%d,\"units\":%d,\"admin\":%d,\"events\":%d,\"population\":%d,\"fog\":%d,\"spectators\":%d,\"fe\":%d,\"fe_death\":%d,\"fe_xp\":%d,\"fe_loot\":%d,\"fe_recruit\":%d,\"chat_fade\":%d,\"chat_join_lines\":%d,\"chat_on\":%d,\"chat_x\":%.0f,\"chat_y\":%.0f,\"name\":",
+    Buf b = {0}; bput(&b, "{\"pause\":%d,\"speedup\":%d,\"gear\":%d,\"units\":%d,\"admin\":%d,\"events\":%d,\"population\":%d,\"fog\":%d,\"spectators\":%d,\"fe\":%d,\"fe_death\":%d,\"fe_xp\":%d,\"fe_loot\":%d,\"fe_recruit\":%d,\"fe_v\":2,\"chat_fade\":%d,\"chat_join_lines\":%d,\"chat_on\":%d,\"chat_x\":%.0f,\"chat_y\":%.0f,\"name\":",
         M.set.pause_mode, M.set.speedup, M.set.gear, M.set.units, M.set.admin, M.set.events, M.set.population, M.set.fog, M.set.spectators, M.set.fe, M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, chat_fade_s, chat_show_join, chat_on, chat_x, chat_y); bstr(&b, my_name); bput(&b, "}\n");
     fputs(b.p, f); fclose(f); free(b.p);
 }
@@ -1512,6 +1513,8 @@ static void h_slot_set(Obj self, const void *hdr, bool inter, Obj act, void *mi)
 
 /* owner rule: no loading another world during a multiplayer session (host or guest). The Esc menu's Load button is
  * disabled with a note; its click and the quick-load key do nothing. Leaving multiplayer restores them. */
+/* the third host choice (mpmenu_register_host_choice, below) */
+static struct { int on; char id[32], label[48], tip[300]; void (*draw_page)(void *); int (*on_start)(void); } hchoice;
 static int in_session(void) { return mp_game_session() != NULL; }
 static void (*o_esc_load)(Obj, void *);
 static void h_esc_load(Obj v, void *mi) { if (in_session()) { rig_log("mpmenu: Load blocked during multiplayer"); return; } o_esc_load(v, mi); }
@@ -2506,7 +2509,7 @@ static void run_actions(int a, const mpm_obs *o) {
     if (a & MPA_FE_START) {                                                 /* build the hub with the Expedition Rules, then start */
         extern int fe_menu_start(int death, int xp, int loot, int recruit, char *err, size_t errn);
         char err[200] = "";
-        int rc = fe_menu_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, sizeof err);
+        int rc = hchoice.on_start ? hchoice.on_start() : fe_menu_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, sizeof err);   /* registered start (0 = started), else the built-in one */
         rig_log("mpmenu: Foreign Expedition start rc %d %s", rc, err);
         if (rc == 0) { M.state = MPM_PLAYING; run_actions(MPA_LOBBY_HIDE | MPA_START_GAME, o); }
         else if (ui_notice) ui_notice(err);
@@ -2618,7 +2621,7 @@ static void tips_frame(const mpm_obs *o) {
     /* Multiplayer: no tooltip (owner 2026-10-15) */
     TIP(tb(MPB_HOST_SAVE), "Your Save", "Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer.");
     TIP(tb(MPB_HOST_NEW), "New Save", "Start a new campaign and open it to other players as soon as it is created.");
-    TIP(tb(MPB_HOST_FE), "Foreign Expedition", "Everyone brings units from their own saves into a copy of your world. Nobody's save changes until they bring the results home.");
+    if (hchoice.on) TIP(tb(MPB_HOST_FE), hchoice.label, hchoice.tip);
     TIP(tb(MPB_JOIN_ADDR), "Join by Address", "Join a friend's world with their address (ip:port). Use it when Steam is not available, or on the same home network.");
     TIP(tb(MPB_JOIN_FRIEND), "Join a Friend on Steam", "Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game.");
     for (int i = 0; i < 6; i++) { char l[160], t[64]; mpm_label(&M, MPB_FRIEND0 + i, l, sizeof l); const char *q = strstr(l, "Join ");
@@ -2701,7 +2704,7 @@ static void tag_frame(const mpm_obs *o) {
 }
 /* the load list's rows we decorated: world rows (case, guid, its stock name text string, our "Remove tag" text) and save rows */
 #define TAG_ROWS 64
-typedef struct { uintptr_t row, name0, rm; char guid[40]; } tag_row;
+typedef struct { uintptr_t row, name0, rm; char guid[40]; int hid; } tag_row;   /* hid: a save row the list filter turned off (it was on) */
 static tag_row tcase[TAG_ROWS], tslot[TAG_ROWS];
 static char tag_pending[40];                                                /* the world the Remove box asks about */
 static tag_row *tag_row_of(tag_row *t, Obj row) {
@@ -2736,10 +2739,14 @@ static void tag_case_show(tag_row *r) {
         rm = mk_txt(nt, u_tr(nt), 0, 14, 513, 0, 0, 0, 120, 24, C_SUB);
         if (!rm) return;
         tmp_set(rm, "<u>Remove tag</u>");
-        F(0x5260348, void (*)(Obj, bool, void *))(rm, true, NULL);          /* raycastTarget on: the row's own button under it gets no click */
+        F(0x5260348, void (*)(Obj, bool, void *))(rm, true, NULL);          /* raycastTarget on: the click stops on it (see below) */
         u_gc_free(r->rm); r->rm = u_gc_new(rm);
     }
     u_active(rm, true);
+    /* placed in the name text's space, then moved under the row itself (world position kept, drawn last): under the name
+     * text a click bubbled up to the row's open / close button and folded the row (menu_pair run2, 4a) */
+    Obj rmt = u_tr(rm), ntt = u_tr(nt);
+    if (F(0x510992C, Obj (*)(Obj, void *))(rmt, NULL) != ntt) F(0x510B2C4, void (*)(Obj, Obj, bool, void *))(rmt, ntt, false, NULL);   /* Transform.parent, SetParent */
     /* after the name's text, inside the name's rect (centre anchors of the name text, local units) */
     URect nr = F(0x5106978, URect (*)(Obj, void *))(u_tr(nt), NULL);
     int al = mm_is(nt, K_TMP) ? F(0x4F0B7AC, int (*)(Obj, void *))(nt, NULL) : 513;   /* TMP_Text.alignment: low bits 1 left, 2 centre, 4 right */
@@ -2747,6 +2754,8 @@ static void tag_case_show(tag_row *r) {
     if (pw > nr.w) pw = nr.w;
     x = (al & 2) ? pw / 2 : (al & 4) ? nr.w / 2 : -nr.w / 2 + pw;
     place(rm, x + 14 + rw / 2, 0, rw, 24);
+    F(0x510B2C4, void (*)(Obj, Obj, bool, void *))(rmt, u_tr(cs), true, NULL);
+    F(0x510ED6C, void (*)(Obj, void *))(rmt, NULL);                         /* SetAsLastSibling */
 }
 static void (*o_case_init)(Obj, Obj, const void *, bool, int, Obj, Obj, Obj, void *);
 static void h_case_init(Obj self, Obj clan, const void *hdr, bool open, int nb, Obj slots, Obj ng, Obj oc, void *mi) {
@@ -2790,6 +2799,126 @@ static void tag_click_frame(void) {
     if (r) tag_ask(r);
 }
 
+/* ---------------------------------------------------------------- load list filter (owner 2026-10-15, MASTER_PLAN 3)
+ * Single player (title Load, Esc Load): single-player worlds only; "Your save" on the Multiplayer page: multiplayer worlds only
+ * (= the Multiplayer tag, mp_tags.txt). One toggle under the list shows the other kind too; it is off each time the list
+ * opens. Picking a save for a Foreign Expedition shows every world. The world being played always shows. Hidden = the
+ * world row and its save rows inactive, then the stock RefreshPanelSize. The save panel (Save) is never filtered.
+ * Until the loader's LOAD-ROW API exists this file owns the SaveLoadView.RefreshLoadPanel hook (as the tag owns its two). */
+static int lf_mode = MPM_LIST_SOLO, lf_other, lf_hidden, lf_shown, lf_applied;
+static uintptr_t h_lf_slv, h_lf_tog, h_lf_box;                              /* the list view, our toggle text and its box */
+static void lf_toggle_sync(Obj slv);
+static tag_row *tag_row_find(tag_row *t, Obj row) {                        /* no new entry (tag_row_of adds one) */
+    for (int i = 0; i < TAG_ROWS; i++) if (t[i].row && u_gc_get(t[i].row) == row && u_alive(row)) return &t[i];
+    return NULL;
+}
+static void lf_apply(Obj slv, const char *why) {
+    if (!u_alive(slv)) return;
+    Obj list = AT(slv, 0xE0, Obj), arr = list ? AT(list, 0x10, Obj) : NULL;   /* SaveLoadView._campaignCases (List: _items, _size) */
+    int n = list ? AT(list, 0x18, int) : 0, hid = 0, shown = 0;
+    char hidden_guid[64][40]; int nh = 0;
+    for (int i = 0; i < n && arr; i++) {
+        Obj cs = AT(arr, 0x20 + 8 * i, Obj); if (!u_alive(cs)) continue;
+        tag_row *r = tag_row_find(tcase, cs); if (!r || !r->guid[0]) continue;
+        char nm[MPM_TAG_NAMES][32]; int tagged = tag_get(r->guid, nm) >= 0;
+        int show = mpm_list_show(lf_mode, lf_other, tagged, AT(cs, 0xA0, bool));   /* _isCurrentCampaign */
+        u_active(cs, show);
+        if (show) shown++; else { hid++; if (nh < 64) snprintf(hidden_guid[nh++], 40, "%s", r->guid); }
+    }
+    for (int i = 0; i < TAG_ROWS; i++) {                                    /* save rows follow their world */
+        Obj sl = u_gc_get(tslot[i].row); if (!u_alive(sl) || !tslot[i].guid[0]) continue;
+        int h = 0; for (int k = 0; k < nh && !h; k++) h = !strcmp(hidden_guid[k], tslot[i].guid);
+        if (h && u_go_active_self(u_go(sl))) { u_active(sl, false); tslot[i].hid = 1; }
+        else if (!h && tslot[i].hid) { u_active(sl, true); tslot[i].hid = 0; }   /* only rows we turned off (a folded world keeps its own) */
+    }
+    F(0x85FBC8, void (*)(Obj, void *))(slv, NULL);                          /* SaveLoadView.RefreshPanelSize */
+    lf_hidden = hid; lf_shown = shown; lf_applied++;
+    u_gc_free(h_lf_slv); h_lf_slv = u_gc_new(slv);
+    lf_toggle_sync(slv);
+    rig_log("mpmenu: load list filter (%s): mode %d, other %d: %d shown, %d hidden", why, lf_mode, lf_other, shown, hid);
+}
+static void (*o_refresh_load)(Obj, Obj, void *);
+static void h_refresh_load(Obj self, Obj set, void *mi) {
+    o_refresh_load(self, set, mi);
+    lf_mode = mpm_list_mode(&M);
+    lf_apply(self, "list filled");
+}
+/* the toggle: CheckBox_Normal / _Checked box + "Show multiplayer worlds" in a band between the list and its bottom row (Cancel /
+ * Remove File / Load). The band is made by raising the list's bottom edge (ScrollView_SettingData offsetMin) by LF_BAND
+ * while the toggle shows; the stock edge comes back for the Save panel and a list with no toggle. Its parent is the
+ * bottom row of the Load panel (Panel_LowerLoad), so the Save panel never shows it. Local units of the list's canvas. */
+#define LF_BAND 44
+static uintptr_t h_lf_sv; static V2 lf_sv_off0; static int lf_sv_up;
+static void lf_band(Obj slv, int on) {
+    Obj sv = u_gc_get(h_lf_sv);
+    if (!u_alive(sv)) {
+        if (!on || !u_alive(slv)) return;
+        Obj t = tr_find(u_tr(slv), "Panel_SaveLoadUI/ScrollView_SettingData"); if (!mm_is(t, K_RT)) return;
+        u_gc_free(h_lf_sv); h_lf_sv = u_gc_new(t); sv = t; lf_sv_up = 0;
+    }
+    if (on == lf_sv_up) return;
+    if (on) lf_sv_off0 = F(0x51077B4, V2 (*)(Obj, void *))(sv, NULL);       /* RectTransform.offsetMin (stock) */
+    F(0x510794C, void (*)(Obj, V2, void *))(sv, on ? (V2){ lf_sv_off0.x, lf_sv_off0.y + LF_BAND } : lf_sv_off0, NULL);
+    lf_sv_up = on;
+}
+static void lf_toggle_sync(Obj slv) {
+    Obj tog = u_gc_get(h_lf_tog), box = u_gc_get(h_lf_box), low = AT(slv, 0x98, Obj);   /* _lowLoadPanel */
+    const char *lbl = mpm_list_toggle_label(lf_mode);
+    if (!lbl[0]) { u_active(tog, false); u_active(box, false); lf_band(slv, 0); return; }
+    if (!u_alive(tog)) {
+        Obj tt = AT(slv, 0x48, Obj);                                        /* _saveLoadTitle (text template) */
+        static uintptr_t hc; static void *kc;
+        Obj cn = find_view_x(&hc, &kc, "Refactor.UI", "CommonNoticeView", true);
+        Obj lb = cn ? tr_find(u_tr(cn), "Img_BlackLetterBox") : NULL, tpl_img = lb ? image_of(lb) : NULL;
+        if (!u_alive(low) || !u_alive(tt)) return;
+        tog = mk_txt(tt, u_tr(low), 0, 16, 513, 0, 0, 0, 400, 36, C_SUB);    /* middle left */
+        if (!tog) return;
+        if (!strcmp(cls_name(tog), "DASText")) AT(tog, 0x7C0, bool) = false;   /* our text, not a localisation key */
+        F(0x5260348, void (*)(Obj, bool, void *))(tog, true, NULL);         /* raycastTarget: the click is ours */
+        u_gc_free(h_lf_tog); h_lf_tog = u_gc_new(tog);
+        box = tpl_img ? mk_img(tpl_img, u_tr(low), S_CHK_N, C_WHITE, 0, 0, 28, 28) : NULL;
+        u_gc_free(h_lf_box); h_lf_box = box ? u_gc_new(box) : 0;
+        rig_log("mpmenu: load list toggle built (box %s)", box ? "yes" : "no");
+    }
+    lf_band(slv, 1);
+    URect lr = F(0x5106978, URect (*)(Obj, void *))(u_tr(low), NULL);       /* bottom row, local (centre = 0,0) */
+    float y = lr.h / 2 + LF_BAND / 2.0f, x0 = -lr.w / 2 + 4;
+    Obj sp = spr(lf_other ? S_CHK_C : S_CHK_N);
+    if (box) { place(box, x0 + 14, y, 28, 28); img_set(box, sp, sp ? C_WHITE : C_SUB); u_active(box, true); }
+    place(tog, x0 + 36 + 200, y, 400, 36);
+    tmp_set(tog, lbl); u_active(tog, true);
+}
+static void lf_flip(void) {
+    Obj slv = u_gc_get(h_lf_slv); if (!u_alive(slv)) return;
+    lf_other = !lf_other;
+    if (!lf_other) { F(0x860030, void (*)(Obj, void *))(slv, NULL); F(0x86047C, void (*)(Obj, void *))(slv, NULL); }   /* UnselectAllSlots, LockLoadButtons: no pick left in a hidden world */
+    lf_apply(slv, "toggle");
+}
+static int lf_hit(V3 m) { return pt_in(u_gc_get(h_lf_tog), m) || pt_in(u_gc_get(h_lf_box), m); }
+static void lf_frame(void) {
+    static int was;
+    int open = popup_open(5);
+    if (was && !open) { lf_other = 0; lf_band(NULL, 0); }                   /* off again next time the list opens; stock list edge back */
+    was = open;
+    if (!open || lbox_up) return;
+    Obj slv = u_gc_get(h_lf_slv);
+    if (u_alive(slv) && frames % 15 == 0 && mpm_list_mode(&M) != lf_mode) { lf_mode = mpm_list_mode(&M); lf_apply(slv, "mode changed"); }
+    if (F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) {                    /* mouse down on the toggle */
+        V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL);
+        if (lf_hit(m)) lf_flip();
+    }
+}
+
+/* ---------------------------------------------------------------- the third host choice (MASTER_PLAN 2.2 B register_host_choice) */
+__attribute__((visibility("default"))) int mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), int (*on_start)(void)) {
+    if (!id || !label) return 0;
+    if (hchoice.on && strcmp(hchoice.id, id)) { rig_log("mpmenu: host choice \"%s\" refused (\"%s\" has the place)", id, hchoice.id); return 0; }
+    snprintf(hchoice.id, sizeof hchoice.id, "%s", id); snprintf(hchoice.label, sizeof hchoice.label, "%s", label);
+    snprintf(hchoice.tip, sizeof hchoice.tip, "%s", tip ? tip : ""); hchoice.draw_page = draw_page; hchoice.on_start = on_start; hchoice.on = 1;
+    rig_log("mpmenu: host choice \"%s\" registered (%s)", label, id);
+    return 1;
+}
+
 void mpmenu_frame(void) {
     fog_poll();
     frames++;
@@ -2800,6 +2929,7 @@ void mpmenu_frame(void) {
     mpm_obs o; observe(&o);
     o.edited = fields_edited; fields_edited = 0;
     int c = pending_click; pending_click = MPB_NONE;
+    M.host_choice = hchoice.on; snprintf(M.host_choice_label, sizeof M.host_choice_label, "%s", hchoice.label);
     if (few_click(c)) c = MPB_NONE;                                        /* Foreign Expedition windows */
     int st0 = M.state;
     int a = mpm_step(&M, &o, c);
@@ -2837,6 +2967,7 @@ void mpmenu_frame(void) {
     invite_frame(&o);
     tag_frame(&o);
     tag_click_frame();
+    lf_frame();
     rules_watch(&o);
     pick_frame(&o);
     chat_frame(&o);
@@ -2861,11 +2992,14 @@ void mpmenu_install(void) {
     bad |= rig_hook(0xD6C800, (void *)h_quickload, (void **)&o_quickload, "mpmenu OnEvent(QuickLoadRequested) (blocked in MP)");
     bad |= rig_hook(0xF70150, (void *)h_slot_set, (void **)&o_slot_set, "mpmenu SubUI_SaveFileButton.SetData (MP tag)");
     bad |= rig_hook(0x85E50C, (void *)h_case_init, (void **)&o_case_init, "mpmenu SubUI_SettlerNameCase.Init (MP world tag)");
+    bad |= rig_hook(0x85ED7C, (void *)h_refresh_load, (void **)&o_refresh_load, "mpmenu SaveLoadView.RefreshLoadPanel (single / multiplayer list)");
     bad |= rig_hook(0xD42BBC, (void *)h_textfocus, (void **)&o_textfocus, "mpmenu KeyInputDispatcher.IsTextInputFocused (chat typing: no hotkeys)");
     if (test_mode()) {
         bad |= rig_hook(0x518AEA0, (void *)h_clip_get, (void **)&o_clip_get, "mpmenu GUIUtility.get_systemCopyBuffer (test: file)");
         bad |= rig_hook(0x518AFE0, (void *)h_clip_set, (void **)&o_clip_set, "mpmenu GUIUtility.set_systemCopyBuffer (test: file)");
     }
+    /* until the split (M4) the Foreign Expedition code is in this dylib: it takes the third host choice itself */
+    mpmenu_register_host_choice("foreign-expedition", "Foreign Expedition", "Everyone brings units from their own saves into a copy of your world. Nobody's save changes until they bring the results home.", NULL, NULL);
     rig_log("mpmenu: installed (%s)%s", bad ? "HOOK FAILED" : "ok", test_mode() ? ", clipboard -> clipboard.txt" : "");
 }
 
@@ -3069,7 +3203,8 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         return !strcmp(how, "backbuffer") ? backbuffer_shot(p) : ui_shot(p);
     }
     if (!strcmp(cmd, "mpm_tree")) {                                         /* hierarchy of the Esc menu (layout debugging) */
-        Obj v = esc_view(); if (!v) return strdup("{\"ok\":false,\"error\":\"no Esc menu\"}");
+        char wh[16] = ""; jstr(line, "what", wh, sizeof wh);                /* "load": the load list (SaveLoadView) */
+        Obj v = !strcmp(wh, "load") ? find_view_x(&h_slv, &k_slv, "Refactor", "SaveLoadView", true) : esc_view(); if (!v) return strdup("{\"ok\":false,\"error\":\"no view\"}");
         Buf b = {0}; int n = 0; bput(&b, "{\"ok\":true,\"screen\":[%d,%d],\"tree\":[", F(0x5092C94, int (*)(void *))(NULL), F(0x5092CD4, int (*)(void *))(NULL));
         tree(&b, u_tr(v), 0, &n); bput(&b, "]}"); return b.p;
     }
@@ -3140,6 +3275,37 @@ char *mpmenu_exec(const char *cmd, const char *line) {
             if (i == ci && rmon) { if (real) click_px((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, via); else tag_ask(&tcase[i]); }
         }
         bput(&b, "]}"); return b.p;
+    }
+    if (!strcmp(cmd, "mpm_list")) {                                         /* test: load list filter; {flip:1} (real:1 = a real mouse click on the toggle); {close:1} closes the list */
+        double v; char via[16] = "window"; jstr(line, "via", via, sizeof via);
+        int flip = jnum(line, "flip", &v) && v != 0, real = jnum(line, "real", &v) && v != 0;
+        Obj slv = u_gc_get(h_lf_slv), tog = u_gc_get(h_lf_tog), box = u_gc_get(h_lf_box);
+        float r[4] = { 0 }, br[4] = { 0 }; int ton = u_on(tog) && rect_of(tog, r); if (u_on(box)) rect_of(box, br);
+        if (flip && ton) { if (real) click_px((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, via); else lf_flip(); }
+        char sg[40] = "";
+        if (jstr(line, "scroll_to", sg, sizeof sg) && sg[0] && u_alive(slv)) {    /* test: scroll until that world's row is inside the list's viewport */
+            Obj vp = tr_find(u_tr(slv), "Panel_SaveLoadUI/ScrollView_SettingData/Viewport"), svo = tr_find(u_tr(slv), "Panel_SaveLoadUI/ScrollView_SettingData");
+            Obj sr = svo ? comp_of(svo, "UnityEngine.UI", "ScrollRect") : NULL; float vr[4] = { 0 }; rect_of(vp, vr);
+            Obj row = NULL; for (int i = 0; i < TAG_ROWS; i++) if (!strcmp(tcase[i].guid, sg) && u_alive(u_gc_get(tcase[i].row))) row = u_gc_get(tcase[i].row);
+            for (int k = 0; sr && row && k <= 40; k++) {
+                F(0x549A6F0, void (*)(Obj, float, void *))(sr, 1.0f - k / 40.0f, NULL);   /* ScrollRect.verticalNormalizedPosition */
+                float rr[4]; if (rect_of(AT(row, 0x28, Obj), rr) && rr[1] >= vr[1] && rr[3] <= vr[3]) break;
+            }
+        }
+        if (jnum(line, "close", &v) && v != 0) { Obj p = popups(); if (p && popup_open(5)) F(0xF62A88, void (*)(Obj, int, void *))(p, 5, NULL); }   /* DeactivateView(5) */
+        char tt[160] = ""; if (u_alive(tog)) utf16_to_utf8(tmp_get(tog), tt, sizeof tt);
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"open\":%s,\"mode\":%d,\"model_mode\":%d,\"other\":%d,\"shown\":%d,\"hidden\":%d,\"applied\":%d,\"toggle\":%d,\"toggle_text\":",
+                          popup_open(5) ? "true" : "false", lf_mode, mpm_list_mode(&M), lf_other, lf_shown, lf_hidden, lf_applied, ton); bstr(&b, tt);
+        bput(&b, ",\"toggle_rect\":[%.0f,%.0f,%.0f,%.0f],\"box_rect\":[%.0f,%.0f,%.0f,%.0f],\"cases\":[", r[0], r[1], r[2], r[3], br[0], br[1], br[2], br[3]);
+        Obj list = u_alive(slv) ? AT(slv, 0xE0, Obj) : NULL, arr = list ? AT(list, 0x10, Obj) : NULL; int n = list ? AT(list, 0x18, int) : 0;
+        for (int i = 0; i < n && arr; i++) {
+            Obj cs = AT(arr, 0x20 + 8 * i, Obj); if (!u_alive(cs)) continue;
+            tag_row *t = tag_row_find(tcase, cs); char nm[MPM_TAG_NAMES][32]; int tg = t ? tag_get(t->guid, nm) >= 0 : -1;
+            bput(&b, "%s{\"guid\":", i ? "," : ""); bstr(&b, t ? t->guid : "");
+            bput(&b, ",\"active\":%d,\"tagged\":%d,\"current\":%d,\"open\":%d}", u_go_active_self(u_go(cs)) ? 1 : 0, tg, AT(cs, 0xA0, bool) ? 1 : 0, AT(cs, 0xA1, bool) ? 1 : 0);
+        }
+        int sl_on = 0, sl_hid = 0; for (int i = 0; i < TAG_ROWS; i++) { Obj x = u_gc_get(tslot[i].row); if (u_alive(x)) { if (u_go_active_self(u_go(x))) sl_on++; if (tslot[i].hid) sl_hid++; } }
+        bput(&b, "],\"slots_on\":%d,\"slots_hidden\":%d}", sl_on, sl_hid); return b.p;
     }
     if (!strcmp(cmd, "mpm_open_load")) {                                    /* test: the stock Load Campaign button (fills the list) */
         Obj tv = title_view(); if (!tv) return strdup("{\"ok\":false,\"error\":\"not on the title\"}");

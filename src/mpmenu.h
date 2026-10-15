@@ -138,6 +138,8 @@ typedef struct mpm_model {
     int spect;              /* last obs.spectator (labels) */
     int fe_results;         /* Foreign Expedition results kept on this computer (game side): the Multiplayer page lists them */
     int host_new;           /* host page opened from "New save": its button is Host a new campaign (else Host from a save) */
+    int host_choice;        /* a mod registered the third choice under "Host a game" (mpmenu_register_host_choice); 0 = not shown */
+    char host_choice_label[48];   /* its label ("" = "Foreign Expedition") */
 } mpm_model;
 void mpm_init(mpm_model *m);
 /* one frame: `click` = enum mpm_button or MPB_NONE. Returns MPA_* actions to run now. */
@@ -172,6 +174,13 @@ void mpm_fe_value(const mpm_settings *s, int row, char *out, size_t cap);
 const char *mpm_fe_desc(const mpm_settings *s, int row);
 const char *mpm_fe_tip(int row);
 
+/* Load list filter (owner 2026-10-15): single player shows single-player worlds, hosting "Your save" shows multiplayer worlds
+ * (= worlds with the Multiplayer tag); one toggle shows the other kind too. Picking a save for a Foreign Expedition shows all. */
+enum { MPM_LIST_ALL = -1, MPM_LIST_SOLO = 0, MPM_LIST_MP = 1 };
+int  mpm_list_mode(const mpm_model *m);                                   /* which list the stock load list is now */
+int  mpm_list_show(int mode, int show_other, int tagged, int current);    /* 1 = show this world (current = the world being played) */
+const char *mpm_list_toggle_label(int mode);                              /* "Show multiplayer worlds" / "Show single-player worlds" / "" */
+
 /* Multiplayer world tag (owner 2026-10-15): <app data>/mp_tags.txt, one line per tagged world, "<campaign guid>\t<name>\t<name>..."
  * = the players who were ever in that world together (a sidecar: the game's save is not touched). Line present = tag on. */
 #define MPM_TAG_NAMES 16
@@ -193,4 +202,7 @@ int   mpmenu_lobby_open(void);                     /* ui lane: 1 while the lobby
  * set: on at once; off = off_ask. Both save the rule (mp_menu.json, the world's line). */
 int   mpmenu_spectators_off_ask(void);
 int   mpmenu_spectators_set(int allow);
+/* the third choice under "Host a game" (MASTER_PLAN 2.2 B register_host_choice; Custom Modes registers "Foreign Expedition").
+ * Shown only once registered. draw_page / on_start NULL = the menu's own Foreign Expedition page and Start (until the split). */
+int   mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), int (*on_start)(void));
 #endif

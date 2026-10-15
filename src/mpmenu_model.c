@@ -122,7 +122,7 @@ void mpm_init(mpm_model *m) {
     memset(m, 0, sizeof *m);
     m->state = MPM_IDLE;
     m->set.pause_mode = MPM_PAUSE_ANYONE; m->set.speedup = 1; m->set.gear = MPM_GEAR_SHARED_OWN; m->set.units = 3; m->set.spectators = 1;
-    m->set.fe_death = 1; m->set.fe_xp = 1; m->set.fe_loot = 1; m->set.fe_recruit = 0;   /* board FESettingsA defaults */
+    m->set.fe_death = 0; m->set.fe_xp = 1; m->set.fe_loot = 1; m->set.fe_recruit = 0;   /* board FESettingsA defaults; death Off (owner 2026-10-15) */
 }
 
 static int go(mpm_model *m, int st) { m->state = st; m->confirm_leave = 0; return MPA_REFRESH; }
@@ -212,7 +212,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
            An expedition is only ever chosen on purpose (left_prompt regression 2026-10-15) */
         if (c == MPB_HOST || c == MPB_HOST_SAVE) { m->set.fe = 0; m->host_new = 0; return go(m, MPM_TITLE_HOST); }
         if (c == MPB_HOST_NEW) { m->set.fe = 0; m->host_new = 1; return go(m, MPM_TITLE_HOST); }
-        if (c == MPB_HOST_FE) { m->set.fe = 1; m->host_new = 0; return go(m, MPM_TITLE_HOST); }
+        if (c == MPB_HOST_FE && m->host_choice) { m->set.fe = 1; m->host_new = 0; return go(m, MPM_TITLE_HOST); }
         if (c == MPB_JOIN_ADDR) { m->msg[0] = 0; return go(m, MPM_TITLE_JOIN); }
         if (c == MPB_FE_RESLIST && m->fe_results) return MPA_FE_RESULTS;
         if (c >= MPB_HIST0 && c <= MPB_HIST5 && m->hist_page * 6 + (c - MPB_HIST0) < m->nhist) { m->hist_pick = m->hist_page * 6 + (c - MPB_HIST0); m->msg[0] = 0; m->watch = 0; return MPA_HIST_JOIN | MPA_REFRESH; }
@@ -326,7 +326,8 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
 
 int mpm_is_visible(const mpm_model *m, const mpm_obs *o, int b) {
     if (b == MPB_WATCH) return m->state == MPM_TITLE_JOIN && !m->connecting[0];
-    if (b == MPB_HOST_SAVE || b == MPB_HOST_NEW || b == MPB_HOST_FE) return m->state == MPM_TITLE_MENU;
+    if (b == MPB_HOST_SAVE || b == MPB_HOST_NEW) return m->state == MPM_TITLE_MENU;
+    if (b == MPB_HOST_FE) return m->state == MPM_TITLE_MENU && m->host_choice;   /* only once a mod registered it */
     if (b < 0 || b >= 64) return 0;
     return (int)(mpm_visible(m, o) >> b & 1u);
 }
@@ -395,7 +396,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_HOST: snprintf(out, cap, "Host a game"); break;
     case MPB_HOST_SAVE: snprintf(out, cap, "Your save"); break;
     case MPB_HOST_NEW: snprintf(out, cap, "New save"); break;
-    case MPB_HOST_FE: snprintf(out, cap, "Foreign Expedition"); break;
+    case MPB_HOST_FE: snprintf(out, cap, "%s", m->host_choice_label[0] ? m->host_choice_label : "Foreign Expedition"); break;
     case MPB_FE_RESLIST: snprintf(out, cap, "Expedition results"); break;
     case MPB_BACK: snprintf(out, cap, "Back"); break;
     case MPB_PAUSE_MODE: snprintf(out, cap, "Pause: %s", mpm_pause_text(m->set.pause_mode)); break;
@@ -441,6 +442,19 @@ void mpm_lobby_text(const mpm_model *m, const char *const *names, int n, char *o
         if (o < cap && m->internet[0]) o += (size_t)snprintf(out + o, cap - o, "\nInternet: %s", m->internet);
         if (o < cap) snprintf(out + o, cap - o, "\nFriends outside your home: open port %s on your router, or use Steam invite", port ? port + 1 : "47777");
     }
+}
+
+/* ---------------------------------------------------------------- load list filter */
+int mpm_list_mode(const mpm_model *m) {
+    if (m->state == MPM_PICK_SAVE) return m->set.fe ? MPM_LIST_ALL : MPM_LIST_MP;   /* hosting: Your save (an expedition copies any world) */
+    return MPM_LIST_SOLO;
+}
+int mpm_list_show(int mode, int show_other, int tagged, int current) {
+    if (mode == MPM_LIST_ALL || show_other || current) return 1;
+    return mode == MPM_LIST_MP ? tagged != 0 : tagged == 0;
+}
+const char *mpm_list_toggle_label(int mode) {
+    return mode == MPM_LIST_MP ? "Show single-player worlds" : mode == MPM_LIST_SOLO ? "Show multiplayer worlds" : "";
 }
 
 /* ---------------------------------------------------------------- Multiplayer world tag (mp_tags.txt) */
