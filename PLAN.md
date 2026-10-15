@@ -350,3 +350,11 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
 ## See-through Off (owner 2026-10-15; replaces the 10-14 01:40 minimum rule)
 - "Other Units See-through" steps: Off (0), 30, 50, 70, 90 %, cycling both ways. Off = alpha 1.0 like own units (colour tint stays).
 - Default stays 30. A saved 0 stays Off; an older 1..29 (25) reads as 30. Branch `seethrough`.
+
+## P0 merges (merger lane, 2026-10-15 18:10-18:45)
+- Merged into main (each: main merged into the branch first, build/merge_<lane>.dylib, unit mp/ui/mpmenu/pvp/trn/teams + rig smoke on one leased pair):
+  sockpath, steamstart, winkit (= steamstart-win 09cf1bc), seethrough (+ seethrough_pair), latejoin (+ fastjoin_pair off and on: PASS).
+- seethrough_pair reports FAIL on the "highest alpha" check: one sprite on other units stays at 1.0. The same result on the
+  pre-merge branch build (ccc33ba), so not a merge fault; the lowest alpha matches every step (Off, 30-90). Test check or extra sprite: open.
+- steamstart / winkit: no dylib change; launcher compiles; bat files not run (no wine run in P0).
+- Pending: viewui (lane still working), weaponslot (no commits yet), myunits fe/ guard (lane stopped; C1/C2 take it over).
