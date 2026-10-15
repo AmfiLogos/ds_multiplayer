@@ -310,3 +310,7 @@ it" list checked against the build. Nothing ships until all is green.
 
 ## Hub map (owner 2026-10-15)
 - Owner: "A: the wiki's Finished Base" + "ideally I'd want a world download of someone else to make sure we have something looking nice". -> C2: the hub is a nice-looking, fully built and stocked world made by a real player, downloaded at first use and cached (never shipped in the public repo). Default until such a world is chosen: the wiki Finished Base template. C2 finds candidates (whose world, where it comes from, screenshot) and the lead shows them to the owner; a real player's world needs that player's OK before it is used.
+
+## BepInEx (owner 2026-10-15: "the mod loader will be compatible with the other format of mods ... right?")
+- Windows: the loader hosts BepInEx (be.788, pinned download on first use); BepInEx plugins show in the Mods window (on/off, groups, per world). Lanes l3win + l2modswin. bepinex-bridge is UNPARKED and in the release (sync of bridged actions).
+- Mac: not possible today (no arm64 BepInEx/MelonLoader for IL2CPP, research/bepinex_compat.md). Told the owner.
