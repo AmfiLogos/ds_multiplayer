@@ -399,8 +399,8 @@ static Obj mk_txt(Obj tpl_txt, Obj parent_tr, int cinzel, float size, int align,
 /* sibling order on the title column (layout v2 §2a); the address field goes right after LABEL_ADDR, the name field
  * after LABEL_NAME. The selector arrows are children of their rows (arrow_ids), not column entries. */
 static const int title_ids[] = { MPB_MULTIPLAYER, MPB_HEADER, MPB_LABEL_ADDR, MPB_LABEL_NAME, MPB_INFO,
-                                 MPB_FRIEND0, MPB_FRIEND1, MPB_FRIEND2, MPB_FRIEND3, MPB_FRIEND4, MPB_FRIEND5, MPB_WORLD, MPB_SETTINGS,
-                                 MPB_DIVIDER, MPB_HOST, MPB_JOIN_ADDR, MPB_JOIN_FRIEND, MPB_FE_RESLIST, MPB_LOAD_SAVE, MPB_NEW_CAMPAIGN, MPB_CONNECT, MPB_WATCH, MPB_CANCEL_JOIN, MPB_BACK };
+                                 MPB_FRIEND0, MPB_FRIEND1, MPB_FRIEND2, MPB_FRIEND3, MPB_FRIEND4, MPB_FRIEND5, MPB_SETTINGS,
+                                 MPB_DIVIDER, MPB_HOST, MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE, MPB_JOIN_ADDR, MPB_JOIN_FRIEND, MPB_FE_RESLIST, MPB_LOAD_SAVE, MPB_NEW_CAMPAIGN, MPB_CONNECT, MPB_WATCH, MPB_CANCEL_JOIN, MPB_BACK };
 /* the Rules panel's buttons (title: SubUI_TitleMenuButton clones registered in h_tb; lobby: in h_lwb) */
 static const int arrow_ids[] = { MPB_PAUSE_PREV, MPB_PAUSE_NEXT, MPB_SPEED_PREV, MPB_SPEED_NEXT, MPB_GEAR_PREV, MPB_GEAR_NEXT,
                                  MPB_UNITS_PREV, MPB_UNITS_NEXT, MPB_POP_PREV, MPB_POP_NEXT, MPB_EVENTS_PREV, MPB_EVENTS_NEXT, MPB_ADMIN_PREV, MPB_ADMIN_NEXT,
@@ -749,7 +749,7 @@ static void title_build(Obj v) {
         AT(b, 0x140, Obj) = NULL;                                           /* _onButtonClicked: no stock action */
         Obj l = AT(b, 0x130, Obj);
         txt_style(l, 0, 22, 514, 1);                                        /* design #8: the stock menu size 22 (Credits is 24) */
-        int plain = id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME || id == MPB_INFO || id == MPB_HEADER || id == MPB_DIVIDER;
+        int plain = id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME || id == MPB_INFO || id == MPB_HEADER || id == MPB_DIVIDER || id == MPB_HOST;
         if (plain) images_off(u_tr(b), 0);
         if (plain || id == MPB_SETTINGS) txt_body(l);                      /* text rows: the stock body material, no outline */
         /* approved mockup "Host page A": subtitle, Your name, field, Rules box, line, Host from a save (primary), ... Back */
@@ -767,12 +767,8 @@ static void title_build(Obj v) {
             if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);
             txt_color(l, C_START);
         }
-        if (id == MPB_WORLD) {                                              /* "World  ‹ value ›" like a Rules row; click = the other world */
-            row_height(b, 262, 44); txt_body(l); txt_style(l, 0, 16, 514, 0); txt_color(l, C_MAIN); place(l, 36, 0, 150, 40);
-            Obj wl = mk_txt(tpl_txt, u_tr(b), 0, 15, 513, 0, -92, 0, 64, 40, C_SUB); tmp_set(wl, "World");
-            Obj al = mk_txt(tpl_txt, u_tr(b), 0, 16, 514, 0, -50, 0, 20, 40, C_MAIN); tmp_set(al, "\xE2\x80\xB9");
-            Obj ar = mk_txt(tpl_txt, u_tr(b), 0, 16, 514, 0, 122, 0, 20, 40, C_MAIN); tmp_set(ar, "\xE2\x80\xBA");
-        }
+        if (id == MPB_HOST) { row_height(b, 262, 30); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB); }   /* "Host a game": the line over its 3 choices */
+        if (id == MPB_HOST_SAVE || id == MPB_HOST_NEW || id == MPB_HOST_FE) { row_height(b, 262, 40); txt_style(l, 0, 19, 514, 0); }
         if (id == MPB_SETTINGS) {                                           /* [cog] Rules  ›  + summary under it */
             row_height(b, 262, 104);
             Obj bg = first_image(u_tr(b), 0); if (bg) { stretch(bg); u_gc_free(h_title_box); h_title_box = u_gc_new(bg); }
@@ -2563,7 +2559,6 @@ static void tips_frame(const mpm_obs *o) {
         rp_tooltip(rps[k]);
         TIP(k ? tb(MPB_RULES_DONE) : u_gc_get(h_lwr[MPB_RULES_DONE]), "Done", "Closes the Rules.");
     }
-    TIP(tb(MPB_WORLD), "World", "Your save: friends join your world and play with your units. Foreign Expedition: everyone brings units from their own saves into a copy of your world. Nobody's save changes until they bring the results home.");
     if (u_on_tree(u_gc_get(rp_fe.root))) {                                  /* Foreign Expedition rules (board FESettingsA) */
         rp_fe.tip_row = -1;
         for (int i = 0; i < MPM_FE_ROWS; i++) if (TIP(u_gc_get(rp_fe.row[i]), mpm_fe_label(i), mpm_fe_tip(i))) { rp_fe.tip_row = i; break; }
@@ -2609,7 +2604,9 @@ static void tips_frame(const mpm_obs *o) {
     TIP(u_gc_get(h_rw_title), "Recent Worlds", "Worlds you played in multiplayer, newest first, with the day, the players and your units.");
     /* title column (3.1, 3.2, 3.4) */
     /* Multiplayer: no tooltip (owner 2026-10-15) */
-    TIP(tb(MPB_HOST), "Host a Game", "Open one of your worlds, or a new campaign, to other players. The world is saved on your computer.");
+    TIP(tb(MPB_HOST_SAVE), "Your Save", "Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer.");
+    TIP(tb(MPB_HOST_NEW), "New Save", "Start a new campaign and open it to other players as soon as it is created.");
+    TIP(tb(MPB_HOST_FE), "Foreign Expedition", "Everyone brings units from their own saves into a copy of your world. Nobody's save changes until they bring the results home.");
     TIP(tb(MPB_JOIN_ADDR), "Join by Address", "Join a friend's world with their address (ip:port). Use it when Steam is not available, or on the same home network.");
     TIP(tb(MPB_JOIN_FRIEND), "Join a Friend on Steam", "Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game.");
     for (int i = 0; i < 6; i++) { char l[160], t[64]; mpm_label(&M, MPB_FRIEND0 + i, l, sizeof l); const char *q = strstr(l, "Join ");

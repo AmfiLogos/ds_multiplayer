@@ -56,7 +56,7 @@ int main(void) {
     /* layout v2 §2a: header, settings row + summary; the selectors replace the summary when open */
     { uint64_t v = mpm_visible(&m, &o);
       CHECK((v & B(MPB_HEADER)) && (v & B(MPB_SETTINGS)) && (v & B(MPB_DIVIDER)) && !(v & B(MPB_SUMMARY)) && !(v & B(MPB_SEL_PAUSE)) && !(v & B(MPB_PAUSE_MODE)));
-      mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host a multiplayer world"));
+      mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host your save"));
       mpm_label(&m, MPB_SETTINGS, l, sizeof l); CHECK(!strcmp(l, "Rules"));
       mpm_settings_summary(&m.set, l, sizeof l); CHECK(!strcmp(l, "Pause: anyone \xC2\xB7 Speed-up: on \xC2\xB7 Gear: own units \xC2\xB7 Units: 3 \xC2\xB7 Population: shared \xC2\xB7 Events: owner \xC2\xB7 Admin: off \xC2\xB7 Shared fog: off \xC2\xB7 Spectators: on"));
       { char rv[64]; mpm_rule_value(&m.set, 0, rv, sizeof rv); CHECK(!strcmp(rv, "Anyone can pause") && !strcmp(mpm_rule_label(3), "Units per player") && !strcmp(mpm_rule_label(5), "Event choices") && !strcmp(mpm_rule_label(MPM_RULE_POP), "Population")); }
@@ -251,14 +251,31 @@ int main(void) {
     m.state = MPM_LOBBY; o.scene = 2; o.campaign_ready = 1; o.role = 1; m.lobby_settings_open = 1;
     a = mpm_step(&m, &o, MPB_SPECT_NEXT); CHECK((a & MPA_SPECTATORS) && !(a & MPA_RULES) && m.set.spectators == 1);   /* the game side decides (confirm box) */
     m.lobby_settings_open = 0; CHECK(!(mpm_step(&m, &o, MPB_SPECT_NEXT) & MPA_SPECTATORS));
-    {   /* Foreign Expedition (ext lane, board FESettingsA): World toggle, FE rules, summary, Start builds the hub first */
+    {   /* host choices under "Host a game" (uifix11): Your save / New save / Foreign Expedition, each its own Host page */
+        mpm_model h; mpm_init(&h); mpm_obs t = title(); char s[200];
+        mpm_step(&h, &t, MPB_MULTIPLAYER);
+        CHECK(mpm_is_visible(&h, &t, MPB_HOST_SAVE) && mpm_is_visible(&h, &t, MPB_HOST_NEW) && mpm_is_visible(&h, &t, MPB_HOST_FE));
+        mpm_label(&h, MPB_HOST_SAVE, s, sizeof s); CHECK(!strcmp(s, "Your save"));
+        mpm_label(&h, MPB_HOST_NEW, s, sizeof s); CHECK(!strcmp(s, "New save"));
+        mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Foreign Expedition"));
+        mpm_model k = h; mpm_step(&k, &t, MPB_HOST_SAVE); uint64_t v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)) && !mpm_is_visible(&k, &t, MPB_HOST_SAVE));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host your save"));
+        CHECK(mpm_step(&k, &t, MPB_LOAD_SAVE) & MPA_OPEN_LOAD_LIST);
+        k = h; mpm_step(&k, &t, MPB_HOST_NEW); v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_NEW_CAMPAIGN)) && !(v & B(MPB_LOAD_SAVE)));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a new save"));
+        CHECK(mpm_step(&k, &t, MPB_NEW_CAMPAIGN) & MPA_OPEN_NEW);
+        k = h; mpm_step(&k, &t, MPB_HOST_FE); v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && k.set.fe == 1 && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a Foreign Expedition"));
+        mpm_step(&k, &t, MPB_BACK); mpm_step(&k, &t, MPB_HOST); CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && !k.host_new);   /* the old path: Your save */
+    }
+    {   /* Foreign Expedition (ext lane, board FESettingsA): chosen on the Multiplayer page, FE rules, summary, Start builds the hub first */
         mpm_model f; mpm_init(&f); mpm_obs t = title(); char s[400];
-        mpm_step(&f, &t, MPB_MULTIPLAYER); mpm_step(&f, &t, MPB_HOST);
-        CHECK(f.state == MPM_TITLE_HOST && (mpm_visible(&f, &t) & B(MPB_WORLD)));
-        mpm_label(&f, MPB_WORLD, s, sizeof s); CHECK(strstr(s, "Your save") != NULL);
-        mpm_step(&f, &t, MPB_WORLD); CHECK(f.set.fe == 1);
-        { mpm_model g2 = f; g2.state = MPM_TITLE_MENU; mpm_step(&g2, &t, MPB_HOST); CHECK(g2.set.fe == 0); }   /* reopened Host page: Your save */
-        mpm_label(&f, MPB_WORLD, s, sizeof s); CHECK(strstr(s, "Foreign Expedition") != NULL);
+        mpm_step(&f, &t, MPB_MULTIPLAYER); mpm_step(&f, &t, MPB_HOST_FE);
+        CHECK(f.state == MPM_TITLE_HOST && f.set.fe == 1);
+        { mpm_model g2 = f; g2.state = MPM_TITLE_MENU; mpm_step(&g2, &t, MPB_HOST_SAVE); CHECK(g2.set.fe == 0); }   /* Your save: no expedition */
         CHECK(f.set.fe_death == 1 && f.set.fe_xp == 1 && f.set.fe_loot == 1 && f.set.fe_recruit == 0);   /* defaults */
         mpm_step(&f, &t, MPB_FER_NEXT); CHECK(f.set.fe_recruit == 1);
         mpm_fe_value(&f.set, 5, s, sizeof s); CHECK(!strcmp(s, "On"));

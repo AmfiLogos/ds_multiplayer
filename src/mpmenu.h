@@ -41,7 +41,7 @@ enum mpm_button {
     MPB_LABEL_ADDR, MPB_LABEL_NAME, MPB_INFO,                               /* title: text-only lines (no button frame) */
     /* layout v2 (research/ux_layout_v2.md): title page header, settings row + summary or 3 selector rows, divider */
     MPB_HEADER, MPB_SETTINGS, MPB_SUMMARY, MPB_SEL_PAUSE, MPB_SEL_SPEED, MPB_SEL_GEAR, MPB_DIVIDER,
-    MPB_WORLD,                                                              /* FE: host page "World  Your save / Foreign Expedition" (visible bit < 64) */
+    MPB_WORLD,                                                              /* unused since uifix11 (was the host page World row); kept: ids stay the same */
     MPB_FE_RESLIST,                                                         /* FE: Multiplayer page "Expedition results" (board FEResultsApplied) */
     MPB_PAUSE_PREV, MPB_PAUSE_NEXT, MPB_SPEED_PREV, MPB_SPEED_NEXT, MPB_GEAR_PREV, MPB_GEAR_NEXT,   /* selector arrows */
     MPB_LOBBY_SETTINGS, MPB_ADMIN,                                          /* lobby window: gear / toggle, admin mode */
@@ -66,6 +66,7 @@ enum mpm_button {
     MPB_FE_UNIT0, MPB_FE_UNIT1, MPB_FE_UNIT2, MPB_FE_UNIT3, MPB_FE_UNIT4, MPB_FE_UNIT5, MPB_FE_UNIT6, MPB_FE_UNIT7, MPB_FE_UNITPG,
     MPB_FE_OK, MPB_FE_CANCEL, MPB_FE_TGT_PREV, MPB_FE_TGT_NEXT, MPB_FE_VER_EXP, MPB_FE_VER_HOME,
     MPB_FE_RES0, MPB_FE_RES1, MPB_FE_RES2, MPB_FE_RES3, MPB_FE_RES4, MPB_FE_RES5,
+    MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE,                               /* Multiplayer page, under "Host a game": Your save / New save / Foreign Expedition (ids >= 64) */
     MPB_COUNT
 };
 /* what the game side sees each frame */
@@ -136,6 +137,7 @@ typedef struct mpm_model {
     int watch;              /* the join asked from the title (Connect / Watch, a Recent worlds row) is a spectator join */
     int spect;              /* last obs.spectator (labels) */
     int fe_results;         /* Foreign Expedition results kept on this computer (game side): the Multiplayer page lists them */
+    int host_new;           /* host page opened from "New save": its button is Host a new campaign (else Host from a save) */
 } mpm_model;
 void mpm_init(mpm_model *m);
 /* one frame: `click` = enum mpm_button or MPB_NONE. Returns MPA_* actions to run now. */
