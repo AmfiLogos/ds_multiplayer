@@ -2,16 +2,17 @@
 """baselib_exports.def: forward every export of the game's baselib.dll to baselib_orig.dll."""
 import os, pefile
 H = os.path.expanduser("~")
-pe = pefile.PE(f"{H}/ds_multiplayer/win/25846389/baselib.dll", fast_load=True)
+R = os.environ.get("DSMP_ROOT") or f"{H}/ds_multiplayer"   # DSMP_ROOT: a worktree
+pe = pefile.PE(f"{R}/win/25846389/baselib.dll", fast_load=True)
 pe.parse_data_directories(directories=[0])
-with open(f"{H}/ds_multiplayer/win/build/baselib_exports.def", "w") as f:
+with open(f"{R}/win/build/baselib_exports.def", "w") as f:
     f.write("LIBRARY baselib.dll\nEXPORTS\n")
     for e in pe.DIRECTORY_ENTRY_EXPORT.symbols:
         n = e.name.decode()
         f.write(f'    "{n}" = "baselib_orig.{n}" @{e.ordinal}\n')
     # symbols the mod looks up with dlsym(RTLD_DEFAULT, ...): exported from our DLL so the dlfcn shim finds them
     import re, glob
-    srcs = [open(fn).read() for fn in glob.glob(f"{H}/ds_multiplayer/win/build/gen/*.c") + glob.glob(f"{H}/ds_multiplayer/win/build/gen/net/*.c")]
+    srcs = [open(fn).read() for fn in glob.glob(f"{R}/win/build/gen/*.c") + glob.glob(f"{R}/win/build/gen/net/*.c")]
     wanted = sorted({n for s in srcs for n in re.findall(r'dlsym\(RTLD_DEFAULT, "(\w+)"', s)})
     # only names some module defines (a dlsym of a name nobody defines yet just returns NULL, as on the Mac):
     # a line with "name(" whose code part ends with "{" (a function body), not a call / pointer assignment

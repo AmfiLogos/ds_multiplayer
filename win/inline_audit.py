@@ -4,7 +4,7 @@ Hooks that MSVC may have inlined away on Windows: for every address the mod hook
 build/gen/*.c), count direct callers on the Mac (arm64 BL) and on Windows (x64 call/jmp rel32). Mac > 0 and
 Windows == 0 means the Windows hook never fires for direct calls. Output: inline_audit.tsv"""
 import re, os, subprocess, json, collections
-H = os.path.expanduser("~"); W = f"{H}/ds_multiplayer/win"; G = f"{W}/build/gen"
+H = os.path.expanduser("~"); W = (os.environ.get("DSMP_ROOT") or f"{H}/ds_multiplayer") + "/win"; G = f"{W}/build/gen"
 mapw2m = {}
 for l in open(f"{W}/win_map.tsv"):
     f = l.rstrip("\n").split("\t")

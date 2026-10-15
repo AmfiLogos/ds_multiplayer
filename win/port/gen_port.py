@@ -14,7 +14,7 @@
 import collections, json, os, re, sys
 
 H = os.path.expanduser("~")
-ROOT = f"{H}/ds_multiplayer"
+ROOT = os.environ.get("DSMP_ROOT") or f"{H}/ds_multiplayer"   # DSMP_ROOT: a worktree
 SRC = os.environ.get("DSMP_SRC", f"{ROOT}/src")      # DSMP_SRC: frozen release snapshot
 OUT = f"{ROOT}/win/build/gen"
 MAP = f"{ROOT}/win/win_map.tsv"
