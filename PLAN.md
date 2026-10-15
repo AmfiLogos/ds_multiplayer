@@ -308,3 +308,7 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
 - Gate on build/merge_fe_fixw.dylib: det_out/gate_fe_fixw_20261015-1211 smoke 3/3, mp2 19 PASS 0 FAIL; left_prompt with "fe":1 in the
   host's prefs 16 PASS 0 FAIL (det_out/lp_fixw_fe1_b.log); FE dive on it 23/23 (ext/foreign_expedition/out/dive_20261015-121129).
   Shared build/dsrig.dylib = this build since 12:30.
+
+## GitHub visibility (2026-10-15, replaces the 2026-10-14 "all private" rule for these 2 repos)
+- Owner, word for word: "Make them public". github.com/AmfiLogos/ds_multiplayer and github.com/AmfiLogos/ds_launcher are PUBLIC. All his other repos stay private.
+- So: never commit game files, dumps, saves, binaries or keys (LANE_RULES.md rule 5).
