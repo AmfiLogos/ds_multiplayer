@@ -7,7 +7,8 @@
  * Names follow the wiki's rule (site/assets/teamname.js render / memberName / authorName) with the words of
  * /builds/words.json; nobody's typed team name is ever shown, as on the wiki.
  * Read-only: no likes, bookmarks, reports or uploads. Use = decode the blob (sg_decode_blob, the builder's own
- * decoder) -> Save to My Units / Test Fight. An item made on another game build is shown but refused on use. */
+ * decoder) -> Save to My Units / Test Fight. An item made on an older game build is used with the current data, as
+ * the wiki's builder opens an old link (lead 2026-10-15); only a failed decode shows an error. */
 #pragma once
 #include <stddef.h>
 
@@ -78,5 +79,5 @@ void gal_item_title(const gal_item *it, const gal_words *w, char *out, size_t n)
 void gal_member_name(const gal_item *it, int index, const gal_words *w, char *out, size_t n);
 void gal_author_name(const gal_item *it, const gal_words *w, char *out, size_t n);
 
-/* 1 = usable on this game version (gb unknown, or gb equals game_version; a "DS_" prefix is ignored) */
+/* 1 = gb unknown or equal to game_version (a "DS_" prefix is ignored). NOT used to refuse items (lead 2026-10-15). */
 int  gal_usable(const gal_item *it, const char *game_version);
