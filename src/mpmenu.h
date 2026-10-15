@@ -172,6 +172,14 @@ void mpm_fe_value(const mpm_settings *s, int row, char *out, size_t cap);
 const char *mpm_fe_desc(const mpm_settings *s, int row);
 const char *mpm_fe_tip(int row);
 
+/* Multiplayer world tag (owner 2026-10-15): <app data>/mp_tags.txt, one line per tagged world, "<campaign guid>\t<name>\t<name>..."
+ * = the players who were ever in that world together (a sidecar: the game's save is not touched). Line present = tag on. */
+#define MPM_TAG_NAMES 16
+int  mpm_tag_get(const char *path, const char *guid, char names[][32], int max);   /* -1 no tag, else the number of names */
+int  mpm_tag_add(const char *path, const char *guid, const char *const *names, int n);   /* union (tag on); 1 = file changed */
+int  mpm_tag_remove(const char *path, const char *guid);                          /* 1 = there was a tag */
+void mpm_tag_names(char names[][32], int n, int shown, char *out, size_t cap);    /* "The owner, Ana and Bo" / "The owner, Ana, Bo +2" */
+
 /* ---------------------------------------------------------------- game side (dylib only) */
 #ifndef MPM_NO_GAME
 void  mpmenu_install(void);                        /* add-image callback, after ui_install() */

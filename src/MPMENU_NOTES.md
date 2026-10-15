@@ -57,7 +57,7 @@ Calls:
 - Text fields: address (Join page) and name (Host and Join pages), clones of the load list's save-name field (SaveLoadView +0xB8; the list is opened once for a moment if it does not exist yet). Placeholders "ip:port, e.g. ..." / "Your name". The address is prefilled from the clipboard if it holds an address.
 - Name: typed name > remembered name > Steam persona > ui_default_player_name() (Mac full name). Goes into cfg.name (HELLO). Remembered in <DSRIG_DIR>/mp_menu.json with the last host settings.
 - Per-world settings: <DSRIG_DIR>/mp_worlds.txt "<campaign guid> pause speedup gear" (guid = ClanDataContainer.CampaignGuid = the save header's). Loading a world uses its line; a new world uses the last used settings. Sidecar file, not inside the game's save JSON.
-- Load list tag: SubUI_SaveFileButton.SetData (0xF70150) post-hook appends "[Multiplayer]" when the header's CampaignGuid is in mp_worlds.txt.
+- Load list tag: SubUI_SaveFileButton.SetData (0xF70150) post-hook appends "[Multiplayer]" when the header's CampaignGuid is in mp_worlds.txt. **Replaced 2026-10-15 by the Multiplayer world tag (below): the tag now comes from mp_tags.txt.**
 - Quit to title: 90 title frames with the session up -> mp_steam_leave, state idle, Multiplayer button back (fresh title instance re-cloned). Host/guest can host/join again without an app restart.
 - Esc menu (in game): the seed lines move under the lowest visible button.
 - Autosaves: stock capacity is 5 rotating slots (GetCurrentAutoSaveCapacity 0xFCB670: 1 in iron mode / when the general setting is off). The join-point save is a separate mp_sync.json that mp deletes afterwards; map-change autosaves are the stock ones. MP adds no autosave slots.
@@ -139,3 +139,21 @@ Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_men
   failure are said (F18). Rule / admin changes in play: a centred message on guests (F12, rules_watch).
 - Test commands: mpm_box {action}, mpm_escape_ours, mpm_fail_join {host,msg}; mpm_status: confirm_leave, box, notice, message;
   ui_teams: fold, tip what=fold|time|row|pack_time; state prop.folded / rect / ok_rect / no_rect / fold_rect / time, stock.time.
+
+## Multiplayer world tag (owner 2026-10-15, branch mptag; PLAN.md "Multiplayer world tag")
+- File `<DSRIG_DIR>/mp_tags.txt`: one line per tagged world, `<campaign guid>\t<name>\t<name>...` (mpm_tag_* in mpmenu_model.c,
+  unit-tested). Line present = tag on. A sidecar like mp_worlds.txt: the game's save files are never written.
+- Set: `tag_frame`, every 60 frames in a session once the world is in: 2+ players present (spectators do not count, a spectator's
+  own copy never tags) -> every present name is added (union, max 16, slot order = host first). Host and guests tag their own copy.
+  Hosting alone no longer tags (the lan_v7 tag came from mp_worlds.txt).
+- First use without the file: seeded once from mp_history.json rows that list other players (host + me + players).
+- Shown: SubUI_SettlerNameCase.Init (Mac 0x85E50C, Win 0x5EB860) post-hook: the world row's `_nameText` (+0x28) becomes
+  "<world>  <size=75%>Multiplayer (#8FC4FF)  with A, B and C (#A69085)</size>" (3 names, then "+N"), and a "Remove tag" text
+  (a clone of that name text, Lora 14, #A69085, underlined, raycastTarget on so the row's own button under it gets nothing)
+  right after the name. Save rows keep "[Multiplayer]" (h_slot_set) from the same file.
+- Remove: mouse down on "Remove tag" while the load list (popup 5) is open -> stock CommonNoticeView (BX_UNTAG)
+  "Remove the multiplayer tag?" [Remove] [Cancel]; Remove deletes the line and restores the row (stock name string kept) and
+  the save rows' titles. Closed another way = Cancel. The tag comes back only when a friend is in that world again.
+- Test: `mpm_tag` lists the decorated world rows (guid, name text, names, remove on + rect, case_open); `{click:i, real:1}` sends
+  a real mouse click on row i's "Remove tag" (`click_px`); answer the box with `mpm_box {action}`.
+  Pair test: `ext/mptag/tests/mptag_pair.py --dylib <dylib>`.

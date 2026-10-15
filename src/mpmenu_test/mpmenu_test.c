@@ -3,6 +3,8 @@
 #include "../mpmenu.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 static int fails;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 #define B(x) (1ull << (x))
@@ -288,6 +290,29 @@ int main(void) {
         int a = mpm_step(&f, &g, MPB_START); CHECK(a == MPA_FE_START && f.state == MPM_LOBBY);   /* the game side starts it */
         f.set.fe = 0; a = mpm_step(&f, &g, MPB_START); CHECK((a & MPA_START_GAME) && f.state == MPM_PLAYING);
         for (int r = 0; r < MPM_FE_ROWS; r++) CHECK(mpm_fe_label(r)[0] && mpm_fe_tip(r)[0]);
+    }
+    {   /* Multiplayer world tag file (mp_tags.txt) */
+        char tp[512]; const char *td = getenv("TMPDIR"); snprintf(tp, sizeof tp, "%s/mp_tags_test_%d.txt", td && *td ? td : "/tmp", (int)getpid());
+        FILE *z = fopen(tp, "w"); if (z) fclose(z);                         /* empty file (left in TMPDIR: no rm) */
+        char nm[MPM_TAG_NAMES][32], s[160];
+        CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == -1);
+        const char *a[] = { "The owner", "Ana" }; CHECK(mpm_tag_add(tp, "g1", a, 2) == 1);
+        CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == 2 && !strcmp(nm[0], "The owner") && !strcmp(nm[1], "Ana"));
+        CHECK(mpm_tag_add(tp, "g1", a, 2) == 0);                      /* same names: no write */
+        const char *b2[] = { "Ana", "Bo\tX\n", "", NULL }; CHECK(mpm_tag_add(tp, "g1", b2, 4) == 1);
+        CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == 3 && !strcmp(nm[2], "BoX"));
+        const char *c1[] = { "The owner", "Zed" }; CHECK(mpm_tag_add(tp, "g2", c1, 2) == 1);
+        CHECK(mpm_tag_add(tp, "bad guid", c1, 2) == 0 && mpm_tag_get(tp, "bad", nm, 4) == -1);
+        mpm_tag_names(nm, 3, 3, s, sizeof s); CHECK(!strcmp(s, "The owner, Ana and BoX"));
+        mpm_tag_names(nm, 3, 2, s, sizeof s); CHECK(!strcmp(s, "The owner, Ana +1"));
+        mpm_tag_names(nm, 1, 3, s, sizeof s); CHECK(!strcmp(s, "The owner"));
+        CHECK(mpm_tag_remove(tp, "g1") == 1 && mpm_tag_get(tp, "g1", nm, 4) == -1);
+        CHECK(mpm_tag_get(tp, "g2", nm, 4) == 2);                    /* the other world keeps its tag */
+        CHECK(mpm_tag_remove(tp, "g1") == 0);
+        CHECK(mpm_tag_add(tp, "g1", c1, 1) == 1 && mpm_tag_get(tp, "g1", nm, 4) == 1);   /* a friend joins again: back, new names */
+        const char *many[20]; char mb[20][8]; for (int i = 0; i < 20; i++) { snprintf(mb[i], 8, "p%d", i); many[i] = mb[i]; }
+        mpm_tag_add(tp, "g3", many, 20); CHECK(mpm_tag_get(tp, "g3", nm, MPM_TAG_NAMES) == MPM_TAG_NAMES);
+        CHECK(mpm_tag_get("./no_such_dir/x.txt", "g1", nm, 4) == -1 && mpm_tag_add("./no_such_dir/x.txt", "g1", c1, 1) == 0);
     }
     printf(fails ? "mpmenu_test: %d FAILED\n" : "mpmenu_test: all passed%.0d\n", fails);
     return fails != 0;

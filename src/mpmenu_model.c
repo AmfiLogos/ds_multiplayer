@@ -442,3 +442,69 @@ void mpm_lobby_text(const mpm_model *m, const char *const *names, int n, char *o
         if (o < cap) snprintf(out + o, cap - o, "\nFriends outside your home: open port %s on your router, or use Steam invite", port ? port + 1 : "47777");
     }
 }
+
+/* ---------------------------------------------------------------- Multiplayer world tag (mp_tags.txt) */
+static void tag_clean(const char *in, char out[32]) {                  /* one name: no tab / newline / control byte */
+    size_t o = 0;
+    for (; *in && o < 31; in++) if ((unsigned char)*in >= 0x20) out[o++] = *in;
+    out[o] = 0;
+}
+/* the fields of one line: guid then names (tab separated); returns the number of names, -1 for an empty / bad line */
+static int tag_split(char *line, char **guid, char names[][32], int max) {
+    line[strcspn(line, "\r\n")] = 0;
+    char *f = strtok(line, "\t"); if (!f || !*f) return -1;
+    *guid = f; int n = 0;
+    while ((f = strtok(NULL, "\t"))) { if (!*f || n >= max) continue; tag_clean(f, names[n]); if (names[n][0]) n++; }
+    return n;
+}
+int mpm_tag_get(const char *path, const char *guid, char names[][32], int max) {
+    FILE *f = fopen(path, "r"); if (!f) return -1;
+    char line[1024], tmp[MPM_TAG_NAMES][32]; int got = -1;
+    while (fgets(line, sizeof line, f)) {
+        char *g; int n = tag_split(line, &g, tmp, MPM_TAG_NAMES);
+        if (n < 0 || strcmp(g, guid)) continue;
+        got = n < max ? n : max;
+        for (int i = 0; i < got; i++) memcpy(names[i], tmp[i], 32);
+    }
+    fclose(f); return got;
+}
+/* rewrite the file without guid's line; keep != NULL: then append guid with these names. 0 written, -1 failed */
+static int tag_write(const char *path, const char *guid, char keep[][32], int nkeep, int *had) {
+    char tmp[1100]; snprintf(tmp, sizeof tmp, "%s.tmp", path);
+    FILE *in = fopen(path, "r"), *out = fopen(tmp, "w");
+    if (!out) { if (in) fclose(in); return -1; }
+    char line[1024], copy[1024]; *had = 0;
+    while (in && fgets(line, sizeof line, in)) {
+        memcpy(copy, line, sizeof line); char *g, nm[MPM_TAG_NAMES][32];
+        if (tag_split(copy, &g, nm, MPM_TAG_NAMES) < 0) continue;
+        if (!strcmp(g, guid)) { *had = 1; continue; }
+        fputs(line, out); if (!strchr(line, '\n')) fputc('\n', out);
+    }
+    if (keep) { fputs(guid, out); for (int i = 0; i < nkeep; i++) fprintf(out, "\t%s", keep[i]); fputc('\n', out); }
+    if (in) fclose(in);
+    if (fclose(out)) return -1;
+    return rename(tmp, path) ? -1 : 0;
+}
+int mpm_tag_add(const char *path, const char *guid, const char *const *names, int n) {
+    if (!guid || !guid[0] || strpbrk(guid, "\t\r\n ")) return 0;
+    char cur[MPM_TAG_NAMES][32]; int had = mpm_tag_get(path, guid, cur, MPM_TAG_NAMES), k = had < 0 ? 0 : had, changed = had < 0;
+    for (int i = 0; i < n && k < MPM_TAG_NAMES; i++) {
+        char c[32]; tag_clean(names[i] ? names[i] : "", c);
+        if (!c[0]) continue;
+        int dup = 0; for (int j = 0; j < k; j++) if (!strcmp(cur[j], c)) dup = 1;
+        if (!dup) { memcpy(cur[k++], c, 32); changed = 1; }
+    }
+    if (!changed) return 0;
+    int was; return tag_write(path, guid, cur, k, &was) == 0;
+}
+int mpm_tag_remove(const char *path, const char *guid) {
+    char cur[1][32]; if (mpm_tag_get(path, guid, cur, 1) < 0) return 0;
+    int had; return tag_write(path, guid, NULL, 0, &had) == 0 && had;
+}
+void mpm_tag_names(char names[][32], int n, int shown, char *out, size_t cap) {
+    size_t o = 0; if (cap) out[0] = 0;
+    int k = n < shown ? n : shown;
+    for (int i = 0; i < k; i++)
+        o += (size_t)snprintf(out + o, o < cap ? cap - o : 0, "%s%s", i == 0 ? "" : (i == k - 1 && n == k) ? " and " : ", ", names[i]);
+    if (n > k) snprintf(out + (o < cap ? o : cap), o < cap ? cap - o : 0, " +%d", n - k);
+}
