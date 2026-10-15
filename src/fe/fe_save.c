@@ -545,6 +545,14 @@ static jv *place_slot(jv *save, const char *key, const jv *units) {
     }
     return NULL;
 }
+int fe_manifest_custom(const jv *m) {
+    jv *src = jget(m, "source");
+    if (jstreq(src, "wiki") || jstreq(src, "library") || jget(m, "library_id")) return 1;
+    jv *cg = jget(m, "home_campaign_guid");
+    if (!cg || cg->t != JN_STR || !cg->n) return 1;
+    for (size_t i = 0; i < cg->n; i++) if (cg->s[i] != '0' && cg->s[i] != '-') return 0;
+    return 1;                                            /* all zeros (with or without dashes) */
+}
 static void rep(jv *report, const char *g, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
 static void rep(jv *report, const char *g, const char *fmt, ...) {
     if (!report) return;
@@ -564,9 +572,13 @@ char *fe_apply_results(const jv *home, const jv *result, const jv *manifests, co
     jv *units = jget(result, "units");
     for (size_t i = 0; units && i < units->cnt; i++)
         if (!jget(manifests, jget(units->v[i], "export_id")->s)) { snprintf(err, errn, "These results are not for your units."); jfree(led); return NULL; }
+    size_t ncustom = 0;                                  /* owner rule: custom units never enter a regular save */
+    for (size_t i = 0; units && i < units->cnt; i++) ncustom += fe_manifest_custom(jget(manifests, jget(units->v[i], "export_id")->s)) != 0;
+    if (units && units->cnt && ncustom == units->cnt) { snprintf(err, errn, FE_CUSTOM_REFUSE); jfree(led); return NULL; }
     jv *hdr = jget(home, "CampaignSaveHeader");
     for (size_t i = 0; units && i < units->cnt; i++) {
         jv *m = jget(manifests, jget(units->v[i], "export_id")->s);
+        if (fe_manifest_custom(m)) continue;
         if (!jequal(jget(m, "home_campaign_guid"), jget(hdr, "CampaignGuid"))) { snprintf(err, errn, "this save is not the campaign the units came from"); jfree(led); return NULL; }
     }
     if (!jequal(jget(hdr, "Version"), jget(result, "hub_version"))) {
@@ -582,6 +594,7 @@ char *fe_apply_results(const jv *home, const jv *result, const jv *manifests, co
         jv *u = units->v[i], *m = jget(manifests, jget(u, "export_id")->s);
         char H[64]; snprintf(H, sizeof H, "%s", jget(u, "home_guid")->s);
         const char *eid = jget(u, "export_id")->s;
+        if (fe_manifest_custom(m)) { rep(report, H, FE_CUSTOM_LINE); continue; }
         if (!fe_side_of(out, H)) { rep(report, H, "not in this save anymore"); continue; }
         char e3[200]; jv *cur_cl = fe_export_unit(out, H, e3, sizeof e3); char ps[17] = ""; if (cur_cl) fe_progress_sig(cur_cl, ps); jfree(cur_cl);
         int changed = !jstreq(jget(m, "progress_sig"), ps);

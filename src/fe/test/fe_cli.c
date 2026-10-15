@@ -46,6 +46,11 @@ int main(int argc, char **argv) {
         for (size_t i = 0; i < rep->cnt; i++) printf("  %s\n", rep->v[i]->s);
         return 0;
     }
+    if (!strcmp(c, "custom") && argc == 3) {         /* custom manifests.json: "<export_id> 0|1" per manifest (fe_manifest_custom) */
+        jv *m = L(argv[2]);
+        for (size_t i = 0; i < m->cnt; i++) printf("%s %d\n", m->k[i], fe_manifest_custom(m->v[i]));
+        jfree(m); return 0;
+    }
     if (!strcmp(c, "check") && argc >= 3) {
         jv *s = L(argv[2]), *g = argc > 3 ? L(argv[3]) : NULL; char o[2000];
         int n = fe_check_refs(s, g, o, sizeof o); printf("%d %s\n", n, o); return n ? 2 : 0;
