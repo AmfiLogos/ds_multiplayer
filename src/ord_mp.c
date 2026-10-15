@@ -1,6 +1,7 @@
 /* ord_mp.c - glue between the orders lane (ord_api.h) and mp_core (mp.h): every ord payload travels as
  * one mp order of type ORD_MP_TYPE; mp_core does the ownership check on the owner Guid and wraps the
  * handler in the sim scope. */
+#include "mp_api.h"
 #include "ord_api.h"
 #include "mp.h"
 #include "rig.h"
@@ -35,8 +36,8 @@ static int handler(mp_session *s, int player, const uint8_t guid[16], const uint
     Obj c0 = cdc(), clan = c0 ? AT(c0, 0x50, Obj) : NULL;
     if (!is_recruit(args, len) || !clan) return ord_apply(player, args, len);
     dsnet_client *c = mp_client(s);
-    { extern int fe_recruit_allowed(void);                  /* Foreign Expedition hub with Recruiting Off: silent safety net */
-      if (!fe_recruit_allowed()) {
+    { /* a mod's order filter (mp_api; Foreign Expedition hub with Recruiting Off): silent safety net */
+      if (!mpx_recruit_allowed()) {
         rig_log("ord: recruit by player %d refused: Foreign Expedition hub (silent safety net; the UI does not offer it)", player);
         return 0;
       } }
@@ -102,7 +103,7 @@ static void it_tag(const uint8_t item[16], int player, int in_replay) {
         Guid g; memcpy(&g, item, 16); char gs[40]; guid_str(g, gs);
         rig_log("ord: item %s -> player %d (%s)", gs, player, in_replay ? "order" : in_cmd ? "simulation, in a command" : "simulation");
         dsnet_item_set_owner(c, item, player);
-        if (dsnet_is_host(c)) { extern void fe_note_loot(const uint8_t *, int); fe_note_loot(item, player); }
+        if (dsnet_is_host(c)) mpx_pickup(item, player);                     /* mp_api order filter (FE loot) */
     }
 }
 static int it_may_order(const uint8_t unit[16], int player) { return cur ? dsnet_may_order(mp_client(cur), player, unit) : 1; }

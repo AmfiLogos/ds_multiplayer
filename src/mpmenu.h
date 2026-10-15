@@ -203,6 +203,8 @@ int   mpmenu_lobby_open(void);                     /* ui lane: 1 while the lobby
 int   mpmenu_spectators_off_ask(void);
 int   mpmenu_spectators_set(int allow);
 /* the third choice under "Host a game" (MASTER_PLAN 2.2 B register_host_choice; Custom Modes registers "Foreign Expedition").
- * Shown only once registered. draw_page / on_start NULL = the menu's own Foreign Expedition page and Start (until the split). */
-int   mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), int (*on_start)(void));
+ * Shown only once registered. The Expedition Rules rows are still the menu's own (M.set.fe_*); on_start gets them when the
+ * host presses Start on that page (0 = started; else err is shown). draw_page: kept for the page (not called yet). */
+typedef int (*mpm_host_start_fn)(int death, int xp, int loot, int recruit, char *err, size_t errn);
+int   mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), mpm_host_start_fn on_start);
 #endif

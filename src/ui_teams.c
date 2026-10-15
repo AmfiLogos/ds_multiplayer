@@ -6,6 +6,7 @@
 //     clicks are hit-tested here with RectTransformUtility); "marked for the run" = stock SetSelected 0xF1AF50.
 //   - texts: clones of the portrait's _unitName (DASText +0x138); backdrop: clone of its _backgroundImage +0x1D8.
 // No hooks. Rules: ui_teams_model.c (tested in ui_test/teams_test.c). Notes: TEAMS_NOTES.md.
+#include "mp_api.h"
 #include "ui_teams_model.h"
 #include "ui_model.h"
 #include "ui_mp.h"
@@ -1857,9 +1858,8 @@ static void stock_close(void) { Obj v = pres_view(); if (stock_mode && u_alive(v
    opens the window. */
 int dsnet_controller_of(dsnet_client *c, const uint8_t unit[16]) __attribute__((weak_import));
 static void (*o_portal)(Obj, void *, void *);
-int pvp_portal_blocked(void) __attribute__((weak_import));   /* PvP lane (ext/pvp): no portal in an arena */
 static void hk_portal(Obj self, void *data, void *mi) {
-    if (pvp_portal_blocked && pvp_portal_blocked()) return;
+    if (mpx_portal_blocked()) return;                       /* mp_api register_teams_portal (PvP: no portal in an arena) */
     dsnet_client *c = cli();
     Obj user = data ? *(Obj *)((char *)data + 0x28) : NULL;
     if (c && sess() && user && dsnet_controller_of && unit_faction(user) == 1) {

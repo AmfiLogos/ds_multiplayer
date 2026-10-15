@@ -1,10 +1,18 @@
-/* Foreign Expedition windows, included by mpmenu.c (shares its helpers and the click registries). Boards:
+/* Foreign Expedition windows (Custom Modes, custom-modes-mp.dylib). Before the M4 split this file was included by mpmenu.c;
+ * it now uses the menu's exported helpers and click registries (src/mpmenu_kit.h) and is called through the menu hooks
+ * (fe_menu_hooks, registered by custom/cm_mp.c). Boards:
  *   FEBringA          Bring Units: your saves on the left, unit cards on the right (lobby, every player)
  *   FEResultsA / B    Back from the Expedition: one row per unit, dungeon loot, what will be applied, Bring home to
  *   FEResultsApplied  Expedition Results list (Multiplayer page) and the "Already Brought Home" refusal
  * One window at a time, 960 x 620, on the lobby's parent (Esc menu root) in a session or on the title view. Buttons are
  * registered by id in h_lwr (Esc menu clones) or h_tb (title clones); the click hooks queue the id (pending_click). */
+#include "mpmenu_kit.h"
+#include "mp.h"
+#include "mp_steam.h"
 #include "fe_ui_api.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 enum { FEW_NONE, FEW_BRING, FEW_RESULTS, FEW_LIST };
 enum { FT_TITLE, FT_SUB, FT_RULES, FT_LHEAD, FT_RHEAD, FT_COUNT, FT_NOTE, FT_TABLE, FT_LOOT, FT_APPLY, FT_TARGET, FT_CONFLICT, FT_MSG, FT_N };
 #define FEW_W 960.0f
@@ -363,3 +371,26 @@ static char *few_status(void) {
     bput(&b, "],\"results\":%d,\"ntarget\":%d,\"target\":", W.nres, W.ntarget); bstr(&b, W.ntarget ? W.targets[W.target].path : ""); bput(&b, "}");
     return b.p;
 }
+
+/* ---- menu hooks (mpmenu.c calls them where these windows were called before the split) */
+static int few_escape(void) {
+    if (W.mode == FEW_NONE) return 0;
+    rig_log("mpmenu: Escape closed the Foreign Expedition window");
+    return MPB_FE_CANCEL;
+}
+static void few_action(int a) {
+    if (a & MPA_FE_BRING) few_open(FEW_BRING, NULL);
+    if (a & MPA_FE_RESULTS) few_open(FEW_LIST, NULL);
+}
+static int few_lobby_bring(void) { fe_mode_info fm; return fe_mode_get(&fm) && W.mode == FEW_NONE; }
+static int few_lobby_name(int id, const char *nmn, char *t2, size_t cap) {   /* "2 units brought" / "Choosing units..." */
+    fe_mode_info fm; if (!fe_mode_get(&fm)) return 0;
+    int nb = fe_brought_of(id);
+    if (nb > 0) snprintf(t2, cap, "%s  <size=78%%><color=#8FD18F>%d unit%s brought</color></size>", nmn, nb, nb == 1 ? "" : "s");
+    else snprintf(t2, cap, "%s  <size=78%%><color=#A69085>Choosing units...</color></size>", nmn);
+    return 1;
+}
+static char *few_exec(const char *cmd, const char *line) { (void)line; return !strcmp(cmd, "mpm_fewin") ? few_status() : NULL; }   /* Foreign Expedition window read-back */
+static const mp_menu_hooks fe_hooks = { .click = few_click, .escape = few_escape, .action = few_action, .frame = few_frame,
+    .lobby_bring = few_lobby_bring, .lobby_name = few_lobby_name, .tips = few_tips, .exec = few_exec };
+const mp_menu_hooks *fe_menu_hooks(void) { return &fe_hooks; }

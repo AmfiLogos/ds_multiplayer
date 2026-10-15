@@ -9,10 +9,10 @@
  *   every player: fe_apply {run} -> backup of the whole Saves folder FIRST, then a NEW save (never the original)
  * Files: <rig_dir>/data/fe/{exports,runs/<run>,results,claims.json,protected.json}; backups: env DSRIG_FE_BACKUP or
  * <rig_dir>/data/fe/backups/<time>/. */
-#include "../rig.h"
-#include "../mp.h"
-#include "../mp_game.h"
-#include "../net/dsnet.h"
+#include "rig.h"
+#include "mp.h"
+#include "mp_game.h"
+#include "net/dsnet.h"
 #include "fe_save.h"
 #include "fe_ui_api.h"
 #include <dirent.h>

@@ -258,9 +258,9 @@ int pvp_mail_take(dsnet_client *c, const uint8_t from[16], uint8_t kind, const u
     }
     return 1;
 }
-static int fe_reads_mail(void) {                         /* FE's glue is in this dylib (merged build): it reads the mailbox */
-    static int v = -1; if (v < 0) v = dlsym(RTLD_DEFAULT, "fe_poll") != NULL;
-    return v;
+void fe_poll(void) __attribute__((weak_import));
+static int fe_reads_mail(void) {                         /* FE's glue is in this dylib (Custom Modes): it reads the mailbox */
+    return fe_poll != NULL;                              /* (was dlsym RTLD_DEFAULT: Custom Modes is loaded RTLD_LOCAL now) */
 }
 void pvp_units_frame(void) {
     dsnet_client *c = cli(); if (!c) return;

@@ -1,0 +1,23 @@
+{
+ "id": "custom-modes",
+ "name": "Custom Modes",
+ "version": "0.11.0",
+ "author": "AmfiLogos",
+ "kind": "code",
+ "api": 3,
+ "sim": true,
+ "game_builds": [
+  "25846389"
+ ],
+ "platforms": {
+  "mac-arm64": {
+   "entry": "custom-modes.dylib"
+  }
+ },
+ "requires": [
+  "loader>=2.0.0"
+ ],
+ "conflicts": [],
+ "description": "Custom Modes: Foreign Expedition and PvP (need Multiplayer; hidden without it). Later: My Units, Gallery, Test Fights, Unit Builder.",
+ "scope": "gameplay"
+}

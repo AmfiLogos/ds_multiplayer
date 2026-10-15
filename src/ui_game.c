@@ -1,6 +1,7 @@
 // ui_game: in-game multiplayer interface for Dungeon Settlers build 25846389 (arm64). Dylib only.
 // Built from the game's own widgets (Object.Instantiate of real buttons / texts) and hooks; the rules
 // live in ui_model.c. Hook list, RVAs and what to check in the game: UI_NOTES.md.
+#include "mp_api.h"
 #include "ui_tip.h"
 #include "ui_mp.h"
 #include "ui_model.h"
@@ -606,9 +607,7 @@ static int ui_hit(Obj g, float mx, float my) {
 #define MAX_HUD 256
 static struct { uintptr_t hud; uint8_t guid[16]; char base[64]; } hud[MAX_HUD];
 static void (*o_hud_init)(Obj, Obj, void *);
-/* PvP lane (ext/pvp): a flag carrier's world name gets the flag (pvp_game.c); its state goes into the re-tag signature */
-int pvp_unit_tag(const uint8_t g[16], char *out, int cap) __attribute__((weak_import));
-uint64_t pvp_tag_sig(void) __attribute__((weak_import));
+/* a mod's unit tag (mp_api register_unit_tag; PvP: a flag carrier's world name gets the flag); its state goes into the re-tag signature */
 static void hud_apply(int i) {
     Obj h = u_gc_get(hud[i].hud);
     if (!u_alive(h)) return;
@@ -631,7 +630,7 @@ static void hud_apply(int i) {
         if (o == UI_RESERVED) { char nm[32]; reserved_name(hud[i].guid, nm, sizeof nm); snprintf(tag, sizeof tag, " <color=#8a8088>%s%s%s, away</color>", dot ? dot : "", dot && dot[0] ? " " : "", nm); }
         else ui_owner_tag_world(&p, o, dot, tag, sizeof tag);
     }
-    if (pvp_unit_tag) { char pt[96]; size_t tl = strlen(tag); if (pvp_unit_tag(hud[i].guid, pt, sizeof pt) > 0 && tl + strlen(pt) < sizeof tag) strcat(tag, pt); }
+    { char pt[96]; size_t tl = strlen(tag); if (mpx_unit_tag(hud[i].guid, pt, sizeof pt) > 0 && tl + strlen(pt) < sizeof tag) strcat(tag, pt); }
     /* uxreview (one colour per player): the label's own colour (DASText_GameObject, about #CCBFB8) multiplies every
        <color> tag, so player colours rendered darker in the world. The label is set to white and the stock name keeps
        its colour through a tag. */
@@ -693,7 +692,7 @@ static void tags_frame(void) {
     uint64_t sig = 1469598103934665603ull;
     ui_players p; players(&p);
     sig = fnv(sig, &p.present, sizeof p.present);
-    if (pvp_tag_sig) { uint64_t ps = pvp_tag_sig(); sig = fnv(sig, &ps, sizeof ps); }
+    { uint64_t ps; if (mpx_tag_sig(&ps)) sig = fnv(sig, &ps, sizeof ps); }
     for (int i = 0; i < MAX_SC; i++) {
         Obj u = u_gc_get(sc[i].unit);
         if (!u || !u_alive(u_gc_get(sc[i].parts))) continue;
@@ -1232,7 +1231,6 @@ static int unit_owner_or_none(uintptr_t h) {
 }
 /* PopUpViewContainer.ActivateView(PopUpType): every popup opens here. */
 static void result_opened(void);
-int fe_recruit_allowed(void);                                /* fe/fe_game.c */
 /* Foreign Expedition hub with Recruiting Off (owner 2026-10-14: entry points hidden, no message): the HUD's Guild Contact
    button (FactionManagementView._clanMenuButtons[ActionType.Guild = 0], +0x50) is hidden. The view re-enables its buttons
    on every map refresh (OnWorldRefresh / ActivateButton), so the button is hidden again after each of them. */
@@ -1244,7 +1242,7 @@ static void guild_button_apply(void) {
     Obj v = u_gc_get(h_faction_view); if (!u_alive(v)) return;
     Obj arr = AT(v, 0x50, Obj); if (!arr || AT(arr, 0x18, int32_t) < 1) return;
     Obj btn = AT(arr, 0x20, Obj); if (!u_alive(btn)) return;
-    bool want = fe_recruit_allowed() != 0, now = u_go_active_self(u_go(btn));
+    bool want = !mpx_ui_flag(MPUI_HIDE_GUILD_CONTACT), now = u_go_active_self(u_go(btn));   /* mp_api ui flag (FE hub, Recruiting Off) */
     if (want != now) { u_go_active(u_go(btn), want); rig_log("ui: Guild Contact button %s (Foreign Expedition hub, Recruiting %s)", want ? "shown" : "hidden", want ? "On or not a hub" : "Off"); }
 }
 static void hk_faction_init(Obj v, void *mi) { o_faction_init(v, mi); u_gc_free(h_faction_view); h_faction_view = u_gc_new(v); guild_button_apply(); }
@@ -1252,7 +1250,7 @@ static void hk_faction_refresh(Obj v, int map, void *mi) { o_faction_refresh(v, 
 static void hk_faction_activate(Obj v, int t, bool on_, void *mi) { o_faction_activate(v, t, on_, mi); if (t == 0) guild_button_apply(); }
 static void hk_activate_view(Obj cont, int type, void *mi) {
     if (u_gc_get(h_popups) != cont) { u_gc_free(h_popups); h_popups = u_gc_new(cont); }
-    if (type == 8 && !fe_recruit_allowed()) { rig_log("ui: recruitment window not offered (Foreign Expedition hub, Recruiting Off)"); return; }   /* owner: keep it simple */
+    if (type == 8 && mpx_ui_flag(MPUI_NO_RECRUIT_POPUP)) { rig_log("ui: recruitment window not offered (Foreign Expedition hub, Recruiting Off)"); return; }   /* owner: keep it simple */
     if (on()) {
         ui_pop_kind k = ui_pop_kind_of(type);
         rig_log("ui: popup %d requested (me %d, caller +%#lx)", type, me(), (unsigned long)((uintptr_t)__builtin_return_address(0) - ds_base));
