@@ -53,9 +53,13 @@ TZ=UTC. In the game the GUIDs are random and the save time is now (checked: sg_c
 - Template versions today: base DS_B.0.4.11, golem DS_B.0.4.23 ... site DS_B.0.4.29; the wiki loads them anyway (it
   warns in its panel only for a mismatch between template and site data, `templateWarnings`).
 - The engine caps builds at D.consts.partyMax (4), as the wiki panel does.
-- Gallery `gb` = the game version a build was made on ("B.0.4.29"). The top popular team today is "B.0.4.23":
-  the plan's rule "other game build: refused on use" would refuse most of the gallery. `gal_usable` implements the plan
-  rule; the lead decides whether to apply it.
+- Gallery `gb` = the game version a build was made on ("B.0.4.29"). Lead decision 2026-10-15: old-build items are NOT
+  refused; they load with the current data, as the wiki's builder opens an old link. Only a failed decode shows the
+  normal error. `gal_usable` stays in the code, unused.
+- For C2 (hub = Finished Base template): the cache CAN fetch it although the wiki hides that fight in its UI.
+  `sgc_template(c, "base_<tag>.json", ...)` takes any template name; the live test downloaded base_25846389.json
+  (717 495 bytes), and `sg_generate` with mode "base" works (case finished_base, byte-identical). The template name
+  for the current data: `sg_template_file(e, "base", NULL, ...)`.
 - Gallery names: the wiki never shows a typed team name; titles come from f.name + builds/words.json.
 - A test world in the game must stay out of the Load list (flow I) - game side, after M4.
 
