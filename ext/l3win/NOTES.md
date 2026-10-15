@@ -36,3 +36,14 @@ wrig loader mode, tools). Pushed, not merged.
 - DSMP bottle registry: HKCU\Software\Wine\AppDefaults\DungeonSettlers.exe\DllOverrides winhttp=native,builtin
   (Doorstop under wine; a copy without winhttp.dll falls back to builtin).
 - Unity "force single instance": A closes its own SingleInstanceMutex handle before it starts B (else B never starts).
+
+## Update 21:40 (after l1-core 5988e29 merge, main merged into ds_multiplayer l3-win)
+- Mod set across platforms (ds_launcher 1ead659 + 7e..): modset_lines = id@version:<sorted sha256s of every platform's
+  listed files> (BepInEx: platforms.any), multiplayer left out; HELLO modset = sha256 of the lines, "" = none; old world
+  keys with "multiplayer" migrated. dsload_modset.json: same rule + "bepinex" list.
+- BepInEx off reason -> DSL_BIE_REASON -> DSLModInfo.reason ("Not running: ..." in L2's row).
+- wloader: refuses unless the DSMP bottle is Graphics=null / Audio=""; watchdog stops the copy (no title in 3 min, 25 min
+  max); install waits for a free bottle (install.bat refuses while any DungeonSettlers.exe runs there).
+- Results: mp2 xplay through the loader 19/19 (B 1 desync = the planned resync step); soft restart title + world 12/12;
+  BepInEx on: guest refused with "Extra: ExtendedHotbar 0". M2 RVAs (RefreshLoadPanel etc.) map on Windows (gen_port ok).
+- Open: Extended Hotbar's mod.json was written before hashes were added, so its line has no hashes (new plugins get them).
