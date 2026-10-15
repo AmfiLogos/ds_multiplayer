@@ -45,6 +45,18 @@ int  mu_team_at(const jv *lib, size_t i, char *name, size_t namen, char ids[][17
    the units). ids_out (may be NULL) gets the new unit ids. Returns n, or -1 with err filled. Does NOT save. */
 int  mu_add_team(jv *lib, const wk_build *b, int n, const char *team_name, char ids_out[][17], char *err, size_t errn);
 
+/* the owner's My Units tab (flow F): one unit from a builder JSON build (Unit Builder / Gallery "Save to My Units"):
+   checked with wk_from_json first (a build this game data cannot hold is refused). name NULL/"" = the build's own.
+   0 ok (id_out filled), -1 + err. Does NOT save. */
+int  mu_add_build(jv *lib, const jv *build, const char *name, char id_out[17], char *err, size_t errn);
+int  mu_rename(jv *lib, const char *id, const char *name);            /* 0 ok, -1 no such unit */
+/* removes the unit and its place in every team; a team left with no unit goes too. 0 ok, -1 no such unit */
+int  mu_delete(jv *lib, const char *id);
+/* "Save as team": a new team of these library ids (1..MU_TEAM_MAX, all present). 0 ok (tid_out filled), -1 + err */
+int  mu_team_new(jv *lib, const char *name, char ids[][17], int n, char tid_out[17], char *err, size_t errn);
+int  mu_team_delete(jv *lib, const char *tid);                       /* the units stay. 0 ok, -1 no such team */
+int  mu_team_id_at(const jv *lib, size_t i, char out[17]);           /* 0 ok */
+
 /* a library unit as wk_build (wk_from_json, pvp_wiki.h) */
 int  mu_build_of(const jv *lib, const char *id, wk_build *out, char *err, size_t errn);
 

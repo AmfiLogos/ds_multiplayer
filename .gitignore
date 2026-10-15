@@ -6,6 +6,7 @@
 !/README.md
 !/LICENSE
 !/src/
+!/custom/
 !/win/
 !/rig/
 !/ext/
@@ -70,3 +71,5 @@ fixtures/
 /ext/*/tests/*_bin
 /ext/*/tests/*.dSYM/
 /ext/*/tests/tmp/
+/custom/*/test/tmp/
+/custom/*/test/old/

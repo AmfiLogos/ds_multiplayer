@@ -138,7 +138,7 @@ static jv *jstr_text(const char *t) {
     size_t n = strlen(t); char *o = malloc(n * 6 + 1), *q = o;
     for (const unsigned char *p = (const unsigned char *)t; *p; p++) {
         if (*p == '"' || *p == '\\') { *q++ = '\\'; *q++ = (char)*p; }
-        else if (*p < 32) q += sprintf(q, "\\u%04x", *p);
+        else if (*p < 32) q += snprintf(q, 8, "\\u%04x", *p);
         else *q++ = (char)*p;
     }
     *q = 0; jv *v = jstrv(o); free(o); return v;
@@ -169,6 +169,70 @@ int mu_add_team(jv *lib, const wk_build *b, int n, const char *team_name, char i
     jv *tm = jobj(); jset(tm, "id", jstrv(tid)); jset(tm, "name", jstr_text(team_name && *team_name ? team_name : tname)); jset(tm, "unit_ids", tids);
     jpush(teams, tm);
     return n;
+}
+int mu_add_build(jv *lib, const jv *build, const char *name, char id_out[17], char *err, size_t errn) {
+    jv *units = jget(lib, "units");
+    if (!units) { snprintf(err, errn, "not a My Units library"); return -1; }
+    wk_build b; char e[300];
+    if (wk_from_json(build, &b, e, sizeof e)) { snprintf(err, errn, "%s", e); return -1; }
+    char nm[96];
+    if (name && *name) snprintf(nm, sizeof nm, "%s", name);
+    else if (b.name[0]) snprintf(nm, sizeof nm, "%s", b.name);
+    else { const char *r = wk_race_key(b.race); snprintf(nm, sizeof nm, "%s %d", !strncmp(r, "AFFECTER_", 9) ? r + 9 : r, b.lvl); }
+    uint64_t t = now_ms(); char id[17]; new_id(id);
+    jv *u = jobj(); jset(u, "id", jstrv(id)); jset(u, "name", jstr_text(nm));
+    jset(u, "created", jnum_i((long long)t)); jset(u, "updated", jnum_i((long long)t)); jset(u, "build", jcopy(build));
+    jpush(units, u);
+    if (id_out) memcpy(id_out, id, 17);
+    return 0;
+}
+int mu_rename(jv *lib, const char *id, const char *name) {
+    jv *u = (jv *)mu_find(lib, id); if (!u || !name || !*name) return -1;
+    jset(u, "name", jstr_text(name)); jset(u, "updated", jnum_i((long long)now_ms()));
+    return 0;
+}
+int mu_delete(jv *lib, const char *id) {
+    jv *units = jget(lib, "units"), *teams = jget(lib, "teams"); size_t i;
+    for (i = 0; units && i < units->cnt; i++) if (jstreq(jget(units->v[i], "id"), id)) break;
+    if (!units || i >= units->cnt) return -1;
+    jarr_del(units, i);
+    for (size_t t = teams ? teams->cnt : 0; t-- > 0; ) {
+        jv *ui = jget(teams->v[t], "unit_ids");
+        for (size_t k = ui && ui->t == JN_ARR ? ui->cnt : 0; k-- > 0; ) if (jstreq(ui->v[k], id)) jarr_del(ui, k);
+        if (!ui || ui->t != JN_ARR || !ui->cnt) jarr_del(teams, t);
+    }
+    return 0;
+}
+int mu_team_new(jv *lib, const char *name, char ids[][17], int n, char tid_out[17], char *err, size_t errn) {
+    jv *teams = jget(lib, "teams");
+    if (!teams) { snprintf(err, errn, "not a My Units library"); return -1; }
+    if (n < 1 || n > MU_TEAM_MAX) { snprintf(err, errn, "a team holds 1 to %d units", MU_TEAM_MAX); return -1; }
+    for (int i = 0; i < n; i++) if (!mu_find(lib, ids[i])) { snprintf(err, errn, "unit %s is not in My Units any more", ids[i]); return -1; }
+    char tname[200] = "";
+    if (name && *name) snprintf(tname, sizeof tname, "%s", name);
+    else for (int i = 0; i < n && i < 4; i++) {
+        mu_info inf; size_t L = strlen(tname);
+        for (size_t k = 0; k < mu_count(lib); k++) if (!mu_info_at(lib, k, &inf) && !strcmp(inf.id, ids[i])) break;
+        if (i < 3) snprintf(tname + L, sizeof tname - L, "%s%s", i ? ", " : "", inf.name);
+        else snprintf(tname + L, sizeof tname - L, " +%d", n - 3);
+    }
+    jv *tids = jarr(); for (int i = 0; i < n; i++) jpush(tids, jstrv(ids[i]));
+    char tid[17]; new_id(tid);
+    jv *tm = jobj(); jset(tm, "id", jstrv(tid)); jset(tm, "name", jstr_text(tname)); jset(tm, "unit_ids", tids);
+    jpush(teams, tm);
+    if (tid_out) memcpy(tid_out, tid, 17);
+    return 0;
+}
+int mu_team_delete(jv *lib, const char *tid) {
+    jv *teams = jget(lib, "teams");
+    for (size_t t = 0; teams && t < teams->cnt; t++) if (jstreq(jget(teams->v[t], "id"), tid)) { jarr_del(teams, t); return 0; }
+    return -1;
+}
+int mu_team_id_at(const jv *lib, size_t i, char out[17]) {
+    jv *t = jget(lib, "teams"); out[0] = 0;
+    if (!t || i >= t->cnt) return -1;
+    raw_cpy(out, 17, jget(t->v[i], "id"));
+    return out[0] ? 0 : -1;
 }
 int mu_build_of(const jv *lib, const char *id, wk_build *out, char *err, size_t errn) {
     const jv *u = mu_find(lib, id);

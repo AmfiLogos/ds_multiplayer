@@ -23,4 +23,9 @@ const CG = D.cond || [];
 out += CG.map((g, i) => arr(`WK_COND_${i}`, g.opts.map(o => o.k))).join('');
 out += `static const char *const *const WK_COND[${Math.max(CG.length, 1)}] = { ${CG.length ? CG.map((g, i) => `WK_COND_${i}`).join(', ') : '0'} };\n#define WK_COND_N ${CG.length}\n`;
 out += `static const int WK_COND_OPTS[${Math.max(CG.length, 1)}] = { ${CG.length ? CG.map(g => g.opts.length).join(', ') : '0'} };\n`;
+// retired entries (D.retired): the builder decodes a retired race as its default race (Human) and drops retired traits
+const RET = D.retired || {};
+out += `static const signed char WK_RACE_RETIRED[${X.RACE.length}] = { ${X.RACE.map(r => (RET.races || {})[r] ? 1 : 0).join(', ')} };\n`;
+out += `#define WK_RACE_DEFAULT ${X.RACE.indexOf('AFFECTER_Human')}\n`;
+out += `static const signed char WK_IND_RETIRED[${X.IND.length}] = { ${X.IND.map(k => (RET.ind || {})[k] ? 1 : 0).join(', ')} };\n`;
 process.stdout.write(out);

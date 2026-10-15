@@ -71,11 +71,13 @@ static void read_list(rd *r, errs *E, int *cnt, int *out, int table_n, const cha
         out[(*cnt)++] = (int)v;
     }
 }
+/* retired traits (the designers' test rows, D.retired) are dropped, as builder.js dsbDecBuild dropGone */
+static void drop_retired(int *a, int *n) { int k = 0; for (int i = 0; i < *n; i++) if (!WK_IND_RETIRED[a[i]]) a[k++] = a[i]; *n = k; }
 static int dec_build(rd *r, wk_build *b, errs *E) {
     memset(b, 0, sizeof *b); b->bg = -1; b->portrait = -1;
     for (int s = 0; s < WK_SLOTS; s++) b->eq[s] = -1;
     uint32_t race = ru(r); if ((int)race >= WK_RACE_N) { fail(E, "race index %u outside the table", race); return -1; }
-    b->race = (int)race;
+    b->race = WK_RACE_RETIRED[race] ? WK_RACE_DEFAULT : (int)race;   /* as builder.js dsbDecBuild: a retired race comes back as Human */
     uint32_t bg = ru(r); if (bg) { if ((int)bg - 1 >= WK_BG_N) { fail(E, "background index %u outside the table", bg - 1); return -1; } b->bg = (int)bg - 1; }
     b->lvl = (int)ru(r);
     if (b->lvl < 1 || b->lvl > 255) { fail(E, "level %d", b->lvl); return -1; }
@@ -88,6 +90,7 @@ static int dec_build(rd *r, wk_build *b, errs *E) {
     int hasName = (fl >> 6) & 1, hasPort = (fl >> 7) & 1, hasMan = (fl >> 8) & 1, hasMB = (fl >> 9) & 1, hasPStk = (fl >> 10) & 1, hasSouls = (fl >> 11) & 1,
         hasSI = (fl >> 12) & 1, hasSC = (fl >> 13) & 1, hasAcq = (fl >> 14) & 1, hasElix = (fl >> 16) & 1, hasCond = (fl >> 17) & 1;
     read_list(r, E, &b->ninds, b->inds, WK_IND_N, "traits");
+    drop_retired(b->inds, &b->ninds);
     read_list(r, E, &b->ntrees, b->trees, WK_TREE_N, "skill trees");
     read_list(r, E, &b->nlearned, b->learned, WK_SKILL_N, "skills");
     read_list(r, E, &b->ninsc, b->insc, WK_INSC_N, "inscriptions");
@@ -124,7 +127,7 @@ static int dec_build(rd *r, wk_build *b, errs *E) {
         for (uint32_t k = 0; k < n; k++) { int sk = (int)ru(r), st = (int)ru(r); if (sk < WK_SKILL_N) { b->pstk[b->npstk].skill = sk; b->pstk[b->npstk].st = st; b->npstk++; } }
     }
     if (hasSouls) read_list(r, E, &b->nsouls, b->souls, WK_SOUL_N, "souls");
-    if (hasSI) read_list(r, E, &b->nsaved_inds, b->saved_inds, WK_IND_N, "saved traits");
+    if (hasSI) { b->has_saved_inds = 1; read_list(r, E, &b->nsaved_inds, b->saved_inds, WK_IND_N, "saved traits"); drop_retired(b->saved_inds, &b->nsaved_inds); }
     if (hasSC) read_list(r, E, &b->nsaved_insc, b->saved_insc, WK_INSC_N, "saved inscriptions");
     if (hasAcq) read_list(r, E, &b->nacq, b->acq, WK_ACQ_N, "acquired traits");
     if (hasElix) { b->has_elix = 1; uint32_t n = ru(r); for (uint32_t k = 0; k < n; k++) { int u = (int)ru(r); if (k < 6) b->elix[k] = u; } }
@@ -164,6 +167,7 @@ int wk_decode(const char *text, wk_build *out, int max, int *fp_mismatch, char *
     return k;
 }
 
+int wk_fp(void) { return WK_FP; }
 int wk_code_fp(const char *code) {
     size_t n = 0; while (code[n] && code[n] != '&' && code[n] != '#' && code[n] != ' ' && code[n] != '\n' && code[n] != '\r') n++;
     size_t bn; uint8_t *by = b64url_dec(code, n, &bn); if (!by) return -1;
@@ -322,6 +326,9 @@ int wk_from_json(const jv *j, wk_build *b, char *err, size_t errn) {
     v = jget(j, "portrait");
     if (v && v->t == JN_STR && WK_PORTRAITS[b->race]) for (int i = 0; i < WK_PORTRAITS_N[b->race]; i++)
         if (strlen(WK_PORTRAITS[b->race][i]) == v->n && !memcmp(WK_PORTRAITS[b->race][i], v->s, v->n)) { b->portrait = i; break; }
+    if (WK_RACE_RETIRED[b->race]) {                                     /* encoded, then decoded by the builder: Human */
+        b->race = WK_RACE_DEFAULT; if (b->portrait >= WK_PORTRAITS_N[b->race]) b->portrait = -1;
+    }
     jv *man = jget(j, "manual");
     for (size_t i = 0; man && man->t == JN_OBJ && i < man->cnt && b->nman < WK_MAX_LIST; i++) {
         double d = num_of(man->v[i], &ok); if (!ok) continue;
@@ -341,6 +348,8 @@ int wk_from_json(const jv *j, wk_build *b, char *err, size_t errn) {
         key_list(&E, jget(j, "savedInds"), WK_IND, WK_IND_N, &b->nsaved_inds, b->saved_inds, "trait") ||
         key_list(&E, jget(j, "savedInsc"), WK_INSC, WK_INSC_N, &b->nsaved_insc, b->saved_insc, "inscription") ||
         key_list(&E, jget(j, "acqInds"), WK_ACQ, WK_ACQ_N, &b->nacq, b->acq, "acquired trait")) return -1;
+    b->has_saved_inds = b->nsaved_inds > 0;
+    drop_retired(b->inds, &b->ninds); drop_retired(b->saved_inds, &b->nsaved_inds);
     jv *el = jget(j, "elix");
     for (int k = 0; k < 6; k++) { double d = num_of(jget(el, WK_MAJ[k]), &ok); long n = ok ? (long)floor(d) : 0; if (n > 0) { b->has_elix = 1; b->elix[k] = n > 99 ? 99 : (int)n; } }
     jv *cd = jget(j, "cond");

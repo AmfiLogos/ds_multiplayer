@@ -111,7 +111,7 @@ static int set_err(int *code, int c, char *err, size_t errn, const char *msg) { 
 static int decode_long(const char *t, wk_build *out, int max, int *code, char *err, size_t errn) {
     char e[300] = ""; int fpm = 0, k;
     const char *v;
-    static char buf[16384];
+    static _Thread_local char buf[16384];                              /* per thread: mu_link reads on a worker */
     if ((v = after(t, "?team=")) || (v = after(t, "#team=")) || (v = after(t, "&team="))) {
         size_t n = token_len(v, "&#"); pct_decode(v, n, buf, sizeof buf);
         k = wk_decode(buf, out, max, &fpm, e, sizeof e);
@@ -157,7 +157,7 @@ int wkl_resolve(const char *text, wk_build *out, int max, int timeout_ms, int *c
     char u[300];
     if (!text || strstr(text, "team=") || strstr(text, "#b=") || !wkl_short_url(text, u, sizeof u))
         return wkl_decode_offline(text, out, max, code, err, errn);
-    int st = 0; char loc[2048] = "", e[300] = ""; static char body[65536];
+    int st = 0; char loc[2048] = "", e[300] = ""; static _Thread_local char body[65536];
     body[0] = 0;
     if (wk_http_get(u, timeout_ms, &st, loc, sizeof loc, body, sizeof body, e, sizeof e)) {
         if (code) *code = WKL_OFFLINE;
@@ -166,6 +166,8 @@ int wkl_resolve(const char *text, wk_build *out, int max, int timeout_ms, int *c
     }
     if (st == 404) return set_err(code, WKL_UNKNOWN, err, errn, "This short link does not exist (removed?).");
     if (st == 410) return set_err(code, WKL_UNKNOWN, err, errn, "This short link was removed on the wiki.");
+    if (st >= 300 && st < 400 && strstr(loc, "/builds/removed"))          /* a hidden gallery build (api/shorten.js) */
+        return set_err(code, WKL_UNKNOWN, err, errn, "This build was removed on the wiki.");
     char tgt[16384];
     if ((st == 301 || st == 302 || st == 303 || st == 307 || st == 308) ? wkl_target_of(loc, NULL, tgt, sizeof tgt) : st == 200 ? wkl_target_of(NULL, body, tgt, sizeof tgt) : -1) {
         if (code) *code = WKL_SERVER;
