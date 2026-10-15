@@ -287,3 +287,17 @@ menu in multiplayer pauses nobody (#7). Test: `ui_test/uxgame_pair.py` (one pair
 - Tests: ui_test (test_v10, 500 checks), ui_test/coop_pair.py (frames research/ux_shots/v10_*.png); socket ui_coop
   {action: state|ping|toggle|cycle|look|follow|unfollow|mute|unmute|menu|camera|color|set}, ui_sprites {match}.
 - Desync report (core lane): host toast "Desync report saved: <path>" when mp_game_desync_report's counter grows (dlsym). CommonNoticeView clicks that are neither the map vote nor the disconnect box go to mpmenu_notice_click (host Leave confirm).
+
+## viewui (owner 2026-10-15, real play)
+- Follow: the followed friend gets no corners, no off-screen mark, no "sees this too" (ui_model ui_view_marks, followed).
+- "Ben sees this too": my screen lies inside a friend's view (every edge of it off screen) or both look at the same spot
+  -> one line at the top centre under the HUD row (under the spectator's "Following" chip when up), dot + names in their
+  colour, Lora 14 on #222025 at 0.75, no clicks; tooltip "Same View". Probe: ui_coop views[].same.
+- The Players panel no longer hides while the Teams window is open (Teams draws over it, sorting 32000 > 5000); the
+  Teams button stays too (its click closes Teams). Over the Teams window the panel takes no clicks or tooltips
+  (ui_teams_covers, dlsym).
+- Teams window "Hide" (left of its close button) folds it to a bar at the top centre ("Teams" · Show · Close, the
+  proposal panel's box). Folded = not modal (ui_teams_modal_open 0): world clicks, game keys and Escape are the game's.
+  Saved as "folded" in mp_teams_button.json; Teams reopens folded until Show. The Teams button on a folded window = Show.
+  Test: ui_teams {action: tfold, on}; state tfold / modal / bar_rect / win_rect / hide_rect.
+- Cog "Teams button: Show / Hide" (mp_ui.json "teams_button", default shown); ui_teams reads ui_teams_button_on (dlsym).

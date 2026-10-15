@@ -4570,7 +4570,7 @@ static char *ui_coop_cmd(const char *line) {
         char k2[24] = ""; double v = 0; jstr(line, "key", k2, sizeof k2); jnum(line, "value", &v);
         int *f = !strcmp(k2, "pings") ? &uiset.pings : !strcmp(k2, "ping_sound") ? &uiset.ping_sound : !strcmp(k2, "ping_chat") ? &uiset.ping_chat
                : !strcmp(k2, "views") ? &uiset.views : !strcmp(k2, "offscreen") ? &uiset.offscreen : !strcmp(k2, "outline") ? &uiset.outline
-               : !strcmp(k2, "see_through") ? &uiset.see_through : NULL;
+               : !strcmp(k2, "see_through") ? &uiset.see_through : !strcmp(k2, "teams_button") ? &uiset.teams_button : NULL;
         if (f) { *f = (int)v; settings_save(); force_world = 1; if (f == &uiset.outline) world_frame(1); } else rc = -1;
     }
     else if (!strcmp(a, "chatlink")) rc = ui_chat_link_click(1 + ((int)pl << 8 | ((int)x & 255))) ? 0 : -1;   /* chatlink {player, x: id}: the chat line's click */
