@@ -1,0 +1,1939 @@
+diff --git a/.gitignore b/.gitignore
+index ed47851..e555608 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -354,3 +354,5 @@ MigrationBackup/
+ .ionide/
+ 
+ launchsettings.json
++
++.DS_Store
+diff --git a/Il2CppInterop.Common/XrefScans/Arm64Code.cs b/Il2CppInterop.Common/XrefScans/Arm64Code.cs
+new file mode 100644
+index 0000000..368bb84
+--- /dev/null
++++ b/Il2CppInterop.Common/XrefScans/Arm64Code.cs
+@@ -0,0 +1,377 @@
++using System;
++using System.Collections.Generic;
++using System.Runtime.InteropServices;
++
++namespace Il2CppInterop.Common.XrefScans;
++
++/// <summary>
++///     Minimal AArch64 code walking for the injector hook lookups on arm64 Mach-O (Apple Silicon).
++///     Function bounds come from the image's LC_FUNCTION_STARTS table, so a "b" is a tail call only when it
++///     lands on another function start; anything else is a branch inside the function.
++/// </summary>
++public static class Arm64Code
++{
++    public static bool IsArm64 => RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
++
++    /// <summary>
++    ///     Native code pointer -> generated method, set by Il2CppInterop.Runtime (here, not on XrefScanMethodDb,
++    ///     whose static constructor opens the interop databases that may not exist yet).
++    /// </summary>
++    public static Func<IntPtr, System.Reflection.MethodBase?>? NativePointerResolver;
++
++    private static readonly Dictionary<long, long[]> s_StartsByImage = new();
++
++    /// <summary>Same contract as the x86 JumpTargets: BL targets and tail-call targets up to the first RET.</summary>
++    public static IEnumerable<IntPtr> JumpTargets(IntPtr start, bool ignoreRetn)
++    {
++        var starts = StartsFor(start);
++        var stop = NextStart(starts, (long)start);
++        var firstFlowControl = true;
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            var flow = false;
++            if ((insn & 0xFFFFFC1Fu) == 0xD65F0000u) // RET
++            {
++                if (!ignoreRetn) yield break;
++                flow = true;
++            }
++            else if ((insn & 0xFC000000u) == 0x94000000u) // BL
++            {
++                yield return (IntPtr)BranchTarget(at, insn);
++                flow = true;
++            }
++            else if ((insn & 0xFC000000u) == 0x14000000u) // B
++            {
++                var target = BranchTarget(at, insn);
++                flow = true;
++                if (target != (long)start && IsStart(starts, target))
++                {
++                    yield return (IntPtr)target;
++                    if (firstFlowControl) yield break;
++                }
++            }
++            else if ((insn & 0xFF000010u) == 0x54000000u || (insn & 0x7E000000u) == 0x34000000u ||
++                     (insn & 0x7E000000u) == 0x36000000u || (insn & 0xFFFFFC1Fu) == 0xD61F0000u ||
++                     (insn & 0xFFFFFC1Fu) == 0xD63F0000u)
++            {
++                flow = true; // B.cond, CBZ/CBNZ, TBZ/TBNZ, BR, BLR
++            }
++
++            if (flow) firstFlowControl = false;
++        }
++    }
++
++    /// <summary>Targets of "b" instructions that leave the function (tail calls), in address order.</summary>
++    public static List<IntPtr> TailCallTargets(IntPtr start)
++    {
++        var starts = StartsFor(start);
++        var stop = NextStart(starts, (long)start);
++        var result = new List<IntPtr>();
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            if ((insn & 0xFC000000u) != 0x14000000u) continue;
++            var target = BranchTarget(at, insn);
++            if (target != (long)start && IsStart(starts, target))
++                result.Add((IntPtr)target);
++        }
++
++        return result;
++    }
++
++    /// <summary>
++    ///     The target of the only BL (up to the first RET) whose second argument (x1) was just set to the address
++    ///     of a stack slot ("add x1, sp|x29, #imm"); 0 if there is none or more than one.
++    /// </summary>
++    public static IntPtr CallWithStackAddressInSecondArgument(IntPtr start)
++    {
++        var stop = NextStart(StartsFor(start), (long)start);
++        long found = 0;
++        var x1IsStackAddress = false;
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            if ((insn & 0xFFFFFC1Fu) == 0xD65F0000u)
++                break;
++            if ((insn & 0xFC000000u) == 0x94000000u)
++            {
++                if (x1IsStackAddress)
++                {
++                    if (found != 0) return IntPtr.Zero;
++                    found = BranchTarget(at, insn);
++                }
++
++                x1IsStackAddress = false;
++                continue;
++            }
++
++            // ADD (immediate, 64-bit): sf=1 op=0 S=0 100010 sh imm12 Rn Rd
++            if ((insn & 0xFF800000u) == 0x91000000u && (insn & 0x1F) == 1)
++            {
++                var rn = (insn >> 5) & 0x1F;
++                x1IsStackAddress = rn is 31 or 29; // sp or frame pointer
++                continue;
++            }
++
++            // Anything else with x1 in the destination field clears the mark (stores too: conservative).
++            if ((insn & 0x1F) == 1)
++                x1IsStackAddress = false;
++        }
++
++        return (IntPtr)found;
++    }
++
++    /// <summary>
++    ///     arm64 counterpart of XrefScanner.XrefScanImpl: calls (BL), tail calls (B to a function start) and
++    ///     64-bit loads from ADRP pages (the "mov reg, [rip+x]" globals, filtered like on x86), up to the first RET.
++    ///     Runs the method's lazy runtime-metadata initialisation first so string literal slots are filled.
++    /// </summary>
++    public static IEnumerable<XrefInstance> XrefScan(IntPtr start)
++    {
++        InitRuntimeMetadata(start);
++        var starts = StartsFor(start);
++        var stop = NextStart(starts, (long)start);
++        var value = new long[32]; // known addresses per register (ADRP / ADD / MOV)
++        var result = new List<XrefInstance>();
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            if ((insn & 0xFFFFFC1Fu) == 0xD65F0000u)
++                break;
++            if ((insn & 0xFC000000u) == 0x94000000u)
++            {
++                result.Add(new XrefInstance(XrefType.Method, (IntPtr)BranchTarget(at, insn), (IntPtr)at));
++                Array.Clear(value, 0, 19); // x0-x18 do not survive a call
++                continue;
++            }
++            if ((insn & 0xFC000000u) == 0x14000000u)
++            {
++                var target = BranchTarget(at, insn);
++                if (target != (long)start && IsStart(starts, target))
++                    result.Add(new XrefInstance(XrefType.Method, (IntPtr)target, (IntPtr)at));
++                continue;
++            }
++            if ((insn & 0x9F000000u) == 0x90000000u) // ADRP
++            {
++                value[insn & 0x1F] = AdrpTarget(at, insn);
++                continue;
++            }
++            if ((insn & 0xFFC00000u) == 0x91000000u) // ADD Xd, Xn, #imm12
++            {
++                var rn = (insn >> 5) & 0x1F;
++                value[insn & 0x1F] = value[rn] != 0 ? value[rn] + ((insn >> 10) & 0xFFF) : 0;
++                continue;
++            }
++            if ((insn & 0xFFE0FFE0u) == 0xAA0003E0u) // MOV Xd, Xm
++            {
++                value[insn & 0x1F] = value[(insn >> 16) & 0x1F];
++                continue;
++            }
++            if ((insn & 0xFFC00000u) == 0xF9400000u) // LDR Xt, [Xn, #imm12*8]
++            {
++                var rn = (insn >> 5) & 0x1F;
++                if (value[rn] != 0)
++                {
++                    var target = (IntPtr)(value[rn] + ((insn >> 10) & 0xFFF) * 8);
++                    try
++                    {
++                        if (XrefScannerManager.Impl.XrefGlobalClassFilter(target))
++                            result.Add(new XrefInstance(XrefType.Global, target, (IntPtr)at));
++                    }
++                    catch (Exception)
++                    {
++                        // unreadable target: not a global
++                    }
++                }
++                value[insn & 0x1F] = 0;
++                continue;
++            }
++            // Stores and compares keep their registers; anything else with Rd in bits 0-4 forgets it.
++            if ((insn & 0x0A000000u) != 0x08000000u || (insn & 0x00400000u) != 0)
++                value[insn & 0x1F] = 0;
++        }
++
++        return result;
++    }
++
++    private static long s_InitFunction = -1;
++
++    /// <summary>
++    ///     Unity 6 IL2CPP methods start with "ldrb wN, [flag]; tbnz", then "x0 = &amp;slot; bl InitializeRuntimeMetadata"
++    ///     per metadata slot, then set the flag. Call the init function (the first call of UnityEngine.Object's
++    ///     static constructor, as on x86) for each slot; it is idempotent in libil2cpp. The flag is left alone.
++    /// </summary>
++    private static void InitRuntimeMetadata(IntPtr start)
++    {
++        if (s_InitFunction == -1)
++        {
++            var resolver = XrefScannerManager.Impl.GetMetadataResolver();
++            s_InitFunction = resolver is ({ } _, var pointer) ? (long)pointer : 0;
++        }
++
++        if (s_InitFunction == 0)
++            return;
++
++        var stop = Math.Min(NextStart(StartsFor(start), (long)start), (long)start + 4096);
++        var value = new long[32];
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            if ((insn & 0xFFFFFC1Fu) == 0xD65F0000u)
++                break;
++            if ((insn & 0x9F000000u) == 0x90000000u) // ADRP
++            {
++                value[insn & 0x1F] = AdrpTarget(at, insn);
++                continue;
++            }
++            if ((insn & 0xFFC00000u) == 0x91000000u) // ADD Xd, Xn, #imm12
++            {
++                var rn = (insn >> 5) & 0x1F;
++                value[insn & 0x1F] = value[rn] != 0 ? value[rn] + ((insn >> 10) & 0xFFF) : 0;
++                continue;
++            }
++            if ((insn & 0xFFE0FFE0u) == 0xAA0003E0u) // MOV Xd, Xm
++            {
++                value[insn & 0x1F] = value[(insn >> 16) & 0x1F];
++                continue;
++            }
++            if ((insn & 0xFC000000u) == 0x94000000u) // BL
++            {
++                if (BranchTarget(at, insn) != s_InitFunction)
++                    break; // past the metadata block
++                if (value[0] != 0)
++                    InitSlot(s_InitFunction, value[0]);
++                continue;
++            }
++            if ((insn & 0xFC000000u) == 0x14000000u)
++                break;
++            if ((insn & 0x1F) != 31)
++                value[insn & 0x1F] = 0; // anything else writing a register
++        }
++    }
++
++    private static void InitSlot(long init, long slot)
++    {
++        var fn = (InitMetadataSlot)Marshal.GetDelegateForFunctionPointer((IntPtr)init, typeof(InitMetadataSlot));
++        fn((IntPtr)slot);
++    }
++
++    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
++    private delegate void InitMetadataSlot(IntPtr slot);
++
++    private static long AdrpTarget(long at, uint insn)
++    {
++        var immlo = (insn >> 29) & 0x3;
++        var immhi = (insn >> 5) & 0x7FFFF;
++        var imm = (long)(((int)((immhi << 2 | immlo) << 11)) >> 11); // sign-extend 21 bits
++        return (at & ~0xFFFL) + (imm << 12);
++    }
++
++    public static bool IsInLoadedImage(IntPtr address) => dladdr(address, out var info) != 0 && info.dli_fbase != IntPtr.Zero;
++
++    private static long BranchTarget(long at, uint insn)
++    {
++        var imm26 = (int)(insn << 6) >> 6;
++        return at + imm26 * 4L;
++    }
++
++    private static bool IsStart(long[] starts, long address) => Array.BinarySearch(starts, address) >= 0;
++
++    private static long NextStart(long[] starts, long address)
++    {
++        var i = Array.BinarySearch(starts, address);
++        i = i >= 0 ? i + 1 : ~i;
++        return i < starts.Length ? starts[i] : address + 0x10000;
++    }
++
++    private static long[] StartsFor(IntPtr address)
++    {
++        if (dladdr(address, out var info) == 0 || info.dli_fbase == IntPtr.Zero)
++            throw new InvalidOperationException($"No loaded image contains 0x{(long)address:X}");
++
++        var header = (long)info.dli_fbase;
++        lock (s_StartsByImage)
++        {
++            if (s_StartsByImage.TryGetValue(header, out var cached))
++                return cached;
++            var starts = ReadFunctionStarts(header);
++            s_StartsByImage[header] = starts;
++            return starts;
++        }
++    }
++
++    private static long[] ReadFunctionStarts(long header)
++    {
++        if ((uint)Marshal.ReadInt32((IntPtr)header) != 0xFEEDFACFu)
++            throw new InvalidOperationException("Not a 64-bit Mach-O image");
++
++        var ncmds = Marshal.ReadInt32((IntPtr)(header + 16));
++        var cmd = header + 32;
++        long textVm = -1, linkVm = -1, linkFileOff = 0;
++        uint startsOff = 0, startsSize = 0;
++        for (var i = 0; i < ncmds; i++)
++        {
++            var kind = (uint)Marshal.ReadInt32((IntPtr)cmd);
++            var size = Marshal.ReadInt32((IntPtr)(cmd + 4));
++            if (kind == 0x19) // LC_SEGMENT_64
++            {
++                var name = Marshal.PtrToStringAnsi((IntPtr)(cmd + 8));
++                var vmaddr = Marshal.ReadInt64((IntPtr)(cmd + 24));
++                var fileoff = Marshal.ReadInt64((IntPtr)(cmd + 40));
++                if (name == "__TEXT") textVm = vmaddr;
++                if (name == "__LINKEDIT")
++                {
++                    linkVm = vmaddr;
++                    linkFileOff = fileoff;
++                }
++            }
++            else if (kind == 0x26) // LC_FUNCTION_STARTS
++            {
++                startsOff = (uint)Marshal.ReadInt32((IntPtr)(cmd + 8));
++                startsSize = (uint)Marshal.ReadInt32((IntPtr)(cmd + 12));
++            }
++
++            cmd += size;
++        }
++
++        if (textVm < 0 || linkVm < 0 || startsSize == 0)
++            throw new InvalidOperationException("Image has no LC_FUNCTION_STARTS");
++
++        var slide = header - textVm;
++        var p = slide + linkVm + (startsOff - linkFileOff);
++        var end = p + startsSize;
++        var result = new List<long>();
++        var address = header; // first delta is from the start of __TEXT
++        while (p < end)
++        {
++            ulong delta = 0;
++            var shift = 0;
++            byte b;
++            do
++            {
++                b = Marshal.ReadByte((IntPtr)p++);
++                delta |= (ulong)(b & 0x7F) << shift;
++                shift += 7;
++            } while ((b & 0x80) != 0);
++
++            if (delta == 0) break;
++            address += (long)delta;
++            result.Add(address);
++        }
++
++        return result.ToArray();
++    }
++
++    [StructLayout(LayoutKind.Sequential)]
++    private struct DlInfo
++    {
++        public IntPtr dli_fname;
++        public IntPtr dli_fbase;
++        public IntPtr dli_sname;
++        public IntPtr dli_saddr;
++    }
++
++    [DllImport("libSystem.dylib")]
++    private static extern int dladdr(IntPtr addr, out DlInfo info);
++}
+diff --git a/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs b/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
+index 3958f4a..99c8819 100644
+--- a/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
++++ b/Il2CppInterop.Common/XrefScans/XrefScanMethodDb.cs
+@@ -20,19 +20,88 @@ public static class XrefScanMethodDb
+             GeneratedDatabasesUtil.GetDatabasePath(MethodAddressToTokenMap.FileName));
+         XrefScanCache = new MethodXrefScanCache(GeneratedDatabasesUtil.GetDatabasePath(MethodXrefScanCache.FileName));
+ 
+-        foreach (ProcessModule module in Process.GetCurrentProcess().Modules)
+-            if (module.ModuleName == "GameAssembly.dll")
++        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
++        {
++            var errorPtr = IntPtr.Zero;
++            var libHandle = dlopen("GameAssembly.dylib", 2);
++
++            if (libHandle == IntPtr.Zero)
++            {
++                var procPath = Process.GetCurrentProcess().MainModule.FileName;
++                var appContentsPath = Directory.GetParent(procPath).Parent.FullName;
++                var gameAssemblyPath = Path.Combine(appContentsPath, "Frameworks", "GameAssembly.dylib");
++
++                if (File.Exists(gameAssemblyPath))
++                {
++                    libHandle = dlopen(gameAssemblyPath, 2);
++                }
++            }
++
++            if (libHandle == IntPtr.Zero)
++            {
++                errorPtr = dlerror();
++
++                var errorMessage = errorPtr != IntPtr.Zero
++                    ? Marshal.PtrToStringAnsi(errorPtr)
++                    : "Unknown dlopen failure";
++
++                throw new DllNotFoundException(
++                    $"Failed to load \"GameAssembly.dylib\" with error message: {errorMessage}");
++            }
++
++            // Clear any previous error state.
++            dlerror();
++
++            var symbolAddress = dlsym(libHandle, "il2cpp_init");
++            errorPtr = dlerror();
++
++            if (errorPtr != IntPtr.Zero)
++            {
++                var errorMessage = Marshal.PtrToStringAnsi(errorPtr);
++
++                throw new EntryPointNotFoundException(
++                    $"Failed to find symbol \"il2cpp_init\" with error message: {errorMessage}");
++            }
++
++            if (dladdr(symbolAddress, out var info) == 0)
+             {
+-                GameAssemblyBase = (long)module.BaseAddress;
+-                break;
++                throw new InvalidOperationException();
+             }
++
++            var baseAddress = info.dli_fbase;
++            GameAssemblyBase = (long)baseAddress;
++        }
++        else
++        {
++            GameAssemblyBase = (long)Process.GetCurrentProcess()
++                .Modules.OfType<ProcessModule>()
++                .Single(x => x.ModuleName is "GameAssembly.dll" or "GameAssembly.so" or "UserAssembly.dll" || string.Equals(x.ModuleName, "GameAssembly.dll", StringComparison.OrdinalIgnoreCase))
++                .BaseAddress;
++        }
+     }
+ 
+     public static MethodBase TryResolvePointer(IntPtr methodStart)
+     {
++        // The map holds x86-64 slice addresses; arm64 resolves through the live il2cpp method table.
++        if (Arm64Code.IsArm64 && Arm64Code.NativePointerResolver != null)
++            return Arm64Code.NativePointerResolver(methodStart)!;
+         return MethodMap.Lookup((long)methodStart - GameAssemblyBase);
+     }
+ 
++    internal static IEnumerable<XrefInstance> ListUsersArm64(CachedScanResultsAttribute attribute)
++    {
++        for (var i = attribute.RefRangeStart; i < attribute.RefRangeEnd; i++)
++        {
++            var x86 = XrefScanCache.GetAt(i);
++            var method = MethodMap.Lookup(x86.Address);
++            var field = method == null ? null : Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(method);
++            var methodInfo = field?.GetValue(null);
++            if (methodInfo == null || (IntPtr)methodInfo == IntPtr.Zero) continue;
++            var code = Marshal.ReadIntPtr((IntPtr)methodInfo);
++            yield return new XrefInstance(XrefType.Method, code, code);
++        }
++    }
++
+     internal static IEnumerable<XrefInstance> ListUsers(CachedScanResultsAttribute attribute)
+     {
+         for (var i = attribute.RefRangeStart; i < attribute.RefRangeEnd; i++)
+@@ -64,4 +133,27 @@ public static class XrefScanMethodDb
+ 
+         Marshal.WriteByte((IntPtr)(GameAssemblyBase + attribute.MetadataInitFlagRva), 1);
+     }
++
++    [StructLayout(LayoutKind.Sequential)]
++    private struct DlInfo
++    {
++        public IntPtr dli_fname;
++        public IntPtr dli_fbase;
++        public IntPtr dli_sname;
++        public IntPtr dli_saddr;
++    }
++
++    [DllImport("libSystem.dylib", EntryPoint = "dlopen", CallingConvention = CallingConvention.Cdecl,
++        CharSet = CharSet.Ansi)]
++    private static extern IntPtr dlopen(string filename, int flags);
++
++    [DllImport("libSystem.dylib", EntryPoint = "dlerror", CallingConvention = CallingConvention.Cdecl)]
++    private static extern IntPtr dlerror();
++
++    [DllImport("libSystem.dylib", EntryPoint = "dlsym", CallingConvention = CallingConvention.Cdecl,
++        CharSet = CharSet.Ansi)]
++    private static extern IntPtr dlsym(IntPtr handle, string symbol);
++
++    [DllImport("libSystem.dylib", EntryPoint = "dladdr", CallingConvention = CallingConvention.Cdecl)]
++    private static extern int dladdr(IntPtr addr, out DlInfo info);
+ }
+diff --git a/Il2CppInterop.Common/XrefScans/XrefScanner.cs b/Il2CppInterop.Common/XrefScans/XrefScanner.cs
+index e16c22d..75cb57a 100644
+--- a/Il2CppInterop.Common/XrefScans/XrefScanner.cs
++++ b/Il2CppInterop.Common/XrefScans/XrefScanner.cs
+@@ -1,4 +1,5 @@
+ using System.Reflection;
++using System.Runtime.InteropServices;
+ using Iced.Intel;
+ using Il2CppInterop.Common.Attributes;
+ using Microsoft.Extensions.Logging;
+@@ -13,6 +14,10 @@ public static class XrefScanner
+             ?.GetValue(null);
+         if (fieldValue == null) return Enumerable.Empty<XrefInstance>();
+ 
++        // arm64: the generator's cache holds x86-64 slice addresses; always scan the arm64 code live.
++        if (Arm64Code.IsArm64)
++            return Arm64Code.XrefScan(*(IntPtr*)(IntPtr)fieldValue);
++
+         CachedScanResultsAttribute? cachedAttribute = null;
+         try
+         {
+@@ -25,6 +30,7 @@ public static class XrefScanner
+ 
+         if (cachedAttribute == null)
+         {
++            EnsureNativeCodeArchitectureSupported();
+             XrefScanUtil.CallMetadataInitForMethod(methodBase);
+ 
+             return XrefScanImpl(DecoderForAddress(*(IntPtr*)(IntPtr)fieldValue));
+@@ -45,9 +51,25 @@ public static class XrefScanner
+         if (cachedAttribute == null || cachedAttribute.RefRangeStart == cachedAttribute.RefRangeEnd)
+             return Enumerable.Empty<XrefInstance>();
+ 
++        // arm64: the cached call graph is keyed by x86-64 slice addresses; map each caller back to its method,
++        // then to that method's arm64 code.
++        if (Arm64Code.IsArm64)
++            return XrefScanMethodDb.ListUsersArm64(cachedAttribute);
++
+         return XrefScanMethodDb.ListUsers(cachedAttribute);
+     }
+ 
++    // Runtime entry points scan code from this process. The generator calls
++    // DecoderForAddress separately for an explicitly selected input image.
++    internal static void EnsureNativeCodeArchitectureSupported()
++    {
++        var architecture = RuntimeInformation.ProcessArchitecture;
++        if (architecture != Architecture.X86 && architecture != Architecture.X64)
++            throw new PlatformNotSupportedException(
++                $"Uncached native cross-reference scanning is not supported on {architecture}. " +
++                "The built-in decoder only supports x86/x64 code.");
++    }
++
+     internal static unsafe Decoder DecoderForAddress(IntPtr codeStart, int lengthLimit = 1000)
+     {
+         if (codeStart == IntPtr.Zero) throw new NullReferenceException(nameof(codeStart));
+diff --git a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
+index a8d44d7..785f42f 100644
+--- a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
++++ b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
+@@ -6,6 +6,13 @@ public static class XrefScannerLowLevel
+ {
+     public static IEnumerable<IntPtr> JumpTargets(IntPtr codeStart, bool ignoreRetn = false)
+     {
++        // arm64 process: code of a loaded image is AArch64. Anything else is the generator reading the x86-64
++        // slice of GameAssembly from a file mapping, which the x86 decoder handles.
++        if (Arm64Code.IsArm64)
++            return Arm64Code.IsInLoadedImage(codeStart)
++                ? Arm64Code.JumpTargets(codeStart, ignoreRetn)
++                : JumpTargetsImpl(XrefScanner.DecoderForAddress(codeStart), ignoreRetn);
++        XrefScanner.EnsureNativeCodeArchitectureSupported();
+         return JumpTargetsImpl(XrefScanner.DecoderForAddress(codeStart), ignoreRetn);
+     }
+ 
+@@ -45,6 +52,7 @@ public static class XrefScannerLowLevel
+ 
+     public static IEnumerable<IntPtr> CallAndIndirectTargets(IntPtr pointer)
+     {
++        XrefScanner.EnsureNativeCodeArchitectureSupported();
+         return CallAndIndirectTargetsImpl(XrefScanner.DecoderForAddress(pointer, 1024 * 1024));
+     }
+ 
+diff --git a/Il2CppInterop.Generator/Passes/Pass16ScanMethodRefs.cs b/Il2CppInterop.Generator/Passes/Pass16ScanMethodRefs.cs
+index f16a354..1a58032 100644
+--- a/Il2CppInterop.Generator/Passes/Pass16ScanMethodRefs.cs
++++ b/Il2CppInterop.Generator/Passes/Pass16ScanMethodRefs.cs
+@@ -34,8 +34,17 @@ public static class Pass16ScanMethodRefs
+             gameAssemblyPtr = (nint)fileStartPtr;
+         }
+ 
++        // Method file offsets are relative to the x86-64 image, which is a slice of the file in a universal Mach-O binary
++        var gameAssemblyLength = accessor.Capacity;
++        if (MachOUniversalBinary.TryGetSlice(gameAssemblyPtr, gameAssemblyLength, MachOUniversalBinary.CpuTypeX86_64,
++                out var sliceOffset, out var sliceSize))
++        {
++            gameAssemblyPtr += (nint)sliceOffset;
++            gameAssemblyLength = sliceSize;
++        }
++
+         context.HasGcWbarrierFieldWrite =
+-            FindByteSequence(gameAssemblyPtr, accessor.Capacity, "il2cpp_gc_wbarrier_set_field");
++            FindByteSequence(gameAssemblyPtr, gameAssemblyLength, "il2cpp_gc_wbarrier_set_field");
+ 
+         if (!Pass15GenerateMemberContexts.HasObfuscatedMethods) return;
+ 
+diff --git a/Il2CppInterop.Generator/Utils/MachOUniversalBinary.cs b/Il2CppInterop.Generator/Utils/MachOUniversalBinary.cs
+new file mode 100644
+index 0000000..c0743fa
+--- /dev/null
++++ b/Il2CppInterop.Generator/Utils/MachOUniversalBinary.cs
+@@ -0,0 +1,69 @@
++namespace Il2CppInterop.Generator.Utils;
++
++/// <summary>
++/// Locates one architecture's image inside a universal (fat) Mach-O binary, such as the
++/// GameAssembly.dylib shipped by macOS Unity games built for both x86-64 and arm64.
++/// </summary>
++internal static class MachOUniversalBinary
++{
++    internal const int CpuTypeX86_64 = 0x01000007;
++
++    private const uint FatMagic = 0xCAFEBABE;
++    private const uint FatMagic64 = 0xCAFEBABF;
++    private const int FatHeaderSize = 8;
++    private const int FatArchSize = 20;
++    private const int FatArch64Size = 32;
++
++    /// <summary>
++    /// Finds the slice for <paramref name="cpuType"/> when <paramref name="basePtr"/> points to a universal binary.
++    /// Returns false for thin binaries, or when the universal binary has no such slice.
++    /// </summary>
++    internal static unsafe bool TryGetSlice(nint basePtr, long length, int cpuType, out long offset, out long size)
++    {
++        offset = 0;
++        size = 0;
++
++        var bytes = (byte*)basePtr;
++        if (length < FatHeaderSize)
++            return false;
++
++        var magic = ReadUInt32BigEndian(bytes);
++        if (magic != FatMagic && magic != FatMagic64)
++            return false;
++
++        var archSize = magic == FatMagic64 ? FatArch64Size : FatArchSize;
++        var archCount = ReadUInt32BigEndian(bytes + 4);
++        if (FatHeaderSize + archCount * (long)archSize > length)
++            return false;
++
++        for (var i = 0; i < archCount; i++)
++        {
++            var arch = bytes + FatHeaderSize + i * archSize;
++            if ((int)ReadUInt32BigEndian(arch) != cpuType)
++                continue;
++
++            // fat_arch: cputype, cpusubtype, offset (32-bit), size (32-bit), align
++            // fat_arch_64: cputype, cpusubtype, offset (64-bit), size (64-bit), align, reserved
++            if (magic == FatMagic64)
++            {
++                offset = (long)ReadUInt64BigEndian(arch + 8);
++                size = (long)ReadUInt64BigEndian(arch + 16);
++            }
++            else
++            {
++                offset = ReadUInt32BigEndian(arch + 8);
++                size = ReadUInt32BigEndian(arch + 12);
++            }
++
++            return offset >= 0 && size > 0 && offset + size <= length;
++        }
++
++        return false;
++    }
++
++    private static unsafe uint ReadUInt32BigEndian(byte* p) =>
++        (uint)(p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]);
++
++    private static unsafe ulong ReadUInt64BigEndian(byte* p) =>
++        (ulong)ReadUInt32BigEndian(p) << 32 | ReadUInt32BigEndian(p + 4);
++}
+diff --git a/Il2CppInterop.HarmonySupport/Arm64Abi.cs b/Il2CppInterop.HarmonySupport/Arm64Abi.cs
+new file mode 100644
+index 0000000..33de1d1
+--- /dev/null
++++ b/Il2CppInterop.HarmonySupport/Arm64Abi.cs
+@@ -0,0 +1,31 @@
++using System.Runtime.InteropServices;
++using Il2CppInterop.Runtime;
++using ValueType = Il2CppSystem.ValueType;
++
++namespace Il2CppInterop.HarmonySupport;
++
++/// <summary>AAPCS64 rules the x64-shaped trampolines need on arm64.</summary>
++internal static class Arm64Abi
++{
++    public static bool IsArm64 => RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
++
++    /// <summary>Two general registers; CoreCLR passes and returns this 16-byte non-HFA struct in x(n), x(n+1).</summary>
++    [StructLayout(LayoutKind.Sequential)]
++    public struct Pair
++    {
++        public long Low;
++        public long High;
++    }
++
++    /// <summary>Value size of a non-blittable interop struct that arm64 passes in registers, else 0.</summary>
++    public static int SmallStructSize(Type managedType)
++    {
++        if (!IsArm64 || managedType.IsByRef || !managedType.IsSubclassOf(typeof(ValueType)))
++            return 0;
++        uint align = 0;
++        var size = IL2CPP.il2cpp_class_value_size(Il2CppClassPointerStore.GetNativeClassPointer(managedType), ref align);
++        return size is > 0 and <= 16 ? size : 0;
++    }
++
++    public static Type RegisterType(int size) => size <= 8 ? typeof(long) : typeof(Pair);
++}
+diff --git a/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs b/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
+new file mode 100644
+index 0000000..dcb53a8
+--- /dev/null
++++ b/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
+@@ -0,0 +1,97 @@
++using System.Reflection;
++using System.Runtime.InteropServices;
++using Il2CppInterop.Common;
++using Microsoft.Extensions.Logging;
++
++namespace Il2CppInterop.HarmonySupport;
++
++/// <summary>
++///     arm64 (AAPCS64): a struct returned through memory has its buffer address in x8, and the arguments start at
++///     x0. The native-to-managed trampoline takes the buffer as its first parameter (the x64 System V / Win64
++///     layout), so this thunk shifts x0..x6 to x1..x7, moves x8 into x0 and jumps to the trampoline.
++/// </summary>
++internal static class Arm64ReturnBufferThunk
++{
++    private const int PROT_READ = 1, PROT_WRITE = 2, PROT_EXEC = 4, MAP_PRIVATE = 2, MAP_ANON = 0x1000;
++
++    public static IntPtr Create(IntPtr trampoline, Type[] unmanagedParams, MethodBase method)
++    {
++        // Every parameter here is passed in a general register (pointer, integer, bool) or a vector register
++        // (float, double). The shift only works while all general-register arguments still fit in x0..x7.
++        var generalCount = 0;
++        foreach (var t in unmanagedParams)
++        {
++            if (t == typeof(float) || t == typeof(double))
++                continue;
++            if (t == typeof(Arm64Abi.Pair))
++            {
++                generalCount += 2;
++                continue;
++            }
++            if (t.IsValueType && !t.IsPrimitive && !t.IsEnum)
++            {
++                // Blittable struct by value: AAPCS64 puts <= 16 bytes in ceil(size / 8) general registers unless
++                // it is all float / all double (vector registers); larger ones go by reference (one register).
++                var bytes = Marshal.SizeOf(t);
++                generalCount += bytes > 16 ? 1 : IsFloatAggregate(t) ? 0 : (bytes + 7) / 8;
++                continue;
++            }
++            if (!(t.IsPointer || t.IsPrimitive || t.IsEnum || t == typeof(IntPtr) || t == typeof(UIntPtr)))
++            {
++                Logger.Instance.LogWarning("arm64: {Method} returns a struct through x8 and takes a by-value {Type}; not patched for arm64",
++                    $"{method.DeclaringType?.FullName}::{method.Name}", t);
++                return IntPtr.Zero;
++            }
++            generalCount++;
++        }
++
++        if (generalCount > 8)
++        {
++            Logger.Instance.LogWarning("arm64: {Method} returns a struct through x8 and has {Count} register arguments (max 8); not patched for arm64",
++                $"{method.DeclaringType?.FullName}::{method.Name}", generalCount);
++            return IntPtr.Zero;
++        }
++
++        var code = new uint[]
++        {
++            0xAA0603E7, // mov x7, x6
++            0xAA0503E6, // mov x6, x5
++            0xAA0403E5, // mov x5, x4
++            0xAA0303E4, // mov x4, x3
++            0xAA0203E3, // mov x3, x2
++            0xAA0103E2, // mov x2, x1
++            0xAA0003E1, // mov x1, x0
++            0xAA0803E0, // mov x0, x8
++            0x58000050, // ldr x16, #8
++            0xD61F0200, // br x16
++        };
++        var size = (nuint)(code.Length * 4 + 8);
++        var page = mmap(IntPtr.Zero, 0x4000, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
++        if (page == new IntPtr(-1))
++            throw new InvalidOperationException("arm64 return-buffer thunk: mmap failed");
++        for (var i = 0; i < code.Length; i++)
++            Marshal.WriteInt32(page + i * 4, unchecked((int)code[i]));
++        Marshal.WriteInt64(page + code.Length * 4, trampoline.ToInt64());
++        if (mprotect(page, 0x4000, PROT_READ | PROT_EXEC) != 0)
++            throw new InvalidOperationException("arm64 return-buffer thunk: mprotect failed");
++        sys_icache_invalidate(page, size);
++        Logger.Instance.LogTrace("arm64 return-buffer thunk for {Method}: 0x{Thunk}", $"{method.DeclaringType?.FullName}::{method.Name}", page.ToInt64().ToString("X"));
++        return page;
++    }
++
++    private static bool IsFloatAggregate(Type t)
++    {
++        var fields = t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
++        return fields.Length is > 0 and <= 4 &&
++               (fields.All(f => f.FieldType == typeof(float)) || fields.All(f => f.FieldType == typeof(double)));
++    }
++
++    [DllImport("libSystem.dylib")]
++    private static extern IntPtr mmap(IntPtr addr, nuint len, int prot, int flags, int fd, long offset);
++
++    [DllImport("libSystem.dylib")]
++    private static extern int mprotect(IntPtr addr, nuint len, int prot);
++
++    [DllImport("libSystem.dylib")]
++    private static extern void sys_icache_invalidate(IntPtr start, nuint len);
++}
+diff --git a/Il2CppInterop.HarmonySupport/Il2CppDetourMethodPatcher.cs b/Il2CppInterop.HarmonySupport/Il2CppDetourMethodPatcher.cs
+index 2accee3..7889aac 100644
+--- a/Il2CppInterop.HarmonySupport/Il2CppDetourMethodPatcher.cs
++++ b/Il2CppInterop.HarmonySupport/Il2CppDetourMethodPatcher.cs
+@@ -142,6 +142,19 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+         var unmanagedDelegate = unmanagedTrampolineMethod.CreateDelegate(unmanagedDelegateType);
+         DelegateCache.Add(unmanagedDelegate);
+ 
++        // AAPCS64 passes the struct return buffer in x8, not as the first argument: put a register-shifting
++        // thunk in front of the trampoline, which takes the buffer as its first parameter.
++        if (lastHasReturnBuffer && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
++        {
++            var thunk = Arm64ReturnBufferThunk.Create(Marshal.GetFunctionPointerForDelegate(unmanagedDelegate),
++                lastUnmanagedParams, Original);
++            if (thunk != IntPtr.Zero)
++            {
++                unmanagedDelegate = Marshal.GetDelegateForFunctionPointer(thunk, unmanagedDelegateType);
++                DelegateCache.Add(unmanagedDelegate);
++            }
++        }
++
+         nativeDetour =
+             Il2CppInteropRuntime.Instance.DetourProvider.Create(originalNativeMethodInfo.MethodPointer, unmanagedDelegate);
+         nativeDetour.Apply();
+@@ -206,6 +219,9 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+         return true;
+     }
+ 
++    private bool lastHasReturnBuffer;
++    private Type[] lastUnmanagedParams;
++
+     private DynamicMethodDefinition GenerateNativeToManagedTrampoline(MethodInfo targetManagedMethodInfo)
+     {
+         // managedParams are the interop types used on the managed side
+@@ -225,6 +241,7 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+         }
+ 
+         var hasReturnBuffer = isReturnValueType && IsReturnBufferNeeded(returnSize);
++        lastHasReturnBuffer = hasReturnBuffer;
+         if (hasReturnBuffer)
+         // C compilers seem to return large structs by allocating a return buffer on caller's side and passing it as the first parameter
+         // TODO: Handle ARM
+@@ -234,6 +251,11 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+             paramStartIndex++;
+         }
+ 
++        // arm64: a non-blittable struct of up to 16 bytes comes back by value in x0(/x1), not as a pointer.
++        var arm64SmallReturn = !hasReturnBuffer && isReturnValueType && Arm64Abi.IsArm64 && returnSize <= 16;
++        if (arm64SmallReturn)
++            unmanagedReturnType = Arm64Abi.RegisterType(returnSize);
++
+         if (!Original.IsStatic)
+         {
+             paramStartIndex++;
+@@ -256,9 +278,21 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+         }
+ 
+         unmanagedParams[^1] = typeof(Il2CppMethodInfo*);
++        lastUnmanagedParams = unmanagedParams;
+         Array.Copy(managedParams.Select(TrampolineHelpers.NativeType).ToArray(), 0,
+             unmanagedParams, paramStartIndex, managedParams.Length);
+ 
++        // arm64: a non-blittable struct argument of up to 16 bytes is passed by value in one or two general
++        // registers (AAPCS64), not as a pointer to a copy (Win64).
++        var byValueInRegisters = new bool[managedParams.Length];
++        for (var i = 0; i < managedParams.Length; i++)
++        {
++            var size = Arm64Abi.SmallStructSize(managedParams[i]);
++            if (size == 0) continue;
++            byValueInRegisters[i] = true;
++            unmanagedParams[i + paramStartIndex] = Arm64Abi.RegisterType(size);
++        }
++
+         var dmd = new DynamicMethodDefinition("(il2cpp -> managed) " + Original.Name,
+             unmanagedReturnType,
+             unmanagedParams
+@@ -278,7 +312,8 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+ 
+         for (var i = 0; i < managedParams.Length; ++i)
+         {
+-            EmitConvertArgumentToManaged(il, i + paramStartIndex, managedParams[i], out indirectVariables[i]);
++            EmitConvertArgumentToManaged(il, i + paramStartIndex, managedParams[i], out indirectVariables[i],
++                byValueInRegisters[i]);
+         }
+ 
+         // Run the managed method
+@@ -327,6 +362,20 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+                 // Return the same pointer to the return buffer
+                 il.Emit(OpCodes.Ldarg_0);
+             }
++            else if (arm64SmallReturn)
++            {
++                // Copy the boxed value into a zeroed register-sized local and return it by value.
++                var regs = il.DeclareLocal(unmanagedReturnType);
++                il.Emit(OpCodes.Ldloca, regs);
++                il.Emit(OpCodes.Initobj, unmanagedReturnType);
++                il.Emit(OpCodes.Ldloca, regs);
++                il.Emit(OpCodes.Ldloc, managedReturnVariable);
++                il.Emit(OpCodes.Call, ObjectBaseToPtrNotNullMethodInfo);
++                EmitUnbox(il);
++                il.Emit(OpCodes.Ldc_I4, returnSize);
++                il.Emit(OpCodes.Cpblk);
++                il.Emit(OpCodes.Ldloc, regs);
++            }
+             else
+             {
+                 il.Emit(OpCodes.Ldloc, managedReturnVariable);
+@@ -366,7 +415,8 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+     private static void EmitConvertArgumentToManaged(ILGenerator il,
+         int argIndex,
+         Type managedParamType,
+-        out LocalBuilder variable)
++        out LocalBuilder variable,
++        bool byValueInRegisters = false)
+     {
+         variable = null;
+ 
+@@ -391,7 +441,7 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+                 il.Emit(OpCodes.Call, AccessTools.Method(typeof(IL2CPP), nameof(IL2CPP.il2cpp_object_new)));
+                 var objLocal = il.DeclareLocal(typeof(IntPtr));
+                 il.Emit(OpCodes.Stloc, objLocal);
+-                il.Emit(Environment.Is64BitProcess ? OpCodes.Ldarg : OpCodes.Ldarga_S, argIndex);
++                il.Emit(Environment.Is64BitProcess && !byValueInRegisters ? OpCodes.Ldarg : OpCodes.Ldarga_S, argIndex);
+                 il.Emit(OpCodes.Ldloc, objLocal);
+                 il.Emit(OpCodes.Call, AccessTools.Method(typeof(IL2CPP), nameof(IL2CPP.il2cpp_object_unbox)));
+                 il.Emit(OpCodes.Ldc_I4, (int)valueSize);
+@@ -405,7 +455,8 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+                 il.Emit(OpCodes.Conv_I);
+                 // On x64, struct is always a pointer but it is a non-pointer on x86
+                 // We don't handle byref structs on x86 yet but we're yet to encounter those
+-                il.Emit(Environment.Is64BitProcess ? OpCodes.Ldarg : OpCodes.Ldarga_S, argIndex);
++                // arm64 small structs arrive by value: box from the address of the argument copy
++                il.Emit(Environment.Is64BitProcess && !byValueInRegisters ? OpCodes.Ldarg : OpCodes.Ldarga_S, argIndex);
+                 il.Emit(OpCodes.Call,
+                     AccessTools.Method(typeof(IL2CPP),
+                         nameof(IL2CPP.il2cpp_value_box)));
+diff --git a/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
+index cf06db2..586bad6 100644
+--- a/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
++++ b/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
+@@ -1,6 +1,7 @@
+-﻿using System;
++using System;
+ using System.Linq;
+ using System.Runtime.InteropServices;
++using Iced.Intel;
+ using Il2CppInterop.Common;
+ using Il2CppInterop.Common.Extensions;
+ using Il2CppInterop.Common.XrefScans;
+@@ -130,18 +131,70 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+ 
+                 if (getStaticFieldValueInternalTargets.Length == 0) return FindClassGetFieldDefaultValueXref(true);
+ 
++                // Clang lays the literal-field branch out as Class::GetDefaultFieldValue(field, &type) followed by
++                // BlobReader::GetConstantValueFromBlob, so the position-based choice below picks the wrong call.
++                // The call that receives the address of a stack slot (the 'type' out parameter) is the one we want.
++                if (!OperatingSystem.IsWindows())
++                {
++                    var callWithOutArgument = Arm64Code.IsArm64
++                        ? (nint)Arm64Code.CallWithStackAddressInSecondArgument(getStaticFieldValueInternal)
++                        : FindCallWithStackAddressInSecondArgument(getStaticFieldValueInternal);
++                    if (callWithOutArgument != 0)
++                        return callWithOutArgument;
++                }
++
+                 classGetDefaultFieldValue = getStaticFieldValueInternalTargets.Length == 3 ? getStaticFieldValueInternalTargets.Last() : getStaticFieldValueInternalTargets.First();
+             }
+             return classGetDefaultFieldValue;
+         }
+ 
++        /// <summary>
++        /// The target of the only direct call in <paramref name="function"/> (up to its first return) whose second
++        /// System V argument (rsi) was just set to the address of a stack slot; 0 if there is none or more than one.
++        /// </summary>
++        private static nint FindCallWithStackAddressInSecondArgument(nint function)
++        {
++            var decoder = XrefScanner.DecoderForAddress(function);
++            nint found = 0;
++            var secondArgumentIsStackAddress = false;
++            while (true)
++            {
++                decoder.Decode(out var instruction);
++                if (decoder.LastError == DecoderError.NoMoreBytes || instruction.Mnemonic == Mnemonic.Int3 ||
++                    instruction.FlowControl == FlowControl.Return)
++                    break;
++
++                if (instruction.FlowControl == FlowControl.Call)
++                {
++                    if (secondArgumentIsStackAddress && instruction.Op0Kind is OpKind.NearBranch32 or OpKind.NearBranch64)
++                    {
++                        if (found != 0)
++                            return 0;
++                        found = (nint)instruction.NearBranchTarget;
++                    }
++                    secondArgumentIsStackAddress = false;
++                }
++                else if (instruction.Mnemonic == Mnemonic.Lea && instruction.Op0Register == Register.RSI)
++                {
++                    secondArgumentIsStackAddress = instruction.MemoryBase is Register.RSP or Register.RBP;
++                }
++                else if (instruction.FlowControl != FlowControl.Next ||
++                         (instruction.Op0Kind == OpKind.Register && instruction.Op0Register.GetFullRegister() == Register.RSI))
++                {
++                    secondArgumentIsStackAddress = false;
++                }
++            }
++            return found;
++        }
++
+         public override IntPtr FindTargetMethod()
+         {
+             // NOTE: In some cases this pointer will be MetadataCache::GetFieldDefaultValueForField due to Field::GetDefaultFieldValue being
+             // inlined but we'll treat it the same even though it doesn't receive the type parameter the RDX register
+             // doesn't get cleared so we still get the same parameters
+-            var classGetDefaultFieldValue = s_Signatures
+-                .Select(s => MemoryUtils.FindSignatureInModule(InjectorHelpers.Il2CppModule, s))
++            // The signatures are x86 code; never scan arm64 code with them.
++            var classGetDefaultFieldValue = Arm64Code.IsArm64 ? 0 : s_Signatures
++                .Select(s => MemoryUtils.FindSignatureInBlock(InjectorHelpers.Il2CppModuleBaseAddress, InjectorHelpers.Il2CppModuleMemorySize, s))
+                 .FirstOrDefault(p => p != 0);
+ 
+             if (classGetDefaultFieldValue == 0)
+diff --git a/Il2CppInterop.Runtime/Injection/Hooks/GenericMethod_GetMethod_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/GenericMethod_GetMethod_Hook.cs
+index 9fa480b..37b02d6 100644
+--- a/Il2CppInterop.Runtime/Injection/Hooks/GenericMethod_GetMethod_Hook.cs
++++ b/Il2CppInterop.Runtime/Injection/Hooks/GenericMethod_GetMethod_Hook.cs
+@@ -59,8 +59,19 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+ 
+         public override IntPtr FindTargetMethod()
+         {
++            if (Arm64Code.IsArm64)
++            {
++                // clang arm64 (Unity 6): Object::GetVirtualMethod tail-calls MetadataCache::GetGenericVirtualMethod,
++                // which inlines the 3-argument shim and calls GenericMethod::GetMethod(const Il2CppGenericMethod*).
++                var api = InjectorHelpers.GetIl2CppExport(nameof(IL2CPP.il2cpp_object_get_virtual_method));
++                var getVirtualMethod = XrefScannerLowLevel.JumpTargets(api).First();
++                var getGenericVirtualMethod = Arm64Code.TailCallTargets(getVirtualMethod).Last();
++                Logger.Instance.LogTrace("MetadataCache::GetGenericVirtualMethod: 0x{Address}", getGenericVirtualMethod.ToInt64().ToString("X2"));
++                return XrefScannerLowLevel.JumpTargets(getGenericVirtualMethod).Last();
++            }
++
+             var genericMethodGetMethod = s_Signatures
+-                .Select(s => MemoryUtils.FindSignatureInModule(InjectorHelpers.Il2CppModule, s))
++                .Select(s => MemoryUtils.FindSignatureInBlock(InjectorHelpers.Il2CppModuleBaseAddress, InjectorHelpers.Il2CppModuleMemorySize, s))
+                 .FirstOrDefault(p => p != 0);
+ 
+             if (genericMethodGetMethod == 0)
+diff --git a/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
+index 943a9ad..519166a 100644
+--- a/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
++++ b/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
+@@ -73,7 +73,7 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+                     getTypeInfoFromTypeDefinitionIndex = imageGetType;
+                 }
+                 else getTypeInfoFromTypeDefinitionIndex = imageGetTypeXrefs[0];
+-                if ((getTypeInfoFromTypeDefinitionIndex.ToInt64() & 0xF) != 0)
++                if ((getTypeInfoFromTypeDefinitionIndex.ToInt64() & (Arm64Code.IsArm64 ? 0x3 : 0xF)) != 0)
+                 {
+                     Logger.Instance.LogTrace("Image::GetType xref wasn't aligned, attempting to resolve from icall");
+                     return FindGetTypeInfoFromTypeDefinitionIndex(true);
+diff --git a/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs b/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
+index 9418c06..9da4921 100644
+--- a/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
++++ b/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
+@@ -1,22 +1,19 @@
+-﻿using System;
++using System;
+ using System.Collections.Concurrent;
+ using System.Collections.Generic;
+ using System.Diagnostics;
++using System.IO;
+ using System.Linq;
+ using System.Reflection;
+ using System.Reflection.Emit;
+ using System.Runtime.InteropServices;
+ using System.Threading;
+ using Il2CppInterop.Common;
+-using Il2CppInterop.Common.Extensions;
+ using Il2CppInterop.Common.XrefScans;
+ using Il2CppInterop.Runtime.Injection.Hooks;
+ using Il2CppInterop.Runtime.Runtime;
+ using Il2CppInterop.Runtime.Runtime.VersionSpecific.Assembly;
+-using Il2CppInterop.Runtime.Runtime.VersionSpecific.Class;
+-using Il2CppInterop.Runtime.Runtime.VersionSpecific.FieldInfo;
+ using Il2CppInterop.Runtime.Runtime.VersionSpecific.Image;
+-using Il2CppInterop.Runtime.Runtime.VersionSpecific.MethodInfo;
+ using Il2CppInterop.Runtime.Startup;
+ using Microsoft.Extensions.Logging;
+ 
+@@ -27,11 +24,9 @@ namespace Il2CppInterop.Runtime.Injection
+         internal static Assembly Il2CppMscorlib = typeof(Il2CppSystem.Type).Assembly;
+         internal static INativeAssemblyStruct InjectedAssembly;
+         internal static INativeImageStruct InjectedImage;
+-        internal static ProcessModule Il2CppModule = Process.GetCurrentProcess()
+-            .Modules.OfType<ProcessModule>()
+-            .Single((x) => x.ModuleName is "GameAssembly.dll" or "GameAssembly.dylib" or "GameAssembly.so" or "UserAssembly.dll" || string.Equals(x.ModuleName, "GameAssembly.dll", StringComparison.OrdinalIgnoreCase));
+-
+-        internal static IntPtr Il2CppHandle = NativeLibrary.Load("GameAssembly", typeof(InjectorHelpers).Assembly, null);
++        internal static IntPtr Il2CppModuleBaseAddress => GetIl2CppModuleBaseAddress();
++        internal static int Il2CppModuleMemorySize => GetIl2CppModuleMemorySize();
++        internal static IntPtr Il2CppHandle => GetIl2CppHandle();
+ 
+         internal static readonly Dictionary<Type, OpCode> StIndOpcodes = new()
+         {
+@@ -48,6 +43,47 @@ namespace Il2CppInterop.Runtime.Injection
+             [typeof(double)] = OpCodes.Stind_R8
+         };
+ 
++        private static int CalculateMachOSize(IntPtr baseAddress)
++        {
++            try
++            {
++                var ptr = (byte*)baseAddress;
++                var header = Marshal.PtrToStructure<MachHeader64>((IntPtr)ptr);
++
++                if (header.magic != 0xfeedfacf)
++                    return 0; // Ensure it's a valid 64-bit Mach-O header
++
++                long totalSize = 0;
++                var currentCmdPtr = ptr + sizeof(MachHeader64);
++
++                for (var i = 0; i < header.ncmds; i++)
++                {
++                    var lc = Marshal.PtrToStructure<LoadCommand>((IntPtr)currentCmdPtr);
++
++                    if (lc.cmd == 0x19)
++                    {
++                        var seg = Marshal.PtrToStructure<SegmentCommand64>((IntPtr)currentCmdPtr);
++
++                        // Accumulate virtual memory sizes from valid segments (e.g., __TEXT, __DATA)
++                        // We skip the PAGEZERO segment if it exists (usually native executables only, not dylibs)
++                        if (seg.segname != "__PAGEZERO")
++                        {
++                            totalSize += (long)seg.vmsize;
++                        }
++                    }
++
++                    currentCmdPtr += (int)lc.cmdsize;
++                }
++
++                return (int)totalSize;
++            }
++            catch
++            {
++                // Fail-safe protection against corrupted memory reads
++                return 0;
++            }
++        }
++
+         private static void CreateInjectedAssembly()
+         {
+             InjectedAssembly = UnityVersionHandler.NewAssembly();
+@@ -58,23 +94,89 @@ namespace Il2CppInterop.Runtime.Injection
+             InjectedImage.Assembly = InjectedAssembly.AssemblyPointer;
+             InjectedImage.Dynamic = 1;
+             InjectedImage.Name = InjectedAssembly.Name.Name;
++
+             if (InjectedImage.HasNameNoExt)
+                 InjectedImage.NameNoExt = InjectedAssembly.Name.Name;
+         }
+ 
++        private static IntPtr GetIl2CppModuleBaseAddress()
++        {
++            if (OperatingSystem.IsMacOS())
++            {
++                var symbolAddress = GetIl2CppExport(nameof(IL2CPP.il2cpp_init));
++
++                if (dladdr(symbolAddress, out var info) == 0)
++                {
++                    throw new InvalidOperationException();
++                }
++
++                var baseAddress = info.dli_fbase;
++                return baseAddress;
++            }
++
++            return Process.GetCurrentProcess()
++                .Modules.OfType<ProcessModule>()
++                .Single(x => x.ModuleName is "GameAssembly.dll" or "GameAssembly.so" or "UserAssembly.dll" || string.Equals(x.ModuleName, "GameAssembly.dll", StringComparison.OrdinalIgnoreCase))
++                .BaseAddress;
++        }
++
++        private static int GetIl2CppModuleMemorySize()
++        {
++            var memorySize = 0;
++
++            if (OperatingSystem.IsMacOS())
++            {
++                memorySize = CalculateMachOSize(Il2CppModuleBaseAddress);
++            }
++            else
++            {
++                memorySize = Process.GetCurrentProcess()
++                    .Modules.OfType<ProcessModule>()
++                    .Single(x => x.ModuleName is "GameAssembly.dll" or "GameAssembly.so" or "UserAssembly.dll" || string.Equals(x.ModuleName, "GameAssembly.dll", StringComparison.OrdinalIgnoreCase))
++                    .ModuleMemorySize;
++            }
++
++            return memorySize;
++        }
++
++        private static IntPtr GetIl2CppHandle()
++        {
++            var libraryName = "GameAssembly";
++
++            if (OperatingSystem.IsMacOS())
++            {
++                var procPath = Environment.ProcessPath!;
++                var appContentsPath = Directory.GetParent(procPath)!.Parent!.FullName;
++                var gameAssemblyPath = Path.Combine(appContentsPath, "Frameworks", "GameAssembly.dylib");
++
++                if (!File.Exists(gameAssemblyPath))
++                {
++                    throw new DllNotFoundException(
++                        $"Failed to load \"GameAssembly.dylib\" from path {gameAssemblyPath}");
++                }
++
++                libraryName = gameAssemblyPath;
++            }
++
++            return NativeLibrary.Load(libraryName, typeof(InjectorHelpers).Assembly, null);
++        }
++
+         private static readonly GenericMethod_GetMethod_Hook GenericMethodGetMethodHook = new();
+         private static readonly GenericMethod_GetMethod_Unity6_Hook GenericMethodGetMethodHook_Unity6 = new();
+         private static readonly MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook GetTypeInfoFromTypeDefinitionIndexHook = new();
+         private static readonly Class_GetFieldDefaultValue_Hook GetFieldDefaultValueHook = new();
+         private static readonly Class_FromIl2CppType_Hook FromIl2CppTypeHook = new();
+         private static readonly Class_FromName_Hook FromNameHook = new();
++
+         internal static void Setup()
+         {
+             if (InjectedAssembly == null) CreateInjectedAssembly();
+-            if (Il2CppInteropRuntime.Instance.UnityVersion.Major >= 6000)
++
++            if (Il2CppInteropRuntime.Instance.UnityVersion.Major >= 6000 && !Arm64Code.IsArm64)
+                 GenericMethodGetMethodHook_Unity6.ApplyHook();
+             else
+                 GenericMethodGetMethodHook.ApplyHook();
++
+             GetTypeInfoFromTypeDefinitionIndexHook.ApplyHook();
+             GetFieldDefaultValueHook.ApplyHook();
+             ClassInit ??= FindClassInit();
+@@ -84,20 +186,21 @@ namespace Il2CppInterop.Runtime.Injection
+ 
+         internal static long CreateClassToken(IntPtr classPointer)
+         {
+-            long newToken = Interlocked.Decrement(ref s_LastInjectedToken);
++            var newToken = Interlocked.Decrement(ref s_LastInjectedToken);
+             s_InjectedClasses[newToken] = classPointer;
+             return newToken;
+         }
+ 
+         internal static void AddTypeToLookup<T>(IntPtr typePointer) where T : class => AddTypeToLookup(typeof(T), typePointer);
++
+         internal static void AddTypeToLookup(Type type, IntPtr typePointer)
+         {
+-            string klass = type.Name;
++            var klass = type.Name;
+             if (klass == null) return;
+-            string namespaze = type.Namespace ?? string.Empty;
+-            var attribute = Attribute.GetCustomAttribute(type, typeof(Il2CppInterop.Runtime.Attributes.ClassInjectionAssemblyTargetAttribute)) as Il2CppInterop.Runtime.Attributes.ClassInjectionAssemblyTargetAttribute;
++            var namespaze = type.Namespace ?? string.Empty;
++            var attribute = Attribute.GetCustomAttribute(type, typeof(Attributes.ClassInjectionAssemblyTargetAttribute)) as Attributes.ClassInjectionAssemblyTargetAttribute;
+ 
+-            foreach (IntPtr image in (attribute is null) ? IL2CPP.GetIl2CppImages() : attribute.GetImagePointers())
++            foreach (var image in (attribute is null) ? IL2CPP.GetIl2CppImages() : attribute.GetImagePointers())
+             {
+                 s_ClassNameLookup.Add((namespaze, klass, image), typePointer);
+             }
+@@ -107,7 +210,8 @@ namespace Il2CppInterop.Runtime.Injection
+         {
+             if (!TryGetIl2CppExport(name, out var address))
+             {
+-                throw new NotSupportedException($"Couldn't find {name} in {Il2CppModule.ModuleName}'s exports");
++                var moduleName = Process.GetCurrentProcess().MainModule?.ModuleName;
++                throw new NotSupportedException($"Couldn't find {name} in {moduleName}'s exports");
+             }
+ 
+             return address;
+@@ -122,7 +226,7 @@ namespace Il2CppInterop.Runtime.Injection
+         {
+             if (proxyMethod == null) return IntPtr.Zero;
+ 
+-            FieldInfo methodInfoPointerField = Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(proxyMethod);
++            var methodInfoPointerField = Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(proxyMethod);
+             if (methodInfoPointerField == null)
+                 throw new ArgumentException($"Couldn't find the generated method info pointer for {proxyMethod.Name}");
+ 
+@@ -132,16 +236,19 @@ namespace Il2CppInterop.Runtime.Injection
+             IntPtr methodInfoPointer = (IntPtr)methodInfoPointerField.GetValue(null);
+             if (methodInfoPointer == IntPtr.Zero)
+                 throw new ArgumentException($"Generated method info pointer for {proxyMethod.Name} doesn't point to any il2cpp method info");
+-            INativeMethodInfoStruct methodInfo = UnityVersionHandler.Wrap((Il2CppMethodInfo*)methodInfoPointer);
++
++            var methodInfo = UnityVersionHandler.Wrap((Il2CppMethodInfo*)methodInfoPointer);
+             return methodInfo.MethodPointer;
+         }
+ 
+         private static long s_LastInjectedToken = -2;
+         internal static readonly ConcurrentDictionary<long, IntPtr> s_InjectedClasses = new();
++
+         /// <summary> (namespace, class, image) : class </summary>
+         internal static readonly Dictionary<(string _namespace, string _class, IntPtr imagePtr), IntPtr> s_ClassNameLookup = new();
+ 
+         #region Class::Init
++
+         [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+         internal delegate void d_ClassInit(Il2CppClass* klass);
+         internal static d_ClassInit ClassInit;
+@@ -171,23 +278,30 @@ namespace Il2CppInterop.Runtime.Injection
+                     Logger.Instance.LogTrace("Picked mono_class_instance_size as a Class::Init substitute");
+                     return classInit;
+                 }
++
+                 if (TryGetIl2CppExport("mono_class_setup_vtable", out classInit))
+                 {
+                     Logger.Instance.LogTrace("Picked mono_class_setup_vtable as a Class::Init substitute");
+                     return classInit;
+                 }
++
+                 if (TryGetIl2CppExport(nameof(IL2CPP.il2cpp_class_has_references), out classInit))
+                 {
+                     Logger.Instance.LogTrace("Picked il2cpp_class_has_references as a Class::Init substitute");
+                     return classInit;
+                 }
+ 
+-                Logger.Instance.LogTrace("GameAssembly.dll: 0x{Il2CppModuleAddress}", Il2CppModule.BaseAddress.ToInt64().ToString("X2"));
+-                throw new NotSupportedException("Failed to use signature for Class::Init and a substitute cannot be found, please create an issue and report your unity version & game");
++                Logger.Instance.LogTrace("GameAssembly: 0x{ModuleAddress}", Il2CppModuleBaseAddress.ToInt64().ToString("X2"));
++
++                throw new NotSupportedException(
++                    "Failed to use signature for Class::Init and a substitute cannot be found, please create an " +
++                    "issue and report your unity version & game");
+             }
+-            nint pClassInit = s_ClassInitSignatures
+-                .Select(s => MemoryUtils.FindSignatureInModule(Il2CppModule, s))
+-                .FirstOrDefault(p => p != 0);
++            // These signatures describe x86 instructions. Never match them against ARM code.
++            nint pClassInit = RuntimeInformation.ProcessArchitecture is Architecture.X86 or Architecture.X64
++                ? s_ClassInitSignatures.Select(s => MemoryUtils.FindSignatureInBlock(Il2CppModuleBaseAddress, Il2CppModuleMemorySize, s))
++                    .FirstOrDefault(p => p != 0)
++                : 0;
+ 
+             if (pClassInit == 0)
+             {
+@@ -199,6 +313,58 @@ namespace Il2CppInterop.Runtime.Injection
+ 
+             return Marshal.GetDelegateForFunctionPointer<d_ClassInit>(pClassInit);
+         }
++
+         #endregion
++
++        [StructLayout(LayoutKind.Sequential)]
++        private struct DlInfo
++        {
++            public IntPtr dli_fname;
++            public IntPtr dli_fbase;
++            public IntPtr dli_sname;
++            public IntPtr dli_saddr;
++        }
++
++        [StructLayout(LayoutKind.Sequential)]
++        private struct MachHeader64
++        {
++            public uint magic;
++            public int cputype;
++            public int cpusubtype;
++            public uint filetype;
++            public uint ncmds;
++            public uint sizeofcmds;
++            public uint flags;
++            public uint reserved;
++        }
++
++        [StructLayout(LayoutKind.Sequential)]
++        private struct LoadCommand
++        {
++            public uint cmd;
++            public uint cmdsize;
++        }
++
++        [StructLayout(LayoutKind.Sequential)]
++        private struct SegmentCommand64
++        {
++            public uint cmd;
++            public uint cmdsize;
++
++            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
++            public string segname;
++
++            public ulong vmaddr;
++            public ulong vmsize;
++            public ulong fileoff;
++            public ulong filesize;
++            public int maxprot;
++            public int initprot;
++            public uint nsects;
++            public uint flags;
++        }
++
++        [DllImport("libSystem.dylib", EntryPoint = "dladdr", CallingConvention = CallingConvention.Cdecl)]
++        private static extern int dladdr(IntPtr addr, out DlInfo info);
+     }
+ }
+diff --git a/Il2CppInterop.Runtime/MemoryUtils.cs b/Il2CppInterop.Runtime/MemoryUtils.cs
+index 9fd2abd..b9e6d5e 100644
+--- a/Il2CppInterop.Runtime/MemoryUtils.cs
++++ b/Il2CppInterop.Runtime/MemoryUtils.cs
+@@ -10,7 +10,7 @@ namespace Il2CppInterop.Runtime;
+ 
+ internal class MemoryUtils
+ {
+-    public static unsafe nint FindSignatureInModule(ProcessModule module, SignatureDefinition sigDef)
++    public static unsafe nint FindSignatureInBlock(nint moduleBase, long moduleSize, SignatureDefinition sigDef)
+     {
+         // On newer Unity (6000.x) the loaded GameAssembly maps some pages PAGE_NOACCESS / guard pages; the raw
+         // linear byte walk in FindSignatureInBlock dereferences them and throws a fatal AccessViolationException.
+@@ -24,7 +24,7 @@ internal class MemoryUtils
+             // Protections that permit reading; TerraFX defines no single composite of these.
+             const uint pageReadable = PAGE.PAGE_READONLY | PAGE.PAGE_READWRITE | PAGE.PAGE_WRITECOPY |
+                                       PAGE.PAGE_EXECUTE_READ | PAGE.PAGE_EXECUTE_READWRITE | PAGE.PAGE_EXECUTE_WRITECOPY;
+-            var regions = GetModuleRegions(module);
++            var regions = GetModuleRegions(moduleBase, moduleSize);
+             foreach (var region in regions)
+             {
+                 if (region.State != MEM.MEM_COMMIT || (region.Protect & PAGE.PAGE_GUARD) != 0 ||
+@@ -38,7 +38,7 @@ internal class MemoryUtils
+         }
+         else
+         {
+-            ptr = FindSignatureInBlock(module.BaseAddress, module.ModuleMemorySize,
++            ptr = FindSignatureInBlock(moduleBase, moduleSize,
+                 sigDef.pattern, sigDef.mask, sigDef.offset);
+         }
+ 
+@@ -81,11 +81,11 @@ internal class MemoryUtils
+     /// the readable committed ones. Stops at the first <c>VirtualQuery</c> failure or once the module end is reached.
+     /// </summary>
+     [SupportedOSPlatform("windows6.1")]
+-    internal static unsafe List<MEMORY_BASIC_INFORMATION> GetModuleRegions(ProcessModule module)
++    internal static unsafe List<MEMORY_BASIC_INFORMATION> GetModuleRegions(nint moduleBase, long moduleSize)
+     {
+         var regions = new List<MEMORY_BASIC_INFORMATION>();
+-        var moduleEndAddress = (long)module.BaseAddress + module.ModuleMemorySize;
+-        var currentAddress = (long)module.BaseAddress;
++        var moduleEndAddress = (long)moduleBase + moduleSize;
++        var currentAddress = (long)moduleBase;
+         while (currentAddress < moduleEndAddress)
+         {
+             MEMORY_BASIC_INFORMATION memoryInfo = default;
+diff --git a/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs b/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
+index 3147986..9b77ac1 100644
+--- a/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
++++ b/Il2CppInterop.Runtime/Startup/Il2CppInteropRuntime.cs
+@@ -34,6 +34,8 @@ public sealed class Il2CppInteropRuntime : BaseHost
+         };
+         SetInstance(res);
+         res.AddXrefScanner<Il2CppInteropRuntime, XrefScanImpl>();
++        if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64)
++            Il2CppInterop.Common.XrefScans.Arm64Code.NativePointerResolver = Arm64MethodResolver.Resolve;
+         return res;
+     }
+ 
+diff --git a/Il2CppInterop.Runtime/XrefScans/Arm64MethodResolver.cs b/Il2CppInterop.Runtime/XrefScans/Arm64MethodResolver.cs
+new file mode 100644
+index 0000000..4cad61f
+--- /dev/null
++++ b/Il2CppInterop.Runtime/XrefScans/Arm64MethodResolver.cs
+@@ -0,0 +1,129 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Reflection;
++using System.Runtime.InteropServices;
++using Il2CppInterop.Common;
++using Il2CppInterop.Common.XrefScans;
++using Il2CppInterop.Runtime.Runtime;
++
++namespace Il2CppInterop.Runtime.XrefScans;
++
++/// <summary>
++///     arm64: the generated MethodAddressToToken map holds x86-64 slice addresses. Resolve an arm64 code pointer
++///     through the live il2cpp method table instead: pointer -> MethodInfo* -> declaring class -> generated type
++///     -> the generated method whose method-info field holds that MethodInfo*.
++/// </summary>
++internal static unsafe class Arm64MethodResolver
++{
++    private static Dictionary<IntPtr, List<IntPtr>>? s_MethodInfoByCode;
++    private static readonly Dictionary<IntPtr, MethodBase?> s_Resolved = new();
++
++    public static MethodBase? Resolve(IntPtr code)
++    {
++        lock (s_Resolved)
++        {
++            if (s_Resolved.TryGetValue(code, out var known))
++                return known;
++            s_MethodInfoByCode ??= BuildTable();
++            MethodBase? result = null;
++            if (s_MethodInfoByCode.TryGetValue(code, out var methodInfos))
++                foreach (var methodInfo in methodInfos) // folded bodies: several methods share one pointer
++                    if ((result = FromMethodInfo(methodInfo)) != null)
++                        break;
++            s_Resolved[code] = result;
++            return result;
++        }
++    }
++
++    private static Dictionary<IntPtr, List<IntPtr>> BuildTable()
++    {
++        var table = new Dictionary<IntPtr, List<IntPtr>>();
++        int total = 0, zero = 0;
++        uint count = 0;
++        var assemblies = IL2CPP.il2cpp_domain_get_assemblies(IL2CPP.il2cpp_domain_get(), ref count);
++        for (var a = 0; a < count; a++)
++        {
++            var image = IL2CPP.il2cpp_assembly_get_image(assemblies[a]);
++            var classes = IL2CPP.il2cpp_image_get_class_count(image);
++            for (uint c = 0; c < classes; c++)
++            {
++                var klass = IL2CPP.il2cpp_image_get_class(image, c);
++                var iter = IntPtr.Zero;
++                IntPtr method;
++                while ((method = IL2CPP.il2cpp_class_get_methods(klass, ref iter)) != IntPtr.Zero)
++                {
++                    var code = UnityVersionHandler.Wrap((Il2CppMethodInfo*)method).MethodPointer;
++                    total++;
++                    if (code == IntPtr.Zero) { zero++; continue; }
++                    if (!table.TryGetValue(code, out var list))
++                        table[code] = list = new List<IntPtr>();
++                    list.Add(method);
++                }
++            }
++        }
++
++        Microsoft.Extensions.Logging.LoggerExtensions.LogInformation(Logger.Instance,
++            "arm64 xref resolver: {Total} methods, {Zero} without code pointer, {Distinct} distinct pointers", total, zero, table.Count);
++        return table;
++    }
++
++    private static MethodBase? FromMethodInfo(IntPtr methodInfo)
++    {
++        var klass = IL2CPP.il2cpp_method_get_class(methodInfo);
++        var type = GeneratedType(klass);
++        if (type == null)
++        {
++            Microsoft.Extensions.Logging.LoggerExtensions.LogDebug(Logger.Instance,
++                "arm64 xref resolver: no generated type for {Ns}.{Name} in {Image}", IL2CPP.il2cpp_class_get_namespace_(klass),
++                IL2CPP.il2cpp_class_get_name_(klass), Marshal.PtrToStringUTF8(IL2CPP.il2cpp_image_get_name(IL2CPP.il2cpp_class_get_image(klass))));
++            return null;
++        }
++        const BindingFlags all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static |
++                                 BindingFlags.Instance | BindingFlags.DeclaredOnly;
++        foreach (var m in type.GetMethods(all).Cast<MethodBase>().Concat(type.GetConstructors(all)))
++        {
++            if (m.IsAbstract) continue;
++            try
++            {
++                var field = Il2CppInteropUtils.GetIl2CppMethodInfoPointerFieldForGeneratedMethod(m);
++                if (field != null && field.GetValue(null) is IntPtr p && p == methodInfo)
++                    return m;
++            }
++            catch (Exception)
++            {
++                // methods without a generated method-info field
++            }
++        }
++
++        Microsoft.Extensions.Logging.LoggerExtensions.LogDebug(Logger.Instance,
++            "arm64 xref resolver: {Type} has no generated method for MethodInfo 0x{Mi}", type.FullName, methodInfo.ToString("X"));
++        return null;
++    }
++
++    private static Type? GeneratedType(IntPtr klass)
++    {
++        var declaring = IL2CPP.il2cpp_class_get_declaring_type(klass);
++        if (declaring != IntPtr.Zero)
++            return GeneratedType(declaring)?.GetNestedType(IL2CPP.il2cpp_class_get_name_(klass)!,
++                BindingFlags.Public | BindingFlags.NonPublic);
++
++        var ns = IL2CPP.il2cpp_class_get_namespace_(klass) ?? "";
++        var name = IL2CPP.il2cpp_class_get_name_(klass)!;
++        var image = Marshal.PtrToStringUTF8(IL2CPP.il2cpp_image_get_name(IL2CPP.il2cpp_class_get_image(klass)))!;
++        var assemblyName = System.IO.Path.GetFileNameWithoutExtension(image);
++        // Interop assemblies only: "mscorlib" is also the name of a .NET facade that forwards System.* types.
++        var interop = AppDomain.CurrentDomain.GetAssemblies()
++            .Where(asm => asm.GetName().Name == "Il2Cpp" + assemblyName ||
++                          (asm.GetName().Name == assemblyName && asm.GetReferencedAssemblies().Any(r => r.Name == "Il2CppInterop.Runtime")))
++            .OrderBy(asm => asm.GetName().Name == assemblyName ? 1 : 0);
++        foreach (var asm in interop)
++        {
++            var t = asm.GetType("Il2Cpp" + (ns.Length == 0 ? "." + name : ns + "." + name), false)
++                    ?? asm.GetType(ns.Length == 0 ? name : ns + "." + name, false);
++            if (t != null && t.Assembly == asm) return t;
++        }
++
++        return null;
++    }
++}
+diff --git a/Il2CppInterop.Runtime/XrefScans/XrefScanImpl.cs b/Il2CppInterop.Runtime/XrefScans/XrefScanImpl.cs
+index 5015702..cfadd53 100644
+--- a/Il2CppInterop.Runtime/XrefScans/XrefScanImpl.cs
++++ b/Il2CppInterop.Runtime/XrefScans/XrefScanImpl.cs
+@@ -14,6 +14,17 @@ internal class XrefScanImpl : IXrefScannerImpl
+ 
+     public unsafe (XrefScanUtil.InitMetadataForMethod, IntPtr)? GetMetadataResolver()
+     {
++        // arm64: find UnityEngine.Object's static constructor through the il2cpp API (the managed
++        // AppDomain.GetAssemblies route below throws with Unity 6 interop assemblies).
++        if (Arm64Code.IsArm64)
++        {
++            var objectClass = IL2CPP.GetIl2CppClass("UnityEngine.CoreModule.dll", "UnityEngine", "Object");
++            var cctor = objectClass == IntPtr.Zero ? IntPtr.Zero : IL2CPP.il2cpp_class_get_method_from_name(objectClass, ".cctor", 0);
++            if (cctor == IntPtr.Zero) return null;
++            var initPointer = XrefScannerLowLevel.JumpTargets(*(IntPtr*)cctor).First();
++            return (Marshal.GetDelegateForFunctionPointer<XrefScanUtil.InitMetadataForMethod>(initPointer), initPointer);
++        }
++
+         getAssemblies ??=
+             typeof(AppDomain).GetMethod("GetAssemblies", BindingFlags.Public | BindingFlags.Static)
+                     ?.CreateDelegate(typeof(Func<AppDomain, Il2CppReferenceArray<Assembly>>)) as
+diff --git a/tests/NativeXrefRegression/NativeXrefRegression.csproj b/tests/NativeXrefRegression/NativeXrefRegression.csproj
+new file mode 100644
+index 0000000..e0c7114
+--- /dev/null
++++ b/tests/NativeXrefRegression/NativeXrefRegression.csproj
+@@ -0,0 +1,12 @@
++<Project Sdk="Microsoft.NET.Sdk">
++  <PropertyGroup>
++    <TargetFramework>net9.0</TargetFramework>
++    <OutputType>Exe</OutputType>
++    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
++    <InteropRoot Condition="'$(InteropRoot)' == ''">../..</InteropRoot>
++  </PropertyGroup>
++  <ItemGroup>
++    <Compile Remove="class-init-fixture.cs" />
++    <ProjectReference Include="$(InteropRoot)/Il2CppInterop.Common/Il2CppInterop.Common.csproj" />
++  </ItemGroup>
++</Project>
+diff --git a/tests/NativeXrefRegression/Program.cs b/tests/NativeXrefRegression/Program.cs
+new file mode 100644
+index 0000000..9a8a7a7
+--- /dev/null
++++ b/tests/NativeXrefRegression/Program.cs
+@@ -0,0 +1,64 @@
++using System.Runtime.InteropServices;
++using Il2CppInterop.Common.Attributes;
++using Il2CppInterop.Common.XrefScans;
++
++var arch = RuntimeInformation.ProcessArchitecture;
++Console.WriteLine($"Process architecture: {arch}");
++var failures = 0;
++void Test(string name, Action test)
++{
++    try { test(); Console.WriteLine("PASS: " + name); }
++    catch (Exception e) { failures++; Console.WriteLine($"FAIL: {name}: {e.GetType().Name}: {e.Message}"); }
++}
++void Unsupported(Action action)
++{
++    try { action(); }
++    catch (PlatformNotSupportedException e) when (e.Message.Contains("x86/x64")) { return; }
++    throw new Exception("Expected explicit unsupported-architecture error");
++}
++if (arch is not (Architecture.X86 or Architecture.X64))
++{
++    // Zero pointers deliberately avoid reading invalid native memory in the negative control.
++    Test("JumpTargets refuses unsupported architecture before pointer access", () =>
++        Unsupported(() => XrefScannerLowLevel.JumpTargets(IntPtr.Zero).ToArray()));
++    Test("CallAndIndirectTargets refuses unsupported architecture before pointer access", () =>
++        Unsupported(() => XrefScannerLowLevel.CallAndIndirectTargets(IntPtr.Zero).ToArray()));
++    Test("uncached managed method refuses native metadata initialization", () =>
++        Unsupported(() => XrefScanner.XrefScan(typeof(Fixture).GetMethod(nameof(Fixture.Uncached))!).ToArray()));
++}
++else
++{
++    // The bytes are read, never executed. x86 and x64 both encode CALL rel32; RET this way.
++    var code = Marshal.AllocHGlobal(1024 * 1024);
++    try
++    {
++        Marshal.Copy(new byte[] { 0xe8, 0x03, 0, 0, 0, 0xc3, 0, 0, 0xc3 }, 0, code, 9);
++        Test("x86/x64 direct call scan remains available", () => {
++            var targets = XrefScannerLowLevel.JumpTargets(code).ToArray();
++            if (targets.Length != 1 || targets[0] != code + 8) throw new Exception("Wrong direct target");
++        });
++        Test("x86/x64 call-and-indirect scan remains available", () => {
++            var targets = XrefScannerLowLevel.CallAndIndirectTargets(code).ToArray();
++            if (targets.Length != 1 || targets[0] != code + 8) throw new Exception("Wrong direct target");
++        });
++    }
++    finally { Marshal.FreeHGlobal(code); }
++}
++Test("empty cached results remain usable without native decoding", () => {
++    if (XrefScanner.XrefScan(typeof(Fixture).GetMethod(nameof(Fixture.Cached))!).Any())
++        throw new Exception("Expected empty cache");
++});
++Test("ordinary managed method still returns no native references", () => {
++    if (XrefScanner.XrefScan(typeof(Fixture).GetMethod(nameof(Fixture.Managed))!).Any())
++        throw new Exception("Expected no native method");
++});
++return failures == 0 ? 0 : 1;
++
++public static class Fixture
++{
++    public static IntPtr NativeMethodInfoPtr_Test = IntPtr.Zero;
++    public static IntPtr Uncached() => NativeMethodInfoPtr_Test;
++    [CachedScanResults]
++    public static IntPtr Cached() => NativeMethodInfoPtr_Test;
++    public static int Managed() => 42;
++}
+diff --git a/tests/NativeXrefRegression/README.md b/tests/NativeXrefRegression/README.md
+new file mode 100644
+index 0000000..6d60bcb
+--- /dev/null
++++ b/tests/NativeXrefRegression/README.md
+@@ -0,0 +1,45 @@
++# Native xref architecture regressions
++
++Run commands from a directory **outside this checkout** when using .NET 9;
++the repository's `global.json` selects .NET 8. No game files are needed.
++
++```sh
++checkout=/absolute/path/to/Il2CppInterop
++dotnet9=/absolute/path/to/dotnet9/dotnet
++output=/absolute/path/to/temporary/xref-output
++cd /tmp
++"$dotnet9" build "$checkout/tests/NativeXrefRegression/NativeXrefRegression.csproj" \
++  -p:GeneratePackageOnBuild=false -p:NuGetAudit=false -o "$output"
++"$dotnet9" "$output/NativeXrefRegression.dll"
++```
++
++On ARM64 this runs five checks: both low-level entry points reject native
++scanning before pointer access; an uncached proxy method rejects scanning
++before metadata initialization; empty cached results and ordinary managed
++methods retain their existing behavior. On x86/x64 it runs four checks,
++including decoding a synthetic CALL/RET byte buffer without executing it.
++
++On Apple Silicon with Rosetta and the .NET 9 x64 runtime installed, run the
++same assembly in a real x64 process:
++
++```sh
++arch -x86_64 /absolute/path/to/x64-dotnet/dotnet "$output/NativeXrefRegression.dll"
++```
++
++The Class::Init regression compiles the exact `Class::Init` region extracted
++from `InjectorHelpers.cs` in a temporary project. Signature lookup, export
++lookup and logging use test doubles; the resolver and fallback logic come
++from production source. It checks that ARM skips every x86 signature, x64
++retains signature selection, the existing export fallback order is preserved,
++and missing substitutes throw. No returned native delegate is invoked.
++
++```sh
++python3 "$checkout/tests/NativeXrefRegression/class-init-regression.py" \
++  --dotnet "$dotnet9" --x64-dotnet /absolute/path/to/x64-dotnet/dotnet
++```
++
++Omit `--x64-dotnet` to run only the current architecture. This fixture avoids
++the game's module-dependent `InjectorHelpers` type initializer; it verifies
++resolver control flow, not real IL2CPP class initialization or hook safety.
++The xref guard does not add ARM decoding. Generator decoding of explicitly
++selected input images is unchanged.
+diff --git a/tests/NativeXrefRegression/class-init-fixture.cs b/tests/NativeXrefRegression/class-init-fixture.cs
+new file mode 100644
+index 0000000..1d627a6
+--- /dev/null
++++ b/tests/NativeXrefRegression/class-init-fixture.cs
+@@ -0,0 +1,93 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using System.Runtime.InteropServices;
++
++// The runner inserts the production Class::Init region inside this fixture.
++// Only module/signature/export lookup and logging are replaced: no native code
++// is scanned or executed, and the returned delegates remain rooted here.
++internal static unsafe partial class InjectorHelpers
++{
++    internal static readonly Module Il2CppModule = new();
++    internal static readonly Dictionary<string, nint> Exports = new();
++    internal static readonly List<string> Lookups = new();
++    internal static bool TryGetIl2CppExport(string name, out nint address)
++    {
++        Lookups.Add(name);
++        return Exports.TryGetValue(name, out address);
++    }
++
++    private static readonly d_ClassInit SignatureDelegate = SignatureTarget;
++    private static readonly d_ClassInit SubstituteDelegate = SubstituteTarget;
++    private static void SignatureTarget(Il2CppClass* klass) { }
++    private static void SubstituteTarget(Il2CppClass* klass) { }
++
++    internal static int Main()
++    {
++        bool x86 = RuntimeInformation.ProcessArchitecture is Architecture.X86 or Architecture.X64;
++        nint signature = Marshal.GetFunctionPointerForDelegate(SignatureDelegate);
++        nint substitute = Marshal.GetFunctionPointerForDelegate(SubstituteDelegate);
++        Console.WriteLine($"Class::Init resolver architecture: {RuntimeInformation.ProcessArchitecture}");
++
++        Check("signature selection is architecture guarded", signature,
++            new[] { "mono_class_instance_size" }, x86 ? signature : substitute,
++            x86 ? 1 : 0, x86 ? Array.Empty<string>() : new[] { "mono_class_instance_size" });
++        Check("second export fallback is preserved", 0,
++            new[] { "mono_class_setup_vtable" }, substitute, x86 ? 2 : 0,
++            new[] { "mono_class_instance_size", "mono_class_setup_vtable" });
++        Check("third export fallback is preserved", 0,
++            new[] { "il2cpp_class_has_references" }, substitute, x86 ? 2 : 0,
++            new[] { "mono_class_instance_size", "mono_class_setup_vtable", "il2cpp_class_has_references" });
++        Check("missing substitutes fail explicitly", 0, Array.Empty<string>(), 0, x86 ? 2 : 0,
++            new[] { "mono_class_instance_size", "mono_class_setup_vtable", "il2cpp_class_has_references" });
++        return 0;
++
++        void Check(string name, nint scanResult, string[] exports, nint expected,
++            int expectedScans, string[] expectedLookups)
++        {
++            MemoryUtils.Calls = 0;
++            MemoryUtils.Result = scanResult;
++            Exports.Clear();
++            Lookups.Clear();
++            foreach (string export in exports) Exports.Add(export, substitute);
++            try
++            {
++                var resolved = FindClassInit();
++                if (expected == 0 || Marshal.GetFunctionPointerForDelegate(resolved) != expected)
++                    throw new Exception($"{name}: wrong target");
++            }
++            catch (NotSupportedException) when (expected == 0) { }
++            if (MemoryUtils.Calls != expectedScans || !Lookups.SequenceEqual(expectedLookups))
++                throw new Exception($"{name}: unexpected signature/export lookup sequence");
++            Console.WriteLine("PASS: " + name);
++        }
++    }
++}
++
++internal struct Il2CppClass { }
++internal sealed class Module { internal nint BaseAddress => 0; }
++internal static class IL2CPP { internal static void il2cpp_class_has_references() { } }
++internal static class MemoryUtils
++{
++    internal sealed class SignatureDefinition
++    {
++        internal string pattern;
++        internal string mask;
++        internal bool xref;
++    }
++    internal static int Calls;
++    internal static nint Result;
++    internal static nint FindSignatureInModule(Module module, SignatureDefinition signature)
++    {
++        if (RuntimeInformation.ProcessArchitecture is not (Architecture.X86 or Architecture.X64))
++            throw new Exception("Attempted x86 signature scanning on unsupported architecture");
++        Calls++;
++        return Result;
++    }
++}
++internal sealed class Logger
++{
++    internal static readonly Logger Instance = new();
++    internal void LogTrace(string message, params object[] values) { }
++    internal void LogWarning(string message) { }
++}
+diff --git a/tests/NativeXrefRegression/class-init-regression.py b/tests/NativeXrefRegression/class-init-regression.py
+new file mode 100644
+index 0000000..0e419ec
+--- /dev/null
++++ b/tests/NativeXrefRegression/class-init-regression.py
+@@ -0,0 +1,37 @@
++#!/usr/bin/env python3
++"""Compile and test the exact Class::Init production region without game startup."""
++import argparse
++from pathlib import Path
++import subprocess
++import tempfile
++
++parser = argparse.ArgumentParser(description=__doc__)
++parser.add_argument("--dotnet", required=True, help=".NET 9 SDK executable")
++parser.add_argument("--x64-dotnet", help="Optional macOS x64 .NET 9 runtime for Rosetta checks")
++args = parser.parse_args()
++test_dir = Path(__file__).resolve().parent
++source = test_dir.parents[1] / "Il2CppInterop.Runtime/Injection/InjectorHelpers.cs"
++text = source.read_text(encoding="utf-8-sig")
++marker = "#region Class::Init"
++if text.count(marker) != 1:
++    raise SystemExit("Expected exactly one production Class::Init region")
++region = text.split(marker, 1)[1].split("#endregion", 1)[0]
++with tempfile.TemporaryDirectory(prefix="il2cpp-class-init-") as directory:
++    scratch = Path(directory)
++    (scratch / "Fixture.cs").write_text((test_dir / "class-init-fixture.cs").read_text())
++    (scratch / "Production.cs").write_text(
++        "using System; using System.Linq; using System.Runtime.InteropServices;\n"
++        "internal static unsafe partial class InjectorHelpers {\n" + region + "\n}\n")
++    (scratch / "ClassInitRegression.csproj").write_text(
++        '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup>'
++        '<TargetFramework>net9.0</TargetFramework><OutputType>Exe</OutputType>'
++        '<AllowUnsafeBlocks>true</AllowUnsafeBlocks><UseAppHost>false</UseAppHost>'
++        '</PropertyGroup></Project>')
++    (scratch / "NuGet.config").write_text(
++        '<configuration><packageSources><clear /></packageSources></configuration>')
++    subprocess.run([args.dotnet, "build", "--nologo", "-o", str(scratch / "out")],
++                   cwd=scratch, check=True)
++    assembly = str(scratch / "out/ClassInitRegression.dll")
++    subprocess.run([args.dotnet, assembly], cwd=scratch, check=True)
++    if args.x64_dotnet:
++        subprocess.run(["arch", "-x86_64", args.x64_dotnet, assembly], cwd=scratch, check=True)

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>HelloArm64</AssemblyName>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+  <PropertyGroup>
+    <BieDir>$(MSBuildThisFileDirectory)../../inst.noindex/bie/BepInEx</BieDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(BieDir)/core/BepInEx.Core.dll" Private="false" />
+    <Reference Include="$(BieDir)/core/BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="$(BieDir)/core/0Harmony.dll" Private="false" />
+    <Reference Include="$(BieDir)/core/Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(BieDir)/interop/Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="$(BieDir)/interop/UnityEngine.CoreModule.dll" Private="false" />
+  </ItemGroup>
+</Project>
