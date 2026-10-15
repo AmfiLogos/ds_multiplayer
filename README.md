@@ -33,3 +33,7 @@ Tested on one Mac over LAN, and Mac host + Windows guest in CrossOver. Not yet t
 - `PLAN.md` - every design decision. `LANE_RULES.md` - how work is split and merged.
 
 No game files are in this repository. You need your own copy of Dungeon Settlers.
+
+## License
+
+MIT (see LICENSE). Code from other projects keeps its own license: MinHook (`win/third_party/minhook/LICENSE.txt`), musl (`win/math/musl/COPYRIGHT`).
