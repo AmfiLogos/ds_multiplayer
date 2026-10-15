@@ -2443,7 +2443,8 @@ static void plist_frame(void) {
     plist_set(PL_NAMES, "<color=#a69085>Names above units</color>");
     plist_set(PL_UNITS, "<color=#a69085>Units per player</color>");
     plist_set(PL_ADMIN, "<color=#a69085>Admin mode (host)</color>");
-    snprintf(row, sizeof row, "<color=#ccbeb8>%d%%</color>", uiset.see_through); plist_set(PL_SEER, row);
+    if (uiset.see_through) snprintf(row, sizeof row, "<color=#ccbeb8>%d%%</color>", uiset.see_through); else snprintf(row, sizeof row, "<color=#ccbeb8>Off</color>");
+    plist_set(PL_SEER, row);
     snprintf(row, sizeof row, "<color=#ccbeb8>%s</color>", ui_names_text(uiset.names)); plist_set(PL_NAMESR, row);
     snprintf(row, sizeof row, "<color=#ccbeb8>%d</color>", ui_max_owned); plist_set(PL_UNITSR, row);
     {   int nw = 0; for (int i = 0; i < UI_MAX_PLAYERS; i++) nw += ui_spectators >> i & 1u;
@@ -4943,7 +4944,7 @@ static void tips_frame(void) {
     /* 3.6 panel: cog rows first (they sit inside the panel frame) */
     if (pl_pop) {
         static const struct { int id; const char *t, *b; } rows[] = {
-            { PL_SEE, "Other Units See-through", "Makes the units you do not control see-through (30 to 90%), so your own units stand out. They never become fully solid. Only on your screen." },
+            { PL_SEE, "Other Units See-through", "Makes the units you do not control see-through, so your own units stand out. Off shows them normally. Only on your screen." },
             { PL_OUTL, "Unit Outline", "Draws an outline around units. Your units: in the game's gold. Friends' units: in each friend's colour. Both, or Off. Only on your screen." },
             { PL_PINGS, "Show Pings", "Show the spots other players mark. Mark a spot yourself: click the middle mouse button, or press B. B over a ping removes it." },
             { PL_PSOUND, "Ping Sound", "Play a short sound when someone pings." },

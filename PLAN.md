@@ -144,7 +144,7 @@ Goal: a version the owner can play live with a friend on a Mac.
 - Units per player (1/2/3/4/6) = how many units you may OWN in base (current build is right). Dungeon team: always max 4 units in total. (Supersedes "bench + 3 per run" above.)
 - lan_v9 also fixes 2 bugs from research/ux_flow_v10.md: #1 Portal X soft-lock (others stuck paused), #2 wrong "The owner left the game" text when the guest's OWN connection dropped.
 - lan_v10 colours: your OWN units keep the game's default look (no tint). Other players get a colour: auto from a colour-blind-safe palette that avoids every game status colour; each player can CHANGE other players' colours for their own screen only (local setting).
-- lan_v10: see-through of other players' units can never be 0 (minimum ~30%).
+- ~~lan_v10: see-through of other players' units can never be 0 (minimum ~30%).~~ Replaced by owner 2026-10-15 (see below).
 - lan_v10: optional outline/contour highlight: off / own units / friends' units / both.
 - lan_v10: camera awareness + ping, "do it good": research what good co-op games do; a ping disappears when a unit reaches the spot (plus a timeout). Owner trusts the design; implement well.
 - Ping (owner 2026-10-14 01:55): NO automatic timeout. A ping stays until a unit reaches it or a player deletes it. B = place a ping; B with the mouse over an existing ping = delete it (toggle). Middle-click also places. Owner loves the "is typing" chat UX.
@@ -315,3 +315,7 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
 
 ## Distance (owner 2026-10-15)
 - "it's impossible to have 2 players on different floors atm in regular playthrough": no different-floor test. Retest only if a feature ever splits players across floors.
+
+## See-through Off (owner 2026-10-15; replaces the 10-14 01:40 minimum rule)
+- "Other Units See-through" steps: Off (0), 30, 50, 70, 90 %, cycling both ways. Off = alpha 1.0 like own units (colour tint stays).
+- Default stays 30. A saved 0 stays Off; an older 1..29 (25) reads as 30. Branch `seethrough`.

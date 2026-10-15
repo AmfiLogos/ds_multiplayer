@@ -384,10 +384,10 @@ static void test_live(void) {
       ui_settings_parse("{\"pos_y\":50}", &w); CHECK(w.pos_y == -12); }   /* above the top edge: ignored */
     { ui_settings u; ui_settings_default(&u); CHECK(u.tooltips == 1); u.tooltips = 0; char b3[1024]; ui_settings_format(&u, b3, sizeof b3);
       ui_settings w; ui_settings_default(&w); ui_settings_parse(b3, &w); CHECK(w.tooltips == 0); }
-    /* lan_v10: never under 30 % (owner); older files with 0 / 25 read as 30 */
-    CHECK(ui_see_through_next(30) == 50 && ui_see_through_next(50) == 70 && ui_see_through_next(70) == 90 && ui_see_through_next(90) == 30);
-    CHECK(ui_see_through_prev(30) == 90 && ui_see_through_prev(90) == 70 && ui_see_through_prev(50) == 30);
-    { ui_settings u; ui_settings_default(&u); ui_settings_parse("{\"see_through\":0}", &u); CHECK(u.see_through == 30);
+    /* owner 2026-10-15: Off (0), 30, 50, 70, 90 cycle both ways; 0 stays Off, an older 25 reads as 30 */
+    CHECK(ui_see_through_next(0) == 30 && ui_see_through_next(30) == 50 && ui_see_through_next(50) == 70 && ui_see_through_next(70) == 90 && ui_see_through_next(90) == 0);
+    CHECK(ui_see_through_prev(0) == 90 && ui_see_through_prev(90) == 70 && ui_see_through_prev(70) == 50 && ui_see_through_prev(50) == 30 && ui_see_through_prev(30) == 0);
+    { ui_settings u; ui_settings_default(&u); ui_settings_parse("{\"see_through\":0}", &u); CHECK(u.see_through == 0);
       ui_settings_parse("{\"see_through\":25}", &u); CHECK(u.see_through == 30); ui_settings_parse("{\"see_through\":100}", &u); CHECK(u.see_through == 90); }
     CHECK(ui_name_tag_visible(UI_NAMES_OTHERS, 1, 0) && !ui_name_tag_visible(UI_NAMES_OTHERS, 0, 0));
     CHECK(ui_name_tag_visible(UI_NAMES_ALL, 0, 0) && !ui_name_tag_visible(UI_NAMES_OFF, 1, 0) && !ui_name_tag_visible(UI_NAMES_ALL, -1, 0));
