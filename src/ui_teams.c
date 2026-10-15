@@ -1450,7 +1450,7 @@ static int hud_is_compact(void) {
 }
 #define HUD_SIZE(c) ((c) ? 28.0f : 34.0f)                    /* frame height (compact / normal) */
 #define HUD_WID(c) ((c) ? 88.0f : 112.0f)
-static int hud_show = 1;                                     /* hud_frame's rule: shown while the portrait bar is, not in the lobby */
+static int hud_show = 1;                                     /* hud_frame's rule: the portrait bar view exists (active or not), not in the lobby */
 static uintptr_t h_sysmenu;
 static int sysmenu_open(void) {                              /* the game's Esc menu (SystemMenuView) is up */
     static unsigned n; static int last;
@@ -1541,7 +1541,9 @@ static void hud_input(void) {                                   /* right-drag (t
 static void hud_frame(void) {
     Obj v = shortcut_view();
     Obj hr = u_gc_get(h_hud_root);
-    int show = v && (tm_is(u_go(v), K_GO) ? F(0x50F3724, bool (*)(Obj, void *))(u_go(v), NULL) : false) && !lobby_open();   /* activeInHierarchy */
+    /* viewui (owner 2026-10-15, no unit left at the base): the portrait bar may go inactive with no units; the button
+       stays (it needs only the bar's canvas), so it does not come and go with the units */
+    int show = v && !lobby_open();
     hud_show = show;
     if (u_alive(hr) && u_alive(u_gc_get(h_hud))) { hud_place(); return; }
     u_gc_free(h_hud); h_hud = 0; u_gc_free(h_hud_root); h_hud_root = 0;
