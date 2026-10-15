@@ -533,10 +533,10 @@ index 0000000..33de1d1
 +}
 diff --git a/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs b/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
 new file mode 100644
-index 0000000..d208f32
+index 0000000..dcb53a8
 --- /dev/null
 +++ b/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,97 @@
 +using System.Reflection;
 +using System.Runtime.InteropServices;
 +using Il2CppInterop.Common;
@@ -567,7 +567,15 @@ index 0000000..d208f32
 +                generalCount += 2;
 +                continue;
 +            }
-+            if (!(t.IsPointer || t.IsPrimitive || t == typeof(IntPtr) || t == typeof(UIntPtr)))
++            if (t.IsValueType && !t.IsPrimitive && !t.IsEnum)
++            {
++                // Blittable struct by value: AAPCS64 puts <= 16 bytes in ceil(size / 8) general registers unless
++                // it is all float / all double (vector registers); larger ones go by reference (one register).
++                var bytes = Marshal.SizeOf(t);
++                generalCount += bytes > 16 ? 1 : IsFloatAggregate(t) ? 0 : (bytes + 7) / 8;
++                continue;
++            }
++            if (!(t.IsPointer || t.IsPrimitive || t.IsEnum || t == typeof(IntPtr) || t == typeof(UIntPtr)))
 +            {
 +                Logger.Instance.LogWarning("arm64: {Method} returns a struct through x8 and takes a by-value {Type}; not patched for arm64",
 +                    $"{method.DeclaringType?.FullName}::{method.Name}", t);
@@ -608,6 +616,13 @@ index 0000000..d208f32
 +        sys_icache_invalidate(page, size);
 +        Logger.Instance.LogTrace("arm64 return-buffer thunk for {Method}: 0x{Thunk}", $"{method.DeclaringType?.FullName}::{method.Name}", page.ToInt64().ToString("X"));
 +        return page;
++    }
++
++    private static bool IsFloatAggregate(Type t)
++    {
++        var fields = t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
++        return fields.Length is > 0 and <= 4 &&
++               (fields.All(f => f.FieldType == typeof(float)) || fields.All(f => f.FieldType == typeof(double)));
 +    }
 +
 +    [DllImport("libSystem.dylib")]

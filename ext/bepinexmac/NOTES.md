@@ -51,10 +51,8 @@ Class::FromIl2CppType 0x76801c, Class::FromName 0x76b774 (-> 0x75cb1c). Class::I
 - `XrefScanner.XrefScan` / `UsedBy` (uncached, managed method xrefs used by some plugins) still x86-only: throws
   PlatformNotSupported on arm64. The generator's cached xref DB is built from the x86-64 slice, so cached results
   point at x86 code. Plugins that use XrefScanner will misbehave on arm64.
-- Struct-return thunk refuses methods with more than 8 general-register arguments or other by-value struct
-  kinds (logs `arm64: ... not patched for arm64`); one seen in Extended Hotbar:
-  `InteractionFactory.CreateUnsetItemQuickSlot` (returns struct, takes Guid). Fix: count Guid as a `Pair` there too
-  (the check runs before the small-struct substitution sees it; needs one more pass).
+- Struct-return thunk refuses methods whose general-register arguments exceed x0..x7 after the shift (logs
+  `arm64: ... not patched for arm64`). In Extended Hotbar all 4 struct-return patches got a thunk.
 - Injected classes (ClassInjector) with methods that take/return non-blittable structs: same ABI assumptions,
   not tested.
 - Each struct-return patch maps one 16 KB page for its 48-byte thunk.

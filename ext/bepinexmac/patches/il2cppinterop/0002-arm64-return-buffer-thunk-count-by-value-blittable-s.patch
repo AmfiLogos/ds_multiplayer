@@ -1,0 +1,48 @@
+From 32dd4ce543cc903581af5ef0fba58d25dcb2290d Mon Sep 17 00:00:00 2001
+From: bepinexmac-lane <lane@local>
+Date: Thu, 15 Oct 2026 20:02:05 +0100
+Subject: [PATCH 2/2] arm64 return-buffer thunk: count by-value blittable
+ structs (<=16 bytes: 1-2 x regs, HFA: none)
+
+---
+ .../Arm64ReturnBufferThunk.cs                   | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs b/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
+index d208f32..dcb53a8 100644
+--- a/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
++++ b/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
+@@ -28,7 +28,15 @@ internal static class Arm64ReturnBufferThunk
+                 generalCount += 2;
+                 continue;
+             }
+-            if (!(t.IsPointer || t.IsPrimitive || t == typeof(IntPtr) || t == typeof(UIntPtr)))
++            if (t.IsValueType && !t.IsPrimitive && !t.IsEnum)
++            {
++                // Blittable struct by value: AAPCS64 puts <= 16 bytes in ceil(size / 8) general registers unless
++                // it is all float / all double (vector registers); larger ones go by reference (one register).
++                var bytes = Marshal.SizeOf(t);
++                generalCount += bytes > 16 ? 1 : IsFloatAggregate(t) ? 0 : (bytes + 7) / 8;
++                continue;
++            }
++            if (!(t.IsPointer || t.IsPrimitive || t.IsEnum || t == typeof(IntPtr) || t == typeof(UIntPtr)))
+             {
+                 Logger.Instance.LogWarning("arm64: {Method} returns a struct through x8 and takes a by-value {Type}; not patched for arm64",
+                     $"{method.DeclaringType?.FullName}::{method.Name}", t);
+@@ -71,6 +79,13 @@ internal static class Arm64ReturnBufferThunk
+         return page;
+     }
+ 
++    private static bool IsFloatAggregate(Type t)
++    {
++        var fields = t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
++        return fields.Length is > 0 and <= 4 &&
++               (fields.All(f => f.FieldType == typeof(float)) || fields.All(f => f.FieldType == typeof(double)));
++    }
++
+     [DllImport("libSystem.dylib")]
+     private static extern IntPtr mmap(IntPtr addr, nuint len, int prot, int flags, int fd, long offset);
+ 
+-- 
+2.54.0 (Apple Git-157)
+
