@@ -1,0 +1,67 @@
+From b958f81f76ac6db242eb5ab0150ebb97662c6128 Mon Sep 17 00:00:00 2001
+From: bepinexmac-lane <lane@local>
+Date: Thu, 15 Oct 2026 20:58:16 +0100
+Subject: [PATCH 3/3] Interop ready marker:
+ BepInEx/interop/gameassembly-sha256.txt
+
+---
+ .../Il2CppInteropManager.cs                   | 27 +++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
+index 315afd4..f3e351d 100644
+--- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
++++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
+@@ -263,15 +263,41 @@ internal static partial class Il2CppInteropManager
+                             .Start();
+     }
+ 
++    /// <summary>
++    ///     Interop ready marker for launchers: lowercase hex sha256 of the GameAssembly file the interop assemblies
++    ///     were made from (BepInEx/interop/gameassembly-sha256.txt). Written after a successful generation and when
++    ///     the interop is already current.
++    /// </summary>
++    private static string ReadyMarkerPath => Path.Combine(IL2CPPInteropAssemblyPath, "gameassembly-sha256.txt");
++
++    private static void WriteReadyMarker()
++    {
++        try
++        {
++            using var sha = SHA256.Create();
++            using var fs = File.OpenRead(GameAssemblyPath);
++            File.WriteAllText(ReadyMarkerPath, Utility.ByteArrayToString(sha.ComputeHash(fs)).ToLowerInvariant());
++        }
++        catch (Exception e)
++        {
++            Logger.LogWarning($"Could not write {ReadyMarkerPath}: {e.Message}");
++        }
++    }
++
+     private static void GenerateInteropAssemblies()
+     {
+         if (!CheckIfGenerationRequired())
++        {
++            if (File.Exists(HashPath))
++                WriteReadyMarker();
+             return;
++        }
+ 
+         try
+         {
+             Directory.CreateDirectory(IL2CPPInteropAssemblyPath);
+             Directory.EnumerateFiles(IL2CPPInteropAssemblyPath, "*.dll").Do(File.Delete);
++            if (File.Exists(ReadyMarkerPath)) File.Delete(ReadyMarkerPath);
+ 
+             AppDomain.CurrentDomain.AddCecilPlatformAssemblies(UnityBaseLibsDirectory);
+             DownloadUnityAssemblies();
+@@ -288,6 +314,7 @@ internal static partial class Il2CppInteropManager
+             RunIl2CppInteropGenerator(asmResolverAssemblies);
+ 
+             File.WriteAllText(HashPath, ComputeHash());
++            WriteReadyMarker();
+         }
+         catch (Exception e)
+         {
+-- 
+2.54.0 (Apple Git-157)
+

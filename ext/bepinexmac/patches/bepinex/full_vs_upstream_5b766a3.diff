@@ -300,7 +300,7 @@ index 5fcdb35..0d938fb 100644
              Logger.Log(LogLevel.Fatal,
                         "Could not locate Il2Cpp game assembly (GameAssembly.dll, UserAssembly.dll or libil2cpp.so). The game might be obfuscated or use a yet unsupported build of Unity.");
 diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
-index fe9de89..315afd4 100644
+index fe9de89..f3e351d 100644
 --- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
 +++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
 @@ -119,8 +119,20 @@ internal static partial class Il2CppInteropManager
@@ -326,6 +326,56 @@ index fe9de89..315afd4 100644
  
      private static string HashPath => Path.Combine(IL2CPPInteropAssemblyPath, "assembly-hash.txt");
  
+@@ -251,15 +263,41 @@ internal static partial class Il2CppInteropManager
+                             .Start();
+     }
+ 
++    /// <summary>
++    ///     Interop ready marker for launchers: lowercase hex sha256 of the GameAssembly file the interop assemblies
++    ///     were made from (BepInEx/interop/gameassembly-sha256.txt). Written after a successful generation and when
++    ///     the interop is already current.
++    /// </summary>
++    private static string ReadyMarkerPath => Path.Combine(IL2CPPInteropAssemblyPath, "gameassembly-sha256.txt");
++
++    private static void WriteReadyMarker()
++    {
++        try
++        {
++            using var sha = SHA256.Create();
++            using var fs = File.OpenRead(GameAssemblyPath);
++            File.WriteAllText(ReadyMarkerPath, Utility.ByteArrayToString(sha.ComputeHash(fs)).ToLowerInvariant());
++        }
++        catch (Exception e)
++        {
++            Logger.LogWarning($"Could not write {ReadyMarkerPath}: {e.Message}");
++        }
++    }
++
+     private static void GenerateInteropAssemblies()
+     {
+         if (!CheckIfGenerationRequired())
++        {
++            if (File.Exists(HashPath))
++                WriteReadyMarker();
+             return;
++        }
+ 
+         try
+         {
+             Directory.CreateDirectory(IL2CPPInteropAssemblyPath);
+             Directory.EnumerateFiles(IL2CPPInteropAssemblyPath, "*.dll").Do(File.Delete);
++            if (File.Exists(ReadyMarkerPath)) File.Delete(ReadyMarkerPath);
+ 
+             AppDomain.CurrentDomain.AddCecilPlatformAssemblies(UnityBaseLibsDirectory);
+             DownloadUnityAssemblies();
+@@ -276,6 +314,7 @@ internal static partial class Il2CppInteropManager
+             RunIl2CppInteropGenerator(asmResolverAssemblies);
+ 
+             File.WriteAllText(HashPath, ComputeHash());
++            WriteReadyMarker();
+         }
+         catch (Exception e)
+         {
 diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Preloader.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Preloader.cs
 index 690d4ef..9dfd1c8 100644
 --- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Preloader.cs

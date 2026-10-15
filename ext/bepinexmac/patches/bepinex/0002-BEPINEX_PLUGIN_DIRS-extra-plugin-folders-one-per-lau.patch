@@ -1,7 +1,7 @@
 From e92ecfc8c9b4c39f9876b893e9b8d2ba5e4920a6 Mon Sep 17 00:00:00 2001
 From: bepinexmac-lane <lane@local>
 Date: Thu, 15 Oct 2026 20:52:17 +0100
-Subject: [PATCH 2/2] BEPINEX_PLUGIN_DIRS: extra plugin folders (one per
+Subject: [PATCH 2/3] BEPINEX_PLUGIN_DIRS: extra plugin folders (one per
  launcher mod), also searched for dependencies
 
 ---

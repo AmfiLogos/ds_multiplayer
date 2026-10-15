@@ -80,6 +80,10 @@ Class::FromIl2CppType 0x76801c, Class::FromName 0x76b774 (-> 0x75cb1c). Class::I
   libdobby), `licenses/`. libdoorstop / libdobby ad-hoc signed (`codesign -s -`). No plugins, config, interop.
 - Fresh unzip test (ditto -x, no quarantine): first start downloads Unity base libs (unity.bepinex.dev), generates
   interop (~1.5 min), then loads plugins from `BEPINEX_PLUGIN_DIRS`.
+- 0.1.1: interop ready marker `BepInEx/interop/gameassembly-sha256.txt` = lowercase sha256 of the GameAssembly file
+  the interop was made from (written after generation and on every start when current; removed when regenerating).
+  Fresh test: marker after ~145 s, equals `shasum -a 256 GameAssembly.dylib`. Agreed with l1core (soft restart
+  timeout 300 s while the marker is missing or differs).
 - New BepInEx env `BEPINEX_PLUGIN_DIRS` (path list, `:` on Mac, `;` on Windows): one folder per enabled mod,
   scanned after BepInEx/plugins and searched for dependencies. Verified with 4 plugins in separate folders.
 - dsload (l1-core build) first + libdoorstop second in DYLD_INSERT_LIBRARIES: both start; dsload logs Doorstop as
