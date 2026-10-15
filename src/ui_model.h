@@ -247,6 +247,7 @@ typedef struct ui_settings {
     /* lan_v10 co-op markers (research/ping_camera_v10.md 2.9), all local to this screen */
     int pings, ping_sound, ping_chat;   /* show other players' pings / their sound / "Ben pinged a spot." chat lines (on) */
     int views, offscreen;               /* friends' views as corner brackets (on); a mark at the edge toward friends who look elsewhere (off) */
+    int teams_button;                   /* viewui (owner 2026-10-15): the Teams button is shown (on) */
     int outline;                        /* unit outline: UI_OUTLINE_* (default off) */
     /* spectator mini overview (owner 2026-10-14 ~19:55, board SpectatorHUDAMini): local to this screen */
     int mini, mini_size;                /* shown while following (on); UI_MINI_SMALL / MEDIUM (default) / LARGE */
@@ -334,6 +335,12 @@ int  ui_spam_try(ui_spam *s, double now);
  * 1 = the target is off screen: (ax, ay) = the arrow's place on the inset edge toward it, deg = its direction
  * (0 = right, 90 = up). 0 = on screen (nothing written). */
 int  ui_edge_arrow(float w, float h, float m, float tx, float ty, float *ax, float *ay, float *deg);
+/* viewui (owner 2026-10-15): which marks a friend's view gets on a w x h screen. (x0, y0) / (x1, y1) = their view's
+   bottom-left / top-right corner in screen pixels; same = (nearly) the same view as mine; followed = my camera follows
+   theirs (then nothing: it is my own view). UI_VIEW_SAME: my screen lies inside their view, or both look at the same
+   spot ("Ben sees this too"); UI_VIEW_BRACKETS: their corners; UI_VIEW_EDGE: the off-screen mark (option). */
+enum { UI_VIEW_NONE = 0, UI_VIEW_BRACKETS = 1, UI_VIEW_EDGE = 2, UI_VIEW_SAME = 4 };
+int  ui_view_marks(float w, float h, float x0, float y0, float x1, float y1, int same, int followed, int views_on, int offscreen_on);
 /* map key: map type (0 base, 1 dungeon) and dungeon floor from SIM state, so every peer computes the same key */
 uint32_t ui_map_key(int map, int floor);
 
