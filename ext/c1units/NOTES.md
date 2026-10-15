@@ -21,6 +21,14 @@ Not changed on purpose: a link made with OTHER wiki data (old fingerprint) is st
 with "a few picks may have shifted", but the shift is real: the owner's RzTjHe team decodes to a ring in the Head
 slot and a bow in Body, and validate() strips 10 learned skills to 2. Building that unit would be wrong.
 
+## The one rule for old links (lead decision 2026-10-15)
+
+Every entry point (Paste link / Add from wiki link, Bring Units, Gallery, Test Fights) reads a link through this
+decoder (src/wk_link.h wkl_resolve / wkl_decode_offline). It refuses ONLY when the link's wiki DATA version (the
+fingerprint in header bytes 1-2) differs from WK_FP, with "This link was made with other wiki data (another game
+version): make it again on the wiki." A build made on an older GAME build but with the current data loads normally
+(the game build is never checked). C4 (Gallery, Test Fights) calls this decoder and never writes its own.
+
 ## Tests (all green 2026-10-15)
 
 - `make -C custom/units/test test`: 148 PASS. `NET=1 make ... test`: 160 PASS, including:
