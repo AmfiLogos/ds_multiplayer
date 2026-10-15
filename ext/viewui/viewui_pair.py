@@ -187,7 +187,7 @@ def run(X, Y, PORT):
 
 def main():
     rig.DYLIB = sys.argv[sys.argv.index('--dylib') + 1]
-    pair = subprocess.run([sys.executable, os.path.join(rig.ROOT, 'rig', 'rig.py'), 'lease', 'viewui'], capture_output=True, text=True).stdout.strip().split()[-1]
+    pair = subprocess.run([sys.executable, os.path.join(rig.ROOT, 'rig', 'rig.py'), 'lease', 'viewui', '--pid', str(os.getpid())], capture_output=True, text=True).stdout.strip().split()[-1]
     X, Y = pair[0], pair[1]; PORT = rig.pair_port(X)
     log('pair', pair, 'port', PORT, 'dylib', rig.DYLIB)
     try:
