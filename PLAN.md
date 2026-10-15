@@ -371,4 +371,8 @@ multiplayer tag next to the name of the save and then just put the players that 
 - steamstart / winkit: no dylib change; launcher compiles; bat files not run (no wine run in P0).
 - myunits fe/ guard: merged as branch myunits-feguard 96efe6d only (NOT 38ef920 on myunits); test_custom_guard.py ALL PASS (18), unit + smoke green.
 - wp-menu (M2, 6468eaa; includes mptag + uifix11): merged f718245. Unit + smoke green; menu_pair.py 17/17, 0 desync (fake-mouse build).
-- Pending: viewui (lane still working), weaponslot (no commits yet).
+- bepinex-mac (ext/bepinexmac) fa481a0; l3-win (win/ + ext/l3win) 02f12d8 with build_win.sh fix 476e51b (DSMP_ROOT before the cd).
+- viewui dd0fe0d: merged 5c5306b. Unit (ui 530) + smoke green; viewui_pair 22/22 on the 2nd run. 1st run: item 6 (view) Teams button
+  hidden once with the empty portrait bar (hud 0), then shown on the rerun: possible intermittent, watch in WP-HUD.
+  seethrough_pair "highest alpha" FAIL explained: the 1.0 sprites are EmotionBubble icons with en=0 (disabled, not drawn): test check, not a bug.
+- weaponslot: no src change (verdict GAMEPLAY); its test-only commit is in ds_launcher main.
