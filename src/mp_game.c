@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <dlfcn.h>
 
 /* GameSpeedSetting (TypeDefIndex 6123): _gameSpeed +0x10, _requestedGameSpeed +0x14,
    _pauseReasons Dictionary<GamePauseReason,int> +0x18, _gameSpeedLockCount +0x20 */
@@ -261,19 +262,24 @@ static void h_delete(Obj ld, Obj name, void *mi) {
    1.5 s of frames each under 33 ms, else 3.5 s. No sim tick runs in it (the world is locked and mp_ready is false while
    the EventQueue coroutine runs), and its frame count already differs per machine, so ending it at once changes
    nothing a peer can see. The world is the same; only the view gets its first heavy frames without the delay.
-   Only during an mp load (join point, guest load, resync, host reload): sync_file_pending. DSRIG_JOIN_FAST=0 = stock.
+   Only during an mp load (join point, guest load, resync, host reload): sync_file_pending, and only when this player turned
+   on "Fast join" (cog row, mp_ui.json; owner 2026-10-15: default Off = stock wait). Per player: each copy waits or not
+   for its own load only; mp_ready / the resume vote already wait for the slowest peer. DSRIG_JOIN_FAST=0 / 1 forces it.
    The map-loading poll (while MapLoadingChecker.IsLoading: WaitForDefaultTicks = WaitForSecondsRealtime(3 x tick))
    polls every frame instead during an mp load. */
 #define VA_LOAD_CHECKPOINT 0xD6F9FC  /* void CampaignLoadingEventHandler.LogLoadCheckpoint(string step, string extra, bool census) */
 #define VA_STABILIZE_NEXT  0xD772A0  /* bool <WaitUntilGameStabilizes>d__103.MoveNext() (+0x10 state, +0x18 current) */
 #define VA_DEFTICKS_NEXT   0xD7709C  /* bool <WaitForDefaultTicks>d__102.MoveNext() (+0x10 state, +0x18 current) */
-static int join_fast = -1;           /* -1 not read yet */
 static unsigned stab_skips, poll_frames;
 static double load_t0;               /* first checkpoint of the current mp load (ms) */
-static int fast_on(void) {
-    if (join_fast < 0) { const char *e = getenv("DSRIG_JOIN_FAST"); join_fast = !(e && e[0] == '0'); }
-    return join_fast && sync_file_pending;
+static int fast_opt(void) {          /* this player's "Fast join" (ui_game.c, dlsym); env DSRIG_JOIN_FAST=0 / 1 wins */
+    const char *e = getenv("DSRIG_JOIN_FAST");
+    if (e && (e[0] == '0' || e[0] == '1')) return e[0] == '1';
+    static int (*get)(void); static int looked;
+    if (!looked) { looked = 1; get = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_fast_join"); }
+    return get ? get() != 0 : 0;
 }
+static int fast_on(void) { return sync_file_pending && fast_opt(); }
 static void (*o_checkpoint)(Obj, Obj, Obj, bool, void *);
 static void h_checkpoint(Obj self, Obj step, Obj extra, bool census, void *mi) {
     if (sync_file_pending && step) {
@@ -1265,7 +1271,7 @@ void mp_game_status(Buf *b) {
     bstr(b, report_path);
     bput(b, ",\"guest_world\":%s,\"saves_blocked\":%llu,\"sync_files_deleted\":%llu,\"sync_file_pending\":%s,\"cache_refreshes\":%llu,\"game_deletes_blocked\":%llu,\"load_retries\":%d",
          guest_world ? "true" : "false", (unsigned long long)saves_blocked, (unsigned long long)sync_files_deleted, sync_file_pending ? "true" : "false", (unsigned long long)cache_refreshes, (unsigned long long)game_deletes_blocked, load_retries);
-    bput(b, ",\"load_stab_skips\":%u,\"load_poll_frames\":%u,\"join_fast\":%d", stab_skips, poll_frames, join_fast);
+    bput(b, ",\"load_stab_skips\":%u,\"load_poll_frames\":%u,\"join_fast\":%d", stab_skips, poll_frames, fast_opt());
     dsnet_client *dc = mp_client(S);
     {   /* owner tables (cross-play check: same on every peer) and why a desync was flagged (bit 1 game, 2 owners) */
         uint64_t hu = 0, hi = 0; int nu = 0, ni = 0;

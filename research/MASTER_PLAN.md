@@ -1,284 +1,312 @@
-# Master plan: Dungeon Settlers Modded (mod loader + multiplayer + units) - 2026-10-15
+# Master plan: three pieces, one release (2026-10-15, rewrite)
 
-Source of truth: `research/owner_feedback_2026-10-15.md` (owner's words, every line mapped in section 4).
-Also read for this plan: PLAN.md, research/plan_modloader.md, plan_foreign_expedition_spectator.md, plan_pvp.md,
-LANE_RULES.md, HANDOFF_2026-10-15.md, the two owner screenshots, every branch (`git log main..<b> --stat`) and the
-stopped worktrees. Plan only: no code was changed.
-
-Marks: **[V]** checked in our files today. **[U]** not verified, the lane proves it first.
-
-Rules this plan keeps (owner 2026-10-15): build only what he asked; no invented extras; no owner questions about internal
-choices; reviews flag only what breaks in production or loses data ("found nothing" is fine).
+Structure approved by the owner 2026-10-15 ("that makes more sense"): MOD LOADER (the base) + MULTIPLAYER MOD (co-op only)
++ CUSTOM MODES MOD (units, builder, gallery, test fights, Foreign Expedition, PvP). ONE release with everything
+("I want everything in one"). Previous version: research/old_versions/MASTER_PLAN-2026-10-15-1823.md.
+Source of truth for features: research/owner_feedback_2026-10-15.md (every line mapped in section 6).
+Plan only: no code changed. **[V]** = checked in our files today. **[U]** = not verified; the lane proves it first.
+Rules kept: build only what he asked; no invented extras; no owner questions about internal choices; reviews flag only
+production breaks or data loss.
 
 ## 1. TLDR
 
-| Area | What the player sees | Owner quote it answers | Cost | Risk |
+| Piece | What the player sees | Owner quote it answers | Cost | Risk |
 |---|---|---|---|---|
-| One app, mod loader in the game | ONE app "Dungeon Settlers Modded" (Mud Slogel icon). Double-click: Steam starts by itself, the game title screen comes up with "Multiplayer" and "Mods". No launcher window. The "Dungeon Settlers MP" app and the Tauri launcher retire. | "a mod loader, not a mod launcher ... like tModLoader that boots the game and then inside of the booter you can do things" | Stub + helper exist (modsmenu branch); multiplayer module build change: S | Medium: Gatekeeper on a downloaded app (Terminal step stays) |
-| Mods window | Title "Mods" opens one window, tabs: Mods / My Units / Gallery / Test Fights / Unit Builder. Mods tab: switches, "Save these mods as a group", group chips, Apply. | "the mods is fine and save these mods as group. I would want a tab just to control the mods. Unit builder is fine, my units" | 10-16 h | Medium: title column already holds our Multiplayer clones |
-| Apply = soft restart | The game's dungeon loading screen, then you are back on the same screen (same world, camera, speed). No visible relaunch. | "soft restart in the back ... put people back exactly where they were ... cut the fluff" | 10-16 h (title case proven: 15.5 s, hidden **[V]**) | HIGH: in-world case not proven yet; 15 s is long |
-| Multiplayer page | "Host a game" with three choices written right below: Your save / New save / Foreign Expedition. Join by Steam / address, Recent Worlds as today. No hover card on the title "Multiplayer". | "should have written right below it Your save, new save or foreign expedition"; "shouldn't have a hover card"; "The title is glitched" | 2-4 h (half done in uifix11) | Low |
-| Save lists | Single player Load: only single-player worlds, toggle "Show multiplayer worlds". Multiplayer "Your save": only multiplayer worlds, toggle "Show single-player worlds". Tag "Multiplayer with Ben, Djigui" next to the name; "Remove tag". | "by default only show the worlds that are multiplayer, and a toggle..."; "add a tag multiplayer ... you could deactivate it" | 4-6 h (tag done in mptag) | Low |
-| Foreign Expedition = neutral hub | Host picks Foreign Expedition, sets the rules on the same page (Death permanent OFF by default, XP, loot, units each), Start. Everyone loads a fully kitted base map with everything unlocked. No "host from a save / new campaign" question. | "some kind of a neutral hub ... a basic map. We have everything unlocked ... right now it still asks me host from a save or host a new campaign"; "Death is permanent should be off by default" | 8-12 h | Medium: hub source = template world |
-| PvP from the hub | "PvP Match" in the Esc menu of any multiplayer world, the hub included. | "and then what if I wanted to do PvP" | 2-4 h (test + fixes) | Low-medium |
-| My Units + Bring Units | Units kept in My Units (game data folder, never in a save). One Bring Units window (hub AND PvP): tabs "From a save" / "My Units". Unit cards in the wiki's Compact Plus style: avatar, worn items with icons, skill bar, branches, passive, inscriptions. No text overflow. | "I have no way to actually select them"; "I just don't understand how the my units thing is supposed to work"; "no icons for the units"; "Compact Plus view" | 14-20 h (library, guard, tab done in myunits worktree) | Medium: avatar of a unit that is not in the world **[U]** |
-| Wiki links | "Add from wiki link" reads the clipboard in one click. Long links, short links (/t/abc123, /build/name) and one-character links all work; numbers equal the wiki builder (folded passives). | "I should just click and it should open the thing with the clipboard"; "it doesn't work with the short links ... check the folding" | 4-6 h (resolver written in myunits worktree) | Low: needs internet for short links |
-| Gallery + Test Fights | Gallery tab: browse the wiki's public builds (teams or units), "Save to My Units", "Test Fight". Test Fights tab: pick your units, a team or a gallery build, pick Boss / Arena / DPS Check / Finished Base like the wiki, Start: the game loads straight into the fight. No save download. | "custom fights and the boss fights should just follow the way it's done inside of the wiki"; "integrate the build gallery inside of the mod loader" | 20-30 h | Medium-high: running the wiki's own savegen.js in the game (QuickJS) **[U]** |
-| Unit Builder | In the Mods window (tab) and from Bring Units > My Units > "New unit" (same window). | "the builder was supposed to be something inside of the launcher ... allow people to create custom units inside of the multiplayer ... think about it" | 25-40 h | HIGH: biggest UI job (see Q1) |
-| In-game HUD | Following a friend hides their marks; "Ben sees this too" when you look at the same place; cog "Teams button: Show/Hide"; Players panel stays when Teams opens; both fold; see-through has an Off step; Players panel no longer breaks when you have no units at the base. | the six HUD lines + "see them without any transparency" | Done in viewui + seethrough; empty-base bug 2-4 h | Low |
-| Fast join | Cog option "Fast join", default Off. | "put it as a toggle" | Done (latejoin) | Low |
-| Windows | Windows players get the same mod loader (Mods window, soft restart) through our baselib.dll in a game copy; install.bat kit. No Windows launcher. | "No, I don't want a Windows version of the launcher ... The only thing I want is a mod loader" | 20-30 h | HIGH: dsload not ported to the proxy yet; one wine copy only (see Q2) |
-| Downloads | GitHub releases (public, MIT) + a download page on dungeonsettlers.wiki linking the kits. | "sure" | 1-2 h | Low |
+| MOD LOADER (base) | One app / one Windows kit "Dungeon Settlers Modded" (Mud Slogel icon). Steam starts by itself; first start copies the game once; title screen gets "Mods". Mods window: mods on/off, groups, Apply = soft restart (loading screen, back where you were). Load / New Campaign screens show and set the mods per world. No game features. | "a mod loader, not a mod launcher ... like tModLoader"; "save these mods as group. I would want a tab just to control the mods"; "soft restart in the back ... put people back exactly where they were"; "No, I don't want a Windows version of the launcher" | Mac start: mostly done (modsmenu, softrestart title case **[V]**); Mods window 10-16 h; world case of soft restart 6-10 h; Windows start part 20-30 h | HIGH: soft restart in a world not proven; Windows start part not ported |
+| MULTIPLAYER MOD (co-op only) | Multiplayer page: Host a game > Your save / New save / Foreign Expedition (the third only when Custom Modes is on). Lobby, sync, HUD panels, multiplayer tag, save lists split with toggles. Mac + Windows. | "Your save, new save or foreign expedition as options"; save-list and tag lines; the six HUD lines; "see them without any transparency"; "put it as a toggle" | Mostly done on branches (wp-menu, viewui, seethrough, latejoin, mptag); save-list filter 4-6 h; empty-base bug 2-4 h; weaponslot (running) | Low-medium |
+| CUSTOM MODES MOD | Mods window tabs: My Units, Gallery, Test Fights, Unit Builder. Foreign Expedition neutral hub (rules on the host page, death Off), PvP (Esc menu, also in the hub), one Bring Units with Compact Plus cards, one-click wiki links incl. short links. Test Fights / Builder / Gallery also solo. Mac + Windows. | "I have no way to actually select them"; "check the folding"; "follow the way it's done inside of the wiki"; "integrate the build gallery"; "neutral hub ... everything unlocked"; "death is permanent should be off by default"; "Compact Plus view" | Split out of the MP src 1-1.5 days; units + cards 14-20 h; FE hub 8-12 h; Gallery + Test Fights 20-30 h; in-game builder 25-40 h | HIGH: builder size; split must keep the sim identical |
+| ONE release | One GitHub release (Mac zip + Windows kit), one gate, everything green before it ships. | "I want everything in one" | gate ~3 h | Windows real-PC never tested **[V: win/NOTES.md]** |
 
-## 2. Menu map (every owner item has one home)
+## 2. The three pieces
+
+```
+                ┌──────────────────────────────────────────────────────────────────┐
+                │ MOD LOADER  (repo ~/ds_launcher, public, MIT)                    │
+  Mac start ─►  │  start/mac: app stub + dsml-helper (first-start copy, Steam      │  ◄─ Windows start
+  (app stub)    │   start, active.json)    start/win: baselib.dll proxy (MinHook   │     (DLL proxy)
+                │   engine host, copy via install.bat, CreateProcess restart)      │
+                │  core (shared C, both OS): module loading, profiles, groups,     │
+                │   per-world mods, soft restart, Mods window + Mods tab           │
+                │  SDK dsl_sdk.h API 3: hooks, TAB API, LOAD-ROW API, TITLE API,   │
+                │   dsl_ui widget kit (game-style buttons, toggles, text fields,   │
+                │   game tooltips, notice box)                                     │
+                └───────────────▲───────────────────────────────▲──────────────────┘
+                                │ dsl_sdk.h                     │ dsl_sdk.h (tabs, ui kit)
+                ┌───────────────┴──────────────┐   MP API   ┌───┴──────────────────────────────┐
+                │ MULTIPLAYER MOD              │ ◄───────── │ CUSTOM MODES MOD                 │
+                │ ds_multiplayer/src           │ (mp_api.h, │ ds_multiplayer/custom            │
+                │ lockstep, net, lobby, host   │  optional) │ units/ (library, links, cards,   │
+                │ page, HUD, tag, save filter  │            │  Bring Units), builder/,         │
+                │ id "multiplayer", gameplay   │            │ gallery/, fights/, fe/, pvp/     │
+                └──────────────────────────────┘            │ id "custom-modes", gameplay      │
+                                                            └──────────────────────────────────┘
+```
+
+Why these lines:
+1. The loader knows nothing about the game's features. It starts the game, loads mods, shows the Mods window and restarts.
+   Only the start part differs per OS; the Mods window is shared C built for both, through the same win/ port tools the
+   multiplayer mod already uses **[V: win/build_win.sh, gen_port]**.
+2. Multiplayer never calls Custom Modes code. Custom Modes registers callbacks in the multiplayer mod (MP API). So
+   multiplayer works alone, and Custom Modes works solo when multiplayer is off (Test Fights, Builder, Gallery, My Units).
+3. Custom units live in Custom Modes only. Library file `Mods/units/library.json` in the game's data folder, never in a
+   save: reusable in many hubs, never deleted after a run, never written into a regular world. One builder, two doors:
+   the Unit Builder tab, and Bring Units > My Units > "New unit" (owner asked for unit creation inside multiplayer).
+
+### 2.1 Where the code lives
+
+| Piece | Repo / folder | Builds to | Today |
+|---|---|---|---|
+| Loader core + Mods window | ~/ds_launcher/loader/src, loader/ui (new) | Mac: dsload.dylib. Windows: inside the baselib.dll proxy | dsload exists **[V]**; Mods window only an icon (`modules/modmenu/slogel.png`) |
+| Loader Mac start | ~/ds_launcher/app (stub, build), core/src/bin/dsml_helper.rs | "Dungeon Settlers Modded.app" | modsmenu branch **[V]** |
+| Loader Windows start | ~/ds_launcher/loader/start/win (new) | baselib.dll proxy + install.bat kit | MP-only proxy in ds_multiplayer/win/port (rig_main_win.c, MinHook) **[V]**; winkit bat files **[V]** |
+| SDK | ~/ds_launcher/loader/sdk (dsl_sdk.h API 3, dsl_ui.c) | header + static lib per OS | API 2 **[V]** |
+| Multiplayer mod | ~/ds_multiplayer/src (minus fe/, pvp_*, units) | mods/multiplayer/multiplayer.dylib; Windows multiplayer.dll | today one dylib dsrig.dylib with FE + PvP inside **[V]**; loader builds it from a hand-synced `vendor/mp` snapshot **[V: loader/build.sh]** |
+| Custom Modes mod | ~/ds_multiplayer/custom (new): units/, builder/ (+ the Rust builder crate moved from ~/ds_launcher/builder), gallery/, fights/ (+ QuickJS), fe/, pvp/ | mods/custom-modes/custom-modes.dylib; Windows .dll | code today in src/fe, src/pvp_*, src/myunits.c / wk_* (wp-units), ~/ds_launcher/builder |
+| Port tools | ~/ds_multiplayer/win (gen_port, inline audit, ranges) | used by all three Windows builds | **[V]** |
+| Retired (moved to old/, not deleted) | ~/ds_launcher src-tauri, ui/, ownerapp, winlauncher (game-copy + Steam code kept as reference); ~/ds_multiplayer rig/make_mp_app.sh "Dungeon Settlers MP.app" | - | - |
+
+Release builds: the loader's build pins one ds_multiplayer commit (the release tag) and builds both mods from it (no more
+vendor snapshot), so the gate tests the code that ships.
+
+### 2.2 APIs between the pieces
+
+**A. Loader SDK (dsl_sdk.h API 3; API 1-2 plugins keep loading)**
+- Existing: `hook_rva`, `table`, `module_dir`, `module_loaded(id)` **[V]**.
+- TAB API: `dsl_menu_add_tab(self, id, title, order, &cb)`; `cb.open(root, w, h)`, `cb.update()`, `cb.close()`,
+  `cb.can_close()`. The loader draws the window, title (Mud Slogel) and tab strip; the mod fills `root` with its widgets.
+  Mods tab = the loader's own tab, always first.
+- LOAD-ROW API: the loader owns the hooks on the game's load-list rows (`SubUI_SettlerNameCase.Init`,
+  `SubUI_SaveFileButton.SetData` **[V: used by mptag]**) and its New Campaign screen. Mods add text through
+  `dsl_loadrow_add(self, cb(guid, out_text))` and a row filter `dsl_loadlist_filter(self, cb(guid) -> show)` plus one
+  toggle label. Reason: two modules cannot both own one hook site **[U: engine registry is "one owner per site"; chaining
+  not tested]**. The loader uses it itself for "Mods: <names> [Change]"; multiplayer for the tag and the save-list filter.
+- TITLE API: `dsl_title_add_button(self, label, order, click_cb, tip)`. Loader adds "Mods". Multiplayer keeps its own
+  title clones this release (working code, not rewritten); the loader places "Mods" below the existing column.
+- `dsl_ui` kit: game-style button, toggle row, value row ‹ ›, text field, game tooltip, notice box, scroll list, copied once
+  from mpmenu.c helpers into the SDK (multiplayer keeps its internal copy; Custom Modes and the loader use the kit).
+- Soft restart: `dsl_soft_restart(profile, place)` for the Mods tab and the world mod check; not callable inside a
+  running multiplayer session (`dsl_session_busy` set by multiplayer).
+
+**B. Multiplayer API (src/mp_api.h; `mp_api_get(version)` returns a table of function pointers; Custom Modes finds it with
+`module_loaded("multiplayer")` + dlsym / GetProcAddress; absent = FE and PvP entries hidden, solo tabs still work)**
+
+| Need (where it sits today) | API call |
+|---|---|
+| Session facts | `role()`, `is_host()`, `my_uid()`, `players(out)`, `present_mask()`, `session_busy()` |
+| Host page choice "Foreign Expedition" (mpmenu MPB_HOST_FE, uifix11 **[V]**) | `register_host_choice(id, label, tip, draw_page(root), on_start())`. mpmenu shows the third choice ONLY when one is registered; the Expedition Rules rows are drawn by Custom Modes on that page. |
+| Esc menu "PvP Match" (pvp_ui.inc **[V]**) | `register_esc_button(label, tip, visible_cb, click_cb)` |
+| Mail outside the sim (BLOB_MAIL kinds: FE 1-5, PvP 11-16 **[V: PLAN.md PvP merge]**) | `mail_send(kind, to_uid, blob, len)`, `register_mail(kind_lo, kind_hi, cb)`; one reader in multiplayer dispatches |
+| Sim command through lockstep (DSNET_FE_START 21, pvp orders **[V]**) | `register_sim_cmd(kind, apply_cb)`, `send_sim_cmd(kind, payload)` |
+| Every sim step + fingerprint (PvP tick, fingerprint mix in mp_game **[V]**) | `register_tick(cb)`, `register_fingerprint(cb)` |
+| Join-point save extras (PVPB block, FE hub build, round snapshot override **[V]**) | `register_joinpoint(tag, write_cb, read_cb)`, `register_world_build(cb)` |
+| Order filter (recruit refused in a hub, ord_mp **[V]**) | `register_order_filter(cb)` |
+| UI flags (popup 8 guard, Guild Contact hidden, CTF flag tag in ui_game; no portal in an arena in ui_teams **[V]**) | `ui_set_flag(MPUI_HIDE_GUILD_CONTACT, on)`, `register_unit_tag(cb)`, `register_teams_portal(cb)` |
+| Mod-set lines for PvP "Vanilla check" (pvp_modcheck **[V]**) | `modset_lines(out)` |
+| Rig test commands fe_* / pvp_* (rig_cmd **[V]**) | `register_rig_cmd(prefix, cb)` (tests keep their names) |
+
+Mod scopes: both mods are GAMEPLAY (HELLO mod-set check requires the same set on every player **[V: core next merge]**).
+A guest without Custom Modes gets the existing refusal that names the missing mod.
+
+## 3. Menu map (every owner item has one home)
 
 ```
 TITLE SCREEN (stock buttons kept)
-├─ Continue / New Campaign / Load ............ stock. Load list = single-player worlds only,
-│                                                toggle "Show multiplayer worlds"; MP tag + "Remove tag" on tagged rows.
-│                                                A world that needs other mods: "Load it with them?" -> soft restart.
-├─ Multiplayer  (no hover card)
+├─ Continue / New Campaign / Load ... stock. Load list: single-player worlds only, toggle "Show multiplayer worlds" [MP];
+│                                      "Multiplayer with Ben, Djigui" tag + Remove tag [MP]; "Mods: <names> [Change]" [LOADER].
+│                                      World with other mods: "Load it with them?" -> soft restart into it [LOADER].
+│                                      New Campaign: "Mods for this world: <set> [Change]" [LOADER].
+├─ Multiplayer (no hover card) [MP]
 │   ├─ Host a game
-│   │   ├─ Your save ........ host page (name, cog Rules) -> load list = multiplayer worlds only,
-│   │   │                     toggle "Show single-player worlds" -> lobby -> Steam invite / address
+│   │   ├─ Your save ........ host page -> multiplayer worlds only, toggle "Show single-player worlds" -> lobby
 │   │   ├─ New save ......... host page -> stock New Campaign -> lobby
-│   │   └─ Foreign Expedition  host page: Expedition Rules on the page (Death permanent Off, XP counts,
-│   │                         Dungeon loot comes back, Units each, Recruiting) -> Start -> neutral hub
+│   │   └─ Foreign Expedition [shown when CUSTOM MODES is on] host page with Expedition Rules (Death permanent Off,
+│   │                         XP counts, Dungeon loot comes back, Units each, Recruiting) -> Start -> neutral hub
 │   ├─ Join a friend on Steam / Join by address / Recent Worlds (Reconnect, Watch) ... as today
 │   └─ Back
-├─ Mods  (window, Mud Slogel in the title)
-│   ├─ Mods ........ list with switches, groups ("Save these mods as a group", chips), Apply (soft restart)
-│   ├─ My Units .... saved units and teams; "Add from wiki link" (clipboard, one click); New unit; Edit; Delete
-│   ├─ Gallery ..... wiki public builds (teams / units, popular / recent, filters) -> Save to My Units / Test Fight
-│   ├─ Test Fights . units (My Units / team / Gallery) + fight (Boss, Arena, DPS Check, Finished Base) + difficulty,
-│   │                supplies, kits -> Start
-│   └─ Unit Builder  race, background, traits, level, skills, gear, live sheet -> Save to My Units
+├─ Mods [LOADER window]
+│   ├─ Mods ........ switches, "Save these mods as a group", group chips, Apply (soft restart) [LOADER]
+│   ├─ My Units .... units + teams, "Add from wiki link" (one click), New unit, Edit, Delete [CUSTOM]
+│   ├─ Gallery ..... wiki public builds -> Save to My Units / Test Fight [CUSTOM]
+│   ├─ Test Fights . units (My Units / team / Gallery) + Boss / Arena / DPS Check / Finished Base -> Start [CUSTOM]
+│   └─ Unit Builder  race, background, traits, level, skills, gear, live sheet -> Save to My Units [CUSTOM]
 └─ Settings / Quit ... stock
 
-IN A MULTIPLAYER WORLD (your save, new save or the hub)
-├─ Players panel (top; fold to header; right-click drag) + cog settings (see-through incl. Off, Teams button
-│  Show/Hide, Fast join, tooltips, mini overview)
-├─ Teams button + Teams window (Hide = fold to a bar)
-├─ Camera marks of friends, "<name> sees this too", pings, chat ............ as v11 + viewui
-├─ Esc menu: PvP Match (every MP world, hub included), Leave multiplayer
-└─ HUB ONLY: Bring Units window at the start (tabs From a save / My Units, "New unit" -> Unit Builder),
-             End expedition -> Results ("Apply to a new save" only for units from a save)
+IN A MULTIPLAYER WORLD [MP unless marked]
+├─ Players panel (fold to header, drag) + cog: see-through incl. Off, Teams button Show/Hide, Fast join, tooltips, mini overview
+├─ Teams button + window (Hide = fold to a bar); friends' camera marks, "<name> sees this too", pings, chat
+├─ Esc menu: PvP Match [CUSTOM via MP API; every MP world incl. the hub], Leave multiplayer
+└─ Hub only [CUSTOM]: Bring Units (tabs From a save / My Units; "New unit" -> Unit Builder), End expedition -> Results
 ```
 
-**Where custom units and the builder live (decision, owner asked us to think):**
-1. My Units, the unit card, the link reader, Gallery, Test Fights and the Unit Builder are ONE code set
-   (`src/units/` in ds_multiplayer, built into the multiplayer module). The loader's Mods window shows them as tabs
-   through a small tab hook. Reason: Bring Units (hub, PvP) and Test Fights use the same library, card and decoder.
-2. One builder, two doors: the Mods window tab, and Bring Units > My Units > "New unit" inside a hub or PvP (he asked
-   for creation inside multiplayer). Same window, same library; no second builder.
-3. The library is a file in the game's data folder (`Mods/units/library.json`), never in a save: a unit can be brought
-   to many hubs, a run uses a copy, nothing is deleted after use and nothing goes into a regular world.
+Removed homes: Tauri launcher (Play, world list, its builder, Paste dialog); "Dungeon Settlers MP.app"; the host page
+"World ‹ ›" row; the separate PvP Bring Units window (one Bring Units for hub and PvP).
 
-Removed homes (no duplicates): the Tauri launcher (Play, world list, its builder and Paste dialog); the "World ‹ ›" row on
-the host page (replaced by the three choices); the separate PvP "Bring Units" window (merged into the one Bring Units).
-Kept as is, not in this plan's work: spectator, chat, pings, proposal, lend, Rules panel.
+## 4. Flows
 
-## 3. Flows
+**A. First start.** Mac: download the zip (GitHub or the wiki download page), drag to Applications, one Terminal line from
+the README (quarantine; without an Apple Developer ID macOS 27 moves the app to the Trash **[V: modsmenu NOTES]**),
+double-click. Windows: unzip, run install.bat (copies the game folder once, puts our baselib.dll in the copy, makes a
+"Dungeon Settlers Modded" shortcut), double-click the shortcut. Both: Steam not running -> started in the background and
+waited for; first start copies the game (Mac APFS clone 7 s **[V]**; Windows full copy **[U: time]**) and the saves once.
+Steam's install is never changed. Title screen with Multiplayer and Mods.
 
-**A. First start (Mac)**
-1. Download "Dungeon Settlers Modded" zip from GitHub (or the wiki download page). Drag to Applications.
-2. One Terminal line from the README (removes the download quarantine; without an Apple Developer ID macOS 27 moves the
-   app to the Trash **[V: modsmenu NOTES]**).
-3. Double-click. If Steam is not running, the app starts it in the background and waits (steamstart).
-4. First start only: the app clones the Steam install into its own folder (7 s measured **[V]**) and copies the saves once.
-   Steam's install is never changed.
-5. Title screen with Multiplayer and Mods. Later starts go straight to the title.
+**B. Host your save.** Multiplayer > Your save > name, cog Rules > load list (multiplayer worlds; toggle) > Load > lobby >
+Steam invite or address. A friend joins -> the world gets the tag with their name.
 
-**B. Host your save**
-1. Multiplayer > Your save. 2. Name, cog Rules. 3. Load list shows multiplayer worlds; toggle shows single-player ones.
-4. Pick, Load. 5. Lobby, Steam invite or address. 6. When a friend joins, the world gets the Multiplayer tag with their name.
+**C. Host a new save.** Multiplayer > New save > name, cog Rules > stock New Campaign > lobby.
 
-**C. Host a new save**
-1. Multiplayer > New save. 2. Name, cog Rules. 3. Stock New Campaign. 4. Lobby, invite.
+**D. Foreign Expedition.** 1. Multiplayer > Foreign Expedition: Expedition Rules on the page, each with a game tooltip;
+Death permanent Off by default. 2. Start: the host builds the neutral hub (template world, then kitted: all research
+done, all regions open, storage stocked; no kit code exists today **[V: grep fe/]**, new in WP-C2) and opens the lobby.
+3. Each player: Bring Units: "From a save" or "My Units", or "New unit". Compact Plus cards. Units are copies.
+4. Dive together; PvP Match from the Esc menu between dives. 5. End expedition -> Results: units from a save can go to
+"Apply to a new save" per the rules (original save never changed); My Units units bring nothing home and stay unchanged.
 
-**D. Foreign Expedition (neutral hub)**
-1. Host: Multiplayer > Foreign Expedition. The page shows Expedition Rules directly: Death permanent (Off), XP counts,
-   Dungeon loot comes back, Units each (1/2/3/4/6), Recruiting in the hub. Each with a game tooltip.
-2. Start: the host builds the hub from the neutral template world and kits it: all research done, all regions open,
-   storage stocked (new code in WP-FE; no kit code exists today **[V: grep fe/]**; what the template already has **[U]**). Lobby opens. Friends join by Steam or address.
-3. Every player gets Bring Units: tab "From a save" (pick a save, tick units) or "My Units" (tick units or a team),
-   or "New unit" (Unit Builder, then it is in My Units). Cards show the Compact Plus view. Units are copies.
-4. Play: dive together; PvP Match from the Esc menu any time between dives.
-5. End expedition -> Results per player. Units from a save: "Apply to a new save" per the rules (the original save is
-   never changed). Units from My Units: nothing comes home, nothing is deleted; they stay in My Units unchanged.
+**E. PvP.** Any multiplayer world (hub too): Esc > PvP Match > mode, teams, Vanilla check > Bring Units (same window) or the
+world's units > Start Match > the world comes back as it was.
 
-**E. PvP**
-1. In any multiplayer world (hub included): Esc > PvP Match. 2. Mode, teams, Vanilla check. 3. Each player: Bring Units
-   (same window as the hub) or the world's own units. 4. Start Match; the world comes back as it was after the match.
+**F. My Units.** Make: Unit Builder > Save to My Units; or "Add from wiki link" (reads the clipboard; a box only when the
+clipboard has no wiki link); or Gallery > Save to My Units. Keep: list of units and teams with cards; tick > "Save as team".
+Bring: hub / PvP Bring Units > My Units; Test Fights. Reuse: unchanged after every run. Never written into a regular world
+(guard in every save writer: myunits work, 18 checks **[V]**).
 
-**F. My Units: make, keep, bring, reuse**
-1. Make: Unit Builder > Save to My Units; or copy a link on the wiki builder (long or short), Mods > My Units >
-   "Add from wiki link" (one click, reads the clipboard; a box appears only if the clipboard holds no wiki link);
-   or Gallery > Save to My Units.
-2. Keep: My Units lists units and teams with the Compact Plus card. Tick units > "Save as team".
-3. Bring: hub or PvP > Bring Units > My Units tab > tick > Bring. Test Fights: pick from My Units.
-4. Reuse: after any run the entry is unchanged. Bring it again, edit it, or delete it yourself.
-5. Never: a custom unit is never written into a regular world (guard in every save writer + test).
+**G. Wiki links.** Long `?team=` / `#team=`, one-character `#b=`, bare code, short `/t/<id>` and `/build/<id>` (any language
+prefix). Short = one HTTPS GET to dungeonsettlers.wiki only, redirect or meta refresh read, 5 s. Built with the builder's
+folded values; checked against the builder on long AND short links.
 
-**G. Wiki links**: long `?team=` / `#team=`, one-character `#b=`, bare code, short `/t/<id>` and `/build/<id>` (any
-language prefix). Short link = one HTTPS GET to dungeonsettlers.wiki only, read the redirect or meta refresh, 5 s timeout.
-Units built with the builder's folded values. Messages: offline, 404, other game data.
+**H. Gallery.** Teams or Units, Popular / Recent, filters > card > Save to My Units / Test Fight. Read-only. Other game
+build: shown, refused on use.
 
-**H. Gallery**: Mods > Gallery > Teams or Units, Popular / Recent, filters (race, tree, skill) > open a card >
-Save to My Units / Test Fight. Read-only (no likes or uploads). Builds from another game build: shown, refused on use.
+**I. Test Fights.** Units (My Units, team, Gallery) > Boss (Golem / Sentinel / Abyss), Arena (pick monsters), DPS Check,
+Finished Base > difficulty, supplies, kits (wiki defaults) > Start > loads into it (wiki's own savegen.js in QuickJS
+**[U]**; templates downloaded from the wiki and cached, never committed). Test worlds never show in the Load list.
 
-**I. Test Fights**: Mods > Test Fights > pick units (My Units, a team, a Gallery build) > fight type (Boss: Golem /
-Sentinel / Abyss; Arena: pick monsters; DPS Check; Finished Base) > difficulty, supplies, kits (wiki defaults) > Start >
-the game loads into it. Test worlds never show in the Load list. Units stay in My Units.
+**J. Apply mods.** Mods tab > change > Apply > in a world the game's own save first > the dungeon loading screen > hidden new
+process with the new mods skips logos, opens the same place (title page, or same world, camera, zoom, speed) > swap.
+Fail or 90 s: old mods stay, reason shown. Not inside a running multiplayer session.
 
-**J. Apply mods (soft restart)**
-1. Mods tab: change switches or pick a group, Apply. 2. In a world: the game's own save first. 3. The dungeon loading screen.
-4. Behind it a hidden new game process starts with the new mods, skips logos, opens the same place (title page, or the
-same world, camera, zoom, speed). 5. It swaps in; the old one closes. Fails or 90 s: loading screen goes, old mods stay,
-the reason is shown. Not offered inside a running multiplayer session.
+**K. World with other mods.** "This world uses: <names>. Load it with them?" > flow J into that world.
 
-**K. Load a world made with other mods**: "This world uses: <names>. Load it with them?" [Load] [Cancel] -> flow J
-straight into that world. (Today the loader refuses with "Start it from the launcher", which no longer exists.)
+## 5. Work packages
 
-**L. Windows**: unzip the kit, run install.bat (copies the game folder once, puts our baselib.dll in the copy, makes a
-"Dungeon Settlers Modded" shortcut). Same title, Multiplayer and Mods as Mac once the loader port lands (see Q2).
+### 5.1 Existing work: where it goes
 
-## 4. Checklist: every line of owner_feedback_2026-10-15.md
-
-| # | Owner line (short) | Answer in this plan | Status |
-|---|---|---|---|
-| 1 | Full plan, then build, reorganize | This file; section 5 | plan |
-| 2 | Only what he asked; no invented extras; no internal questions | Section 6; parked list in 5.4 | rule |
-| 3 | Reviews: only production breaks / data loss | 5.3 rule 4 | rule |
-| 4 | Mod loader like tModLoader, things inside the game | §1 row 1, §2, WP-LOADER | build |
-| 5 | Launcher "play this world" opens a normal game; world list useless; UI bad | Launcher retired; worlds load in the game's own Load list; flow K | build |
-| 6 | Keep mods + groups tab, Unit Builder, My Units | Mods window tabs | build |
-| 7 | No Windows launcher; Windows needs the mod loader | Flow L, WP-WIN | build (Q2) |
-| 8 | Soft restart behind a loading screen, back where you were, cut the fluff | Flow J, WP-LOADER | build |
-| 9 | Logo Mud Slogel idle | App icon done **[V: modsmenu]**; Mods window title | done/build |
-| 10 | Key: don't care; mod list open | No work; shared key stays | no work |
-| 11 | Saved units cannot be selected in Bring | One Bring Units, My Units tab, WP-UNITS | build |
-| 12 | Wiki link: click, clipboard | Flow F step 1 | build |
-| 13 | Short links + folding | Flow G; stat check vs builder on short links | build |
-| 14 | Does not understand My Units | Flow F; one home (Mods > My Units) + Bring tab | build |
-| 15 | Custom units never in regular games; saved in the game; reuse in hubs; not deleted, not saved | §2 decision 3, flow F step 5, guard (myunits worktree, 18 checks **[V]**) | build |
-| 16 | Custom / boss fights like the wiki, in the game | Flow I, WP-FIGHTS | build |
-| 17 | Gallery in the mod loader; choose team / units / gallery | Flow H + I, WP-FIGHTS | build |
-| 18 | Builder placement: think | §2 decision 1-2, WP-BUILDER | build (Q1) |
-| 19 | Host page title glitched; Multiplayer hover card | World row removed (three choices); hover card off **[V: uifix11 commit]** | done/build |
-| 20 | Your save / New save / Foreign Expedition under Host | §2, WP-MENU (half done in uifix11 worktree) | build |
-| 21 | Save lists split with toggles | §1 save lists, WP-MENU | build |
-| 22 | Multiplayer tag when a friend connects, removable, names | mptag branch **[V]** -> WP-MENU | done, merge |
-| 23 | MP app starts Steam | steamstart branch + Modded stub **[V]** | done, merge |
-| 24 | Install needs Terminal (Mac); Windows install.bat | Mac: one Terminal line stays. Cannot remove it without an Apple Developer ID (owner: no membership now, 2026-10-14). Windows: winkit install.bat | cannot (Mac) / done (Win) |
-| 25 | FE = neutral hub, everything unlocked; no save/new question | Flow D, WP-FE + WP-MENU | build (Q3) |
-| 26 | Bring Units overflow, no icons | Compact Plus card, WP-UNITS | build |
-| 27 | Hub rules not choosable; death off by default; PvP from hub | Flow D step 1 + E, WP-MENU / WP-FE | build |
-| 28 | Unit display like the wiki Compact Plus | Card: avatar, worn items, skill bar, branches, passive, inscriptions | build |
-| 29 | Could not test PvP / hub (v10) | In v11 **[V: PLAN.md lan_v11]** | done |
-| 30 | FE = fully kitted hub, units copied | Flow D (template hub, copies) | build |
-| 31 | Follow: friend's frame annoying | viewui **[V]** | done, merge |
-| 32 | Inside a friend's view: show we look at the same thing | viewui "sees this too" **[V]** | done, merge |
-| 33 | Setting to hide Teams | viewui cog "Teams button" **[V]** | done, merge |
-| 34 | Teams hides the Players bar | viewui **[V]** | done, merge |
-| 35 | Collapse Players and Teams | Teams fold (viewui); Players fold exists since v9 - WP-HUD checks it by eye-free probe | done, check |
-| 36 | No units at base: Players window bugs out | WP-HUD: reproduce + fix | build |
-| 37 | See-through Off step | seethrough branch **[V]** | done, merge |
-| 38 | Weapon slot host-only is fine | No work; weaponslot lane stays stopped | no work |
-| 39 | Fast join toggle | latejoin branch, default Off **[V]** | done, merge |
-| 40 | Players never on different floors | No work | no work |
-| 41 | GitHub public MIT; download page | Repos public + MIT **[V]**; WP-DL page on the wiki | build |
-| 42 | Branch list (keep finished work) | §5.1 start points | plan |
-
-## 5. Build plan
-
-### 5.1 Existing work and its fate
-
-| Branch / worktree | Content | Fate |
+| Branch / worktree | State | Goes to |
 |---|---|---|
-| sockpath | control socket path fix | merge in phase 0 |
-| steamstart (+ steamstart-win = winkit, same commit 09cf1bc) | Steam starts by itself; Windows install.bat kit | merge in phase 0 |
-| seethrough, latejoin, viewui | HUD items 31-35, 37, 39 | merge in phase 0 (in this order, all touch ui_game.c / ui_model) |
-| uifix11 (committed: World row + hover card) + worktree changes (three host choices, uncommitted) | items 19-20 | WP-MENU starts in ../ds_mp_uifix11, commits the worktree first |
-| fehub | branch = the uifix11 commit, worktree clean: nothing extra | drop (branch kept, not used) |
-| mptag | item 22 | merged by WP-MENU (same files) |
-| myunits (../ds_mp_myunits, uncommitted: myunits.c, wk_link.c, wk_http.c, fe guard, My Units tab) | items 11-15 | WP-UNITS commits it first; its fe/ guard merges in phase 0 so WP-FE starts on it |
-| ds_launcher myunits (library path, short links in Rust) | logic reference | Rust shortlink = reference for the C one; Tauri UI not shipped |
-| ds_launcher modsmenu (app stub, helper, icon) + worktree `loader/modules/modmenu/` | item 4, 9 | WP-LOADER starts here |
-| ds_launcher softrestart worktree (dsl_soft.c 606 lines, uncommitted) | title case PASS: hidden, 15.5 s **[V: test_env/soft_out/run2]** | WP-LOADER commits it, proves the world case |
-| ds_launcher ownerapp, winlauncher | Tauri app / Windows launcher | not shipped. winlauncher's game-copy + Steam detection code = reference for WP-WIN |
-| weaponslot (both repos) | no new commits | stopped (item 38) |
-| bepinex-bridge | C# bridge | parked: not in the owner's list; not merged for v12 |
-| loader `vendor/mp` snapshot | hand-synced copy of src | replaced: the multiplayer module builds from a pinned ds_multiplayer commit (the release tag), so the gate tests the same code |
+| sockpath, steamstart, winkit | merged into main (54e5a2a) **[V]** | MP (steamstart's stub code also feeds the loader's Mac stub, already copied in modsmenu **[V]**) |
+| seethrough, latejoin, viewui, myunits FE guard | merger lane is merging them now (P0) | MP; the guard moves to custom/fe in the split |
+| weaponslot (../ds_mp_weaponslot) | running: skip QuickSlots in the full-state check + free-slot-4 auto-use test (owner approved host-only) | MP (mp_game.c); merges before the split |
+| wp-menu (../ds_mp_wpmenu) = uifix11 + mptag | host choices + World row removed + tag **[V]**; save-list filter not built yet | MP; the filter moves to the LOAD-ROW API once the loader has it (until then its own hook, as mptag does) |
+| wp-units (../ds_mp_wpunits) = myunits | library, decoder + short links, guard, My Units tab; uncommitted edits in myunits.c / pvp_wiki.* | CUSTOM (custom/units). Until the split lands it edits only myunits.c, wk_*.c, pvp_wiki.* (pure code, no menu files) |
+| fehub | holds nothing beyond the uifix11 commit **[V]** | dropped |
+| ds_launcher modsmenu + softrestart worktree | Mac app stub, helper, icon; soft restart title case PASS **[V]** | LOADER |
+| ds_launcher myunits (Rust short links, shared library path) | reference | CUSTOM (logic ported in C in wp-units) |
+| ds_launcher builder/ (Rust, 114 377 numbers equal to the wiki **[V: plan_modloader]**) | - | moved to ds_multiplayer/custom/builder (git history kept by a subtree move) |
+| ds_launcher ownerapp, winlauncher, src-tauri, ui/ | not shipped | old/ (winlauncher's Windows copy + Steam detection = reference for L3) |
+| bepinex-bridge | not in the owner's list | parked, not in the release |
+| loader vendor/mp snapshot | hand-synced copy | replaced by the pinned-commit build |
 
-### 5.2 Work packages (split by file; one lane = one branch + one worktree)
+### 5.2 Packages by file ownership (one lane = one branch + one worktree; only the owner lane edits its files)
 
-| WP | Owns (only this lane edits) | Starts from | Items | Pair use |
+| WP | Piece | Owns | Starts from | Does |
 |---|---|---|---|---|
-| P0 lead merges | main of ds_multiplayer | main | sockpath, steamstart+winkit, seethrough, latejoin, viewui, myunits fe/ guard only | gate unit + smoke per merge |
-| WP-HUD | src/ui_game.c, ui_model.c/.h, ui_teams.c, ui_test/ | main after P0 | #35 check, #36 fix | 1 pair, short |
-| WP-MENU | src/mpmenu.c, mpmenu_model.c, mpmenu.h, mpmenu_test/ | ../ds_mp_uifix11 (+ merge mptag) | #19-22, #25 host page, #27 rules on the FE page (death Off default) | 1 pair |
-| WP-UNITS | src/units/ (new: myunits, wk_link, wk_http, unitcard), pvp_wiki.c/.h, fe/fe_menu.inc, pvp_ui.inc | ../ds_mp_myunits | #11-15, #26, #28; one Bring Units for hub + PvP; tab-content functions for the Mods window | 1 pair |
-| WP-FE | src/fe/fe_game.c, fe_save.c, fe_json.c, mp_game.c (hub hooks), pvp_game.c / pvp_core.c | main after P0 | #25, #27 (defaults), #30, PvP in the hub | 1 pair |
-| WP-LOADER | ~/ds_launcher: loader/src (dsl_soft.c, dsl_world.c, dsl_main.c), modules/modmenu, app/, loader/build.sh | modsmenu branch + softrestart worktree | #4-9; Mods window + Mods tab + tab hook; flow K; module built from a pinned src commit | test copy S; counts as 1 of the 4 pairs while it runs |
-| WP-FIGHTS | src/units/gallery.c, testfight.c, vendor QuickJS | main after WP-UNITS merges | #16-17 | 1 pair (after WP-HUD frees one) |
-| WP-BUILDER | src/units/builder_ui.c + ~/ds_launcher/builder (Rust staticlib) | main after WP-UNITS + WP-LOADER | #18 | 1 pair (Q1) |
-| WP-WIN | win/ (baselib proxy: dsload port, save-folder redirect, soft restart via CreateProcess), winkit | winkit + winlauncher reference | #7, #24 | the one wine copy (Q2) |
-| WP-DL | ~/dungeonsettlersdb download page | its main | #41 | none; gates green = push live |
+| P0 merger (running) | MP | main | main | seethrough, latejoin, viewui, myunits guard |
+| M1 weaponslot (running) | MP | mp_game.c full_sections | its worktree | QuickSlots skip + test |
+| M2 menu | MP | mpmenu.c, mpmenu_model.c, mpmenu.h, mpmenu_test | wp-menu | save-list filter + toggles; tag; three host choices (FE choice behind the registration added in M4) |
+| M3 HUD | MP | ui_game.c, ui_model.*, ui_teams.c, ui_test | main after P0 | empty-base Players panel bug; Players fold check |
+| M4 SPLIT | MP + CUSTOM | mp_api.h (new), mp_core.c, mp_game.c, net/ mail, ord_mp.c, rig_cmd.c, ui_game.c / ui_teams.c hook points, mpmenu.c includes, build.sh; `git mv` src/fe, src/pvp_*, units -> custom/ | main after M1, M2, M3 merge | MP API (2.2 B); Custom Modes builds as its own dylib; behaviour unchanged (same gate numbers as v11: mp2 19, left_prompt 16, FE dive 23, PvP m_van2 / m_bring / m_ui) |
+| L1 loader core + Mac start | LOADER | loader/src, loader/sdk, app/, core/src/bin | modsmenu + softrestart worktree | SDK API 3 (tab, load-row, title, dsl_ui kit), soft restart world case, per-world mods + flow K, pinned-commit build of both mods |
+| L2 Mods window | LOADER | loader/ui (new) | after L1's SDK header is fixed (first day) | window, Mods tab, groups, Apply, Mud Slogel title |
+| L3 Windows | LOADER + all Windows builds | loader/start/win, ~/ds_multiplayer/win | winkit + win/port/rig_main_win.c | proxy hosts the loader core (MinHook engine behind dsl_sdk), loads multiplayer.dll and custom-modes.dll, install.bat first-start copy, Steam start, save-folder redirect **[U]**, soft restart via CreateProcess **[U]** |
+| C1 units | CUSTOM | custom/units | wp-units (rebased after M4) | library, links, Compact Plus card (avatar **[U]**, worn items with icons, skill bar, branches, passive, inscriptions), one Bring Units for hub + PvP, My Units tab |
+| C2 FE hub | CUSTOM | custom/fe | main after M4 | neutral hub from template + kit, rules page through register_host_choice, death Off default |
+| C3 PvP | CUSTOM | custom/pvp | main after M4 | Esc button through the API, Bring from C1, PvP in the hub |
+| C4 Gallery + Test Fights | CUSTOM | custom/gallery, custom/fights, vendor QuickJS | main after M4 (code part can start before, no game) | flows H, I |
+| C5 Unit Builder | CUSTOM | custom/builder (+ Rust crate) | main after M4 + L2 tab API | in-game builder, Save to My Units, "New unit" door |
+| D1 download page | - | ~/dungeonsettlersdb page | its main | links to the GitHub release (gates green = push live) |
 
-Lanes at the same time: phase 1 = WP-HUD, WP-MENU, WP-UNITS, WP-FE, WP-LOADER (5 lanes, 4 pairs: WP-HUD is short and
-gives its pair to WP-FIGHTS). WP-WIN runs beside them on the one wine copy. Phase 2 = WP-FIGHTS, WP-BUILDER.
-`mp_game.c` belongs to WP-FE only (latejoin's 20 lines merge in P0 first). `pvp_ui.inc` belongs to WP-UNITS; WP-FE
-reports any PvP-button change to it. The title column: WP-MENU owns our Multiplayer clones; WP-LOADER places "Mods"
-below them and reads the column from the game objects (no edit of mpmenu.c).
+### 5.3 Order and parallel lanes (max 4 test pairs, one wine copy)
 
-### 5.3 Merge order and rules
+1. Now: P0 merger, M1 weaponslot, M2 menu, M3 HUD (each 1 pair, short), L1 + L2 loader (loader test copy S: counts as a pair
+   while it runs, so it plays when one is free), L3 Windows (the wine copy), C1 pure code (no pair), C4 code part (no pair).
+2. Merge into ds_multiplayer main: P0 -> M1 -> M3 -> M2.
+3. M4 SPLIT runs alone on the MP shared files (no other lane edits them meanwhile). C1 rebases on it (renames follow with git).
+4. Then in parallel by folder: C1, C2, C3, C4, C5 (5 lanes, 4 pairs: C4 code and C5 UI work share timing), L1-L3 continue.
+   Merge order: C1 -> C2 -> C3 -> C4 -> C5. Loader lanes merge in ds_launcher whenever green; L3 integrates last
+   (it builds all three for Windows).
+5. Release gate (5.4).
 
-1. P0 (lead, sequential, LANE_RULES rule 3 each): sockpath -> steamstart + winkit -> seethrough -> latejoin -> viewui ->
-   myunits fe/ guard. Then tag nothing; lanes branch from this main.
-2. Phase 1 merges as each lane goes green: WP-HUD -> WP-MENU -> WP-UNITS -> WP-FE (needs WP-UNITS' Bring window) ->
-   WP-LOADER (in ds_launcher; it pins the ds_multiplayer commit it builds). Phase 2: WP-FIGHTS -> WP-BUILDER.
-3. Interfaces fixed up front so lanes do not wait: library.json v1 format (ds-launcher-units v1 **[V]**);
-   `units_tab_draw(tab, root)` / `units_tab_close()` exported by the multiplayer module, found by modmenu with dlsym;
-   Bring Units API `fe_bring_lib` / `fe_lib_list` (fe_ui_api.h **[V]**).
-4. Reviews (owner rule): only production breaks or data loss. No visual review round: visual work goes live to him
-   after the gates.
+### 5.4 One release gate (takes rig/release.lock, 1 pair + the wine copy)
 
-### 5.4 Parked (not asked in this feedback; nothing built for v12)
-BepInEx bridge; spectator open questions (MORNING_QUESTIONS); per-world mods LINE in the Load list (flow K covers the
-need); custom difficulty downloads; mod auto-updates inside the game.
+Ships everything as ONE GitHub release: "Dungeon Settlers Modded" Mac zip + Windows kit, tag `lan_v12`, exact "what is in
+it" list checked against the build. Nothing ships until all is green.
+1. release_gate.sh on the frozen src through the LOADER (both mods loaded by dsload / the proxy), fail-fast; Mac 31 + Windows 8.
+2. Unit: net, mp_test, ui_test, mpmenu_test, pvp_test, trn_test, fe_cli custom guard (18), mu_test, link decoder (500 builder
+   links + short + one-character), gallery parser, loader tests (SDK API 1-3 modules load), app/test/run.sh.
+3. Pairs: host your save; host new save; FE dive (one save unit + one My Units unit, death Off, apply: save unit comes home,
+   custom unit does not, library unchanged); PvP from the hub; load-list filter + tag + Remove tag; viewui, seethrough,
+   fastjoin pairs; Players panel with 0 units at base; weaponslot host-only (QuickSlots skip, slot-4 auto-use); guest without
+   Custom Modes refused with the mod named; multiplayer OFF: solo tabs work, FE choice and PvP button absent.
+4. Stats: builder vs game on long and short links (ext/pvp/pvp_wiki_units.py).
+5. Test Fights: Boss Golem with 3 My Units units; Arena; DPS Check; units equal the builder sheet. Unit Builder: a built unit
+   equals the wiki builder for the same choices.
+6. Loader: soft restart title + world (never visible, same save, camera within one tile, speed, time recorded); flow K;
+   per-world mods; groups; first start from a clean folder; Steam not running at start.
+7. Windows: install.bat kit on the wine copy from a clean copy; Mods window; soft restart; Mac host + Windows guest xplay.
+8. Public repos: diff grep for keys; no saves, templates, game files or binaries committed.
 
-### 5.5 Release gate lan_v12 (one gate, takes rig/release.lock, 1 pair)
+## 6. Checklist: every line of owner_feedback_2026-10-15.md
 
-Ships as ONE app "Dungeon Settlers Modded" (Mac zip + Windows kit) on GitHub releases, tag `lan_v12`.
-Includes WP-HUD, MENU, UNITS, FE, LOADER, FIGHTS (and BUILDER if Q1 says hold). All green, then ship (owner rule: no
-partial versions; exact "what is in it" list checked against the build).
+| # | Owner line (short) | Home | Status |
+|---|---|---|---|
+| 1 | Full plan, then build, reorganize | this file | plan |
+| 2 | Only what he asked; no invented extras; no internal questions | rules at top; 5.1 parked | rule |
+| 3 | Reviews: only production breaks / data loss | rules at top | rule |
+| 4 | Mod loader like tModLoader | LOADER, L1-L3 | build |
+| 5 | Launcher "play this world" useless, world list useless, UI bad | launcher retired; worlds load in the game's own Load list (flow K) | build |
+| 6 | Keep mods + groups tab, Unit Builder, My Units | Mods window: Mods tab (LOADER), My Units + Unit Builder (CUSTOM) | build |
+| 7 | No Windows launcher; Windows needs the mod loader | L3 Windows start part only | build |
+| 8 | Soft restart, back where you were, cut the fluff | flow J, L1 | build |
+| 9 | Logo Mud Slogel idle | icon done **[V]**; Mods window title (L2) | done/build |
+| 10 | Key: don't care; mod list open | no work | no work |
+| 11 | Saved units cannot be selected for PvP / expedition | C1 Bring Units My Units tab | build |
+| 12 | Wiki link: click, clipboard | flow F, C1 | build |
+| 13 | Short links + folding | flow G, C1 | build |
+| 14 | Does not understand My Units | flow F; one home (Mods > My Units) + Bring tab | build |
+| 15 | Custom units never in regular games; saved in game; reuse in hubs; not deleted, not saved | section 2 line 3; guard | build |
+| 16 | Custom / boss fights like the wiki, in the game | flow I, C4 | build |
+| 17 | Gallery in the mod loader; team / units / gallery choice | Mods window Gallery tab (CUSTOM through the TAB API), C4 | build |
+| 18 | Builder placement: think | section 2 line 3; C5 | build |
+| 19 | Host page title glitched; Multiplayer hover card | World row removed; hover card off **[V: wp-menu]** | done |
+| 20 | Your save / New save / Foreign Expedition | M2 (+ register_host_choice from M4) | done/build |
+| 21 | Save lists split with toggles | M2 | build |
+| 22 | Multiplayer tag, removable, names | mptag in wp-menu **[V]** | done |
+| 23 | App starts Steam | steamstart merged **[V]**; loader stub L1 | done |
+| 24 | Install needs Terminal (Mac); Windows install.bat | Mac: the Terminal line stays; it cannot go without an Apple Developer ID (owner: no membership now, 2026-10-14). Windows: install.bat (winkit merged **[V]**, extended in L3) | cannot (Mac) / build (Win) |
+| 25 | FE = neutral hub, everything unlocked; no save/new question | flow D, C2 + M2 | build |
+| 26 | Bring Units overflow, no icons | C1 card | build |
+| 27 | Hub rules not choosable; death Off default; PvP from hub | flow D step 1 (C2 page), flow E (C3) | build |
+| 28 | Compact Plus view | C1 card | build |
+| 29 | Could not test PvP / hub (v10) | in v11 **[V]** | done |
+| 30 | FE fully kitted hub, units copied | flow D | build |
+| 31 | Follow: friend's frame annoying | viewui (P0) | done, merging |
+| 32 | Same view shown | viewui "sees this too" (P0) | done, merging |
+| 33 | Setting to hide Teams | viewui cog "Teams button" (P0) | done, merging |
+| 34 | Teams hides Players bar | viewui (P0) | done, merging |
+| 35 | Collapse Players and Teams | Teams fold (viewui); Players fold since v9, M3 checks | done, check |
+| 36 | No units at base: Players window bugs out | M3 | build |
+| 37 | See-through Off | seethrough (P0) | done, merging |
+| 38 | Weapon slot host-only is fine | M1: QuickSlots skip + slot-4 auto-use test (running) | build |
+| 39 | Fast join toggle | latejoin (P0), default Off | done, merging |
+| 40 | Players never on different floors | no work | no work |
+| 41 | GitHub public MIT; download page | repos public + MIT **[V]**; D1 | build |
+| 42 | Keep finished branches | 5.1 | plan |
 
-Tests:
-1. `release_gate.sh v12` on the frozen src (Mac 31 + Windows 8, fail-fast).
-2. Unit: net, mp_test, ui_test, mpmenu_test, pvp_test, trn_test, fe_cli custom guard (18), mu_test, link decoder
-   (500 builder links + short / one-character links), gallery parser.
-3. Pairs: host your save; host new save; FE dive with one save unit + one My Units unit, Death Off, then apply (save unit
-   comes home, custom unit does not, library unchanged); PvP Match from the hub; load-list filter + tag + Remove tag;
-   viewui_pair; seethrough_pair; fastjoin_pair; Players panel with 0 units at the base.
-4. Stats: builder vs game on long AND short links (`ext/pvp/pvp_wiki_units.py`): equal numbers.
-5. Test Fight: Boss Golem with 3 My Units units loads; Arena and DPS Check load; units equal the builder sheet.
-6. Loader: `app/test/run.sh`; soft restart title + world (never visible, same save, camera within one tile, speed, time
-   recorded); dsload pair soak with every module; flow K offer; first start from a clean folder; Steam not running at start.
-7. Windows: kit dry run on the one wine copy; Mac host + Windows guest xplay.
-8. Public repo: grep the diff for keys; no saves, templates, game files or binaries committed.
+## 7. Owner question (only one: his words leave it open and he would see the difference)
 
-## 6. Owner questions (only where his words leave something open that he would see)
+- **Q1. Neutral hub map.** He said "a basic map ... everything unlocked" and, before, "a fully kitted hub world".
+  Default: the wiki's "Finished Base" template world (a built base; the same template Test Fights uses), then all research
+  done, all regions open, storage stocked. Option: an empty base map with everything unlocked but nothing built.
 
-- **Q1. Unit Builder timing.** The in-game builder is the largest job (25-40 h). Default: v12 ships everything else; the
-  Unit Builder tab in v12 says "Coming next version" and "Open the wiki builder" (browser), and "Add from wiki link"
-  brings the result in with one click; the in-game builder ships in v13. Option: hold v12 until the builder is in.
-- **Q2. Windows mod loader timing.** Porting the loader into the Windows baselib.dll is 20-30 h and has never run on a real
-  Windows PC. Default: v12 Windows kit = multiplayer as today (install.bat, no Mods window); the Windows Mods window and
-  soft restart follow in v13. Option: hold v12 for Windows.
-- **Q3. Neutral hub map.** Default: the wiki's "Finished Base" template world (a built base; the same template Test Fights uses),
-  kitted by new hub steps in WP-FE (all research, all regions, stocked storage), downloaded from the wiki on first use. Option: an empty
-  base map with everything unlocked but nothing built.
-
-## One release (owner 2026-10-15)
-- "I want everything in one. Why would you separate it?" -> no v12/v13 split. The next release contains ALL of MASTER_PLAN.md: menus, units, FE hub, loader, Gallery + Test Fights, in-game Unit Builder, Windows mod loader. Lanes: merger, wpmenu, wpunits, wpfe, wploader, wpfights, wpbuilder, wpwin (+ viewui, weaponslot, softrestart finishing).
+## Hub map (owner 2026-10-15)
+- Owner: "A: the wiki's Finished Base" + "ideally I'd want a world download of someone else to make sure we have something looking nice". -> C2: the hub is a nice-looking, fully built and stocked world made by a real player, downloaded at first use and cached (never shipped in the public repo). Default until such a world is chosen: the wiki Finished Base template. C2 finds candidates (whose world, where it comes from, screenshot) and the lead shows them to the owner; a real player's world needs that player's OK before it is used.
