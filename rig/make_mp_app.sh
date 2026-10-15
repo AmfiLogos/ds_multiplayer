@@ -101,7 +101,7 @@ PY
 #    started on a quarantined copy (AirDrop) on the owner's second Mac. Prebuilt "mp_launcher" next to this
 #    script is used if present (the friend kit ships it), else it is compiled.
 if [[ -f "$HERE/mp_launcher" ]]; then cp "$HERE/mp_launcher" "$C/MacOS/DS MP Launcher"
-else clang -arch arm64 -O2 -Wall -mmacosx-version-min=11.0 -o "$C/MacOS/DS MP Launcher" "$HERE/mp_launcher.c"; fi
+else clang -arch arm64 -O2 -Wall -mmacosx-version-min=11.0 -framework CoreFoundation -o "$C/MacOS/DS MP Launcher" "$HERE/mp_launcher.c"; fi
 xattr -c "$C/MacOS/DS MP Launcher"
 printf 'folder=%s\nsteam=%d\n' "$DIRNAME" $(( PORTABLE ? 0 : 1 )) > "$C/Resources/mp_launcher.conf"
 

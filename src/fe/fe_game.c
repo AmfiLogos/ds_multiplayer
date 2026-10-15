@@ -362,7 +362,7 @@ static jv *my_manifests(void) {
         if (!strstr(e->d_name, ".json")) continue;
         char p[1500]; snprintf(p, sizeof p, "%s/%s", dir, e->d_name);
         jv *x = read_json(p); if (!x) continue;
-        jv *man = jcopy(jget(x, "manifest")); jset(man, "source_file", jcopy(jget(x, "source_file")));
+        jv *man = jcopy(jget(x, "manifest")); if (jget(x, "source_file")) jset(man, "source_file", jcopy(jget(x, "source_file")));
         jset(m, jget(man, "export_id")->s, man); jfree(x);
     }
     if (d) closedir(d);
@@ -425,8 +425,16 @@ static char *cmd_apply(const char *line) {
     jv *res = read_json(p);
     if (!res) { bput(&b, "{\"ok\":false,\"error\":\"no results for this run\"}"); return b.p; }
     jv *mans = my_manifests(), *u = jget(res, "units");
-    const char *cg = NULL, *src = NULL;
-    for (size_t i = 0; u && i < u->cnt && !cg; i++) { jv *m = jget(mans, jget(u->v[i], "export_id")->s); if (m) { cg = jget(m, "home_campaign_guid")->s; src = jget(m, "source_file") ? jget(m, "source_file")->s : NULL; } }
+    const char *cg = NULL, *src = NULL; int mine = 0, custom = 0;
+    for (size_t i = 0; u && i < u->cnt; i++) {
+        jv *m = jget(mans, jget(u->v[i], "export_id")->s);
+        if (!m) continue;
+        mine++;
+        if (fe_manifest_custom(m)) { custom++; continue; }        /* owner rule: never the home of a custom unit */
+        if (!cg) { cg = jget(m, "home_campaign_guid")->s; src = jget(m, "source_file") ? jget(m, "source_file")->s : NULL; }
+    }
+    /* every unit is a My Units / wiki copy: refused BEFORE the backup and the home lookup (nothing to bring home) */
+    if (mine && custom == mine) { say("apply refused: %s", FE_CUSTOM_REFUSE); jfree(res); jfree(mans); bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, FE_CUSTOM_REFUSE); bput(&b, "}"); return b.p; }
     if (!cg) { jfree(res); jfree(mans); bput(&b, "{\"ok\":false,\"error\":\"These results are not for your units.\"}"); return b.p; }
     char saves[1200]; snprintf(saves, sizeof saves, "%s/data/Saves", rig_dir);
     char *home_p = target[0] ? strdup(target) : newest_with_campaign(saves, cg);
@@ -647,7 +655,7 @@ int fe_result_targets(const char *run, fe_save_info *out, int max) {
     char p[1500], sub[200]; snprintf(sub, sizeof sub, "results/%s.json", run); fe_path(p, sizeof p, sub);
     jv *r = read_json(p), *mans = my_manifests(); char cg[64] = ""; char src[1024] = "";
     jv *u = jget(r, "units");
-    for (size_t i = 0; u && i < u->cnt && !cg[0]; i++) { jv *m = jget(mans, jget(u->v[i], "export_id")->s); if (m) { snprintf(cg, sizeof cg, "%s", jget(m, "home_campaign_guid")->s); if (jget(m, "source_file")) snprintf(src, sizeof src, "%s", jget(m, "source_file")->s); } }
+    for (size_t i = 0; u && i < u->cnt && !cg[0]; i++) { jv *m = jget(mans, jget(u->v[i], "export_id")->s); if (m && !fe_manifest_custom(m)) { snprintf(cg, sizeof cg, "%s", jget(m, "home_campaign_guid")->s); if (jget(m, "source_file")) snprintf(src, sizeof src, "%s", jget(m, "source_file")->s); } }
     jfree(r); jfree(mans);
     fe_save_info all[64]; int na = fe_list_saves(all, 64), n = 0;
     for (int i = 0; i < na && n < max; i++) {

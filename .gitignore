@@ -3,6 +3,8 @@
 !/.gitignore
 !/PLAN.md
 !/LANE_RULES.md
+!/README.md
+!/LICENSE
 !/src/
 !/win/
 !/rig/
@@ -64,3 +66,6 @@ saves/
 /ext/*/src_base/
 fixtures/
 /win/tools/il2cppdumper_nokey/
+# own test binaries
+*_bin
+*.dSYM/

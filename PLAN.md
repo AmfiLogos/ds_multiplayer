@@ -144,7 +144,7 @@ Goal: a version the owner can play live with a friend on a Mac.
 - Units per player (1/2/3/4/6) = how many units you may OWN in base (current build is right). Dungeon team: always max 4 units in total. (Supersedes "bench + 3 per run" above.)
 - lan_v9 also fixes 2 bugs from research/ux_flow_v10.md: #1 Portal X soft-lock (others stuck paused), #2 wrong "The owner left the game" text when the guest's OWN connection dropped.
 - lan_v10 colours: your OWN units keep the game's default look (no tint). Other players get a colour: auto from a colour-blind-safe palette that avoids every game status colour; each player can CHANGE other players' colours for their own screen only (local setting).
-- lan_v10: see-through of other players' units can never be 0 (minimum ~30%).
+- ~~lan_v10: see-through of other players' units can never be 0 (minimum ~30%).~~ Replaced by owner 2026-10-15 (see below).
 - lan_v10: optional outline/contour highlight: off / own units / friends' units / both.
 - lan_v10: camera awareness + ping, "do it good": research what good co-op games do; a ping disappears when a unit reaches the spot (plus a timeout). Owner trusts the design; implement well.
 - Ping (owner 2026-10-14 01:55): NO automatic timeout. A ping stays until a unit reaches it or a player deletes it. B = place a ping; B with the mouse over an existing ping = delete it (toggle). Middle-click also places. Owner loves the "is typing" chat UX.
@@ -308,3 +308,54 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
 - Gate on build/merge_fe_fixw.dylib: det_out/gate_fe_fixw_20261015-1211 smoke 3/3, mp2 19 PASS 0 FAIL; left_prompt with "fe":1 in the
   host's prefs 16 PASS 0 FAIL (det_out/lp_fixw_fe1_b.log); FE dive on it 23/23 (ext/foreign_expedition/out/dive_20261015-121129).
   Shared build/dsrig.dylib = this build since 12:30.
+
+## GitHub visibility (2026-10-15, replaces the 2026-10-14 "all private" rule for these 2 repos)
+- Owner, word for word: "Make them public". github.com/AmfiLogos/ds_multiplayer and github.com/AmfiLogos/ds_launcher are PUBLIC. All his other repos stay private.
+- So: never commit game files, dumps, saves, binaries or keys (LANE_RULES.md rule 5).
+
+## Distance (owner 2026-10-15)
+- "it's impossible to have 2 players on different floors atm in regular playthrough": no different-floor test. Retest only if a feature ever splits players across floors.
+
+## v11 candidate (gatefix, 2026-10-15 12:31-17:36) - CHECK only, nothing shipped (lan_latest = v10)
+- Frozen src rig/release/v11c_src (all lanes merged: corenext, spectator, launcher, FE + left_prompt fix, PvP), Mac dylib e58c6dec81d172da,
+  summary rig/release/gate_e58c6dec81d172da.summary. Result: GREEN = Mac 31/31 (round 2) + Windows 8/8 (rerun after win/ fixes), src unchanged.
+- Round 1 (stopped): uxgame / teams_v10 Escape checks red because FE results left in the copies' data/fe opened the FE results
+  window at load and took the first Escape. release_gate.sh now moves data/fe of every copy aside at start (data/fe_gatestash_<time>).
+- Windows port fixes (win/ only): PvP split-Guid calls (gen_port ABI rewrites); FactionManagementView.OnWorldRefresh inlined on
+  Windows (new WIN_WRAP on FactionManagementPresenter.WorldRefreshed, caught by the inline-audit stop); zlib inflate for pvp_wiki.c
+  (win/third_party/zlib from the local Unity il2cpp zlib 1.3.1); fe/*.c added to the Windows module list (st_mtimespec / localtime_r shims);
+  Windows reads DSRIG_RANGES_WIN (the Mac ranges path leaked into the kit run); W stopped before the base soak.
+- Found: gen_port always wrote det_ranges_win.tsv to ~/ds_multiplayer/build, but W / the gate / the kits / the bottles read
+  win/build/det_ranges_win.tsv, stale since 2026-10-12 (same rules until the core_next merge, so v7-v10 were consistent). Now written to win/build.
+  The released v10 kit and "DS Windows Test" keep the 2026-10-12 file (their tested combination).
+- For a v11 release: rerun release_gate.sh v11 on the final src (the gate now includes the Windows fixes), then release_all.
+
+## lan_v11 released (shipv11, 2026-10-15 17:56-18:05) - owner: "Ship now (2026-10-15)" (AskUserQuestion, on the two-part green result)
+- Mac dylib sha256 e58c6dec81d172da1f13a0e7f1890c3f32be6d8a33509342ee1913a33b5c879b (rig/release/dsrig-e58c6dec81d172da.dylib), Mac ranges
+  bb8bb987e6762fc3... (rig/release/det_ranges-e58c6dec81d172da.tsv), frozen src rig/release/v11c_src (= v11_src, diff empty).
+- Windows baselib.dll sha256 2938e2161e3c852afae06c28e66e1dbaf6e39535b67ef47a9f233ca74b8299da (copy rig/release/baselib-2938e2161e3c852a.dll),
+  Windows ranges a505e49379c0ca22... (rig/release/det_ranges_win-a505e49379c0ca22.tsv; 70595 ranges = the count the tested kit run loaded).
+- Evidence: Mac 31/31 = rig/old_versions/gate_e58c6dec81d172da-2026-10-15-1749.summary (round 2, 14:00; the stopped 17:42 gate moved it there and
+  left a partial rig/release/gate_e58c6dec81d172da.summary: not the evidence). Windows 8/8 = rig/det_out/win_lane_e58c6dec81d172da_20261015-1654/.
+  Release note rig/release/release_note_e58c6dec81d172da.txt.
+- release_all.sh --owner-approved <sha> <Mac summary> <Windows rerun dir> "<owner words>": new path for a two-part green gate the owner approved
+  (Mac lines no FAIL except windows_*, dylib/src unchanged PASS, every .res PASS, DLL hash = the rerun's). Never edits a summary.
+  Also: release_all now uses the gate-frozen release/det_ranges-<sha16>.tsv (before: build/det_ranges.tsv, which other lanes rewrite).
+- Shipped: rig/lan_latest (v10 -> rig/old_versions/lan_latest-2026-10-15-1757), ~/Applications/Dungeon Settlers MP.app (old one in
+  ~/Applications/old_versions/Dungeon Settlers MP-2026-10-15-1757.app), friend kit rig/DungeonSettlersMP_friend_kit.zip, all dylib e58c6dec.
+  "DS Windows Test": baselib.dll 2938e216 + det_ranges_win a505e493 (old in win/old_versions/*DSWindowsTest-2026-10-15-1758*).
+  Windows test kit win/kit/DSMP_WindowsTestKit_25846389.zip (DLL 2938e216, ranges a505e493, payload from the 17:33 v11 kit dry run; old one in win/old_versions).
+- GitHub: tag lan_v11, release kit-lan_v11 https://github.com/AmfiLogos/ds_multiplayer/releases/tag/kit-lan_v11
+
+## See-through Off (owner 2026-10-15; replaces the 10-14 01:40 minimum rule)
+- "Other Units See-through" steps: Off (0), 30, 50, 70, 90 %, cycling both ways. Off = alpha 1.0 like own units (colour tint stays).
+- Default stays 30. A saved 0 stays Off; an older 1..29 (25) reads as 30. Branch `seethrough`.
+
+## P0 merges (merger lane, 2026-10-15 18:10-18:45)
+- Merged into main (each: main merged into the branch first, build/merge_<lane>.dylib, unit mp/ui/mpmenu/pvp/trn/teams + rig smoke on one leased pair):
+  sockpath, steamstart, winkit (= steamstart-win 09cf1bc), seethrough (+ seethrough_pair), latejoin (+ fastjoin_pair off and on: PASS).
+- seethrough_pair reports FAIL on the "highest alpha" check: one sprite on other units stays at 1.0. The same result on the
+  pre-merge branch build (ccc33ba), so not a merge fault; the lowest alpha matches every step (Off, 30-90). Test check or extra sprite: open.
+- steamstart / winkit: no dylib change; launcher compiles; bat files not run (no wine run in P0).
+- myunits fe/ guard: merged as branch myunits-feguard 96efe6d only (NOT 38ef920 on myunits); test_custom_guard.py ALL PASS (18), unit + smoke green.
+- Pending: viewui (lane still working), weaponslot (no commits yet).

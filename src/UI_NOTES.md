@@ -272,7 +272,7 @@ menu in multiplayer pauses nobody (#7). Test: `ui_test/uxgame_pair.py` (one pair
   stops it ("Stopped following Ben."). The viewer box uses the same follow; UI_ORDER_FOLLOW / CAMERA are no longer sent.
 - Colours: palette ux_flow_v10 section 4 (ui_model.c). ui_player_color: this viewer's override (cog rows "<Name>'s colour",
   Auto -> 8 colours, mp_ui.json "colors" by uid) -> dsnet uid colour -> slot. Own units: no portrait chip, no tint.
-- See-through: 30 / 50 / 70 / 90 % (never 0; old files read as 30). Outline (cog): Off / Your units (#d9be8f) / Friends'
+- See-through: Off / 30 / 50 / 70 / 90 % (Off allowed again, owner 2026-10-15; default 30). Outline (cog): Off / Your units (#d9be8f) / Friends'
   units (their colour) / Both: EntityGraphic _outlineAlpha +0x34 / _outlineColor +0x38; ApplyMaterialProperties 0xE139C8
   hooked so the hover's SetOutline(false) does not remove ours.
 - Story: every rule shows "<who> chooses · 45 s, then the owner decides"; at 60 s the host sends STORY_CLOSE (33) for any
