@@ -1573,7 +1573,7 @@ static char *ui_buildings_cmd(const char *line) {
     bput(&b, "]}");
     return b.p;
 }
-static char *ui_view_cmd(void);
+static char *ui_view_cmd(void); static char *ui_bar_test_cmd(const char *line);
 static uintptr_t h_banner[2]; static int n_dis;
 static void hk_cn_confirm(Obj v, void *mi); static void hk_cn_cancel(Obj v, void *mi);
 static int dbg_foreign = -9, dbg_view_active[2] = {-9, -9};
@@ -1625,6 +1625,7 @@ char *ui_exec(const char *cmd, const char *line) {
         return b.p;
     }
     if (!strcmp(cmd, "ui_result")) return ui_result_cmd(line);
+    if (!strcmp(cmd, "ui_bar_test")) return ui_bar_test_cmd(line);   /* viewui test: {hide} empty portrait bar (view only) */
     if (!strcmp(cmd, "ui_pop")) {                            /* ui_pop {open}: the panel's settings box (cog) */
         double o = 1; jnum(line, "open", &o); pl_pop = o != 0; plist_frame();
         Buf b = {0}; bput(&b, "{\"ok\":true,\"pop\":%d}", pl_pop); return b.p;
@@ -2111,9 +2112,10 @@ enum { PL_HDR, PL_BODY, PL_SEE, PL_NAMES, PL_ADMIN, PL_STATUS, PL_NOTE, PL_BODYR
        PL_PINGS, PL_PINGSR, PL_PSOUND, PL_PSOUNDR, PL_PCHAT, PL_PCHATR, PL_VIEWS, PL_VIEWSR, PL_OFFS, PL_OFFSR, PL_OUTL, PL_OUTLR,
        PL_SPECT, PL_SPECTR,                                  /* host: spectators allowed (owner 2026-10-14) */
        PL_MINI, PL_MINIR, PL_MSIZE, PL_MSIZER,               /* spectator: mini overview shown / its size (8k) */
+       PL_TEAMS, PL_TEAMSR,                                  /* viewui: Teams button shown / hidden */
        PL_FJOIN, PL_FJOINR,                                  /* Fast join (owner 2026-10-15): this copy's own mp loads */
        PL_COL0, PL_COLR0 = PL_COL0 + 7, PL_N = PL_COLR0 + 7 };
-#define PL_SETMAX 24                                         /* settings rows at most (each: label, value, < >) */
+#define PL_SETMAX 26                                         /* settings rows at most (each: label, value, < >) */
 static uintptr_t h_pl[PL_N], h_plate;                      /* h_plate: the panel frame */
 static uintptr_t h_skill_ui, h_status_ui;                    /* character window views (8d) */
 static int pl_written[PL_N];                                 /* row text set by us at least once since it was cloned */
@@ -2212,6 +2214,8 @@ static Obj flat(Obj root, const char *hex) { Obj im = img_make(root, NULL, 10, 1
    Inside it, the panel's own group: its scale is the "Panel size" (Compact 0.75). Tooltips, the lend menu and the viewer
    box use the layer (never compact). */
 #define PL_SORT 5000
+#define PL_SORT_TEAMS 32020                                  /* viewui: above the open Teams window (32000) */
+static uintptr_t h_top_cv; static int top_order = PL_SORT;  /* the top layer's Canvas */
 static Obj layer_make(Obj tmpl, Obj parent, int canvas) {
     Obj l = u_instantiate(tmpl, parent);
     if (!ui_is(l, K_TMP)) return NULL;
@@ -2223,22 +2227,33 @@ static Obj layer_make(Obj tmpl, Obj parent, int canvas) {
         int order = canvas == 1 ? PL_SORT : canvas;          /* lan_v10: the markers layer passes its own order (no raycaster) */
         if (cv) { F(0x5476208, void (*)(Obj, bool, void *))(cv, true, NULL); F(0x547640C, void (*)(Obj, int, void *))(cv, order, NULL); }
         if (cv && tg && canvas == 1) F(0x50F2B90, Obj (*)(Obj, Obj, void *))(u_go(l), tg, NULL);
+        if (cv && canvas == 1) { u_gc_free(h_top_cv); h_top_cv = u_gc_new(cv); top_order = order; }
         rig_log("ui: %s layer %p canvas %p (sorting order %d)", canvas == 1 ? "top" : "markers", l, cv, order);   /* "top layer": uxgame_pair's check */
     }
     return u_tr(l);
 }
 static Obj layer_of_panel(void) { Obj hdr = u_gc_get(h_pl[PL_HDR]); return u_alive(hdr) ? u_tr_parent(u_tr(hdr)) : NULL; }
 static Obj layer_top(void) { Obj g = layer_of_panel(); return g ? u_tr_parent(g) : NULL; }
-int ui_panel_compact(void) { settings_load(); return uiset.compact; }
-int ui_fast_join(void) { settings_load(); return uiset.fast_join; }   /* mp_game.c (dlsym): "Fast join" cog row, mp_ui.json */   /* teamsfinish (dlsym): the Teams button follows it */
+int ui_panel_compact(void) { settings_load(); return uiset.compact; }   /* teamsfinish (dlsym): the Teams button follows it */
+int ui_fast_join(void) { settings_load(); return uiset.fast_join; }   /* mp_game.c (dlsym): "Fast join" cog row, mp_ui.json */
+int ui_teams_button_on(void) { settings_load(); return uiset.teams_button; }   /* viewui (dlsym, ui_teams): cog "Teams button" */
+/* viewui (owner 2026-10-15): the panel stays in view while the Teams window is open: the top layer goes above it
+   (PL_SORT_TEAMS) and Teams leaves the clicks on the panel to us (ui_panel_hit, dlsym) */
+static void top_layer_order(int teams_open) {
+    Obj cv = u_gc_get(h_top_cv); int want = teams_open ? PL_SORT_TEAMS : PL_SORT;
+    if (!u_alive(cv) || want == top_order) return;
+    F(0x547640C, void (*)(Obj, int, void *))(cv, want, NULL); top_order = want;
+    rig_log("ui: top layer sorting order %d", want);
+}
+
 /* the cog's rows, in order (lan_v10: + co-op markers, outline, other players' colours; host rows last). arg = the
    player of a colour row, else -1. Returns the count. */
 static int pl_is_label(int i) { return i == PL_SEE || i == PL_NAMES || i == PL_ADMIN || i == PL_UNITS || i == PL_TIPS || i == PL_CFADE || i == PL_CJOIN || i == PL_CHAT || i == PL_SIZE
-                                     || i == PL_PINGS || i == PL_PSOUND || i == PL_PCHAT || i == PL_VIEWS || i == PL_OFFS || i == PL_OUTL || i == PL_SPECT || i == PL_MINI || i == PL_MSIZE || i == PL_FJOIN || (i >= PL_COL0 && i < PL_COL0 + 7); }
+                                     || i == PL_PINGS || i == PL_PSOUND || i == PL_PCHAT || i == PL_VIEWS || i == PL_OFFS || i == PL_OUTL || i == PL_SPECT || i == PL_MINI || i == PL_MSIZE || i == PL_FJOIN || i == PL_TEAMS || (i >= PL_COL0 && i < PL_COL0 + 7); }
 static int pl_is_value(int i) { return i == PL_SEER || i == PL_NAMESR || i == PL_UNITSR || i == PL_ADMINR || i == PL_TIPSR || i == PL_CFADER || i == PL_CJOINR || i == PL_CHATR || i == PL_SIZER
-                                     || i == PL_PINGSR || i == PL_PSOUNDR || i == PL_PCHATR || i == PL_VIEWSR || i == PL_OFFSR || i == PL_OUTLR || i == PL_SPECTR || i == PL_MINIR || i == PL_MSIZER || i == PL_FJOINR || (i >= PL_COLR0 && i < PL_COLR0 + 7); }
+                                     || i == PL_PINGSR || i == PL_PSOUNDR || i == PL_PCHATR || i == PL_VIEWSR || i == PL_OFFSR || i == PL_OUTLR || i == PL_SPECTR || i == PL_MINIR || i == PL_MSIZER || i == PL_FJOINR || i == PL_TEAMSR || (i >= PL_COLR0 && i < PL_COLR0 + 7); }
 static int set_rows(int *lab, int *val, int *arg) {
-    static const int fixed[][2] = { { PL_SEE, PL_SEER }, { PL_NAMES, PL_NAMESR }, { PL_OUTL, PL_OUTLR }, { PL_TIPS, PL_TIPSR }, { PL_SIZE, PL_SIZER },
+    static const int fixed[][2] = { { PL_SEE, PL_SEER }, { PL_NAMES, PL_NAMESR }, { PL_OUTL, PL_OUTLR }, { PL_TIPS, PL_TIPSR }, { PL_SIZE, PL_SIZER }, { PL_TEAMS, PL_TEAMSR },
         { PL_CFADE, PL_CFADER }, { PL_CJOIN, PL_CJOINR }, { PL_CHAT, PL_CHATR },
         { PL_PINGS, PL_PINGSR }, { PL_PSOUND, PL_PSOUNDR }, { PL_PCHAT, PL_PCHATR }, { PL_VIEWS, PL_VIEWSR }, { PL_OFFS, PL_OFFSR }, { PL_FJOIN, PL_FJOINR } };
     int n = 0;
@@ -2356,12 +2371,15 @@ static void plist_frame(void) {
     Obj pc = u_gc_get(h_popups), csv = u_gc_get(h_status_ui), ckv = u_gc_get(h_skill_ui);
     int stock_window = (pc && F(0xF62338, bool (*)(Obj, void *))(pc, NULL))
         || (u_alive(csv) && F(0x50F3724, bool (*)(Obj, void *))(u_go(csv), NULL)) || (u_alive(ckv) && F(0x50F3724, bool (*)(Obj, void *))(u_go(ckv), NULL));
-    static int (*teams_modal)(void); static unsigned tm_tries;   /* teamsfinish: Teams window / proposal summary up */
-    if (!teams_modal && tm_tries++ % 50 == 0) teams_modal = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_modal_open");
     (void)stock_window;                                      /* lan_v9 owner: the panel stays above the game's windows */
-    int hide = !on() || lobby_open() || popup_active(1) || left_prompt || (teams_modal && teams_modal())   /* Esc menu: design #3 */
+    { static int (*teams_modal)(void); static unsigned tm_tries;   /* viewui: above the open Teams window */
+      if (!teams_modal && tm_tries++ % 50 == 0) teams_modal = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_modal_open");
+      top_layer_order(teams_modal && teams_modal()); }
+    /* viewui (owner 2026-10-15): the panel stays while the Teams window is open (no game interface hides on a click);
+       the top layer goes above the Teams window while it is open (top_layer_order) */
+    int hide = !on() || lobby_open() || popup_active(1) || left_prompt   /* Esc menu: design #3 */
                || busy();
-    pl_hide_why = !on() | lobby_open() << 1 | popup_active(1) << 2 | (left_prompt != 0) << 3 | (teams_modal && teams_modal()) << 4 | busy() << 5;                                    /* lan_v9: not on the loading screen (v2_v9_changing_map_guest.png) */
+    pl_hide_why = !on() | lobby_open() << 1 | popup_active(1) << 2 | (left_prompt != 0) << 3 | busy() << 5;                                    /* lan_v9: not on the loading screen (v2_v9_changing_map_guest.png) */
     { Obj g = layer_of_panel(); if (g) { float k = uiset.compact ? 0.75f : 1.0f; V3 cur = F(0x510AEFC, V3 (*)(Obj, void *))(g, NULL);
         if (cur.x != k) F(0x510AFF8, void (*)(Obj, V3, void *))(g, (V3){ k, k, 1 }, NULL); } }
     /* the group scales around the layer's origin: shift it so the panel's top-left corner stays where it is (pos_x / pos_y
@@ -2459,6 +2477,8 @@ static void plist_frame(void) {
     plist_set(PL_TIPS, "<color=#a69085>Show tooltips on hover</color>");
     plist_set(PL_SIZE, "<color=#a69085>Panel size</color>");
     plist_set(PL_SIZER, uiset.compact ? "<color=#ccbeb8>Compact</color>" : "<color=#ccbeb8>Normal</color>");
+    plist_set(PL_TEAMS, "<color=#a69085>Teams button</color>");
+    plist_set(PL_TEAMSR, uiset.teams_button ? "<color=#ccbeb8>Show</color>" : "<color=#ccbeb8>Hide</color>");
     plist_set(PL_TIPSR, uiset.tooltips ? "<color=#ccbeb8>On</color>" : "<color=#ccbeb8>Off</color>");
     plist_set(PL_HINT, "<size=86%><color=#a69085>Right-click and drag to move the multiplayer windows</color></size>");
     { int fade = 12, join = 1, en = 1; chat_get(&fade, &join, &en);
@@ -2761,6 +2781,7 @@ static void plist_mouse(void) {
                 *f = !*f; settings_save();
             }
             else if (i == PL_MINI) { uiset.mini = !uiset.mini; settings_save(); }
+            else if (i == PL_TEAMS) { uiset.teams_button = !uiset.teams_button; settings_save(); rig_log("ui: Teams button %s", uiset.teams_button ? "shown" : "hidden"); }
             else if (i == PL_FJOIN) { uiset.fast_join = !uiset.fast_join; settings_save(); rig_log("ui: fast join %s", uiset.fast_join ? "on" : "off"); }
             else if (i == PL_MSIZE) { uiset.mini_size = (uiset.mini_size + (k % 2 ? 1 : 2)) % 3; settings_save(); }
             else if (i == PL_UNITS) units_step(k % 2 ? 1 : -1);
@@ -2934,7 +2955,7 @@ static char *ui_view_cmd(void) {
     int dim = 0, full = 0;
     for (int i = 0; i < MAX_UO; i++) { if (!u_alive(u_gc_get(uo[i].uo))) continue; if (uo[i].shown == 0) dim++; else if (uo[i].shown == 1) full++; }
     /* other_alpha: the real SpriteRenderer alpha on the units you do not control (lowest, highest; -1 = none) */
-    float amin = -1, amax = -1; int on_n = 0; Obj srt = u_gc_get(h_srtype);
+    float amin = -1, amax = -1; int on_n = 0, solid_n = 0; char solid[6][100]; Obj srt = u_gc_get(h_srtype);
     for (int i = 0; i < MAX_UO && srt; i++) {
         Obj o = u_gc_get(uo[i].uo); if (!u_alive(o) || !uo[i].other) continue;
         Obj arr = F(0x50EDFD0, Obj (*)(Obj, Obj, void *))(o, srt, NULL); int n = arr ? AT(arr, 0x18, int32_t) : 0;
@@ -2942,10 +2963,18 @@ static char *ui_view_cmd(void) {
             Obj sr = AT(arr, 0x20 + 8 * k, Obj); if (!u_alive(sr)) continue;
             float a = F(0x507413C, Col (*)(Obj, void *))(sr, NULL).a;
             if (amin < 0 || a < amin) amin = a; if (a > amax) amax = a;
+            if (uiset.see_through && a > 1.0f - (float)uiset.see_through / 100.0f + 0.01f && solid_n < 6) {   /* viewui: which sprite stays solid */
+                char gn[48] = "", pn[48] = ""; Obj go = u_go(sr), pt = u_tr_parent(u_tr(sr));
+                str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(go, NULL), gn, sizeof gn);
+                if (pt) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(u_go(pt), NULL), pn, sizeof pn);
+                snprintf(solid[solid_n++], 100, "%s/%s a=%.2f en=%d", pn, gn, a, (int)F(0x509E968, bool (*)(Obj, void *))(sr, NULL));
+            }
         }
         on_n++;
     }
-    bput(&b, "],\"world_dimmed\":%d,\"world_full\":%d,\"other_units\":%d,\"other_alpha\":[%.3f,%.3f],\"bar\":[", dim, full, on_n, amin, amax);
+    bput(&b, "],\"world_dimmed\":%d,\"world_full\":%d,\"other_units\":%d,\"other_alpha\":[%.3f,%.3f],\"other_solid\":[", dim, full, on_n, amin, amax);
+    for (int q = 0; q < solid_n; q++) { if (q) bput(&b, ","); bstr(&b, solid[q]); }
+    bput(&b, "],\"bar\":[");
     int k = 0;
     for (int i = 0; i < MAX_SC; i++) {
         Obj pa = u_gc_get(sc[i].parts), u = u_gc_get(sc[i].unit);
@@ -3253,6 +3282,24 @@ static void lend_do(const uint8_t g[16], int act, int arg) {
     }
     else if (act >= LA_FOLLOW) { coop_act(act, arg); return; }
     rig_log("ui: lend action %d (arg %d) rc %d", act, arg, rc);
+}
+/* viewui test: {hide: 1|0} the portrait bar's cards (an empty base, view only) */
+static char *ui_bar_test_cmd(const char *line) {
+    double hd = 1; jnum(line, "hide", &hd); int n = 0;
+    Obj v = find_view(&h_bar_view, "Refactor.UI", "PlayerUnitShortCutView"), bar = v ? AT(v, 0x30, Obj) : NULL;
+    int cnt = u_alive(bar) ? F(0x510EAE4, int (*)(Obj, void *))(bar, NULL) : 0;
+    if (v && (hd == 2 || hd == 0)) u_go_active(u_go(v), hd == 0);   /* 2: the whole bar view off */
+    if (hd == 2) cnt = 0;
+    for (int i = 0; i < cnt; i++) { Obj ch = F(0x510FC60, Obj (*)(Obj, int, void *))(bar, i, NULL); if (u_alive(ch)) { u_go_active(u_go(ch), hd == 0); n++; } }
+    Obj hd0 = u_gc_get(h_pl[PL_HDR]), cv = ui_is(hd0, K_GR) ? F(0x5260544, Obj (*)(Obj, void *))(hd0, NULL) : NULL;
+    if (cv) cv = F(0x5476FAC, Obj (*)(Obj, void *))(cv, NULL);
+    Buf b = {0}; bput(&b, "{\"ok\":true,\"cards\":%d,\"bar_y\":%.1f}", n, cv ? bar_bottom_y(u_tr(cv)) : 0.0f); return b.p;
+}
+/* viewui (dlsym, ui_teams): 1 = screen point x, y is on the Players panel or its menu (Teams leaves that click to us) */
+int ui_panel_hit(float x, float y) {
+    if (pl_shown && ui_hit(u_gc_get(h_plate), x, y)) return 1;
+    for (int i = 0; i < lmenu_n && i < LM_ROWS; i++) if (ui_hit(u_gc_get(h_lrow[i]), x, y)) return 1;
+    return 0;
 }
 static void lmenu_close(void) { Obj m = u_gc_get(h_lmenu); show(m, 0); for (int i = 0; i < LM_ROWS; i++) show(u_gc_get(h_lrow[i]), 0); lmenu_n = 0; lmenu_player = -1; }
 static void lmenu_draw(void) {
@@ -4022,6 +4069,7 @@ static int view_get(int pl, float v[4]) {                    /* a friend's view 
     for (int i = 0; i < 4; i++) if (!isfinite(v[i]) || fabsf(v[i]) > 1e5f) return 0;   /* a bad packet never reaches the camera */
     return k == coop_key();
 }
+static void sees_draw(uint32_t who, ui_players *p);           /* viewui: "Ben sees this too" (after follow_chip) */
 static void views_draw(void) {
     settings_load();
     Obj ml = mlayer(), top = layer_top(); Obj cs = cam_setting();
@@ -4030,6 +4078,7 @@ static void views_draw(void) {
     V3 mp = ok ? F(0xD23584, V3 (*)(Obj, void *))(cs, NULL) : (V3){ 0, 0, 0 }; float mo = ok ? F(0xD23590, float (*)(Obj, void *))(cs, NULL) : 0;
     float sw = (float)scr_w(), sh = (float)scr_h(), km = ml ? layer_k(ml) : 1;
     static double last_t; double t = now_s(); float a = last_t > 0 ? (float)((t - last_t) / 0.2) : 1; if (a > 1) a = 1; last_t = t;
+    uint32_t sees = 0;
     for (int i = 0; i < UI_MAX_PLAYERS; i++) {
         float v[4];
         int vis = ok && i != me() && (p.present >> i & 1u) && view_get(i, v);
@@ -4040,8 +4089,11 @@ static void views_draw(void) {
         const char *hex = ui_player_color(i);
         /* the 4 corners on screen */
         V3 bl = vis ? w2s(vr_cur[i][0] - vr_cur[i][2], vr_cur[i][1] - vr_cur[i][3]) : (V3){ 0, 0, 0 }, tr = vis ? w2s(vr_cur[i][0] + vr_cur[i][2], vr_cur[i][1] + vr_cur[i][3]) : (V3){ 0, 0, 0 };
-        int overlap = vis && tr.x > 0 && bl.x < sw && tr.y > 0 && bl.y < sh;
-        int brackets = vis && uiset.views && overlap && !same;
+        /* viewui (owner 2026-10-15): the friend I follow gets no marks (it is my own view); my screen inside a friend's
+           view (or the same spot) = one "Ben sees this too" line instead of corners that are all off screen */
+        int marks = vis ? ui_view_marks(sw, sh, bl.x, bl.y, tr.x, tr.y, same, i == coop_follow, uiset.views, uiset.offscreen) : UI_VIEW_NONE;
+        int brackets = marks == UI_VIEW_BRACKETS;
+        if (marks == UI_VIEW_SAME) sees |= 1u << i;
         if (brackets && !u_alive(u_gc_get(h_vbr[i][0]))) {
             for (int k = 0; k < 8; k++) { Obj im = img_make(ml, NULL, 2, 16); u_gc_free(h_vbr[i][k]); h_vbr[i][k] = u_gc_new(im); }
             Obj nt = line_clone(ml, 1, 200, 20, 0); if (ui_is(nt, K_TMP)) { rt_top_left(u_tr(nt)); tmp_style(nt, u_gc_get(h_lora), 14, 513); }
@@ -4064,7 +4116,7 @@ static void views_draw(void) {
             Obj nt = u_gc_get(h_vname[i]); line_text(nt, tx); place(nt, nx, ny, 200, 20);
         }
         /* off-screen friend (option, off by default): a small chevron at the edge toward their view's centre */
-        int edge = vis && uiset.offscreen && !overlap;
+        int edge = marks == UI_VIEW_EDGE;
         float ax = 0, ay = 0, dg = 0;
         if (edge) { V3 c0 = w2s(vr_cur[i][0], vr_cur[i][1]); edge = ui_edge_arrow(sw, sh, 20 * km, c0.x, c0.y, &ax, &ay, &dg) && !edge_blocked() && edge_avoid(&ax, &ay, 10 * km, sw, sh); }
         Obj eg = u_gc_get(h_vedge[i]);
@@ -4072,6 +4124,7 @@ static void views_draw(void) {
         show(eg, edge); vedge_shown[i] = edge; (void)dg;
         if (edge) { float ux, uy; scr_to_layer(top, ax, ay, &ux, &uy); place(eg, ux, uy, 12, 12); graphic_color(eg, hex_col(hex, 0.6f)); }   /* a small diamond in their colour */
     }
+    sees_draw(ok ? sees : 0, &p);
 }
 /* look where a friend looks (keep the zoom), follow (local: their P_VIEW moves this camera; any own camera move stops it) */
 static int look_at(int pl) { float v[4]; if (!view_get(pl, v)) return 0; cam_jump(v[0], v[1]); return 1; }
@@ -4273,6 +4326,39 @@ static void follow_chip(int on_) {                           /* "Following the o
     graphic_color(bg, hex_col("#222025", 0.92f));
     float T = 3, ex[4] = { x0, x0, x0, x1 - T }, ey[4] = { y0, y1 + T, y0, y0 }, ew[4] = { x1 - x0, x1 - x0, T, T }, eh[4] = { T, T, y0 - y1, y0 - y1 };
     for (int k = 0; k < 4; k++) { Obj e = u_gc_get(h_fedge[k]); place(e, ex[k], ey[k], ew[k], eh[k]); graphic_color(e, hex_col("#d9be8f", 0.55f)); }
+}
+/* viewui (owner 2026-10-15): "Ben sees this too" when my screen lies inside a friend's view: one quiet line at the top
+   centre, under the portrait bar (under the spectator's "Following" chip when it is up), names in their colour, no clicks */
+static uintptr_t h_sees_t, h_sees_bg; static uint32_t sees_shown;
+static void sees_draw(uint32_t who, ui_players *p) {
+    Obj root = layer_top();
+    if (who && root && !u_alive(u_gc_get(h_sees_t)) && u_alive(u_gc_get(h_lora))) {
+        u_gc_free(h_sees_bg); h_sees_bg = u_gc_new(flat(root, "#222025"));
+        u_gc_free(h_sees_t); h_sees_t = u_gc_new(mini_text(root, 14, 514));
+        uintptr_t hs[] = { h_sees_bg, h_sees_t };
+        for (size_t k = 0; k < 2; k++) { Obj g = u_gc_get(hs[k]); if (ui_is(g, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(g, false, NULL); }
+    }
+    Obj bg = u_gc_get(h_sees_bg), t = u_gc_get(h_sees_t);
+    int on_ = who && root && u_alive(t);
+    show(bg, on_); show(t, on_); sees_shown = on_ ? who : 0;
+    if (!on_) return;
+    char tx[400], nm[40]; size_t n = 0; int k = 0, cnt = 0;
+    for (int i = 0; i < UI_MAX_PLAYERS; i++) cnt += who >> i & 1u;
+    for (int i = 0; i < UI_MAX_PLAYERS && !n; i++) if (who >> i & 1u) n += (size_t)snprintf(tx, sizeof tx, "<color=%s>%s</color>  ", cnt > 1 ? "#a69085" : ui_player_color(i), pl_dot);
+    for (int i = 0; i < UI_MAX_PLAYERS && n < sizeof tx; i++) if (who >> i & 1u) {
+        const char *sep = k == 0 ? "" : k == cnt - 1 ? " and " : ", ";
+        n += (size_t)snprintf(tx + n, sizeof tx - n, "<color=#a69085>%s</color><color=%s>%s</color>", sep, ui_player_color(i), ui_player_label(p, i, nm));
+        k++;
+    }
+    if (n < sizeof tx) snprintf(tx + n, sizeof tx - n, "<color=#a69085> %s this too</color>", cnt > 1 ? "see" : "sees");
+    line_text(t, tx);
+    float w = tmp_pref_w(t) + 28; if (w < 140) w = 140;
+    float x0, y0, x1, y1; scr_to_layer(root, 0, (float)scr_h(), &x0, &y0); scr_to_layer(root, (float)scr_w(), 0, &x1, &y1); (void)x1; (void)y1;
+    Obj fc = u_gc_get(h_fchip_t);                           /* (u_go on null throws: the 22:03 run hung ui_coop on the host) */
+    float cy = pl_y0 - 2;                                    /* under the portrait bar, level with the Players panel's top */
+    if (u_alive(fc) && u_go_active_self(u_go(fc)) && cy > y0 - 100) cy = y0 - 100;   /* under the spectator's "Following" chip */
+    place(bg, -w / 2, cy, w, 26); place(t, -w / 2, cy, w, 26);
+    graphic_color(bg, hex_col("#222025", 0.75f));
 }
 /* every frame: the window, its marks, the camera's one-frame-in-6 */
 static void mini_frame(void) {
@@ -4543,7 +4629,7 @@ static char *ui_coop_cmd(const char *line) {
         settings_load();                                     /* before the first panel frame: keep the file's other keys */
         int *f = !strcmp(k2, "pings") ? &uiset.pings : !strcmp(k2, "ping_sound") ? &uiset.ping_sound : !strcmp(k2, "ping_chat") ? &uiset.ping_chat
                : !strcmp(k2, "views") ? &uiset.views : !strcmp(k2, "offscreen") ? &uiset.offscreen : !strcmp(k2, "outline") ? &uiset.outline
-               : !strcmp(k2, "see_through") ? &uiset.see_through : !strcmp(k2, "fast_join") ? &uiset.fast_join : NULL;
+               : !strcmp(k2, "see_through") ? &uiset.see_through : !strcmp(k2, "fast_join") ? &uiset.fast_join : !strcmp(k2, "teams_button") ? &uiset.teams_button : NULL;
         if (f) { *f = (int)v; settings_save(); force_world = 1; if (f == &uiset.outline) world_frame(1); } else rc = -1;
     }
     else if (!strcmp(a, "chatlink")) rc = ui_chat_link_click(1 + ((int)pl << 8 | ((int)x & 255))) ? 0 : -1;   /* chatlink {player, x: id}: the chat line's click */
@@ -4566,7 +4652,7 @@ static char *ui_coop_cmd(const char *line) {
     bput(&b, "],\"views\":[");
     k = 0;
     for (int i = 0; i < UI_MAX_PLAYERS; i++) { float v[4]; if (i == me() || !view_get(i, v)) continue;
-        bput(&b, "%s{\"player\":%d,\"view\":[%.2f,%.2f,%.2f,%.2f],\"brackets\":%d,\"edge\":%d}", k++ ? "," : "", i, jf(v[0]), jf(v[1]), jf(v[2]), jf(v[3]), vr_shown[i], vedge_shown[i]); }
+        bput(&b, "%s{\"player\":%d,\"view\":[%.2f,%.2f,%.2f,%.2f],\"brackets\":%d,\"edge\":%d,\"same\":%d}", k++ ? "," : "", i, jf(v[0]), jf(v[1]), jf(v[2]), jf(v[3]), vr_shown[i], vedge_shown[i], (int)(sees_shown >> i & 1u)); }
     { SR r[6]; int nr = avoid_rects(r, 6); bput(&b, "],\"avoid\":[");
       for (int k2 = 0; k2 < nr; k2++) bput(&b, "%s[%.0f,%.0f,%.0f,%.0f]", k2 ? "," : "", jf(r[k2].x0), jf(r[k2].y0), jf(r[k2].x1), jf(r[k2].y1)); }
     bput(&b, "],\"menu\":[");
@@ -4974,6 +5060,7 @@ static void tips_frame(void) {
             { PL_NAMES, "Names Above Units", "Shows the owner's name above units. Others: only other players' units. All: every unit. Off: none." },
             { PL_TIPS, "Show Tooltips on Hover", "Shows these explanations when you point at a multiplayer button or setting." },
             { PL_SIZE, "Panel Size", "Normal or Compact. Compact makes the Players panel and the Teams button smaller." },
+            { PL_TEAMS, "Teams Button", "Show or hide the Teams button. Hidden, it takes no room on your screen; show it again here to open Teams." },
             { PL_CFADE, "Chat Fade Time", "How long a chat message stays on screen (3 to 120 seconds). Press Enter to see the recent messages again." },
             { PL_CJOIN, "Join and Leave Lines", "Shows a chat line when a player joins, leaves or reconnects." },
             { PL_CHAT, "Chat", "Turns the chat on or off on your screen." },
@@ -5010,6 +5097,14 @@ static void tips_frame(void) {
         ui_player_label(&p, i, nm); snprintf(t, sizeof t, "%s's View", nm);
         snprintf(b, sizeof b, "This is what %s sees now.", nm); if (vr_shown[i]) tip_at(u_gc_get(h_vname[i]), t, b);
         snprintf(b, sizeof b, "%s looks at another part of the map. Click to look there.", nm); if (vedge_shown[i]) tip_at(u_gc_get(h_vedge[i]), t, b);
+    }
+    if (sees_shown && !tip_done) {                           /* viewui: "Ben sees this too" */
+        size_t n = 0; int cnt = 0; b[0] = 0;
+        for (int i = 0; i < UI_MAX_PLAYERS; i++) cnt += sees_shown >> i & 1u;
+        for (int i = 0, k = 0; i < UI_MAX_PLAYERS && n < sizeof b; i++) if (sees_shown >> i & 1u) {
+            n += (size_t)snprintf(b + n, sizeof b - n, "%s%s", k == 0 ? "" : k == cnt - 1 ? " and " : ", ", ui_player_label(&p, i, nm)); k++; }
+        if (n < sizeof b) snprintf(b + n, sizeof b - n, " %s the same part of the map as you.", cnt > 1 ? "look at" : "looks at");
+        tip_at(u_gc_get(h_sees_bg), "Same View", b);
     }
     for (int r = 0; r < PL_MAXROWS; r++) if (row_player[r] >= 0 && tip_on(u_gc_get(h_bars[r][0])))
         for (int k = 0; k < 3; k++) tip_at(u_gc_get(h_bars[r][k]), ui_player_label(&p, row_player[r], nm), conn_words(row_lvl[r]));

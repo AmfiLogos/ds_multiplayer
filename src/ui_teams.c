@@ -375,6 +375,16 @@ static void prop_decline(void) {                             /* Decline (others)
    The root sits on the top canvas (rootCanvas of the HUD), with its own Canvas (sorting 32000) + raycaster. */
 static uintptr_t h_shortcut, h_root, h_win, h_hud, h_title, h_ready, h_close, h_hint, h_region;
 static uintptr_t h_ready_txt, h_region_txt, h_info, h_band, h_empty[3];
+/* viewui (owner 2026-10-15): "Hide" folds the window to a small bar at the top ("Teams", Show, Close); while folded the
+   world is clickable and the game's keys and Escape work (not modal). Remembered in mp_teams_button.json "folded". */
+static uintptr_t h_tfold, h_fbar, h_fshow, h_fclose;
+static int tfold;
+#define FBAR_W 320.0f
+#define FBAR_H 56.0f
+static void fbar_build(Obj rt);
+static int scr_rect(Obj comp, float out[4]);
+static void hud_save(void); static void hud_load(void);
+static int panel_hit(V2 m);
 static uintptr_t h_tpl_box;
 static uintptr_t h_tpl_red, h_tpl_bottom, h_tpl_band, h_spr_red, h_spr_bottom, h_spr_check;   /* Recruit / Expedition Plan parts */
 static char region_line[300];                              /* the region vote as one line (state / tests) */
@@ -518,7 +528,7 @@ static void free_all(void) {
     Obj r = u_gc_get(h_root);
     if (u_alive(r)) u_destroy(u_go(r));                      /* children go with it */
     uintptr_t *hs[] = { &h_root, &h_win, &h_title, &h_ready, &h_close, &h_hint, &h_region, &h_ready_txt, &h_region_txt,
-                        &h_info, &h_band, &h_empty[0], &h_empty[1], &h_empty[2] };
+                        &h_info, &h_band, &h_empty[0], &h_empty[1], &h_empty[2], &h_tfold, &h_fbar, &h_fshow, &h_fclose };
     for (size_t i = 0; i < sizeof hs / sizeof hs[0]; i++) { u_gc_free(*hs[i]); *hs[i] = 0; }
     for (int i = 0; i < nhdr; i++) { u_gc_free(h_hdr[i]); h_hdr[i] = 0; }
     nhdr = 0;
@@ -610,6 +620,8 @@ static int build_root(void) {
     if (!b) { b = new_text(w, 232, 40, 18, AL_CENTER); tx = b; }
     h_ready = u_gc_new(b); h_ready_txt = u_gc_new(tx);
     h_hint = u_gc_new(new_text(w, 360, 40, 14, AL_CENTER));
+    h_tfold = u_gc_new(new_text(w, 64, 28, 14, AL_RIGHT));   /* viewui: Hide (placed left of the close button by layout) */
+    fbar_build(rt);                                          /* viewui: the folded bar */
     /* the rules: the info icon's "How Teams Work" tooltip in the game's tooltip window (tips_frame; the old plain box is gone) */
     rig_log("teams: window built from the Task Planner prefab (card %.0fx%.0f); modal canvas %s sorting %d, raycaster %s",
             card_w, card_h, u_alive(cv) ? "added" : "MISSING", u_alive(cv) ? (tm_is(cv, K_CV) ? F(0x5476320, int (*)(Obj, void *))(cv, NULL) : 0) : -1, u_alive(gr) ? "added" : "MISSING");
@@ -758,6 +770,41 @@ enum { LA_LEND = 1, LA_TAKE, LA_GIVE };
 #define C_MAIN "#ccbeb8"
 #define C_SEC "#a69085"
 #define C_ACC "#d9be8f"
+/* viewui: the folded bar (the proposal panel's box), top centre of the screen, hidden until folded */
+static void fbar_build(Obj rt) {
+    Obj tpl = u_gc_get(h_tpl_box); if (!u_alive(tpl)) tpl = u_gc_get(h_tpl_panel);
+    Obj fb = u_instantiate(tpl, rt);
+    if (u_alive(fb)) {
+        rt_anchor(fb, 0.5f, 1, 0.5f, 1); rt_pivot(fb, 0.5f, 1); rt_size(fb, FBAR_W, FBAR_H); rt_pos(fb, 0, -84); tr_scale(fb, 1.0f);
+        int nf = (tm_is(fb, K_TR) ? F(0x510EAE4, int (*)(Obj, void *))(fb, NULL) : 0);
+        for (int i = 0; i < nf; i++) u_go_active(u_go((tm_is(fb, K_TR) ? F(0x510FC60, Obj (*)(Obj, int, void *))(fb, i, NULL) : NULL)), false);
+        Obj fi = img_of(fb); if (u_alive(fi)) g_raycast(fi, true);
+        Obj fill = new_rect(fb, 0, 0, 1, 1, -16, -16, (C4){0.133f, 0.125f, 0.145f, 1});
+        if (fill) (tm_is(u_tr(fill), K_TR) ? F(0x510EC94, void (*)(Obj, void *))(u_tr(fill), NULL) : (void)0);   /* SetAsFirstSibling */
+        set_text(new_text(fb, 150, 30, 20, AL_LEFT), -FBAR_W / 2 + 20, 0, 150, 30, 20, AL_LEFT, 1, "<color=" C_MAIN ">Teams</color>");
+        Obj t1 = new_text(fb, 56, 26, 14, AL_RIGHT), t2 = new_text(fb, 56, 26, 14, AL_RIGHT);
+        set_text(t1, FBAR_W / 2 - 18 - 56 - 12 - 56, 0, 56, 26, 14, AL_RIGHT, 0, "<color=" C_ACC ">Show</color>");
+        set_text(t2, FBAR_W / 2 - 18 - 56, 0, 56, 26, 14, AL_RIGHT, 0, "<color=" C_ACC ">Close</color>");
+        if (u_alive(t1)) g_raycast(t1, true);
+        if (u_alive(t2)) g_raycast(t2, true);
+        h_fbar = u_gc_new(fb); h_fshow = u_gc_new(t1); h_fclose = u_gc_new(t2);
+        u_go_active(u_go(fb), false);
+    }
+}
+static int folded(void) { return tfold && u_alive(u_gc_get(h_fbar)); }
+static void fold_apply(void) {                               /* window or bar; folded: the dim layer takes no clicks */
+    Obj w = win(), fb = u_gc_get(h_fbar), r = root();
+    int f = folded();
+    if (w && u_go_active_self(u_go(w)) == f) u_go_active(u_go(w), !f);
+    if (u_alive(fb)) u_go_active(u_go(fb), f && opened);
+    if (r) g_raycast(r, !f);
+}
+static void layout(void);
+static void fold_set(int f) {
+    tfold = f; lpop_unit = -1; fold_apply(); hud_save(); shown_sig = 0;
+    if (!f && opened) { model_refresh(); layout(); }
+    rig_log("teams: window %s", f ? "folded to the bar" : "unfolded");
+}
 #define C_WARN "#f16071"
 static Obj cam_for(Obj graphic);
 static int hit(Obj comp, V2 m, Obj cam);
@@ -1004,6 +1051,15 @@ static void layout(void) {
         else if (st.me >= 0) snprintf(stl, sizeof stl, "To start an expedition, use the game's Go to dungeon.");
         snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>", stl);
         set_text(o, -10, -405, 390, 40, 14, AL_CENTER, 0, t);
+    }
+    if ((o = u_gc_get(h_tfold))) {                            /* viewui: Hide, left of the close button */
+        float sw_[4], sc_[4], cx = 660 - 48 - 64, cy = 444 - 34; R4 wr = rt_rect(w);
+        if (wr.w > 0 && scr_rect(w, sw_) && scr_rect(u_gc_get(h_close), sc_) && sw_[2] > 0) {
+            float k = sw_[2] / wr.w;
+            cx = (sc_[0] - (sw_[0] + sw_[2] / 2)) / k - 10 - 64; cy = (sc_[1] + sc_[3] / 2 - (sw_[1] + sw_[3] / 2)) / k;
+        }
+        set_text(o, cx, cy, 64, 28, 14, AL_RIGHT, 0, "<color=" C_ACC ">Hide</color>");
+        g_raycast(o, true);
     }
     lpop_draw();
     pool_end();
@@ -1293,6 +1349,7 @@ static int open_screen(void) {
     u_last_sibling(u_tr(root()));
     u_go_active(u_go(root()), true);
     opened = 1; hsel = (tm_sel)TM_SEL_INIT; shown_sig = 0;
+    hud_load(); fold_apply();                                /* viewui: opens as it was left (folded or not) */
     model_refresh(); layout(); shown_sig = state_sig();
     return 0;
 }
@@ -1318,8 +1375,16 @@ static int click_at(V2 m, int button) {
         return 0;
     }
     Obj cam = cam_for(root());
+    if (folded()) {                                          /* viewui: only the bar; elsewhere the world's click */
+        if (hit(hud, m, cam_for(hud))) { if (button == 0) fold_set(0); return 1; }
+        if (button == 0 && hit(u_gc_get(h_fshow), m, cam)) { fold_set(0); return 1; }
+        if (button == 0 && hit(u_gc_get(h_fclose), m, cam)) { close_screen(); return 1; }
+        return hit(u_gc_get(h_fbar), m, cam);
+    }
     if (hit(hud, m, cam_for(hud))) { if (button == 0) close_screen(); return 1; }   /* right = drag (hud_input) */
+    if (panel_hit(m)) return 1;                              /* viewui: the Players panel is on top there */
     if (hit(u_gc_get(h_close), m, cam)) { close_screen(); return 1; }
+    if (button == 0 && hit(u_gc_get(h_tfold), m, cam)) { fold_set(1); return 1; }
     if (button == 0 && hit(u_gc_get(h_info), m, cam)) return 1;   /* the info icon: hover shows "How Teams Work" */
     if (spect()) { if (button == 0) notice("You are watching: spectators cannot change teams"); return 1; }   /* read only */
     model_refresh();
@@ -1371,10 +1436,11 @@ static void hud_load(void) {
     char b[200] = ""; size_t n = fread(b, 1, sizeof b - 1, f); b[n] = 0; fclose(f);
     double x = 0, y = 0, dr = 0; jnum(b, "dragged", &dr);
     if (dr && jnum(b, "x", &x) && jnum(b, "y", &y)) { hud_px = (float)x; hud_py = (float)y; hud_pos_set = 1; hud_dragged = 1; }   /* else: snapped to the panel */
+    double fo = 0; if (jnum(b, "folded", &fo)) tfold = fo != 0;
 }
 static void hud_save(void) {
     char p[1000]; hud_path(p, sizeof p); FILE *f = fopen(p, "w"); if (!f) return;
-    fprintf(f, "{\"x\":%.0f,\"y\":%.0f,\"dragged\":%d}\n", hud_px, hud_py, hud_dragged); fclose(f);
+    fprintf(f, "{\"x\":%.0f,\"y\":%.0f,\"dragged\":%d,\"folded\":%d}\n", hud_px, hud_py, hud_dragged, tfold); fclose(f);
 }
 static int hud_is_compact(void) {
     static int (*fn)(void); static unsigned tries;
@@ -1387,7 +1453,7 @@ static int hud_show = 1;                                     /* hud_frame's rule
 static uintptr_t h_sysmenu;
 static int sysmenu_open(void) {                              /* the game's Esc menu (SystemMenuView) is up */
     static unsigned n; static int last;
-    if (n++ % 5) return last;
+    if (n++ % 30) return last;                                /* viewui: FindObjectOfType is slow on a big base (host frames starved, run 3) */
     Obj v = find_view(&h_sysmenu, "Refactor.UI", "SystemMenuView");
     last = v && F(0x50F3724, bool (*)(Obj, void *))(u_go(v), NULL);
     return last;
@@ -1405,11 +1471,21 @@ __attribute__((visibility("default"))) int ui_teams_button_rect(float *x, float 
 static void hud_place(void) {
     Obj hr = u_gc_get(h_hud_root);
     if (!u_alive(hr)) return;
+    static int (*btn_on)(void); static unsigned btn_tries;   /* viewui: the player panel's "Teams button" setting */
+    if (!btn_on && btn_tries++ % 60 == 0) btn_on = (int (*)(void))dl("ui_teams_button_on");
     int want = hud_show && !sysmenu_open()                   /* lan_v9: hidden while the Esc menu is open (it covered "Load Campaign") */
-               && !opened && !prop_shown                     /* and while our own windows are (Teams + its lend menu, proposal): lead 2026-10-14 */
+               && !prop_shown                                /* and while the proposal is (lead 2026-10-14); viewui: it stays while Teams is open */
+               && (!btn_on || btn_on())
                && !busy();                                   /* and on the loading screen (map change, load): gamelane 2026-10-14 */
     if (u_go_active_self(u_go(hr)) != want) u_go_active(u_go(hr), want);
     if (!want) return;
+    {   /* viewui: above the open window (32000), like the player panel; else above the stock popups */
+        int o = opened && !folded() ? 32020 : 31000;
+        static uintptr_t h_cv, h_cv_of; Obj cv = u_gc_get(h_cv);
+        if (u_gc_get(h_cv_of) != hr || !u_alive(cv)) { Obj cty = type_object("UnityEngine", "Canvas"); cv = cty ? go_component(u_go(hr), cty) : NULL;
+            u_gc_free(h_cv); h_cv = u_gc_new(cv); u_gc_free(h_cv_of); h_cv_of = u_gc_new(hr); }
+        if (u_alive(cv) && tm_is(cv, K_CV) && F(0x5476320, int (*)(Obj, void *))(cv, NULL) != o) F(0x547640C, void (*)(Obj, int, void *))(cv, o, NULL);
+    }
     hud_load();
     Obj ct = u_tr_parent(hr); R4 cr = ct ? rt_rect(ct) : (R4){0, 0, 1920, 1080};
     if (!hud_dragged) {                                      /* never dragged: snapped right of the player panel, any panel size */
@@ -1767,7 +1843,14 @@ static void stock_gear_frame(void) {
 }
 /* for the player panel (ui_game, dlsym): 1 while a Teams window, the proposal or the stock window in the proposal flow is up */
 /* the proposal side panel is not modal (lan_v10): the player panel, hotkeys and Escape stay as without it */
-__attribute__((visibility("default"))) int ui_teams_modal_open(void) { return opened || stock_mode == 2; }
+/* viewui: the folded Teams window is not modal (the bar only) */
+__attribute__((visibility("default"))) int ui_teams_modal_open(void) { return (opened && !folded()) || stock_mode == 2; }
+/* viewui: the player panel draws above the open window; its clicks and tooltips are ui_game's (ui_panel_hit, dlsym) */
+static int panel_hit(V2 m) {
+    static int (*fn)(float, float); static unsigned tries;
+    if (!fn && tries++ % 60 == 0) fn = (int (*)(float, float))dl("ui_panel_hit");
+    return fn ? fn(m.x, m.y) : 0;
+}
 static void stock_close(void) { Obj v = pres_view(); if (stock_mode && u_alive(v)) F(0xEE3384, void (*)(Obj, void *))(v, NULL); }
 /* owner lan_v7: opening the expedition plan is local. The portal interaction runs in the simulation on every peer
    (PortalOrder.Open 0xC050B0, Interaction by reference: +0x28 UserEntity); only the player who controls the unit
@@ -1996,6 +2079,13 @@ static void tips_frame(void) {
     }
     if (!opened || !root()) return;
     Obj cam = cam_for(root());
+    if (folded()) {                                          /* viewui: the bar */
+        if (hit(u_gc_get(h_fshow), m, cam)) tip_on(u_gc_get(h_fshow), "Show", "Opens the whole Teams window again.");
+        else if (hit(u_gc_get(h_fclose), m, cam)) tip_on(u_gc_get(h_fclose), "Close", "Closes the Teams window.");
+        return;
+    }
+    if (panel_hit(m)) return;                                /* viewui: the Players panel's own tooltips */
+    if (hit(u_gc_get(h_tfold), m, cam)) { tip_on(u_gc_get(h_tfold), "Hide", "Folds the Teams window to a small bar at the top, so you can see and play the game. Show opens it again."); return; }
     for (int i = 0; lpop_unit >= 0 && i < nlrow; i++) if (hit(u_gc_get(lrow_h[i]), m, cam)) { tip_lrow(u_gc_get(lrow_h[i]), i); return; }
     for (int i = 0; i < nchip; i++) if (hit(u_gc_get(chip_h[i]), m, cam)) { tip_chip(u_gc_get(chip_h[i]), chip_u[i]); return; }
     for (int i = 0; i < nbar; i++) if (hit(u_gc_get(bar_h[i]), m, cam)) { tip_bar(i); return; }
@@ -2032,7 +2122,7 @@ void ui_teams_frame(void) {
             V3 mp = F(0x51AD4DC, V3 (*)(void *))(NULL);
             click_at((V2){mp.x, mp.y}, b);
         }
-    if (opened && root()) {                                  /* owner lan_v8: Escape closes Teams (the menu / tip first) */
+    if (opened && root() && !folded()) {                     /* owner lan_v8: Escape closes Teams (the menu / tip first); folded: the game's */
         static bool (*kd)(int); static int looked;
         if (!looked) { looked = 1; kd = (bool (*)(int))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::GetKeyDownInt(UnityEngine.KeyCode)"); }
         if ((kd && kd(27)) || test_escape) {
@@ -2357,6 +2447,9 @@ static char *state_json(int rc) {
       Obj cv = r && cty ? go_component(u_go(r), cty) : NULL, gr = r && gty ? go_component(u_go(r), gty) : NULL;
       bput(&b, ",\"modal_sorting\":%d,\"modal_raycaster\":%d", u_alive(cv) ? (tm_is(cv, K_CV) ? F(0x5476320, int (*)(Obj, void *))(cv, NULL) : 0) : -1, u_alive(gr)); }
     { Obj inf = u_gc_get(h_info); bput(&b, ",\"info_icon\":%d", u_alive(inf) && u_go_active_self(u_go(inf))); }
+    { float fr[4] = {0}, wr2[4] = {0}, hr2[4] = {0}; int fo = scr_rect(u_gc_get(h_fbar), fr), wo = scr_rect(win(), wr2), ho = scr_rect(u_gc_get(h_tfold), hr2);
+      bput(&b, ",\"tfold\":%d,\"modal\":%d,\"bar_rect\":[%.0f,%.0f,%.0f,%.0f],\"win_rect\":[%.0f,%.0f,%.0f,%.0f],\"hide_rect\":[%.0f,%.0f,%.0f,%.0f]",
+           tfold, ui_teams_modal_open(), fo ? fr[0] : -1, fr[1], fr[2], fr[3], wo ? wr2[0] : -1, wr2[1], wr2[2], wr2[3], ho ? hr2[0] : -1, hr2[1], hr2[2], hr2[3]); }
     bput(&b, ",\"lpop\":"); bstr(&b, lpop_unit >= 0 ? lpop_s : "");
     bput(&b, ",\"tip\":"); bstr(&b, tip_last); bput(&b, ",\"tip_body\":"); bstr(&b, tip_body_last);
     bput(&b, ",\"ready_text\":"); bstr(&b, t1); bput(&b, ",\"hint\":"); bstr(&b, t2); bput(&b, "}");
@@ -2535,6 +2628,8 @@ char *ui_teams_exec(const char *cmd, const char *line) {
     } else if (!strcmp(act, "admin")) {                     /* host: the same DSNET_ADMIN_MODE command the lobby toggle sends */
         double on_ = 1; jnum(line, "on", &on_); uint8_t v = on_ != 0; dsnet_client *c = cli();
         rc = c && dsnet_is_host(c) ? dsnet_submit(c, 14, 0, &v, 1) : -1; shown_sig = 0;
+    } else if (!strcmp(act, "tfold")) {                      /* test: the window's Hide / the bar's Show ({on}: 1 fold, 0 unfold) */
+        double on_ = !tfold; jnum(line, "on", &on_); if (!opened) rc = -2; else fold_set(on_ != 0);
     } else if (!strcmp(act, "relayout")) { shown_sig = 0; if (opened) { model_refresh(); layout(); } }
     else if (strcmp(act, "state")) rc = -1;
     return state_json(rc);

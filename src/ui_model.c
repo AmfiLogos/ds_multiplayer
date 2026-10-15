@@ -479,6 +479,7 @@ void ui_settings_default(ui_settings *s) {
     memset(s, 0, sizeof *s);
     s->see_through = UI_SEE_THROUGH_MIN; s->names = UI_NAMES_OTHERS; s->tooltips = 1;
     s->pings = 1; s->ping_sound = 1; s->ping_chat = 1; s->views = 1; s->offscreen = 0; s->outline = UI_OUTLINE_OFF;
+    s->teams_button = 1;
     s->mini = 1; s->mini_size = UI_MINI_MEDIUM;
 }
 static int jint(const char *j, const char *key, int *out) {
@@ -509,6 +510,7 @@ void ui_settings_parse(const char *j, ui_settings *s) {
     if (jint(j, "ping_chat", &v)) s->ping_chat = v != 0;
     if (jint(j, "views", &v)) s->views = v != 0;
     if (jint(j, "offscreen", &v)) s->offscreen = v != 0;
+    if (jint(j, "teams_button", &v)) s->teams_button = v != 0;
     if (jint(j, "outline", &v) && v >= UI_OUTLINE_OFF && v <= UI_OUTLINE_BOTH) s->outline = v;
     if (jint(j, "mini", &v)) s->mini = v != 0;
     if (jint(j, "mini_size", &v) && v >= UI_MINI_SMALL && v <= UI_MINI_LARGE) s->mini_size = v;
@@ -532,10 +534,10 @@ void ui_settings_parse(const char *j, ui_settings *s) {
 }
 int ui_settings_format(const ui_settings *s, char *out, size_t cap) {
     int n = snprintf(out, cap, "{\"see_through\":%d,\"names\":%d,\"list_open\":%d,\"pos_set\":%d,\"pos_x\":%d,\"pos_y\":%d,\"tooltips\":%d,\"compact\":%d,"
-                     "\"pings\":%d,\"ping_sound\":%d,\"ping_chat\":%d,\"views\":%d,\"offscreen\":%d,\"outline\":%d,"
+                     "\"pings\":%d,\"ping_sound\":%d,\"ping_chat\":%d,\"views\":%d,\"offscreen\":%d,\"outline\":%d,\"teams_button\":%d,"
                      "\"mini\":%d,\"mini_size\":%d,\"mini_pos_set\":%d,\"mini_x\":%d,\"mini_y\":%d,\"fast_join\":%d,\"colors\":\"",
                      s->see_through, s->names, s->list_open, s->pos_set, s->pos_x, s->pos_y, s->tooltips, s->compact,
-                     s->pings, s->ping_sound, s->ping_chat, s->views, s->offscreen, s->outline,
+                     s->pings, s->ping_sound, s->ping_chat, s->views, s->offscreen, s->outline, s->teams_button,
                      s->mini, s->mini_size, s->mini_pos_set, s->mini_x, s->mini_y, s->fast_join);
     for (int i = 0; i < s->ncol && n > 0 && (size_t)n < cap; i++) n += snprintf(out + n, cap - (size_t)n, "%s%s:%d", i ? "," : "", s->col_uid[i], s->col_idx[i]);
     if (n > 0 && (size_t)n < cap) n += snprintf(out + n, cap - (size_t)n, "\"}\n");
@@ -781,4 +783,13 @@ int ui_edge_arrow(float w, float h, float m, float tx, float ty, float *ax, floa
     float a = atan2f(dy, dx) * 57.29578f;
     *deg = a;
     return 1;
+}
+
+int ui_view_marks(float w, float h, float x0, float y0, float x1, float y1, int same, int followed, int views_on, int offscreen_on) {
+    if (followed) return UI_VIEW_NONE;
+    int overlap = x1 > 0 && x0 < w && y1 > 0 && y0 < h;
+    int covers = x0 <= 2 && y0 <= 2 && x1 >= w - 2 && y1 >= h - 2;   /* every edge of their view is off my screen */
+    if (!overlap) return offscreen_on ? UI_VIEW_EDGE : UI_VIEW_NONE;
+    if (!views_on) return UI_VIEW_NONE;
+    return same || covers ? UI_VIEW_SAME : UI_VIEW_BRACKETS;
 }

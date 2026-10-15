@@ -58,7 +58,7 @@ def main():
         def view(step):
             time.sleep(3)
             va, vb = c(X, cmd='ui_view'), c(Y, cmd='ui_view')
-            log(f'step {step}: A other_units {va.get("other_units")} alpha {va.get("other_alpha")} | B see_through 30 alpha {vb.get("other_alpha")}')
+            log(f'step {step}: A other_units {va.get("other_units")} alpha {va.get("other_alpha")} solid {va.get("other_solid")} | B see_through 30 alpha {vb.get("other_alpha")} solid {vb.get("other_solid")}')
             want = 1.0 if step == 0 else 1.0 - step / 100
             lo, hi = va.get('other_alpha', [-1, -1])
             check(f'A step {step}: other units alpha {want:.2f}', va.get('other_units', 0) >= 2 and abs(lo - want) < 0.01 and abs(hi - want) < 0.01, f'{lo} {hi}')

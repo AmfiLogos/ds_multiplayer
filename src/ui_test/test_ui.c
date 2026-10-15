@@ -548,7 +548,27 @@ static void test_mini(void) {
     ui_mini_frame(10, 9, 10, 9, 0, &v); CHECK(v.hw >= 4 && v.hh >= 4);                       /* odd input stays sane */
 }
 
+/* viewui (owner 2026-10-15): follow hides the followed friend's marks; my screen inside their view = "sees this too" */
+static void test_viewui(void) {
+    const float W = 1920, H = 1080;
+    CHECK(ui_view_marks(W, H, 200, 200, 900, 700, 0, 0, 1, 0) == UI_VIEW_BRACKETS);           /* partly on screen */
+    CHECK(ui_view_marks(W, H, 200, 200, 900, 700, 0, 1, 1, 1) == UI_VIEW_NONE);               /* followed: nothing */
+    CHECK(ui_view_marks(W, H, 3000, 200, 3900, 700, 0, 1, 1, 1) == UI_VIEW_NONE);             /* followed + off screen: no edge mark */
+    CHECK(ui_view_marks(W, H, 3000, 200, 3900, 700, 0, 0, 1, 1) == UI_VIEW_EDGE);
+    CHECK(ui_view_marks(W, H, 3000, 200, 3900, 700, 0, 0, 1, 0) == UI_VIEW_NONE);             /* option off */
+    CHECK(ui_view_marks(W, H, -300, -200, W + 300, H + 200, 0, 0, 1, 0) == UI_VIEW_SAME);     /* my screen inside theirs */
+    CHECK(ui_view_marks(W, H, 0, 0, W, H, 0, 0, 1, 0) == UI_VIEW_SAME);                       /* exactly my screen */
+    CHECK(ui_view_marks(W, H, 40, 0, W, H, 0, 0, 1, 0) == UI_VIEW_BRACKETS);                  /* left edge on screen */
+    CHECK(ui_view_marks(W, H, 100, 100, 800, 600, 1, 0, 1, 0) == UI_VIEW_SAME);               /* same spot, smaller screen */
+    CHECK(ui_view_marks(W, H, -300, -200, W + 300, H + 200, 0, 0, 0, 1) == UI_VIEW_NONE);     /* views off */
+    ui_settings s; ui_settings_default(&s); CHECK(s.teams_button == 1);
+    s.teams_button = 0; char j[2048]; ui_settings_format(&s, j, sizeof j);
+    ui_settings t; ui_settings_default(&t); ui_settings_parse(j, &t); CHECK(t.teams_button == 0);
+    ui_settings_default(&t); ui_settings_parse("{\"views\":1}", &t); CHECK(t.teams_button == 1);     /* older file: shown */
+}
+
 int main(void) {
+    test_viewui();
     test_mini();
     test_v10();
     test_claims(); test_votes(); test_popups(); test_story(); test_mapvote(); test_view(); test_story_rules(); test_live(); test_address();
