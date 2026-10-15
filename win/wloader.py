@@ -54,8 +54,35 @@ def install(kit):
                         winpath(os.path.abspath(kit)) + "\\install.bat", STEAMGAME], env=env, capture_output=True, text=True)
     print(r.stdout[-1500:]); return r.returncode
 
+def bottle_silent():
+    """the DSMP bottle must have Graphics=null and Audio="" (no window, no sound can reach the owner)"""
+    out = subprocess.run([f"{C}/wine", "--bottle", BOTTLE, "reg", "query", "HKCU\\Software\\Wine\\Drivers"],
+                         capture_output=True, text=True).stdout
+    g = [l.split()[-1] for l in out.splitlines() if l.strip().startswith("Graphics")]
+    a = [l.split() for l in out.splitlines() if l.strip().startswith("Audio")]
+    ok = g == ["null"] and a and len(a[0]) == 2          # "Audio REG_SZ" with an empty value
+    if not ok: print("DSMP bottle is not silent (Graphics", g, "Audio", a, "): not starting")
+    return ok
+
+WATCH = r"""
+import os, sys, time, signal
+sys.path.insert(0, %r); import wloader as w
+t0 = time.time(); title = False
+while time.time() - t0 < %d:
+    time.sleep(10)
+    if not [p for p, c in w.dsmp_pids() if "Dungeon Settlers Modded" in c]: sys.exit(0)
+    try: title = title or w.cmd({"cmd": "status"}, timeout=5).get("boot_ready", False)
+    except Exception: pass
+    if not title and time.time() - t0 > 180: break
+w.stop(); print("wloader watchdog: stopped the copy (no title in 3 min or past the time limit)")
+"""
+
 def start(extra):
     if not wait_free(): return 1
+    if not bottle_silent(): return 1
+    subprocess.Popen(["python3", "-c", WATCH % (os.path.dirname(os.path.abspath(__file__)), int(os.environ.get("WLOADER_MAX_S", "1500")))],
+                     start_new_session=True, stdout=open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "instances", "wloader_watch.out"), "a"),
+                     stderr=subprocess.STDOUT)
     if not subprocess.run(["pgrep", "-f", "dsmp_guard.py"], capture_output=True).stdout:
         subprocess.Popen(["python3", f"{H}/ds_multiplayer/win/tools/dsmp_guard.py", "7200"], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
