@@ -315,3 +315,15 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
 
 ## Distance (owner 2026-10-15)
 - "it's impossible to have 2 players on different floors atm in regular playthrough": no different-floor test. Retest only if a feature ever splits players across floors.
+
+## Multiplayer world tag (owner 2026-10-15, lane mptag)
+Owner: "put a tag on the world as soon as another friend connects to the same world as you ... you could deactivate it ... put the
+multiplayer tag next to the name of the save and then just put the players that connected on it."
+
+| Change | Impact | Cost | Failure point |
+|---|---|---|---|
+| Store: new sidecar `<app data>/mp_tags.txt`, one line per tagged world: `<campaign guid>\t<name>\t<name>...` (guid = save header CampaignGuid, the key mp_worlds.txt uses). Never inside the game's save JSON. | Save files unchanged: full-state check and stock game see the same bytes. Per machine (each friend has their own file). | ~60 lines in mpmenu_model.c (pure file code, unit-tested) | Lost if the app data folder is deleted; the save still loads, only the tag is gone. |
+| Set: every 60 frames in a session, once the world is in, if 2 or more players (not spectators) are present: add every present name to the world's line (union, max 16, host first). Host and guests both tag their copy. | Tag appears within ~1 s of a friend joining. Hosting alone no longer tags (the old lan_v7 tag came from mp_worlds.txt = any hosted world). | ~25 lines in mpmenu.c | A friend who joins and leaves inside 1 s is not recorded. |
+| Show: load list world row (SubUI_SettlerNameCase.Init post-hook, Mac 0x85E50C): after the world name, "Multiplayer" (blue #8FC4FF, as before) + "with the owner, Djigui" (#A69085, smaller). Save rows (SubUI_SaveFileButton.SetData hook) keep "[Multiplayer]" from the same file. | Load list from the title and from the Esc menu. | ~40 lines | Long name lists: cut to 3 names + "+N". |
+| Remove: a small "Remove tag" text on the tagged world row; click -> stock notice box "Remove the multiplayer tag?" [Remove] [Cancel]; Remove deletes the line and refreshes the row. It comes back only when a friend joins that world again (then with the new session's names). | One click + confirm; no save touched. | ~50 lines (hit test on mouse down, as ui_teams) | No box found: removes at once (it is the player's own click). |
+| Migration: first run without mp_tags.txt seeds it from mp_history.json rows that list other players (host + players + me). | Worlds already played with friends keep a tag. | ~15 lines | Worlds played with friends before Recent worlds (lan_v8) existed lose the tag. |

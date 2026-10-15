@@ -92,6 +92,11 @@ static void tmp_set(Obj t, const char *s) {
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str(s), *(void **)((char *)k + 0x560));
 }
+static void tmp_set_obj(Obj t, Obj s) {                                     /* the same, with an il2cpp string as is */
+    if (!u_alive(t) || !mm_is(t, K_TMP)) return;
+    void *k = *(void **)t;
+    (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, s, *(void **)((char *)k + 0x560));
+}
 static void str_utf8(Obj s, char *out, size_t cap) {          /* ASCII-safe copy of an il2cpp string (read-back) */
     size_t n = 0; if (cap) out[0] = 0;
     if (!s || !cap) return;
@@ -1485,14 +1490,18 @@ static int campaign_guid(char *out, size_t cap) {                          /* Cl
     char gs[40]; guid_str(g, gs); snprintf(out, cap, "%s", gs); return 1;
 }
 
-/* load list: worlds played in multiplayer get a tag after their title (SubUI_SaveFileButton.SetData post-hook) */
+/* load list: saves of worlds with the Multiplayer tag (mp_tags.txt, owner 2026-10-15) get it after their title
+ * (SubUI_SaveFileButton.SetData post-hook). The world row has the full tag (h_case_init). */
+static int tag_get(const char *guid, char names[][32]);
+static void tag_slot_seen(Obj slot, const char *guid);
 static void (*o_slot_set)(Obj, const void *, bool, Obj, void *);
 static void h_slot_set(Obj self, const void *hdr, bool inter, Obj act, void *mi) {
     o_slot_set(self, hdr, inter, act, mi);
     if (!hdr || !self) return;
     Guid g; memcpy(&g, hdr, 16);                                           /* CampaignSaveHeader.CampaignGuid @0x0 (header by reference) */
-    char gs[40]; guid_str(g, gs); mpm_settings st;
-    if (!world_get(gs, &st)) return;
+    char gs[40]; guid_str(g, gs); char nm[MPM_TAG_NAMES][32];
+    tag_slot_seen(self, gs);
+    if (tag_get(gs, nm) < 0) return;
     Obj t = AT(self, 0x38, Obj);                                            /* _titleText */
     char cur[256] = ""; str_utf8(tmp_get(t), cur, sizeof cur);
     if (strstr(cur, "[Multiplayer]")) return;
@@ -1724,7 +1733,7 @@ static void notice_frame(const mpm_obs *o) {
  * actions; _txtConfirm +0x40 primary right "End for everyone", _txtCancle +0x50 "Cancel"). The ui lane's
  * OnClick_Confirm / OnClick_Cancle hooks hand clicks on a box that is not theirs to mpmenu_notice_click (dlsym). If
  * another box takes the view (its text changes) or it closes another way, it counts as Cancel. */
-enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF };   /* SPECT_OFF: "Remove the spectators now?" */             /* which of our boxes is up (one view, one at a time) */
+enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG };   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
 static char lbox_text[400]; static int lbox_up;                             /* lbox_up = BX_* */
 static Obj lbox_view(void) { return find_view_x(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }
 static int lbox_ours(Obj v) {
@@ -1776,6 +1785,7 @@ static void leave_box_frame(void) {
 }
 /* ui lane (dlsym, CommonNoticeView click hooks): 1 = the click was on our Leave box */
 static void invite_click(int confirm);
+static void tag_answer(int confirm);
 __attribute__((visibility("default"))) int mpmenu_notice_click(int confirm) {
     if (lbox_up > BX_LEAVE && lbox_ours(lbox_view())) { invite_click(confirm); return 1; }   /* invite / joining boxes */
     if (!M.confirm_leave || !lbox_ours(lbox_view())) return 0;
@@ -1791,7 +1801,7 @@ __attribute__((visibility("default"))) int mpmenu_notice_click(int confirm) {
 static int (*inv_pending)(char *, size_t), (*inv_answer)(int);
 static char inv_host[64]; static int join_box_on, join_phase_shown = -1, nosave_ask;   /* nosave_ask: show the second box next frame */
 static void box_show(int kind, const char *text, const char *yes, const char *no) {
-    Obj ev = esc_view(); if (ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL);   /* not under the Esc menu */
+    Obj ev = esc_view(); if (kind != BX_UNTAG && ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL);   /* not under the Esc menu (the load list stays) */
     Obj v = lbox_view();
     if (!u_alive(v) || !mm_is(v, K_CNV)) { rig_log("mpmenu: no notice box for: %s", text); return; }
     snprintf(lbox_text, sizeof lbox_text, "%s", text);
@@ -1853,11 +1863,13 @@ static void invite_click(int confirm) {
     else if (k == BX_NOSAVE) invite_answer(confirm ? 1 : 0);
     else if (k == BX_JOINING) { join_box_on = 0; mp_steam_leave(); rig_log("mpmenu: joining cancelled (box)"); }
     else if (k == BX_SPECT_OFF) { if (confirm) spect_apply(0); else rig_log("mpmenu: spectators stay (box: Cancel)"); }
+    else if (k == BX_UNTAG) tag_answer(confirm);
 }
 static void invite_frame(const mpm_obs *o) {
     static int looked; if (!looked) { looked = 1; inv_pending = (int (*)(char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_invite_pending"); inv_answer = (int (*)(int))dlsym(RTLD_DEFAULT, "mp_game_invite_answer"); }
     Obj v = lbox_view();
     if (lbox_up == BX_SPECT_OFF && !lbox_ours(v)) { lbox_up = BX_NONE; rig_log("mpmenu: spectators box gone: they stay"); }   /* closed another way = Cancel */
+    if (lbox_up == BX_UNTAG && !lbox_ours(v)) { lbox_up = BX_NONE; tag_answer(0); }                                       /* closed another way = Cancel */
     if ((lbox_up == BX_INVITE || lbox_up == BX_NOSAVE || lbox_up == BX_JOINING) && !lbox_ours(v)) {   /* closed or taken by another box: Cancel */
         int k = lbox_up; lbox_up = BX_NONE;
         if (k == BX_JOINING) { if (join_box_on && frames % 30 == 0) join_phase_shown = -1; }   /* shown again below */
@@ -2638,6 +2650,144 @@ static void few_open_bring(void) { few_open(FEW_BRING, NULL); }
 static void few_open_list(void) { few_open(FEW_LIST, NULL); }
 static int few_is_open(void) { return W.mode != FEW_NONE; }
 #include "pvp_ui.inc"   /* PvP lane (ext/pvp): PvP window, HUD, result window */
+/* ---------------------------------------------------------------- Multiplayer world tag (owner 2026-10-15, PLAN.md)
+ * <app data folder>/mp_tags.txt (mpm_tag_*): a world gets the tag the first time another player is in it with us (host
+ * and guests each tag their own copy), with the names of everyone who was. Shown on the load list's world row
+ * (SubUI_SettlerNameCase.Init post-hook) and its save rows (h_slot_set). "Remove tag" on the row asks, then deletes the
+ * line; it comes back only when a friend joins that world again. The game's save is never touched. */
+static void utf16_to_utf8(Obj s, char *out, size_t cap);
+static void tag_path(char *p, size_t cap) { app_path(p, cap, "mp_tags.txt"); }
+static void tag_seed(void) {                                                /* once, no file yet: worlds in Recent worlds with other players */
+    static int done; if (done) return; done = 1;
+    char p[1200]; tag_path(p, sizeof p);
+    FILE *f = fopen(p, "r"); if (f) { fclose(f); return; }
+    if (!hist_loaded) hist_load();
+    f = fopen(p, "a"); if (f) fclose(f);                                    /* the file now exists: seeded once, even with no rows */
+    int seeded = 0;
+    for (int i = nhist - 1; i >= 0; i--) {                                  /* oldest first: names keep the order they came in */
+        if (!hist[i].players[0]) continue;
+        char gid[64] = ""; snprintf(gid, sizeof gid, "%.*s", (int)strcspn(hist[i].key, "|"), hist[i].key);
+        char pl[240]; snprintf(pl, sizeof pl, "%s", hist[i].players);
+        const char *nm[MPM_TAG_NAMES]; int n = 0;
+        nm[n++] = hist[i].host; if (strcmp(hist[i].host, my_name)) nm[n++] = my_name;
+        for (char *e = strtok(pl, ";"); e && n < MPM_TAG_NAMES; e = strtok(NULL, ";")) { e[strcspn(e, "|")] = 0; nm[n++] = e; }
+        if (gid[0] && strcmp(hist[i].host, "the host")) seeded += mpm_tag_add(p, gid, nm, n);
+        else if (gid[0]) seeded += mpm_tag_add(p, gid, nm + 1, n - 1);       /* host name unknown: the others only */
+    }
+    rig_log("mpmenu: mp_tags.txt created (%d world(s) from Recent worlds)", seeded);
+}
+static int tag_get(const char *guid, char names[][32]) {
+    tag_seed(); char p[1200]; tag_path(p, sizeof p);
+    return mpm_tag_get(p, guid, names, MPM_TAG_NAMES);
+}
+/* in a session, every 60 frames once the world is in: 2+ players present -> every present name goes on the world's tag */
+static void tag_frame(const mpm_obs *o) {
+    if (frames % 60 != 30 || !o->campaign_ready || o->loading) return;
+    mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
+    if (!c || mp_is_spectator(s) || dsnet_player_id(c) < 0) return;
+    uint32_t pm = dsnet_present_mask(c);
+    if (__builtin_popcount(pm) < 2) return;
+    char gid[64] = ""; if (!campaign_guid(gid, sizeof gid)) return;
+    const char *nm[DSNET_MAX_PLAYERS]; char buf[DSNET_MAX_PLAYERS][32]; int n = 0;
+    for (int p = 0; p < DSNET_MAX_PLAYERS; p++) {                           /* slot order: the host first */
+        if (!(pm >> p & 1u)) continue;
+        const char *x = dsnet_player_name(c, p); if (!x || !x[0]) continue;
+        snprintf(buf[n], 32, "%s", x); nm[n] = buf[n]; n++;
+    }
+    tag_seed(); char p[1200]; tag_path(p, sizeof p);
+    if (mpm_tag_add(p, gid, nm, n)) rig_log("mpmenu: Multiplayer tag on world %s (%d players present)", gid, n);
+}
+/* the load list's rows we decorated: world rows (case, guid, its stock name text string, our "Remove tag" text) and save rows */
+#define TAG_ROWS 64
+typedef struct { uintptr_t row, name0, rm; char guid[40]; } tag_row;
+static tag_row tcase[TAG_ROWS], tslot[TAG_ROWS];
+static char tag_pending[40];                                                /* the world the Remove box asks about */
+static tag_row *tag_row_of(tag_row *t, Obj row) {
+    tag_row *free_at = NULL;
+    for (int i = 0; i < TAG_ROWS; i++) {
+        Obj r = u_gc_get(t[i].row);
+        if (r == row && u_alive(r)) return &t[i];
+        if (!free_at && !u_alive(r)) free_at = &t[i];
+    }
+    if (free_at) { u_gc_free(free_at->row); u_gc_free(free_at->name0); u_gc_free(free_at->rm); memset(free_at, 0, sizeof *free_at); free_at->row = u_gc_new(row); }
+    return free_at;
+}
+static void tag_slot_seen(Obj slot, const char *guid) { tag_row *r = tag_row_of(tslot, slot); if (r) snprintf(r->guid, sizeof r->guid, "%s", guid); }
+typedef struct { float x, y, w, h; } URect;
+static float txt_pref_w(Obj t) { return mm_is(t, K_TMP) ? F(0x4F0D81C, float (*)(Obj, void *))(t, NULL) : 0; }   /* TMP_Text.preferredWidth */
+/* the world row as the tag says: name + "Multiplayer · with names" + the "Remove tag" text, or the stock name alone */
+static void tag_case_show(tag_row *r) {
+    Obj cs = u_gc_get(r->row), nt = u_alive(cs) ? AT(cs, 0x28, Obj) : NULL; /* SubUI_SettlerNameCase._nameText */
+    if (!u_alive(nt)) return;
+    Obj name0 = u_gc_get(r->name0), rm = u_gc_get(r->rm);
+    char nm[MPM_TAG_NAMES][32]; int n = tag_get(r->guid, nm);
+    if (n < 0) {
+        if (name0) tmp_set_obj(nt, name0);
+        if (u_alive(rm)) u_active(rm, false);
+        return;
+    }
+    char clan[200] = ""; utf16_to_utf8(name0, clan, sizeof clan);
+    char who[200]; mpm_tag_names(nm, n, 3, who, sizeof who);
+    char t[600]; snprintf(t, sizeof t, "%s  <size=75%%><color=#8FC4FF>Multiplayer</color><color=#A69085>  with %s</color></size>", clan, who);
+    tmp_set(nt, t);
+    if (!u_alive(rm)) {
+        rm = mk_txt(nt, u_tr(nt), 0, 14, 513, 0, 0, 0, 120, 24, C_SUB);
+        if (!rm) return;
+        tmp_set(rm, "<u>Remove tag</u>");
+        F(0x5260348, void (*)(Obj, bool, void *))(rm, true, NULL);          /* raycastTarget on: the row's own button under it gets no click */
+        u_gc_free(r->rm); r->rm = u_gc_new(rm);
+    }
+    u_active(rm, true);
+    /* after the name's text, inside the name's rect (centre anchors of the name text, local units) */
+    URect nr = F(0x5106978, URect (*)(Obj, void *))(u_tr(nt), NULL);
+    int al = mm_is(nt, K_TMP) ? F(0x4F0B7AC, int (*)(Obj, void *))(nt, NULL) : 513;   /* TMP_Text.alignment: low bits 1 left, 2 centre, 4 right */
+    float pw = txt_pref_w(nt), rw = txt_pref_w(rm) + 6, x;
+    if (pw > nr.w) pw = nr.w;
+    x = (al & 2) ? pw / 2 : (al & 4) ? nr.w / 2 : -nr.w / 2 + pw;
+    place(rm, x + 14 + rw / 2, 0, rw, 24);
+}
+static void (*o_case_init)(Obj, Obj, const void *, bool, int, Obj, Obj, Obj, void *);
+static void h_case_init(Obj self, Obj clan, const void *hdr, bool open, int nb, Obj slots, Obj ng, Obj oc, void *mi) {
+    o_case_init(self, clan, hdr, open, nb, slots, ng, oc, mi);
+    if (!self || !hdr) return;
+    Guid g; memcpy(&g, hdr, 16); char gs[40]; guid_str(g, gs);              /* CampaignSaveHeader.CampaignGuid (header by reference) */
+    tag_row *r = tag_row_of(tcase, self); if (!r) return;
+    Obj nt = AT(self, 0x28, Obj);
+    snprintf(r->guid, sizeof r->guid, "%s", gs);
+    u_gc_free(r->name0); r->name0 = u_alive(nt) ? u_gc_new(tmp_get(nt)) : 0;   /* the stock text, to put back */
+    tag_case_show(r);
+}
+static void tag_answer(int confirm) {
+    char p[1200]; tag_path(p, sizeof p);
+    if (!confirm || !tag_pending[0]) { rig_log("mpmenu: Multiplayer tag kept (box: Cancel)"); tag_pending[0] = 0; return; }
+    int had = mpm_tag_remove(p, tag_pending);
+    rig_log("mpmenu: Multiplayer tag removed from world %s (%s)", tag_pending, had ? "done" : "there was none");
+    for (int i = 0; i < TAG_ROWS; i++) if (!strcmp(tcase[i].guid, tag_pending) && u_alive(u_gc_get(tcase[i].row))) tag_case_show(&tcase[i]);
+    for (int i = 0; i < TAG_ROWS; i++) {                                    /* its save rows: the stock title back */
+        Obj sl = u_gc_get(tslot[i].row), tt = u_alive(sl) && !strcmp(tslot[i].guid, tag_pending) ? AT(sl, 0x38, Obj) : NULL;
+        char cur[320] = ""; if (u_alive(tt)) utf16_to_utf8(tmp_get(tt), cur, sizeof cur);
+        char *k = strstr(cur, "  <color=#8FC4FF>[Multiplayer]</color>"); if (k) { *k = 0; tmp_set(tt, cur); }
+    }
+    tag_pending[0] = 0;
+}
+static void tag_ask(tag_row *r) {
+    char nm[MPM_TAG_NAMES][32], who[200], clan[200] = "", t[400]; int n = tag_get(r->guid, nm); if (n < 0) return;
+    mpm_tag_names(nm, n, MPM_TAG_NAMES, who, sizeof who); utf16_to_utf8(u_gc_get(r->name0), clan, sizeof clan);
+    snprintf(tag_pending, sizeof tag_pending, "%s", r->guid);
+    snprintf(t, sizeof t, "<size=150%%>Remove the multiplayer tag?</size>\n%s was played with %s.\n<size=88%%><color=#a69085>The world itself does not change. The tag comes back if a friend joins it again.</color></size>", clan, who);
+    box_show(BX_UNTAG, t, "Remove", "Cancel");
+    if (lbox_up != BX_UNTAG) tag_answer(1);                                 /* no box could be shown: the player asked for it */
+}
+static tag_row *tag_rm_at(V3 m) {
+    for (int i = 0; i < TAG_ROWS; i++) { Obj rm = u_gc_get(tcase[i].rm); if (u_alive(u_gc_get(tcase[i].row)) && pt_in(rm, m)) return &tcase[i]; }
+    return NULL;
+}
+static void tag_click_frame(void) {
+    if (lbox_up || !popup_open(5) || !F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) return;   /* Input.GetMouseButtonDown(0), load list open */
+    tag_row *r = tag_rm_at(F(0x51AD4DC, V3 (*)(void *))(NULL));
+    if (r) tag_ask(r);
+}
+
 void mpmenu_frame(void) {
     fog_poll();
     frames++;
@@ -2683,6 +2833,8 @@ void mpmenu_frame(void) {
     notice_frame(&o);
     leave_box_frame();
     invite_frame(&o);
+    tag_frame(&o);
+    tag_click_frame();
     rules_watch(&o);
     pick_frame(&o);
     chat_frame(&o);
@@ -2706,6 +2858,7 @@ void mpmenu_install(void) {
     bad |= rig_hook(0xF2EEA8, (void *)h_esc_load, (void **)&o_esc_load, "mpmenu SystemMenuView.OnLoadCampaignPressed (blocked in MP)");
     bad |= rig_hook(0xD6C800, (void *)h_quickload, (void **)&o_quickload, "mpmenu OnEvent(QuickLoadRequested) (blocked in MP)");
     bad |= rig_hook(0xF70150, (void *)h_slot_set, (void **)&o_slot_set, "mpmenu SubUI_SaveFileButton.SetData (MP tag)");
+    bad |= rig_hook(0x85E50C, (void *)h_case_init, (void **)&o_case_init, "mpmenu SubUI_SettlerNameCase.Init (MP world tag)");
     bad |= rig_hook(0xD42BBC, (void *)h_textfocus, (void **)&o_textfocus, "mpmenu KeyInputDispatcher.IsTextInputFocused (chat typing: no hotkeys)");
     if (test_mode()) {
         bad |= rig_hook(0x518AEA0, (void *)h_clip_get, (void **)&o_clip_get, "mpmenu GUIUtility.get_systemCopyBuffer (test: file)");
@@ -2806,12 +2959,16 @@ static int key_inject(const char *chars, int code, const char *via) {
     }
     return n;
 }
+static int click_px(float x, float y, const char *via);
 static int click_field(const char *via) {                                    /* left click in the middle of the chat text field */
     Obj f = u_gc_get(h_ch_field); float r[4] = { 0 }; if (!u_on(f) || !rect_of(f, r)) return 0;
+    return click_px((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, via);
+}
+static int click_px(float x, float y, const char *via) {                     /* a real left click at screen pixel (x, y), y up */
     id w = ns_game_window(); if (!w) return 0;
     long wn = ((long (*)(id, SEL))objc_msgSend)(w, sel_registerName("windowNumber"));
     double sc = ((double (*)(id, SEL))objc_msgSend)(w, sel_registerName("backingScaleFactor")); if (sc <= 0) sc = 1;
-    CGPoint pt = { (r[0] + r[2]) / 2 / sc, (r[1] + r[3]) / 2 / sc };
+    CGPoint pt = { x / sc, y / sc };
     id pi = ((id (*)(Class, SEL))objc_msgSend)(objc_getClass("NSProcessInfo"), sel_registerName("processInfo"));
     double ts = ((double (*)(id, SEL))objc_msgSend)(pi, sel_registerName("systemUptime"));
     for (int up = 0; up < 2; up++) {
@@ -2963,6 +3120,22 @@ char *mpmenu_exec(const char *cmd, const char *line) {
             Obj sb = AT((char *)arr + 0x20, i * 8, Obj); char t[256] = "";
             if (u_alive(sb)) str_utf8(tmp_get(AT(sb, 0x38, Obj)), t, sizeof t);
             bput(&b, "%s", i ? "," : ""); bstr(&b, t);
+        }
+        bput(&b, "]}"); return b.p;
+    }
+    if (!strcmp(cmd, "mpm_tag")) {                                          /* test: Multiplayer tag rows of the load list; {click:i} (real:1 = a real mouse click); answer with mpm_box */
+        double v; char via[16] = "window"; jstr(line, "via", via, sizeof via);
+        int ci = jnum(line, "click", &v) ? (int)v : -1, real = jnum(line, "real", &v) && v != 0;
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"open\":%s,\"box\":%d,\"pending\":", popup_open(5) ? "true" : "false", lbox_up); bstr(&b, tag_pending); bput(&b, ",\"rows\":[");
+        int k = 0;
+        for (int i = 0; i < TAG_ROWS; i++) {
+            Obj cs = u_gc_get(tcase[i].row); if (!u_alive(cs) || !u_on(cs)) continue;
+            Obj nt = AT(cs, 0x28, Obj), rm = u_gc_get(tcase[i].rm); char t[400] = ""; utf16_to_utf8(tmp_get(nt), t, sizeof t);
+            float r[4] = { 0 }, nr[4] = { 0 }; int rmon = u_on(rm) && rect_of(rm, r); rect_of(nt, nr);
+            char nm[MPM_TAG_NAMES][32]; int n = tag_get(tcase[i].guid, nm);
+            bput(&b, "%s{\"i\":%d,\"guid\":", k++ ? "," : "", i); bstr(&b, tcase[i].guid); bput(&b, ",\"name\":"); bstr(&b, t);
+            bput(&b, ",\"names\":%d,\"remove\":%d,\"rm_rect\":[%.0f,%.0f,%.0f,%.0f],\"name_rect\":[%.0f,%.0f,%.0f,%.0f],\"case_open\":%d}", n, rmon, r[0], r[1], r[2], r[3], nr[0], nr[1], nr[2], nr[3], AT(cs, 0xA1, bool));
+            if (i == ci && rmon) { if (real) click_px((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, via); else tag_ask(&tcase[i]); }
         }
         bput(&b, "]}"); return b.p;
     }
