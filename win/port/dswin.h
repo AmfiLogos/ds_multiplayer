@@ -61,6 +61,9 @@ int dsw_net_init(void);                 /* WSAStartup once */
 
 /* ---- files */
 #define mkdir(p, m) _mkdir(p)
+/* POSIX rename replaces an existing target; the Windows CRT's fails (the mod's write-then-rename files stayed stale) */
+int dsw_rename(const char *from, const char *to);
+#define rename(a, b) dsw_rename(a, b)
 
 /* ---- threads */
 extern DWORD rig_main_tid;              /* set by the rig on the first MainFlow.Update (0 = unknown) */
