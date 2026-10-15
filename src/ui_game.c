@@ -4525,6 +4525,7 @@ static char *ui_coop_cmd(const char *line) {
     else if (!strcmp(a, "color")) { color_step((int)pl, x < 0 ? -1 : 1); settings_save(); own_sig ^= 1; force_world = 1; }
     else if (!strcmp(a, "set")) {                            /* set {key, value}: a cog setting, as its arrows do */
         char k2[24] = ""; double v = 0; jstr(line, "key", k2, sizeof k2); jnum(line, "value", &v);
+        settings_load();                                     /* before the first panel frame: keep the file's other keys */
         int *f = !strcmp(k2, "pings") ? &uiset.pings : !strcmp(k2, "ping_sound") ? &uiset.ping_sound : !strcmp(k2, "ping_chat") ? &uiset.ping_chat
                : !strcmp(k2, "views") ? &uiset.views : !strcmp(k2, "offscreen") ? &uiset.offscreen : !strcmp(k2, "outline") ? &uiset.outline
                : !strcmp(k2, "see_through") ? &uiset.see_through : !strcmp(k2, "fast_join") ? &uiset.fast_join : NULL;
