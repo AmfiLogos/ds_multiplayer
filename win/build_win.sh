@@ -34,6 +34,19 @@ nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o
 nice -n 5 $TC -shared -o build/multiplayer.dll.tmp $O/*.o math/build/libdsmath_win64.a -Wl,--export-all-symbols -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/multiplayer.dll.tmp build/multiplayer.dll
 echo built build/multiplayer.dll
+# module folder for the loader: build/mods/multiplayer/ = the dll, its ranges and mod.json (the loader's Mac mod.json
+# from DSL_MODJSON, default ~/ds_launcher/loader/modules/multiplayer/mod.json, + platforms.win-x64 with file sha256s)
+M=build/mods/multiplayer; mkdir -p $M
+cp build/multiplayer.dll $M/multiplayer.dll.tmp && mv -f $M/multiplayer.dll.tmp $M/multiplayer.dll
+cp build/det_ranges_win.tsv $M/det_ranges_win.tsv.tmp && mv -f $M/det_ranges_win.tsv.tmp $M/det_ranges_win.tsv
+python3 - ${DSL_MODJSON:-~/ds_launcher/loader/modules/multiplayer/mod.json} $M <<'PY'
+import hashlib, json, os, sys
+m = json.load(open(sys.argv[1])); d = sys.argv[2]
+files = {f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest() for f in ("multiplayer.dll", "det_ranges_win.tsv")}
+m.setdefault("platforms", {})["win-x64"] = {"entry": "multiplayer.dll", "files": files}
+json.dump(m, open(os.path.join(d, "mod.json"), "w"), indent=1)
+print("module folder", d, files["multiplayer.dll"][:16])
+PY
 else
 for f in port/dswin.c $MH/src/hook.c $MH/src/buffer.c $MH/src/trampoline.c $MH/src/hde/hde64.c; do nice -n 5 $TC $CF -I$MH/include -c $f -o $O/${f:t:r}.o; done
 nice -n 5 $TC -shared -o build/baselib.dll.tmp $O/*.o math/build/libdsmath_win64.a build/baselib_exports.def -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
