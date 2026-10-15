@@ -176,8 +176,7 @@ for fn in FILES:
                                          f"(dsw_v2){{ {args[3]}, {args[4]} }}, (dsw_v2){{ {args[5]}, {args[6]} }}, {args[7]})")
     if nmu: print(f"ABI {fn}: {nmu} (Obj, int, Obj, V2, V2) float-quad calls rewritten")
     for mm in re.finditer(r"\(\*\)\(([^)]*\bfloat, float\b[^)]*)\)", t):
-        # "float, float" alone: one of our own functions (ui_teams ui_panel_hit by dlsym, viewui); a game call always ends in void * (MethodInfo)
-        if mm.group(1) not in ("float, float, Obj, void *", "float, float") and "dsnet_client" not in mm.group(1):
+        if mm.group(1) not in ("float, float, Obj, void *", "float, float") and "dsnet_client" not in mm.group(1):   # bare (float, float): our own C call (ui_panel_hit), not a game method (those end in void *)
             problems.append(f"{fn}: float pair in a game-call prototype (a Vector2 on arm64?) not rewritten: ({mm.group(1)})")
     # A Guid written as two u64 (arm64: x1, x2). Windows x64 passes a 16-byte struct by pointer: use the struct type.
     t, ng = abi_rewrite(t, r"F\((\w+), (\w+) \(\*\)\(Obj, uint64_t, uint64_t, void \*\)\)\(",
