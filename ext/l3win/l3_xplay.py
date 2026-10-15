@@ -6,7 +6,7 @@ import os, sys
 H = os.path.expanduser("~"); HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE); sys.path.insert(0, f"{H}/ds_multiplayer/win"); sys.path.insert(0, f"{H}/ds_multiplayer/rig")
 import wrig, l3w
-wrig.PORT = l3w.PORT
+wrig.PORT = l3w.PORT  # (kept for older runs; wrig.py has DSMP_WIN_LOADER=1 now)
 wrig.INST = l3w.PROF
 wrig.cmd = l3w.cmd
 wrig.stop = l3w.stop
