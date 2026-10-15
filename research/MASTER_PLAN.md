@@ -314,3 +314,6 @@ it" list checked against the build. Nothing ships until all is green.
 ## BepInEx (owner 2026-10-15: "the mod loader will be compatible with the other format of mods ... right?")
 - Windows: the loader hosts BepInEx (be.788, pinned download on first use); BepInEx plugins show in the Mods window (on/off, groups, per world). Lanes l3win + l2modswin. bepinex-bridge is UNPARKED and in the release (sync of bridged actions).
 - Mac: not possible today (no arm64 BepInEx/MelonLoader for IL2CPP, research/bepinex_compat.md). Told the owner.
+
+## Open for M4 SPLIT (lead 2026-10-15 19:45)
+- The multiplayer mod must report "busy" to the loader while a session runs (Apply / soft restart disabled in MP). Put it in mp_api.h / the loader SDK busy flag (loader/src/dsl_menu.h, l1-core 0e1711a).
