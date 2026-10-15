@@ -3,6 +3,8 @@
 #include "../mpmenu.h"
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <unistd.h>
 static int fails;
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 #define B(x) (1ull << (x))
@@ -56,7 +58,7 @@ int main(void) {
     /* layout v2 §2a: header, settings row + summary; the selectors replace the summary when open */
     { uint64_t v = mpm_visible(&m, &o);
       CHECK((v & B(MPB_HEADER)) && (v & B(MPB_SETTINGS)) && (v & B(MPB_DIVIDER)) && !(v & B(MPB_SUMMARY)) && !(v & B(MPB_SEL_PAUSE)) && !(v & B(MPB_PAUSE_MODE)));
-      mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host a multiplayer world"));
+      mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host your save"));
       mpm_label(&m, MPB_SETTINGS, l, sizeof l); CHECK(!strcmp(l, "Rules"));
       mpm_settings_summary(&m.set, l, sizeof l); CHECK(!strcmp(l, "Pause: anyone \xC2\xB7 Speed-up: on \xC2\xB7 Gear: own units \xC2\xB7 Units: 3 \xC2\xB7 Population: shared \xC2\xB7 Events: owner \xC2\xB7 Admin: off \xC2\xB7 Shared fog: off \xC2\xB7 Spectators: on"));
       { char rv[64]; mpm_rule_value(&m.set, 0, rv, sizeof rv); CHECK(!strcmp(rv, "Anyone can pause") && !strcmp(mpm_rule_label(3), "Units per player") && !strcmp(mpm_rule_label(5), "Event choices") && !strcmp(mpm_rule_label(MPM_RULE_POP), "Population")); }
@@ -251,15 +253,40 @@ int main(void) {
     m.state = MPM_LOBBY; o.scene = 2; o.campaign_ready = 1; o.role = 1; m.lobby_settings_open = 1;
     a = mpm_step(&m, &o, MPB_SPECT_NEXT); CHECK((a & MPA_SPECTATORS) && !(a & MPA_RULES) && m.set.spectators == 1);   /* the game side decides (confirm box) */
     m.lobby_settings_open = 0; CHECK(!(mpm_step(&m, &o, MPB_SPECT_NEXT) & MPA_SPECTATORS));
-    {   /* Foreign Expedition (ext lane, board FESettingsA): World toggle, FE rules, summary, Start builds the hub first */
+    {   /* host choices under "Host a game" (uifix11): Your save / New save / Foreign Expedition, each its own Host page */
+        mpm_model h; mpm_init(&h); mpm_obs t = title(); char s[200];
+        mpm_step(&h, &t, MPB_MULTIPLAYER);
+        /* the third choice only once a mod registered it (MASTER_PLAN 2.2 B register_host_choice) */
+        CHECK(mpm_is_visible(&h, &t, MPB_HOST_SAVE) && mpm_is_visible(&h, &t, MPB_HOST_NEW) && !mpm_is_visible(&h, &t, MPB_HOST_FE));
+        { mpm_model n = h; mpm_step(&n, &t, MPB_HOST_FE); CHECK(n.state == MPM_TITLE_MENU && !n.set.fe); }   /* not registered: no page */
+        h.host_choice = 1; snprintf(h.host_choice_label, sizeof h.host_choice_label, "Expedition X");
+        mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Expedition X"));
+        h.host_choice_label[0] = 0;
+        CHECK(mpm_is_visible(&h, &t, MPB_HOST_SAVE) && mpm_is_visible(&h, &t, MPB_HOST_NEW) && mpm_is_visible(&h, &t, MPB_HOST_FE));
+        mpm_label(&h, MPB_HOST_SAVE, s, sizeof s); CHECK(!strcmp(s, "Your save"));
+        mpm_label(&h, MPB_HOST_NEW, s, sizeof s); CHECK(!strcmp(s, "New save"));
+        mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Foreign Expedition"));
+        mpm_model k = h; mpm_step(&k, &t, MPB_HOST_SAVE); uint64_t v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)) && !mpm_is_visible(&k, &t, MPB_HOST_SAVE));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host your save"));
+        CHECK(mpm_step(&k, &t, MPB_LOAD_SAVE) & MPA_OPEN_LOAD_LIST);
+        k = h; mpm_step(&k, &t, MPB_HOST_NEW); v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_NEW_CAMPAIGN)) && !(v & B(MPB_LOAD_SAVE)));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a new save"));
+        CHECK(mpm_step(&k, &t, MPB_NEW_CAMPAIGN) & MPA_OPEN_NEW);
+        k = h; mpm_step(&k, &t, MPB_HOST_FE); v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && k.set.fe == 1 && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a Foreign Expedition"));
+        mpm_step(&k, &t, MPB_BACK); mpm_step(&k, &t, MPB_HOST); CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && !k.host_new);   /* the old path: Your save */
+    }
+    {   /* Foreign Expedition (ext lane, board FESettingsA): chosen on the Multiplayer page, FE rules, summary, Start builds the hub first */
         mpm_model f; mpm_init(&f); mpm_obs t = title(); char s[400];
-        mpm_step(&f, &t, MPB_MULTIPLAYER); mpm_step(&f, &t, MPB_HOST);
-        CHECK(f.state == MPM_TITLE_HOST && (mpm_visible(&f, &t) & B(MPB_WORLD)));
-        mpm_label(&f, MPB_WORLD, s, sizeof s); CHECK(strstr(s, "Your save") != NULL);
-        mpm_step(&f, &t, MPB_WORLD); CHECK(f.set.fe == 1);
-        { mpm_model g2 = f; g2.state = MPM_TITLE_MENU; mpm_step(&g2, &t, MPB_HOST); CHECK(g2.set.fe == 0); }   /* reopened Host page: Your save */
-        mpm_label(&f, MPB_WORLD, s, sizeof s); CHECK(strstr(s, "Foreign Expedition") != NULL);
-        CHECK(f.set.fe_death == 1 && f.set.fe_xp == 1 && f.set.fe_loot == 1 && f.set.fe_recruit == 0);   /* defaults */
+        f.host_choice = 1; mpm_step(&f, &t, MPB_MULTIPLAYER); mpm_step(&f, &t, MPB_HOST_FE);
+        CHECK(f.state == MPM_TITLE_HOST && f.set.fe == 1);
+        { mpm_model g2 = f; g2.state = MPM_TITLE_MENU; mpm_step(&g2, &t, MPB_HOST_SAVE); CHECK(g2.set.fe == 0); }   /* Your save: no expedition */
+        CHECK(f.set.fe_death == 0 && f.set.fe_xp == 1 && f.set.fe_loot == 1 && f.set.fe_recruit == 0);   /* defaults: death Off (owner 2026-10-15) */
+        CHECK(strstr(mpm_fe_desc(&f.set, 0), "last save") != NULL);
+        mpm_step(&f, &t, MPB_FED_NEXT); CHECK(f.set.fe_death == 1);
         mpm_step(&f, &t, MPB_FER_NEXT); CHECK(f.set.fe_recruit == 1);
         mpm_fe_value(&f.set, 5, s, sizeof s); CHECK(!strcmp(s, "On"));
         CHECK(strstr(mpm_fe_desc(&f.set, 5), "stay in the hub") != NULL);
@@ -271,6 +298,44 @@ int main(void) {
         int a = mpm_step(&f, &g, MPB_START); CHECK(a == MPA_FE_START && f.state == MPM_LOBBY);   /* the game side starts it */
         f.set.fe = 0; a = mpm_step(&f, &g, MPB_START); CHECK((a & MPA_START_GAME) && f.state == MPM_PLAYING);
         for (int r = 0; r < MPM_FE_ROWS; r++) CHECK(mpm_fe_label(r)[0] && mpm_fe_tip(r)[0]);
+    }
+    {   /* load list filter (owner 2026-10-15): solo list = single-player worlds, Your save = multiplayer worlds, toggle shows both */
+        mpm_model l; mpm_init(&l); mpm_obs t = title(); char s[64];
+        CHECK(mpm_list_mode(&l) == MPM_LIST_SOLO);
+        CHECK(mpm_list_show(MPM_LIST_SOLO, 0, 0, 0) && !mpm_list_show(MPM_LIST_SOLO, 0, 1, 0) && mpm_list_show(MPM_LIST_SOLO, 1, 1, 0));
+        CHECK(mpm_list_show(MPM_LIST_SOLO, 0, 1, 1));                      /* the world being played stays */
+        CHECK(mpm_list_show(MPM_LIST_MP, 0, 1, 0) && !mpm_list_show(MPM_LIST_MP, 0, 0, 0) && mpm_list_show(MPM_LIST_MP, 1, 0, 0));
+        CHECK(mpm_list_show(MPM_LIST_ALL, 0, 0, 0) && mpm_list_show(MPM_LIST_ALL, 0, 1, 0));
+        snprintf(s, sizeof s, "%s", mpm_list_toggle_label(MPM_LIST_SOLO)); CHECK(!strcmp(s, "Show multiplayer worlds"));
+        snprintf(s, sizeof s, "%s", mpm_list_toggle_label(MPM_LIST_MP)); CHECK(!strcmp(s, "Show single-player worlds"));
+        CHECK(!mpm_list_toggle_label(MPM_LIST_ALL)[0]);
+        mpm_step(&l, &t, MPB_MULTIPLAYER); mpm_step(&l, &t, MPB_HOST_SAVE); CHECK(mpm_list_mode(&l) == MPM_LIST_SOLO);   /* host page: no list yet */
+        mpm_step(&l, &t, MPB_LOAD_SAVE); CHECK(l.state == MPM_PICK_SAVE && mpm_list_mode(&l) == MPM_LIST_MP);
+        mpm_model e; mpm_init(&e); e.host_choice = 1; mpm_step(&e, &t, MPB_MULTIPLAYER); mpm_step(&e, &t, MPB_HOST_FE); mpm_step(&e, &t, MPB_LOAD_SAVE);
+        CHECK(e.state == MPM_PICK_SAVE && mpm_list_mode(&e) == MPM_LIST_ALL);   /* an expedition copies any world */
+    }
+    {   /* Multiplayer world tag file (mp_tags.txt) */
+        char tp[512]; const char *td = getenv("TMPDIR"); snprintf(tp, sizeof tp, "%s/mp_tags_test_%d.txt", td && *td ? td : "/tmp", (int)getpid());
+        FILE *z = fopen(tp, "w"); if (z) fclose(z);                         /* empty file (left in TMPDIR: no rm) */
+        char nm[MPM_TAG_NAMES][32], s[160];
+        CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == -1);
+        const char *a[] = { "The owner", "Ana" }; CHECK(mpm_tag_add(tp, "g1", a, 2) == 1);
+        CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == 2 && !strcmp(nm[0], "The owner") && !strcmp(nm[1], "Ana"));
+        CHECK(mpm_tag_add(tp, "g1", a, 2) == 0);                      /* same names: no write */
+        const char *b2[] = { "Ana", "Bo\tX\n", "", NULL }; CHECK(mpm_tag_add(tp, "g1", b2, 4) == 1);
+        CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == 3 && !strcmp(nm[2], "BoX"));
+        const char *c1[] = { "The owner", "Zed" }; CHECK(mpm_tag_add(tp, "g2", c1, 2) == 1);
+        CHECK(mpm_tag_add(tp, "bad guid", c1, 2) == 0 && mpm_tag_get(tp, "bad", nm, 4) == -1);
+        mpm_tag_names(nm, 3, 3, s, sizeof s); CHECK(!strcmp(s, "The owner, Ana and BoX"));
+        mpm_tag_names(nm, 3, 2, s, sizeof s); CHECK(!strcmp(s, "The owner, Ana +1"));
+        mpm_tag_names(nm, 1, 3, s, sizeof s); CHECK(!strcmp(s, "The owner"));
+        CHECK(mpm_tag_remove(tp, "g1") == 1 && mpm_tag_get(tp, "g1", nm, 4) == -1);
+        CHECK(mpm_tag_get(tp, "g2", nm, 4) == 2);                    /* the other world keeps its tag */
+        CHECK(mpm_tag_remove(tp, "g1") == 0);
+        CHECK(mpm_tag_add(tp, "g1", c1, 1) == 1 && mpm_tag_get(tp, "g1", nm, 4) == 1);   /* a friend joins again: back, new names */
+        const char *many[20]; char mb[20][8]; for (int i = 0; i < 20; i++) { snprintf(mb[i], 8, "p%d", i); many[i] = mb[i]; }
+        mpm_tag_add(tp, "g3", many, 20); CHECK(mpm_tag_get(tp, "g3", nm, MPM_TAG_NAMES) == MPM_TAG_NAMES);
+        CHECK(mpm_tag_get("./no_such_dir/x.txt", "g1", nm, 4) == -1 && mpm_tag_add("./no_such_dir/x.txt", "g1", c1, 1) == 0);
     }
     printf(fails ? "mpmenu_test: %d FAILED\n" : "mpmenu_test: all passed%.0d\n", fails);
     return fails != 0;
