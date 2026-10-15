@@ -1,0 +1,608 @@
+From 930cce8c51b46fb8a3693471ac9fc080011b0cab Mon Sep 17 00:00:00 2001
+From: bepinexmac-lane <lane@local>
+Date: Thu, 15 Oct 2026 19:59:11 +0100
+Subject: [PATCH] arm64 Mach-O: AArch64 hook discovery (LC_FUNCTION_STARTS),
+ AAPCS64 return buffer (x8) and small by-value structs in trampolines
+
+---
+ Il2CppInterop.Common/XrefScans/Arm64Code.cs   | 223 ++++++++++++++++++
+ .../XrefScans/XrefScannerLowLevel.cs          |   2 +
+ Il2CppInterop.HarmonySupport/Arm64Abi.cs      |  31 +++
+ .../Arm64ReturnBufferThunk.cs                 |  82 +++++++
+ .../Il2CppDetourMethodPatcher.cs              |  59 ++++-
+ .../Hooks/Class_GetFieldDefaultValue_Hook.cs  |   7 +-
+ .../Hooks/GenericMethod_GetMethod_Hook.cs     |  11 +
+ ...GetTypeInfoFromTypeDefinitionIndex_Hook.cs |   2 +-
+ .../Injection/InjectorHelpers.cs              |   3 +-
+ 9 files changed, 412 insertions(+), 8 deletions(-)
+ create mode 100644 Il2CppInterop.Common/XrefScans/Arm64Code.cs
+ create mode 100644 Il2CppInterop.HarmonySupport/Arm64Abi.cs
+ create mode 100644 Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
+
+diff --git a/Il2CppInterop.Common/XrefScans/Arm64Code.cs b/Il2CppInterop.Common/XrefScans/Arm64Code.cs
+new file mode 100644
+index 0000000..455030c
+--- /dev/null
++++ b/Il2CppInterop.Common/XrefScans/Arm64Code.cs
+@@ -0,0 +1,223 @@
++using System;
++using System.Collections.Generic;
++using System.Runtime.InteropServices;
++
++namespace Il2CppInterop.Common.XrefScans;
++
++/// <summary>
++///     Minimal AArch64 code walking for the injector hook lookups on arm64 Mach-O (Apple Silicon).
++///     Function bounds come from the image's LC_FUNCTION_STARTS table, so a "b" is a tail call only when it
++///     lands on another function start; anything else is a branch inside the function.
++/// </summary>
++public static class Arm64Code
++{
++    public static bool IsArm64 => RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
++
++    private static readonly Dictionary<long, long[]> s_StartsByImage = new();
++
++    /// <summary>Same contract as the x86 JumpTargets: BL targets and tail-call targets up to the first RET.</summary>
++    public static IEnumerable<IntPtr> JumpTargets(IntPtr start, bool ignoreRetn)
++    {
++        var starts = StartsFor(start);
++        var stop = NextStart(starts, (long)start);
++        var firstFlowControl = true;
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            var flow = false;
++            if ((insn & 0xFFFFFC1Fu) == 0xD65F0000u) // RET
++            {
++                if (!ignoreRetn) yield break;
++                flow = true;
++            }
++            else if ((insn & 0xFC000000u) == 0x94000000u) // BL
++            {
++                yield return (IntPtr)BranchTarget(at, insn);
++                flow = true;
++            }
++            else if ((insn & 0xFC000000u) == 0x14000000u) // B
++            {
++                var target = BranchTarget(at, insn);
++                flow = true;
++                if (target != (long)start && IsStart(starts, target))
++                {
++                    yield return (IntPtr)target;
++                    if (firstFlowControl) yield break;
++                }
++            }
++            else if ((insn & 0xFF000010u) == 0x54000000u || (insn & 0x7E000000u) == 0x34000000u ||
++                     (insn & 0x7E000000u) == 0x36000000u || (insn & 0xFFFFFC1Fu) == 0xD61F0000u ||
++                     (insn & 0xFFFFFC1Fu) == 0xD63F0000u)
++            {
++                flow = true; // B.cond, CBZ/CBNZ, TBZ/TBNZ, BR, BLR
++            }
++
++            if (flow) firstFlowControl = false;
++        }
++    }
++
++    /// <summary>Targets of "b" instructions that leave the function (tail calls), in address order.</summary>
++    public static List<IntPtr> TailCallTargets(IntPtr start)
++    {
++        var starts = StartsFor(start);
++        var stop = NextStart(starts, (long)start);
++        var result = new List<IntPtr>();
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            if ((insn & 0xFC000000u) != 0x14000000u) continue;
++            var target = BranchTarget(at, insn);
++            if (target != (long)start && IsStart(starts, target))
++                result.Add((IntPtr)target);
++        }
++
++        return result;
++    }
++
++    /// <summary>
++    ///     The target of the only BL (up to the first RET) whose second argument (x1) was just set to the address
++    ///     of a stack slot ("add x1, sp|x29, #imm"); 0 if there is none or more than one.
++    /// </summary>
++    public static IntPtr CallWithStackAddressInSecondArgument(IntPtr start)
++    {
++        var stop = NextStart(StartsFor(start), (long)start);
++        long found = 0;
++        var x1IsStackAddress = false;
++        for (var at = (long)start; at < stop; at += 4)
++        {
++            var insn = (uint)Marshal.ReadInt32((IntPtr)at);
++            if ((insn & 0xFFFFFC1Fu) == 0xD65F0000u)
++                break;
++            if ((insn & 0xFC000000u) == 0x94000000u)
++            {
++                if (x1IsStackAddress)
++                {
++                    if (found != 0) return IntPtr.Zero;
++                    found = BranchTarget(at, insn);
++                }
++
++                x1IsStackAddress = false;
++                continue;
++            }
++
++            // ADD (immediate, 64-bit): sf=1 op=0 S=0 100010 sh imm12 Rn Rd
++            if ((insn & 0xFF800000u) == 0x91000000u && (insn & 0x1F) == 1)
++            {
++                var rn = (insn >> 5) & 0x1F;
++                x1IsStackAddress = rn is 31 or 29; // sp or frame pointer
++                continue;
++            }
++
++            // Anything else with x1 in the destination field clears the mark (stores too: conservative).
++            if ((insn & 0x1F) == 1)
++                x1IsStackAddress = false;
++        }
++
++        return (IntPtr)found;
++    }
++
++    private static long BranchTarget(long at, uint insn)
++    {
++        var imm26 = (int)(insn << 6) >> 6;
++        return at + imm26 * 4L;
++    }
++
++    private static bool IsStart(long[] starts, long address) => Array.BinarySearch(starts, address) >= 0;
++
++    private static long NextStart(long[] starts, long address)
++    {
++        var i = Array.BinarySearch(starts, address);
++        i = i >= 0 ? i + 1 : ~i;
++        return i < starts.Length ? starts[i] : address + 0x10000;
++    }
++
++    private static long[] StartsFor(IntPtr address)
++    {
++        if (dladdr(address, out var info) == 0 || info.dli_fbase == IntPtr.Zero)
++            throw new InvalidOperationException($"No loaded image contains 0x{(long)address:X}");
++
++        var header = (long)info.dli_fbase;
++        lock (s_StartsByImage)
++        {
++            if (s_StartsByImage.TryGetValue(header, out var cached))
++                return cached;
++            var starts = ReadFunctionStarts(header);
++            s_StartsByImage[header] = starts;
++            return starts;
++        }
++    }
++
++    private static long[] ReadFunctionStarts(long header)
++    {
++        if ((uint)Marshal.ReadInt32((IntPtr)header) != 0xFEEDFACFu)
++            throw new InvalidOperationException("Not a 64-bit Mach-O image");
++
++        var ncmds = Marshal.ReadInt32((IntPtr)(header + 16));
++        var cmd = header + 32;
++        long textVm = -1, linkVm = -1, linkFileOff = 0;
++        uint startsOff = 0, startsSize = 0;
++        for (var i = 0; i < ncmds; i++)
++        {
++            var kind = (uint)Marshal.ReadInt32((IntPtr)cmd);
++            var size = Marshal.ReadInt32((IntPtr)(cmd + 4));
++            if (kind == 0x19) // LC_SEGMENT_64
++            {
++                var name = Marshal.PtrToStringAnsi((IntPtr)(cmd + 8));
++                var vmaddr = Marshal.ReadInt64((IntPtr)(cmd + 24));
++                var fileoff = Marshal.ReadInt64((IntPtr)(cmd + 40));
++                if (name == "__TEXT") textVm = vmaddr;
++                if (name == "__LINKEDIT")
++                {
++                    linkVm = vmaddr;
++                    linkFileOff = fileoff;
++                }
++            }
++            else if (kind == 0x26) // LC_FUNCTION_STARTS
++            {
++                startsOff = (uint)Marshal.ReadInt32((IntPtr)(cmd + 8));
++                startsSize = (uint)Marshal.ReadInt32((IntPtr)(cmd + 12));
++            }
++
++            cmd += size;
++        }
++
++        if (textVm < 0 || linkVm < 0 || startsSize == 0)
++            throw new InvalidOperationException("Image has no LC_FUNCTION_STARTS");
++
++        var slide = header - textVm;
++        var p = slide + linkVm + (startsOff - linkFileOff);
++        var end = p + startsSize;
++        var result = new List<long>();
++        var address = header; // first delta is from the start of __TEXT
++        while (p < end)
++        {
++            ulong delta = 0;
++            var shift = 0;
++            byte b;
++            do
++            {
++                b = Marshal.ReadByte((IntPtr)p++);
++                delta |= (ulong)(b & 0x7F) << shift;
++                shift += 7;
++            } while ((b & 0x80) != 0);
++
++            if (delta == 0) break;
++            address += (long)delta;
++            result.Add(address);
++        }
++
++        return result.ToArray();
++    }
++
++    [StructLayout(LayoutKind.Sequential)]
++    private struct DlInfo
++    {
++        public IntPtr dli_fname;
++        public IntPtr dli_fbase;
++        public IntPtr dli_sname;
++        public IntPtr dli_saddr;
++    }
++
++    [DllImport("libSystem.dylib")]
++    private static extern int dladdr(IntPtr addr, out DlInfo info);
++}
+diff --git a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
+index ba9a8fa..f3007e2 100644
+--- a/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
++++ b/Il2CppInterop.Common/XrefScans/XrefScannerLowLevel.cs
+@@ -6,6 +6,8 @@ public static class XrefScannerLowLevel
+ {
+     public static IEnumerable<IntPtr> JumpTargets(IntPtr codeStart, bool ignoreRetn = false)
+     {
++        if (Arm64Code.IsArm64)
++            return Arm64Code.JumpTargets(codeStart, ignoreRetn);
+         XrefScanner.EnsureNativeCodeArchitectureSupported();
+         return JumpTargetsImpl(XrefScanner.DecoderForAddress(codeStart), ignoreRetn);
+     }
+diff --git a/Il2CppInterop.HarmonySupport/Arm64Abi.cs b/Il2CppInterop.HarmonySupport/Arm64Abi.cs
+new file mode 100644
+index 0000000..33de1d1
+--- /dev/null
++++ b/Il2CppInterop.HarmonySupport/Arm64Abi.cs
+@@ -0,0 +1,31 @@
++using System.Runtime.InteropServices;
++using Il2CppInterop.Runtime;
++using ValueType = Il2CppSystem.ValueType;
++
++namespace Il2CppInterop.HarmonySupport;
++
++/// <summary>AAPCS64 rules the x64-shaped trampolines need on arm64.</summary>
++internal static class Arm64Abi
++{
++    public static bool IsArm64 => RuntimeInformation.ProcessArchitecture == Architecture.Arm64;
++
++    /// <summary>Two general registers; CoreCLR passes and returns this 16-byte non-HFA struct in x(n), x(n+1).</summary>
++    [StructLayout(LayoutKind.Sequential)]
++    public struct Pair
++    {
++        public long Low;
++        public long High;
++    }
++
++    /// <summary>Value size of a non-blittable interop struct that arm64 passes in registers, else 0.</summary>
++    public static int SmallStructSize(Type managedType)
++    {
++        if (!IsArm64 || managedType.IsByRef || !managedType.IsSubclassOf(typeof(ValueType)))
++            return 0;
++        uint align = 0;
++        var size = IL2CPP.il2cpp_class_value_size(Il2CppClassPointerStore.GetNativeClassPointer(managedType), ref align);
++        return size is > 0 and <= 16 ? size : 0;
++    }
++
++    public static Type RegisterType(int size) => size <= 8 ? typeof(long) : typeof(Pair);
++}
+diff --git a/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs b/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
+new file mode 100644
+index 0000000..d208f32
+--- /dev/null
++++ b/Il2CppInterop.HarmonySupport/Arm64ReturnBufferThunk.cs
+@@ -0,0 +1,82 @@
++using System.Reflection;
++using System.Runtime.InteropServices;
++using Il2CppInterop.Common;
++using Microsoft.Extensions.Logging;
++
++namespace Il2CppInterop.HarmonySupport;
++
++/// <summary>
++///     arm64 (AAPCS64): a struct returned through memory has its buffer address in x8, and the arguments start at
++///     x0. The native-to-managed trampoline takes the buffer as its first parameter (the x64 System V / Win64
++///     layout), so this thunk shifts x0..x6 to x1..x7, moves x8 into x0 and jumps to the trampoline.
++/// </summary>
++internal static class Arm64ReturnBufferThunk
++{
++    private const int PROT_READ = 1, PROT_WRITE = 2, PROT_EXEC = 4, MAP_PRIVATE = 2, MAP_ANON = 0x1000;
++
++    public static IntPtr Create(IntPtr trampoline, Type[] unmanagedParams, MethodBase method)
++    {
++        // Every parameter here is passed in a general register (pointer, integer, bool) or a vector register
++        // (float, double). The shift only works while all general-register arguments still fit in x0..x7.
++        var generalCount = 0;
++        foreach (var t in unmanagedParams)
++        {
++            if (t == typeof(float) || t == typeof(double))
++                continue;
++            if (t == typeof(Arm64Abi.Pair))
++            {
++                generalCount += 2;
++                continue;
++            }
++            if (!(t.IsPointer || t.IsPrimitive || t == typeof(IntPtr) || t == typeof(UIntPtr)))
++            {
++                Logger.Instance.LogWarning("arm64: {Method} returns a struct through x8 and takes a by-value {Type}; not patched for arm64",
++                    $"{method.DeclaringType?.FullName}::{method.Name}", t);
++                return IntPtr.Zero;
++            }
++            generalCount++;
++        }
++
++        if (generalCount > 8)
++        {
++            Logger.Instance.LogWarning("arm64: {Method} returns a struct through x8 and has {Count} register arguments (max 8); not patched for arm64",
++                $"{method.DeclaringType?.FullName}::{method.Name}", generalCount);
++            return IntPtr.Zero;
++        }
++
++        var code = new uint[]
++        {
++            0xAA0603E7, // mov x7, x6
++            0xAA0503E6, // mov x6, x5
++            0xAA0403E5, // mov x5, x4
++            0xAA0303E4, // mov x4, x3
++            0xAA0203E3, // mov x3, x2
++            0xAA0103E2, // mov x2, x1
++            0xAA0003E1, // mov x1, x0
++            0xAA0803E0, // mov x0, x8
++            0x58000050, // ldr x16, #8
++            0xD61F0200, // br x16
++        };
++        var size = (nuint)(code.Length * 4 + 8);
++        var page = mmap(IntPtr.Zero, 0x4000, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
++        if (page == new IntPtr(-1))
++            throw new InvalidOperationException("arm64 return-buffer thunk: mmap failed");
++        for (var i = 0; i < code.Length; i++)
++            Marshal.WriteInt32(page + i * 4, unchecked((int)code[i]));
++        Marshal.WriteInt64(page + code.Length * 4, trampoline.ToInt64());
++        if (mprotect(page, 0x4000, PROT_READ | PROT_EXEC) != 0)
++            throw new InvalidOperationException("arm64 return-buffer thunk: mprotect failed");
++        sys_icache_invalidate(page, size);
++        Logger.Instance.LogTrace("arm64 return-buffer thunk for {Method}: 0x{Thunk}", $"{method.DeclaringType?.FullName}::{method.Name}", page.ToInt64().ToString("X"));
++        return page;
++    }
++
++    [DllImport("libSystem.dylib")]
++    private static extern IntPtr mmap(IntPtr addr, nuint len, int prot, int flags, int fd, long offset);
++
++    [DllImport("libSystem.dylib")]
++    private static extern int mprotect(IntPtr addr, nuint len, int prot);
++
++    [DllImport("libSystem.dylib")]
++    private static extern void sys_icache_invalidate(IntPtr start, nuint len);
++}
+diff --git a/Il2CppInterop.HarmonySupport/Il2CppDetourMethodPatcher.cs b/Il2CppInterop.HarmonySupport/Il2CppDetourMethodPatcher.cs
+index 2accee3..7889aac 100644
+--- a/Il2CppInterop.HarmonySupport/Il2CppDetourMethodPatcher.cs
++++ b/Il2CppInterop.HarmonySupport/Il2CppDetourMethodPatcher.cs
+@@ -142,6 +142,19 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+         var unmanagedDelegate = unmanagedTrampolineMethod.CreateDelegate(unmanagedDelegateType);
+         DelegateCache.Add(unmanagedDelegate);
+ 
++        // AAPCS64 passes the struct return buffer in x8, not as the first argument: put a register-shifting
++        // thunk in front of the trampoline, which takes the buffer as its first parameter.
++        if (lastHasReturnBuffer && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
++        {
++            var thunk = Arm64ReturnBufferThunk.Create(Marshal.GetFunctionPointerForDelegate(unmanagedDelegate),
++                lastUnmanagedParams, Original);
++            if (thunk != IntPtr.Zero)
++            {
++                unmanagedDelegate = Marshal.GetDelegateForFunctionPointer(thunk, unmanagedDelegateType);
++                DelegateCache.Add(unmanagedDelegate);
++            }
++        }
++
+         nativeDetour =
+             Il2CppInteropRuntime.Instance.DetourProvider.Create(originalNativeMethodInfo.MethodPointer, unmanagedDelegate);
+         nativeDetour.Apply();
+@@ -206,6 +219,9 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+         return true;
+     }
+ 
++    private bool lastHasReturnBuffer;
++    private Type[] lastUnmanagedParams;
++
+     private DynamicMethodDefinition GenerateNativeToManagedTrampoline(MethodInfo targetManagedMethodInfo)
+     {
+         // managedParams are the interop types used on the managed side
+@@ -225,6 +241,7 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+         }
+ 
+         var hasReturnBuffer = isReturnValueType && IsReturnBufferNeeded(returnSize);
++        lastHasReturnBuffer = hasReturnBuffer;
+         if (hasReturnBuffer)
+         // C compilers seem to return large structs by allocating a return buffer on caller's side and passing it as the first parameter
+         // TODO: Handle ARM
+@@ -234,6 +251,11 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+             paramStartIndex++;
+         }
+ 
++        // arm64: a non-blittable struct of up to 16 bytes comes back by value in x0(/x1), not as a pointer.
++        var arm64SmallReturn = !hasReturnBuffer && isReturnValueType && Arm64Abi.IsArm64 && returnSize <= 16;
++        if (arm64SmallReturn)
++            unmanagedReturnType = Arm64Abi.RegisterType(returnSize);
++
+         if (!Original.IsStatic)
+         {
+             paramStartIndex++;
+@@ -256,9 +278,21 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+         }
+ 
+         unmanagedParams[^1] = typeof(Il2CppMethodInfo*);
++        lastUnmanagedParams = unmanagedParams;
+         Array.Copy(managedParams.Select(TrampolineHelpers.NativeType).ToArray(), 0,
+             unmanagedParams, paramStartIndex, managedParams.Length);
+ 
++        // arm64: a non-blittable struct argument of up to 16 bytes is passed by value in one or two general
++        // registers (AAPCS64), not as a pointer to a copy (Win64).
++        var byValueInRegisters = new bool[managedParams.Length];
++        for (var i = 0; i < managedParams.Length; i++)
++        {
++            var size = Arm64Abi.SmallStructSize(managedParams[i]);
++            if (size == 0) continue;
++            byValueInRegisters[i] = true;
++            unmanagedParams[i + paramStartIndex] = Arm64Abi.RegisterType(size);
++        }
++
+         var dmd = new DynamicMethodDefinition("(il2cpp -> managed) " + Original.Name,
+             unmanagedReturnType,
+             unmanagedParams
+@@ -278,7 +312,8 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+ 
+         for (var i = 0; i < managedParams.Length; ++i)
+         {
+-            EmitConvertArgumentToManaged(il, i + paramStartIndex, managedParams[i], out indirectVariables[i]);
++            EmitConvertArgumentToManaged(il, i + paramStartIndex, managedParams[i], out indirectVariables[i],
++                byValueInRegisters[i]);
+         }
+ 
+         // Run the managed method
+@@ -327,6 +362,20 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+                 // Return the same pointer to the return buffer
+                 il.Emit(OpCodes.Ldarg_0);
+             }
++            else if (arm64SmallReturn)
++            {
++                // Copy the boxed value into a zeroed register-sized local and return it by value.
++                var regs = il.DeclareLocal(unmanagedReturnType);
++                il.Emit(OpCodes.Ldloca, regs);
++                il.Emit(OpCodes.Initobj, unmanagedReturnType);
++                il.Emit(OpCodes.Ldloca, regs);
++                il.Emit(OpCodes.Ldloc, managedReturnVariable);
++                il.Emit(OpCodes.Call, ObjectBaseToPtrNotNullMethodInfo);
++                EmitUnbox(il);
++                il.Emit(OpCodes.Ldc_I4, returnSize);
++                il.Emit(OpCodes.Cpblk);
++                il.Emit(OpCodes.Ldloc, regs);
++            }
+             else
+             {
+                 il.Emit(OpCodes.Ldloc, managedReturnVariable);
+@@ -366,7 +415,8 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+     private static void EmitConvertArgumentToManaged(ILGenerator il,
+         int argIndex,
+         Type managedParamType,
+-        out LocalBuilder variable)
++        out LocalBuilder variable,
++        bool byValueInRegisters = false)
+     {
+         variable = null;
+ 
+@@ -391,7 +441,7 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+                 il.Emit(OpCodes.Call, AccessTools.Method(typeof(IL2CPP), nameof(IL2CPP.il2cpp_object_new)));
+                 var objLocal = il.DeclareLocal(typeof(IntPtr));
+                 il.Emit(OpCodes.Stloc, objLocal);
+-                il.Emit(Environment.Is64BitProcess ? OpCodes.Ldarg : OpCodes.Ldarga_S, argIndex);
++                il.Emit(Environment.Is64BitProcess && !byValueInRegisters ? OpCodes.Ldarg : OpCodes.Ldarga_S, argIndex);
+                 il.Emit(OpCodes.Ldloc, objLocal);
+                 il.Emit(OpCodes.Call, AccessTools.Method(typeof(IL2CPP), nameof(IL2CPP.il2cpp_object_unbox)));
+                 il.Emit(OpCodes.Ldc_I4, (int)valueSize);
+@@ -405,7 +455,8 @@ internal unsafe class Il2CppDetourMethodPatcher : MethodPatcher
+                 il.Emit(OpCodes.Conv_I);
+                 // On x64, struct is always a pointer but it is a non-pointer on x86
+                 // We don't handle byref structs on x86 yet but we're yet to encounter those
+-                il.Emit(Environment.Is64BitProcess ? OpCodes.Ldarg : OpCodes.Ldarga_S, argIndex);
++                // arm64 small structs arrive by value: box from the address of the argument copy
++                il.Emit(Environment.Is64BitProcess && !byValueInRegisters ? OpCodes.Ldarg : OpCodes.Ldarga_S, argIndex);
+                 il.Emit(OpCodes.Call,
+                     AccessTools.Method(typeof(IL2CPP),
+                         nameof(IL2CPP.il2cpp_value_box)));
+diff --git a/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
+index 061190c..586bad6 100644
+--- a/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
++++ b/Il2CppInterop.Runtime/Injection/Hooks/Class_GetFieldDefaultValue_Hook.cs
+@@ -136,7 +136,9 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+                 // The call that receives the address of a stack slot (the 'type' out parameter) is the one we want.
+                 if (!OperatingSystem.IsWindows())
+                 {
+-                    var callWithOutArgument = FindCallWithStackAddressInSecondArgument(getStaticFieldValueInternal);
++                    var callWithOutArgument = Arm64Code.IsArm64
++                        ? (nint)Arm64Code.CallWithStackAddressInSecondArgument(getStaticFieldValueInternal)
++                        : FindCallWithStackAddressInSecondArgument(getStaticFieldValueInternal);
+                     if (callWithOutArgument != 0)
+                         return callWithOutArgument;
+                 }
+@@ -190,7 +192,8 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+             // NOTE: In some cases this pointer will be MetadataCache::GetFieldDefaultValueForField due to Field::GetDefaultFieldValue being
+             // inlined but we'll treat it the same even though it doesn't receive the type parameter the RDX register
+             // doesn't get cleared so we still get the same parameters
+-            var classGetDefaultFieldValue = s_Signatures
++            // The signatures are x86 code; never scan arm64 code with them.
++            var classGetDefaultFieldValue = Arm64Code.IsArm64 ? 0 : s_Signatures
+                 .Select(s => MemoryUtils.FindSignatureInBlock(InjectorHelpers.Il2CppModuleBaseAddress, InjectorHelpers.Il2CppModuleMemorySize, s))
+                 .FirstOrDefault(p => p != 0);
+ 
+diff --git a/Il2CppInterop.Runtime/Injection/Hooks/GenericMethod_GetMethod_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/GenericMethod_GetMethod_Hook.cs
+index bba3452..37b02d6 100644
+--- a/Il2CppInterop.Runtime/Injection/Hooks/GenericMethod_GetMethod_Hook.cs
++++ b/Il2CppInterop.Runtime/Injection/Hooks/GenericMethod_GetMethod_Hook.cs
+@@ -59,6 +59,17 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+ 
+         public override IntPtr FindTargetMethod()
+         {
++            if (Arm64Code.IsArm64)
++            {
++                // clang arm64 (Unity 6): Object::GetVirtualMethod tail-calls MetadataCache::GetGenericVirtualMethod,
++                // which inlines the 3-argument shim and calls GenericMethod::GetMethod(const Il2CppGenericMethod*).
++                var api = InjectorHelpers.GetIl2CppExport(nameof(IL2CPP.il2cpp_object_get_virtual_method));
++                var getVirtualMethod = XrefScannerLowLevel.JumpTargets(api).First();
++                var getGenericVirtualMethod = Arm64Code.TailCallTargets(getVirtualMethod).Last();
++                Logger.Instance.LogTrace("MetadataCache::GetGenericVirtualMethod: 0x{Address}", getGenericVirtualMethod.ToInt64().ToString("X2"));
++                return XrefScannerLowLevel.JumpTargets(getGenericVirtualMethod).Last();
++            }
++
+             var genericMethodGetMethod = s_Signatures
+                 .Select(s => MemoryUtils.FindSignatureInBlock(InjectorHelpers.Il2CppModuleBaseAddress, InjectorHelpers.Il2CppModuleMemorySize, s))
+                 .FirstOrDefault(p => p != 0);
+diff --git a/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs b/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
+index 943a9ad..519166a 100644
+--- a/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
++++ b/Il2CppInterop.Runtime/Injection/Hooks/MetadataCache_GetTypeInfoFromTypeDefinitionIndex_Hook.cs
+@@ -73,7 +73,7 @@ namespace Il2CppInterop.Runtime.Injection.Hooks
+                     getTypeInfoFromTypeDefinitionIndex = imageGetType;
+                 }
+                 else getTypeInfoFromTypeDefinitionIndex = imageGetTypeXrefs[0];
+-                if ((getTypeInfoFromTypeDefinitionIndex.ToInt64() & 0xF) != 0)
++                if ((getTypeInfoFromTypeDefinitionIndex.ToInt64() & (Arm64Code.IsArm64 ? 0x3 : 0xF)) != 0)
+                 {
+                     Logger.Instance.LogTrace("Image::GetType xref wasn't aligned, attempting to resolve from icall");
+                     return FindGetTypeInfoFromTypeDefinitionIndex(true);
+diff --git a/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs b/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
+index bfc205f..9da4921 100644
+--- a/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
++++ b/Il2CppInterop.Runtime/Injection/InjectorHelpers.cs
+@@ -9,6 +9,7 @@ using System.Reflection.Emit;
+ using System.Runtime.InteropServices;
+ using System.Threading;
+ using Il2CppInterop.Common;
++using Il2CppInterop.Common.XrefScans;
+ using Il2CppInterop.Runtime.Injection.Hooks;
+ using Il2CppInterop.Runtime.Runtime;
+ using Il2CppInterop.Runtime.Runtime.VersionSpecific.Assembly;
+@@ -171,7 +172,7 @@ namespace Il2CppInterop.Runtime.Injection
+         {
+             if (InjectedAssembly == null) CreateInjectedAssembly();
+ 
+-            if (Il2CppInteropRuntime.Instance.UnityVersion.Major >= 6000)
++            if (Il2CppInteropRuntime.Instance.UnityVersion.Major >= 6000 && !Arm64Code.IsArm64)
+                 GenericMethodGetMethodHook_Unity6.ApplyHook();
+             else
+                 GenericMethodGetMethodHook.ApplyHook();
+-- 
+2.54.0 (Apple Git-157)
+

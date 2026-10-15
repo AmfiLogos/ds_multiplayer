@@ -1,0 +1,747 @@
+diff --git a/BepInEx.Core/Bootstrap/BaseChainloader.cs b/BepInEx.Core/Bootstrap/BaseChainloader.cs
+index 0776bae..d7c346c 100644
+--- a/BepInEx.Core/Bootstrap/BaseChainloader.cs
++++ b/BepInEx.Core/Bootstrap/BaseChainloader.cs
+@@ -9,11 +9,29 @@ using System.Text.RegularExpressions;
+ using BepInEx.Configuration;
+ using BepInEx.Logging;
+ using Mono.Cecil;
++using MonoMod.Utils;
+ 
+ namespace BepInEx.Bootstrap;
+ 
+ public abstract class BaseChainloader<TPlugin>
+ {
++    /// <summary>
++    ///     A Windows filter like "DungeonSettlers.exe" names the same game as the macOS player "Dungeon Settlers":
++    ///     on macOS compare letters and digits only.
++    /// </summary>
++    private static bool SameGameOnMacOS(string filter)
++    {
++        if (!PlatformHelper.Is(Platform.MacOS))
++            return false;
++        static string Key(string n)
++        {
++            if (n.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
++                n = n.Substring(0, n.Length - 4);
++            return new string(n.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
++        }
++        return Key(filter) == Key(Paths.ProcessName);
++    }
++
+     protected static readonly string CurrentAssemblyName = Assembly.GetExecutingAssembly().GetName().Name;
+     protected static readonly Version CurrentAssemblyVersion = Assembly.GetExecutingAssembly().GetName().Version;
+ 
+@@ -248,7 +266,8 @@ public abstract class BaseChainloader<TPlugin>
+                                          filters.All(x => !string.Equals(x.ProcessName.Replace(".exe", ""),
+                                                                          Paths.ProcessName,
+                                                                          StringComparison
+-                                                                             .InvariantCultureIgnoreCase));
++                                                                             .InvariantCultureIgnoreCase) &&
++                                                          !SameGameOnMacOS(x.ProcessName));
+ 
+                 if (invalidProcessName)
+                 {
+diff --git a/BepInEx.Core/Paths.cs b/BepInEx.Core/Paths.cs
+index a1a44eb..3b19d0a 100644
+--- a/BepInEx.Core/Paths.cs
++++ b/BepInEx.Core/Paths.cs
+@@ -121,9 +121,19 @@ public static class Paths
+             // According to some experiments, Unity checks whether globalgamemanagers/data.unity3d exists in the data folder before picking it.
+             // 'ProcessName_Data' folder is checked first, then if that fails 'Data' folder is checked. If neither is valid, the player crashes.
+             // A simple Directory.Exists check is accurate enough while being less likely to break in case these conditions change.
+-            GameDataPath = Path.Combine(GameRootPath, $"{ProcessName}_Data");
+-            if (!Directory.Exists(GameDataPath))
+-                GameDataPath = Path.Combine(GameRootPath, "Data");
++            // macOS players always read the data inside the app bundle; check it first so a sibling "data"
++            // folder next to the .app (case-insensitive file system) is not taken for it.
++            var bundleData = PlatformHelper.Is(Platform.MacOS)
++                                 ? Utility.CombinePaths(Utility.ParentDirectory(executablePath, 2), "Resources", "Data")
++                                 : null;
++            if (bundleData != null && Directory.Exists(bundleData))
++                GameDataPath = bundleData;
++            else
++            {
++                GameDataPath = Path.Combine(GameRootPath, $"{ProcessName}_Data");
++                if (!Directory.Exists(GameDataPath))
++                    GameDataPath = Path.Combine(GameRootPath, "Data");
++            }
+         }
+         
+         if (string.IsNullOrEmpty(GameDataPath) || !Directory.Exists(GameDataPath))
+diff --git a/BepInEx.Preloader.Core/PlatformUtils.cs b/BepInEx.Preloader.Core/PlatformUtils.cs
+index 917a7a8..215b9ce 100644
+--- a/BepInEx.Preloader.Core/PlatformUtils.cs
++++ b/BepInEx.Preloader.Core/PlatformUtils.cs
+@@ -99,7 +99,8 @@ internal static class PlatformUtils
+         else
+             current |= IntPtr.Size >= 8 ? Platform.Bits64 : 0;
+ 
+-        if ((current.Is(Platform.MacOS) || current.Is(Platform.Linux)) && Type.GetType("Mono.Runtime") != null)
++        // The GetPEKind fallback below never matches arm64.
++        if (current.Is(Platform.MacOS) || current.Is(Platform.Linux))
+         {
+             string arch;
+             IntPtr result;
+diff --git a/BepInEx.Preloader.Core/RuntimeFixes/AppleSiliconDetourFix.cs b/BepInEx.Preloader.Core/RuntimeFixes/AppleSiliconDetourFix.cs
+new file mode 100644
+index 0000000..38e6d90
+--- /dev/null
++++ b/BepInEx.Preloader.Core/RuntimeFixes/AppleSiliconDetourFix.cs
+@@ -0,0 +1,115 @@
++﻿using System;
++using System.Runtime.InteropServices;
++using MonoMod.RuntimeDetour;
++using MonoMod.RuntimeDetour.Platforms;
++using MonoMod.Utils;
++
++namespace BepInEx.Preloader.RuntimeFixes;
++
++/// <summary>
++///     Lets MonoMod write detours when the game runs as a native arm64 process on Apple Silicon.
++/// </summary>
++/// <remarks>
++///     Unity's code sits in a MAP_JIT region, which refuses <c>mprotect</c> with EACCES and
++///     <c>mach_vm_write</c> with KERN_INVALID_ADDRESS. Only <c>pthread_jit_write_protect_np</c> gets in, and
++///     managed code cannot call it: it drops execute permission for the calling thread, which is running
++///     JIT-compiled code. Doorstop's <c>doorstop_jit_memcpy</c> keeps the toggle and the write in one frame.
++/// </remarks>
++public static class AppleSiliconDetourFix
++{
++    /// <summary>Why the fix could not install. Logged once the preloader has a logger.</summary>
++    public static Exception Exception { get; private set; }
++
++    /// <summary>Whether this process is 64-bit arm64 macOS.</summary>
++    public static bool Applies =>
++        IntPtr.Size == 8 && PlatformHelper.Is(Platform.MacOS) && PlatformHelper.Is(Platform.ARM);
++
++    /// <summary>Installs the platform. Call before any <see cref="DetourHelper" /> read.</summary>
++    public static void Apply()
++    {
++        if (!Applies)
++            return;
++
++        try
++        {
++            DetourHelper.Native = new AppleSiliconNativePlatform(new DetourNativeARMPlatform());
++        }
++        catch (Exception e)
++        {
++            Exception = e;
++        }
++    }
++
++    /// <summary>Replaces the write operations only; the inner platform still encodes.</summary>
++    private sealed class AppleSiliconNativePlatform : IDetourNativePlatform
++    {
++        private const string LibSystem = "/usr/lib/libSystem.dylib";
++
++        /// <summary>RTLD_DEFAULT: every loaded image.</summary>
++        private static readonly IntPtr RtldDefault = new(-2);
++
++        /// <summary>Mirrors private DetourNativeARMPlatform.DetourSizes (MonoMod 22.7.31.1).</summary>
++        private static readonly uint[] DetourSizes = { 4 + 4, 4 + 2 + 2 + 4, 4 + 4, 4 + 4 + 4, 4 + 4 + 8 };
++
++        private readonly IDetourNativePlatform inner;
++        private readonly JitMemCpy jitMemCpy;
++
++        public AppleSiliconNativePlatform(IDetourNativePlatform inner)
++        {
++            this.inner = inner;
++
++            var symbol = dlsym(RtldDefault, "doorstop_jit_memcpy");
++
++            if (symbol == IntPtr.Zero)
++                throw new NotSupportedException(
++                    "doorstop_jit_memcpy is not exported by any loaded image. Detours cannot be written on " +
++                    "arm64 macOS without it. Update UnityDoorstop, or run the game under Rosetta.");
++
++            jitMemCpy = (JitMemCpy) Marshal.GetDelegateForFunctionPointer(symbol, typeof(JitMemCpy));
++        }
++
++        // doorstop_jit_memcpy handles permissions and icache.
++        public void MakeWritable(IntPtr src, uint size) { }
++        public void MakeReadWriteExecutable(IntPtr src, uint size) { }
++        public void MakeExecutable(IntPtr src, uint size) { }
++        public void FlushICache(IntPtr src, uint size) { }
++
++        public void Apply(NativeDetourData detour)
++        {
++            // Position independent, so encode then copy whole.
++            var scratch = new byte[detour.Size];
++            var pin = GCHandle.Alloc(scratch, GCHandleType.Pinned);
++
++            try
++            {
++                var staging = detour;
++                staging.Method = pin.AddrOfPinnedObject();
++                inner.Apply(staging);
++                jitMemCpy(detour.Method, staging.Method, (UIntPtr) detour.Size);
++            }
++            finally
++            {
++                pin.Free();
++            }
++        }
++
++        public void Copy(IntPtr src, IntPtr dst, byte type)
++        {
++            if (type >= DetourSizes.Length)
++                throw new NotSupportedException($"Unknown detour type {type}");
++
++            jitMemCpy(dst, src, (UIntPtr) DetourSizes[type]);
++        }
++
++        public NativeDetourData Create(IntPtr from, IntPtr to, byte? type) => inner.Create(from, to, type);
++        public void Free(NativeDetourData detour) => inner.Free(detour);
++        public IntPtr MemAlloc(uint size) => inner.MemAlloc(size);
++        public void MemFree(IntPtr ptr) => inner.MemFree(ptr);
++
++        [DllImport(LibSystem)]
++        private static extern IntPtr dlsym(IntPtr handle, string symbol);
++
++        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
++        private delegate void JitMemCpy(IntPtr dst, IntPtr src, UIntPtr n);
++    }
++}
+diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Hook/INativeDetour.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Hook/INativeDetour.cs
+index 61ec72c..57e02cd 100644
+--- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Hook/INativeDetour.cs
++++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Hook/INativeDetour.cs
+@@ -58,6 +58,29 @@ public interface INativeDetour : IDetour
+     private static nint FollowExportThunks(nint func)
+     {
+         if (func == 0) return func;
++
++        // arm64 (clang Mach-O): an export can be one 4-byte "b imm26" to the body, packed next to the
++        // other exports. A 16-byte detour written there overwrites the neighbouring exports.
++        if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
++        {
++            var at = func;
++            for (var hops = 0; hops < 8; hops++)
++            {
++                uint insn;
++                try { insn = (uint) Marshal.ReadInt32(at); }
++                catch { return at; }
++                if ((insn & 0xFC000000u) != 0x14000000u)
++                    break;
++                at += (nint) (((int) (insn << 6) >> 6) * 4L); // sign-extended imm26 * 4
++            }
++            return at;
++        }
++
++        // These encodings identify export thunks only on x86/x64. Leave pointers on
++        // other architectures unchanged for the selected detour provider.
++        if (RuntimeInformation.ProcessArchitecture is not (Architecture.X86 or Architecture.X64))
++            return func;
++
+         var fn = func;
+         for (var hops = 0; hops < 8; hops++)
+         {
+diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/IL2CPPChainloader.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/IL2CPPChainloader.cs
+index 5fcdb35..0d938fb 100644
+--- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/IL2CPPChainloader.cs
++++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/IL2CPPChainloader.cs
+@@ -58,7 +58,9 @@ public class IL2CPPChainloader : BaseChainloader<BasePlugin>
+         base.Initialize(gameExePath);
+         Instance = this;
+ 
+-        if (!NativeLibrary.TryLoad("GameAssembly", typeof(IL2CPPChainloader).Assembly, null, out var il2CppHandle))
++        // Fallback: macOS bundles are off the search path.
++        if (!NativeLibrary.TryLoad("GameAssembly", typeof(IL2CPPChainloader).Assembly, null, out var il2CppHandle)
++            && !NativeLibrary.TryLoad(Il2CppInteropManager.GameAssemblyPath, out il2CppHandle))
+         {
+             Logger.Log(LogLevel.Fatal,
+                        "Could not locate Il2Cpp game assembly (GameAssembly.dll, UserAssembly.dll or libil2cpp.so). The game might be obfuscated or use a yet unsupported build of Unity.");
+diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
+index fe9de89..315afd4 100644
+--- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
++++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Il2CppInteropManager.cs
+@@ -119,8 +119,20 @@ internal static partial class Il2CppInteropManager
+     private static bool initialized;
+ 
+     public static string GameAssemblyPath => Environment.GetEnvironmentVariable("BEPINEX_GAME_ASSEMBLY_PATH") ??
+-                                             Path.Combine(Paths.GameRootPath,
+-                                                          "GameAssembly." + PlatformHelper.LibrarySuffix);
++                                             DefaultGameAssemblyPath;
++
++    private static string DefaultGameAssemblyPath
++    {
++        get
++        {
++            var fileName = "GameAssembly." + PlatformHelper.LibrarySuffix;
++            var path = Path.Combine(Paths.GameRootPath, fileName);
++            // macOS bundles libraries in Contents/Frameworks.
++            if (!File.Exists(path) && PlatformHelper.Is(Platform.MacOS))
++                path = Path.Combine(Utility.ParentDirectory(Paths.ExecutablePath, 2), "Frameworks", fileName);
++            return path;
++        }
++    }
+ 
+     private static string HashPath => Path.Combine(IL2CPPInteropAssemblyPath, "assembly-hash.txt");
+ 
+diff --git a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Preloader.cs b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Preloader.cs
+index 690d4ef..9dfd1c8 100644
+--- a/Runtimes/Unity/BepInEx.Unity.IL2CPP/Preloader.cs
++++ b/Runtimes/Unity/BepInEx.Unity.IL2CPP/Preloader.cs
+@@ -25,6 +25,8 @@ public static class Preloader
+     {
+         try
+         {
++            // Must precede any DetourHelper.Runtime read.
++            AppleSiliconDetourFix.Apply();
+             HarmonyBackendFix.Initialize();
+             ConsoleSetOutFix.Apply();
+             UnityInfo.Initialize(Paths.ExecutablePath, Paths.GameDataPath);
+@@ -44,6 +46,10 @@ public static class Preloader
+ 
+             ChainloaderLogHelper.PrintLogInfo(Log);
+ 
++            if (AppleSiliconDetourFix.Exception != null)
++                Logger.Log(LogLevel.Warning,
++                           $"Could not enable arm64 macOS detours, patching will fail: {AppleSiliconDetourFix.Exception.Message}");
++
+             Logger.Log(LogLevel.Info, $"Running under Unity {UnityInfo.Version}");
+             Logger.Log(LogLevel.Info, $"Runtime version: {Environment.Version}");
+             Logger.Log(LogLevel.Info, $"Runtime information: {RuntimeInformation.FrameworkDescription}");
+diff --git a/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/RuntimeFixes/XTermFix.cs b/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/RuntimeFixes/XTermFix.cs
+index ab33789..74bf13f 100644
+--- a/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/RuntimeFixes/XTermFix.cs
++++ b/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/RuntimeFixes/XTermFix.cs
+@@ -2,6 +2,7 @@
+ using System.Collections.Generic;
+ using System.Linq;
+ using System.Reflection.Emit;
++using BepInEx.Preloader.RuntimeFixes;
+ using HarmonyLib;
+ using MonoMod.RuntimeDetour;
+ using MonoMod.RuntimeDetour.Platforms;
+@@ -29,9 +30,13 @@ internal static class XTermFix
+         // Apparently on older Unity versions (4.x), using Process.Start can run Console..cctor
+         // And since MonoMod's PlatformHelper (used by DetourHelper.Native) runs Process.Start to determine ARM/x86 platform,
+         // this causes a crash owing to TermInfoReader running before it can be patched and fixed
+-        // Because Doorstop does not support ARM at the moment, we can get away with just forcing x86 detour platform.
++        // so we can get away with just forcing the x86 detour platform.
+         // TODO: Figure out a way to detect ARM on Unix without running Process.Start
+-        DetourHelper.Native = new DetourNativeX86Platform();
++        // Apple Silicon really is ARM, so keep its platform.
++        var previousNative = DetourHelper.Native;
++
++        if (!AppleSiliconDetourFix.Applies)
++            DetourHelper.Native = new DetourNativeX86Platform();
+ 
+         var harmony = new Harmony("com.bepinex.xtermfix");
+ 
+@@ -47,7 +52,7 @@ internal static class XTermFix
+         harmony.Patch(AccessTools.Method("System.TermInfoReader:GetStringBytes", new[] { AccessTools.TypeByName("System.TermInfoStrings") }),
+                       transpiler: new HarmonyMethod(typeof(XTermFix), nameof(GetTermInfoStringsTranspiler)));
+ 
+-        DetourHelper.Native = null;
++        DetourHelper.Native = AppleSiliconDetourFix.Applies ? previousNative : null;
+     }
+ 
+     public static int GetInt32(byte[] buffer, int offset)
+diff --git a/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/UnityPreloader.cs b/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/UnityPreloader.cs
+index 6cc3b33..13a1191 100644
+--- a/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/UnityPreloader.cs
++++ b/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/UnityPreloader.cs
+@@ -66,6 +66,11 @@ internal static class UnityPreloader
+             Log.Log(LogLevel.Debug, $"Unity Managed directory: {Paths.ManagedPath}");
+             Log.Log(LogLevel.Debug, $"BepInEx root path: {Paths.BepInExRootPath}");
+ 
++            if (AppleSiliconDetourFix.Exception != null)
++                Log.Log(LogLevel.Warning,
++                        "Failed to install the Apple Silicon detour platform, so no Harmony patch will apply. "
++                        + $"Error message: {AppleSiliconDetourFix.Exception.Message}");
++
+             if (runtimePatchException != null)
+                 Log.Log(LogLevel.Warning,
+                         $"Failed to apply runtime patches for Mono. See more info in the output log. Error message: {runtimePatchException.Message}");
+diff --git a/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/UnityPreloaderRunner.cs b/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/UnityPreloaderRunner.cs
+index 0f063da..fca4fcb 100644
+--- a/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/UnityPreloaderRunner.cs
++++ b/Runtimes/Unity/BepInEx.Unity.Mono.Preloader/UnityPreloaderRunner.cs
+@@ -46,6 +46,9 @@ internal static class UnityPreloaderRunner
+     {
+         PlatformUtils.SetPlatform();
+ 
++        // After SetPlatform, before any DetourHelper read.
++        AppleSiliconDetourFix.Apply();
++
+         var bepinPath = Utility.ParentDirectory(Path.GetFullPath(EnvVars.DOORSTOP_INVOKE_DLL_PATH), 2);
+ 
+         Paths.SetExecutablePath(EnvVars.DOORSTOP_PROCESS_PATH,
+diff --git a/Tests/ExportThunksRegression/ExportThunksRegression.csproj b/Tests/ExportThunksRegression/ExportThunksRegression.csproj
+new file mode 100644
+index 0000000..17d8660
+--- /dev/null
++++ b/Tests/ExportThunksRegression/ExportThunksRegression.csproj
+@@ -0,0 +1,17 @@
++<Project Sdk="Microsoft.NET.Sdk">
++
++    <PropertyGroup>
++        <OutputType>Exe</OutputType>
++        <TargetFramework>net6.0</TargetFramework>
++        <AssemblyName>ExportThunksRegression</AssemblyName>
++        <RootNamespace>ExportThunksRegression</RootNamespace>
++        <IsPackable>false</IsPackable>
++        <Description>Architecture-gate regression tests for INativeDetour.FollowExportThunks</Description>
++    </PropertyGroup>
++
++    <ItemGroup>
++        <!-- References the real production assembly; the test exercises the actual method via reflection. -->
++        <ProjectReference Include="..\..\Runtimes\Unity\BepInEx.Unity.IL2CPP\BepInEx.Unity.IL2CPP.csproj" />
++    </ItemGroup>
++
++</Project>
+diff --git a/Tests/ExportThunksRegression/Program.cs b/Tests/ExportThunksRegression/Program.cs
+new file mode 100644
+index 0000000..694e3c5
+--- /dev/null
++++ b/Tests/ExportThunksRegression/Program.cs
+@@ -0,0 +1,275 @@
++using System;
++using System.IO;
++using System.Reflection;
++using System.Runtime.InteropServices;
++using BepInEx;
++
++namespace ExportThunksRegression;
++
++/// <summary>
++/// Regression coverage for <c>INativeDetour.FollowExportThunks</c>.
++///
++/// The real production method (private static, reached by reflection) is invoked against synthetic
++/// stubs allocated with <see cref="Marshal.AllocHGlobal(int)" />. No machine code is executed, no
++/// detour provider (Dobby/Funchook) is constructed, and no real game or BepInEx directory is
++/// touched: BepInEx paths are redirected into a throwaway temp directory before the production
++/// type is first used.
++/// </summary>
++internal static class Program
++{
++    private const int BufferSize = 0x100;
++
++    // Whether the process can legitimately contain the x86/x64 stub encodings decoded by
++    // FollowExportThunks. On every other architecture the method must return the pointer unchanged.
++    private static readonly bool FollowsThunks =
++        RuntimeInformation.ProcessArchitecture is Architecture.X86 or Architecture.X64;
++
++    private static MethodInfo followExportThunks;
++    private static int failures;
++
++    private static int Main()
++    {
++        var tempRoot = Path.Combine(Path.GetTempPath(), "bepinex-export-thunks-" + Guid.NewGuid().ToString("N"));
++        try
++        {
++            IsolateBepInExPaths(tempRoot);
++
++            followExportThunks = typeof(BepInEx.Unity.IL2CPP.Hook.INativeDetour)
++                                 .GetMethod("FollowExportThunks", BindingFlags.NonPublic | BindingFlags.Static);
++            if (followExportThunks == null ||
++                !followExportThunks.IsStatic ||
++                followExportThunks.ReturnType != typeof(nint) ||
++                followExportThunks.GetParameters().Length != 1 ||
++                followExportThunks.GetParameters()[0].ParameterType != typeof(nint))
++            {
++                Console.Error.WriteLine("FATAL: INativeDetour.FollowExportThunks(nint) not found; cannot run the regression.");
++                return 2;
++            }
++
++            Console.WriteLine($"ProcessArchitecture: {RuntimeInformation.ProcessArchitecture}");
++            Console.WriteLine($"IntPtr.Size: {IntPtr.Size}");
++            Console.WriteLine(FollowsThunks
++                                  ? "Expectation: x86/x64 - stubs are followed to their targets"
++                                  : "Expectation: not x86/x64 - the original pointer is returned unchanged");
++            Console.WriteLine();
++
++            RunNullTest();
++            RunOrdinaryBodyTest();
++            RunForwardRel32Test();
++            RunBackwardRel32Test();
++            RunRipRelativeIndirectTest();
++            RunAbsolute32IndirectTest();
++            RunMixedChainTest();
++            RunHopBudgetTest();
++        }
++        finally
++        {
++            TryDeleteDirectory(tempRoot);
++        }
++
++        Console.WriteLine();
++        if (failures == 0)
++        {
++            Console.WriteLine("All checks passed.");
++            return 0;
++        }
++
++        Console.Error.WriteLine($"{failures} check(s) failed.");
++        return 1;
++    }
++
++    private static void RunNullTest() =>
++        Check("null pointer stays null", () => Follow(0), 0);
++
++    private static void RunOrdinaryBodyTest() =>
++        WithBuffer(buffer =>
++        {
++            Write(buffer, 0x55, 0x48, 0x89, 0xE5, 0xC3); // push rbp; mov rbp, rsp; ret
++            Check("ordinary function body is not followed", () => Follow(buffer), buffer);
++        });
++
++    private static void RunForwardRel32Test() =>
++        WithBuffer(buffer =>
++        {
++            var target = buffer + 0x40;
++            WriteJumpRel32(buffer, target);
++            Write(target, 0x55, 0xC3); // body inside the buffer keeps unguarded decoding readable
++            Check("E9 rel32 forward jump", () => Follow(buffer), FollowsThunks ? target : buffer);
++        });
++
++    private static void RunBackwardRel32Test() =>
++        WithBuffer(buffer =>
++        {
++            var thunk = buffer + 0x40;
++            WriteJumpRel32(thunk, buffer);
++            Write(buffer, 0x55, 0xC3);
++            Check("E9 rel32 backward jump", () => Follow(thunk), FollowsThunks ? buffer : thunk);
++        });
++
++    private static void RunRipRelativeIndirectTest()
++    {
++        if (IntPtr.Size != 8)
++        {
++            Skip("FF 25 RIP-relative indirect jump", "needs a 64-bit process");
++            return;
++        }
++
++        WithBuffer(buffer =>
++        {
++            var target = buffer + 0x40;
++            var slot = buffer + 0x80;
++            WriteJmpRipRelative(buffer, slot);
++            Marshal.WriteIntPtr(slot, target);
++            Write(target, 0x55, 0xC3);
++            Check("FF 25 RIP-relative indirect jump", () => Follow(buffer), FollowsThunks ? target : buffer);
++        });
++    }
++
++    private static void RunAbsolute32IndirectTest()
++    {
++        // FF 25 with an absolute 32-bit operand only exists in a real 32-bit x86 process; it is
++        // never simulated from a 64-bit process (the operand could not be encoded honestly).
++        if (IntPtr.Size != 4 || RuntimeInformation.ProcessArchitecture != Architecture.X86)
++        {
++            Skip("FF 25 absolute32 indirect jump", "needs a real 32-bit x86 process");
++            return;
++        }
++
++        WithBuffer(buffer =>
++        {
++            var target = buffer + 0x40;
++            var slot = buffer + 0x80;
++            WriteJmpAbsolute32(buffer, slot);
++            Marshal.WriteIntPtr(slot, target);
++            Write(target, 0x55, 0xC3);
++            Check("FF 25 absolute32 indirect jump", () => Follow(buffer), target);
++        });
++    }
++
++    private static void RunMixedChainTest() =>
++        WithBuffer(buffer =>
++        {
++            var first = buffer + 0x00;  // E9 -> second
++            var second = buffer + 0x20; // FF 25 -> slot -> third
++            var third = buffer + 0x60;  // E9 -> body
++            var body = buffer + 0x80;
++            var slot = buffer + 0xF8;
++
++            WriteJumpRel32(first, second);
++            if (IntPtr.Size == 8)
++                WriteJmpRipRelative(second, slot);
++            else
++                WriteJmpAbsolute32(second, slot);
++            Marshal.WriteIntPtr(slot, third);
++            WriteJumpRel32(third, body);
++            Write(body, 0x55, 0xC3);
++
++            Check("mixed E9/FF 25 chain", () => Follow(first), FollowsThunks ? body : first);
++        });
++
++    private static void RunHopBudgetTest() =>
++        WithBuffer(buffer =>
++        {
++            const int stride = 8;
++            const int thunkCount = 9; // one more than the 8-hop budget
++
++            for (var i = 0; i < thunkCount; i++)
++                WriteJumpRel32(buffer + i * stride, buffer + (i + 1) * stride);
++            Write(buffer + thunkCount * stride, 0x55, 0xC3);
++
++            // At most 8 jumps are performed, so the still-jumping 9th thunk is returned undecoded.
++            Check("hop budget stops after 8 jumps", () => Follow(buffer), FollowsThunks ? buffer + 8 * stride : buffer);
++        });
++
++    private static nint Follow(nint func) => (nint)followExportThunks.Invoke(null, new object[] { func });
++
++    private static void WithBuffer(Action<nint> test)
++    {
++        var buffer = Marshal.AllocHGlobal(BufferSize);
++        try { test(buffer); }
++        finally { Marshal.FreeHGlobal(buffer); }
++    }
++
++    private static void Check(string name, Func<nint> run, nint expected)
++    {
++        nint actual;
++        try
++        {
++            actual = run();
++        }
++        catch (Exception e)
++        {
++            var cause = e is TargetInvocationException tie && tie.InnerException != null ? tie.InnerException : e;
++            failures++;
++            Console.WriteLine($"FAIL {name}: threw {cause.GetType().Name}: {cause.Message}");
++            return;
++        }
++
++        if (actual == expected)
++        {
++            Console.WriteLine($"PASS {name}");
++        }
++        else
++        {
++            failures++;
++            Console.WriteLine($"FAIL {name}: expected 0x{(long)expected:X}, got 0x{(long)actual:X}");
++        }
++    }
++
++    private static void Skip(string name, string reason) => Console.WriteLine($"SKIP {name}: {reason}");
++
++    private static void Write(nint address, params byte[] bytes)
++    {
++        for (var i = 0; i < bytes.Length; i++)
++            Marshal.WriteByte(address, i, bytes[i]);
++    }
++
++    private static void WriteJumpRel32(nint thunk, nint target)
++    {
++        Marshal.WriteByte(thunk, 0xE9);
++        Marshal.WriteInt32(thunk + 1, checked((int)(target - (thunk + 5))));
++    }
++
++    private static void WriteJmpRipRelative(nint thunk, nint slot)
++    {
++        // FF /4 with modrm 0x25: jmp qword ptr [rip + disp32] (x64).
++        Marshal.WriteByte(thunk, 0xFF);
++        Marshal.WriteByte(thunk + 1, 0x25);
++        Marshal.WriteInt32(thunk + 2, checked((int)(slot - (thunk + 6))));
++    }
++
++    private static void WriteJmpAbsolute32(nint thunk, nint slot)
++    {
++        // FF /4 with modrm 0x25: jmp dword ptr [disp32] (absolute address, 32-bit processes only).
++        Marshal.WriteByte(thunk, 0xFF);
++        Marshal.WriteByte(thunk + 1, 0x25);
++        Marshal.WriteInt32(thunk + 2, unchecked((int)slot));
++    }
++
++    private static void IsolateBepInExPaths(string tempRoot)
++    {
++        // Touching the production type runs INativeDetour's static initializer, which binds
++        // ConfigFile.CoreConfig and can write BepInEx.cfg. Point every BepInEx path at the
++        // throwaway root so no real game or BepInEx install is read or written. GameRootPath
++        // derivation is bypassed by supplying managedPath/gameDataRelativeToManaged explicitly.
++        var fakeExecutable = Path.Combine(tempRoot, "FakeGame.app", "Contents", "MacOS", "FakeGame");
++        var fakeManagedDirectory = Path.Combine(tempRoot, "FakeGame_Data", "Managed");
++        var fakeBepInExRoot = Path.Combine(tempRoot, "BepInEx");
++
++        Directory.CreateDirectory(Path.GetDirectoryName(fakeExecutable));
++        Directory.CreateDirectory(fakeManagedDirectory);
++        Directory.CreateDirectory(Path.Combine(fakeBepInExRoot, "config"));
++        File.WriteAllBytes(fakeExecutable, Array.Empty<byte>());
++
++        Paths.SetExecutablePath(fakeExecutable,
++                                bepinRootPath: fakeBepInExRoot,
++                                managedPath: fakeManagedDirectory,
++                                gameDataRelativeToManaged: true);
++    }
++
++    private static void TryDeleteDirectory(string path)
++    {
++        try { Directory.Delete(path, true); }
++        catch { /* best effort; the directory lives under the OS temp folder */ }
++    }
++}
+diff --git a/Tests/ExportThunksRegression/README.md b/Tests/ExportThunksRegression/README.md
+new file mode 100644
+index 0000000..5157148
+--- /dev/null
++++ b/Tests/ExportThunksRegression/README.md
+@@ -0,0 +1,64 @@
++# Export thunk regression tests
++
++Regression coverage for `INativeDetour.FollowExportThunks` (BepInEx issue
++[#1403](https://github.com/BepInEx/BepInEx/issues/1403)).
++
++`FollowExportThunks` decodes PE export stubs (`E9 rel32` jumps and `FF 25` indirect jumps) so Dobby
++is handed the real function prologue instead of the stub. Those instruction shapes are x86/x64
++encodings: on any other architecture (e.g. Apple Silicon / ARM64), those byte values do not
++identify an x86 export stub. Leave the original pointer unchanged for the detour provider.
++
++## What the tests check
++
++The test calls the **real production method** (`private static nint FollowExportThunks(nint)`,
++reached via reflection) against synthetic stubs written into unmanaged memory allocated with
++`Marshal.AllocHGlobal`. Machine code is never executed, no detour provider (Dobby/Funchook) is
++constructed, and `INativeDetour.Create` is never called.
++
++| Check | x86/x64 expectation | non-x86/x64 expectation |
++| --- | --- | --- |
++| `null` pointer | `0` | `0` |
++| Ordinary body (`55 48 89 E5 C3`, no branch) | unchanged | unchanged |
++| `E9 rel32` forward jump, target inside the buffer | resolved target | original pointer |
++| `E9 rel32` backward jump, target inside the buffer | resolved target | original pointer |
++| `FF 25` RIP-relative indirect jump (64-bit only) | resolved target | original pointer |
++| `FF 25` absolute32 indirect jump (real 32-bit x86 only) | resolved target | - |
++| Mixed `E9 -> FF 25 -> E9` chain | resolved target | original pointer |
++| Hop budget: 9 chained `E9` jumps | 9th thunk returned undecoded (8-hop limit) | original pointer |
++
++All jump and pointer targets live inside the same allocated buffer, so a build without the
++architecture gate stays readable while decoding (no `SIGSEGV` based evidence). On non-x86/x64 the
++ungated build resolves every stub to the synthetic target instead of the original pointer, which is
++exactly what the "original pointer" expectations fail on.
++
++BepInEx paths are redirected (`Paths.SetExecutablePath` with `bepinRootPath` pointing into a
++throwaway temp directory) before the production type is first touched, because the type initializer
++binds `ConfigFile.CoreConfig`. No game files and no real BepInEx installation are read or written;
++the temp directory is deleted on exit.
++
++## Running
++
++Run from the repository root:
++
++```sh
++dotnet run --project Tests/ExportThunksRegression/ExportThunksRegression.csproj -c Debug
++```
++
++Exit codes: `0` all checks passed, `1` at least one check failed, `2` the production method could
++not be located (infrastructure problem).
++
++Platform boundaries:
++
++* **Apple Silicon (arm64)** - all stubs must be returned unchanged.
++* **Rosetta / x64 process** - build with the SDK above, then execute the built DLL with an x64
++  .NET 6 runtime: `arch -x86_64 /path/to/x64-dotnet Tests/ExportThunksRegression/bin/Debug/net6.0/ExportThunksRegression.dll`.
++  Rosetta must be available. Alternatively, `arch -x86_64 dotnet run --project Tests/ExportThunksRegression/ExportThunksRegression.csproj`
++  requires an x64 SDK as well as a compatible runtime. The stub checks must resolve to their targets.
++* **32-bit x86** - the `FF 25` absolute32 check runs only here, in a real 32-bit process. The
++  RIP-relative check is skipped. The operand is never encoded from a 64-bit process.
++* Windows and Linux have not been exercised by the current test run; the managed logic is
++  platform-independent apart from the architecture dispatch above.
++
++The project is intentionally **not** part of `BepInEx.sln`; it references
++`Runtimes/Unity/BepInEx.Unity.IL2CPP/BepInEx.Unity.IL2CPP.csproj` directly and has no additional
++NuGet packages of its own.
