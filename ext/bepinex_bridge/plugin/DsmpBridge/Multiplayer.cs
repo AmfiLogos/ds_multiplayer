@@ -108,11 +108,29 @@ namespace DsmpBridge
         // ---- native lookup ----
         [DllImport("kernel32", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandleW(string name);
         [DllImport("libSystem.dylib")] static extern IntPtr dlsym(IntPtr handle, string name);
+        [DllImport("libSystem.dylib")] static extern IntPtr dlopen(string path, int mode);
+        [DllImport("libSystem.dylib")] static extern uint _dyld_image_count();
+        [DllImport("libSystem.dylib")] static extern IntPtr _dyld_get_image_name(uint i);
+
+        // Mac: the loader opens mods\multiplayer\multiplayer.dylib with RTLD_LOCAL (not in RTLD_DEFAULT): find the
+        // loaded image by name and take a handle on it (RTLD_NOLOAD: never loads anything). Rig copies: dsrig.dylib.
+        static IntPtr MacImage()
+        {
+            foreach (var want in new[] { "/multiplayer.dylib", "/dsrig.dylib", "/dsrig_bridge.dylib" })
+                for (uint i = 0, n = _dyld_image_count(); i < n; i++)
+                {
+                    string name = Marshal.PtrToStringUTF8(_dyld_get_image_name(i));
+                    if (name == null || !name.EndsWith(want)) continue;
+                    IntPtr h = dlopen(name, 0x10 | 0x2 /* RTLD_NOLOAD | RTLD_NOW */);
+                    if (h != IntPtr.Zero && dlsym(h, "dsmp_bridge_api_version") != IntPtr.Zero) return h;
+                }
+            return new IntPtr(-2);   // RTLD_DEFAULT
+        }
 
         static IntPtr Sym(string name)
         {
             if (OperatingSystem.IsWindows()) return lib != IntPtr.Zero && NativeLibrary.TryGetExport(lib, name, out var a) ? a : IntPtr.Zero;
-            return dlsym(new IntPtr(-2) /* RTLD_DEFAULT */, name);
+            return dlsym(lib, name);
         }
 
         internal static void Init()
@@ -126,6 +144,7 @@ namespace DsmpBridge
                     lib = GetModuleHandleW("multiplayer.dll");
                     if (lib == IntPtr.Zero || !NativeLibrary.TryGetExport(lib, "dsmp_bridge_api_version", out _)) lib = GetModuleHandleW("baselib.dll");
                 }
+                else lib = MacImage();
                 f_api = (delegate* unmanaged[Cdecl]<int>)Sym("dsmp_bridge_api_version");
                 if (f_api == null) { Log("native multiplayer bridge not found (vanilla game or old multiplayer mod)"); return; }
                 f_active = (delegate* unmanaged[Cdecl]<int>)Sym("dsmp_bridge_active");

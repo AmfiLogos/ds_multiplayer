@@ -1,2 +1,2 @@
 {"id":"dsmp-bridge","name":"DSMP Bridge","version":"1.0.0","kind":"bepinex","scope":"gameplay","hidden":true,
- "platforms":{"any":{"files":{"DsmpBridge.dll":"82771d4a38a03e2eaeb11d4c2b7113ce5b8d9233e2ebc352ea6373964b090707"}}}}
+ "platforms":{"any":{"files":{"DsmpBridge.dll":"1475a87a19cf668c207ab8bbd8fb21a74a74502e8489ce6b452768d3f36b56c5"}}}}

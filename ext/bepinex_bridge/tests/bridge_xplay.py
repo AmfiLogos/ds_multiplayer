@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """BepInEx bridge pair test: Mac host X (lane dsrig_bridge.dylib, no BepInEx) + Windows guest W_BRG (lane baselib.dll +
 BepInEx be.788 + DsmpBridge + DsmpBridgeDemo plugins). Run through the lane runner (lease the pair first):
-  python3 tools/brg_wrig.py xplay <pair> tests/bridge_xplay.py [--dylib PATH]
+  python3 tools/brg_wrig.py xplay <pair> tests/bridge_xplay.py [--dylib PATH] [--mac-bie]
+--mac-bie: the Mac host runs like the l1-core launcher starts it with BepInEx (tools/mac_bie_host.py: dsload + multiplayer
+module + Doorstop + bepinex-mac 0.1.1 + DsmpBridge + demo). Then a C#-HANDLED action (demo.gold: the plugin's own handler
+changes ClanDataContainer.ClanGold) is sent from W and from the Mac and must apply on both.
 Checks: the plugin loads next to baselib.dll and sees the session (role Guest, player id); a C# mod action
 (Multiplayer.AddGold(250) from the demo plugin on W) runs on BOTH peers at the same step through the lockstep order path;
 gold equal on both; full-state checks equal; fingerprints equal; 0 desyncs. Then INFO: a managed-only channel
@@ -51,10 +54,15 @@ def main():
     a = sys.argv
     rig.DYLIB = os.path.abspath(a[a.index('--dylib') + 1]) if '--dylib' in a else os.path.join(LANE, 'build', 'dsrig_bridge.dylib')
     pair = rig.lease('bepinex'); X, Y = pair[0], pair[1]; PORT = rig.PAIR_PORTS[pair]
+    MACBIE = '--mac-bie' in a
+    if MACBIE:
+        sys.path.insert(0, os.path.join(LANE, 'tools')); import mac_bie_host
+        o_start = rig.start
+        rig.start = lambda x, window=False, fps=30: mac_bie_host.start(x, fps) if x == X else o_start(x, window=window, fps=fps)
     log('pair', pair, 'host', X, '(Mac) dylib', rig.DYLIB, '| guest', Y, '= W_BRG', rig.idir(Y))
     try:
-        for f in ('bridge_demo.status', 'bridge_demo.notes'):
-            p = os.path.join(rig.idir(Y), f)
+        for f, i in [(f, i) for f in ('bridge_demo.status', 'bridge_demo.notes') for i in (X, Y)]:
+            p = os.path.join(rig.idir(i), f)
             if os.path.exists(p): os.replace(p, os.path.join(LANE, 'old', f + time.strftime('.%H%M%S')))
         json.dump({'role': 'host', 'port': PORT, 'name': 'The owner', 'allow_speedup': True, 'allow_pause': True, 'full_check_steps': 600},
                   open(os.path.join(rig.idir(X), 'mp.json'), 'w'))
@@ -80,8 +88,13 @@ def main():
               ds.get('installed') == 1 and ds.get('role') == 'Guest' and ds.get('player') == bw.get('player') and ds.get('player', -1) >= 1
               and bw.get('dispatch') == 1, f'{ds} | native {bw}')
         bx = br(X)
-        check('native: Mac host has the bridge (role Host), no managed dispatcher (no BepInEx on Mac)',
-              bx.get('active') == 1 and bx.get('role') == 1 and bx.get('dispatch') == 0, bx)
+        if MACBIE:
+            dx = wait('host demo status active', lambda: (lambda d: d if d.get('active') == 1 else None)(demo_status(X)), timeout=60)
+            check('Mac host: BepInEx + DsmpBridge found multiplayer.dylib through the loader (role Host, managed dispatcher set)',
+                  dx.get('installed') == 1 and dx.get('role') == 'Host' and dx.get('player') == 0 and bx.get('dispatch') == 1, f'{dx} | native {bx}')
+        else:
+            check('native: Mac host has the bridge (role Host), no managed dispatcher (no BepInEx on Mac)',
+                  bx.get('active') == 1 and bx.get('role') == 1 and bx.get('dispatch') == 0, bx)
 
         # (b) a C# mod action through the lockstep order path
         g0x, g0y = br(X).get('gold'), br(Y).get('gold')
@@ -100,6 +113,18 @@ def main():
         log('apply lines', lx, '|', ly)
 
         # full-state checks (gold is in the save sections) + fingerprints, a few checks after the action
+        if MACBIE:   # C#-handled action, from W and from the Mac host
+            m0x, m0y, g1 = br(X).get('applied_managed', 0), br(Y).get('applied_managed', 0), br(X).get('gold')
+            trigger(Y, 'cgold 100'); time.sleep(2); trigger(X, 'cgold 40')
+            wait('C# gold applied on both', lambda: br(X).get('gold') == g1 + 140 and br(Y).get('gold') == g1 + 140, timeout=60, every=1)
+            time.sleep(3); bx, bw = br(X), br(Y)
+            check('C#-handled action demo.gold (100 from W, 40 from Mac): the plugin handler ran on both peers, gold equal',
+                  bx.get('applied_managed') == m0x + 2 and bw.get('applied_managed') == m0y + 2 and bx.get('gold') == bw.get('gold') == g1 + 140
+                  and bx.get('unhandled') == 0 and bw.get('unhandled') == 0 and bx.get('failed') == 0 and bw.get('failed') == 0, f'X {bx} | W {bw}')
+            def bl(path): 
+                try: return [l.strip()[-80:] for l in open(path, errors='replace') if 'demo.gold' in l]
+                except OSError: return []
+            log('C# handler lines Mac', bl(os.path.join(LANE, 'l1/bie/0.1.1/BepInEx/LogOutput.log')))
         # the host only sends its sections; the guest compares and logs "full-state check at step N: equal|..." (mp_core.c)
         def fulls(): return [l for l in open(os.path.join(rig.idir(Y), 'rig.log'), errors='replace') if 'full-state check at step' in l]
         f0 = len(fulls())
@@ -113,13 +138,14 @@ def main():
 
         # INFO: managed-only channel on a Mac+Windows pair
         trigger(Y, 'note hello from a C# mod')
-        wait('note applied on W', lambda: br(Y).get('applied_managed', 0) >= 1, timeout=60, every=1)
+        wait('note applied on W', lambda: br(Y).get('applied_managed', 0) >= (3 if MACBIE else 1), timeout=60, every=1)
         time.sleep(3)
         bx, bw = br(X), br(Y)
         notes = open(os.path.join(rig.idir(Y), 'bridge_demo.notes')).read().strip() if os.path.exists(os.path.join(rig.idir(Y), 'bridge_demo.notes')) else ''
         log('INFO managed channel demo.note: W applied_managed', bw.get('applied_managed'), 'notes', repr(notes), '| Mac unhandled', bx.get('unhandled'),
             '(expected: a managed channel needs the plugin on every peer)')
-        results['info: managed channel runs on W, Mac counts it unhandled'] = bw.get('applied_managed') == 1 and bx.get('unhandled') == 1
+        if MACBIE: check('managed channel demo.note handled on both (Mac has the plugin now)', bx.get('unhandled') == 0 and bx.get('failed') == 0, bx)
+        else: results['info: managed channel runs on W, Mac counts it unhandled'] = bw.get('applied_managed') == 1 and bx.get('unhandled') == 1
     except Exception as e:
         check('run finished', False, repr(e))
     finally:

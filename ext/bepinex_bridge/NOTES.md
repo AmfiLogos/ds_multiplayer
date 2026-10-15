@@ -59,3 +59,14 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
   looks up multiplayer.dll first, then baselib.dll. Rebuilt; the 21:20 pair test ran the baselib.dll path (not re-run).
 - Mod folder: `tools/make_mod.sh` -> mods/dsmp-bridge/ (DsmpBridge.dll + mod.json: kind bepinex, scope gameplay,
   hidden). The loader copies enabled bepinex mods to BepInEx\plugins\<id>\ and lists them in modset_lines (HELLO).
+
+## Mac host with BepInEx (2026-10-15 21:30, pair GH, run with `--mac-bie`)
+- Mac host started the way the l1-core launcher does it (`tools/mac_bie_host.py`): l1-core loader (l1-core 2946347,
+  built in l1/loader with MP_PIN = this branch) + multiplayer.dylib module (RTLD_LOCAL) + Doorstop + bepinex-mac 0.1.1
+  + DsmpBridge + demo via BEPINEX_PLUGIN_DIRS. First start (interop generation) took 130 s to the title.
+- DsmpBridge on Mac: RTLD_LOCAL module is not in RTLD_DEFAULT, so the plugin scans the loaded images for
+  multiplayer.dylib (then dsrig.dylib) and takes a RTLD_NOLOAD handle. Found ("native multiplayer bridge found").
+- PASS all: Mac role Host with the managed dispatcher; native AddGold(250) on both; C#-HANDLED demo.gold (the plugin's
+  own handler sets ClanDataContainer.ClanGold through the interop types) 100 from W + 40 from the Mac: 301 -> 441 on
+  both (Mac log: step 2340 player 1, step 2467 player 0); full checks after it equal; 0 desyncs; fingerprints equal
+  (1951 ticks); managed demo.note handled on both (unhandled 0).

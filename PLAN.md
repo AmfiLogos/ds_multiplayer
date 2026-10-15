@@ -367,3 +367,6 @@ Source threads: research/discord/1559702991592751194.txt (announcement), 1559240
   needs the plugin); MOVE / ORD pass-through with the owner check. Plugin DsmpBridge.dll (+ test DsmpBridgeDemo.dll).
 - Pair Mac host + Windows guest: AddGold(250) from the plugin applied on both at the same step, full checks equal,
   0 desyncs, fingerprints equal. Unit test all PASS. Not merged to main. Details ext/bepinex_bridge/NOTES.md.
+- 2026-10-15 21:31: Mac host WITH BepInEx (l1-core loader + multiplayer.dylib module + bepinex-mac 0.1.1) + Windows guest:
+  a C#-handled bridge action (plugin handler sets ClanGold) sent from both sides applied on both, full checks equal,
+  0 desyncs. DsmpBridge finds the RTLD_LOCAL multiplayer.dylib by image scan. Mac limit removed.
