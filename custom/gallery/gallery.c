@@ -1,7 +1,7 @@
 /* gallery - see gallery.h */
 #include "gallery.h"
 #include "../fights/cm_http.h"
-#include "../../src/fe/fe_json.h"
+#include "../fe/fe_json.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

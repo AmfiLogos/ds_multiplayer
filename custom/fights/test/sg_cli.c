@@ -4,7 +4,7 @@
  * env DET_SEED, DET_NOW, DET_JS (path of det_prelude.js; unset = no determinism, the in-game behaviour)
  * Case selection, builds and outputs: see ref_node.js. Also writes <out>/timing.txt. */
 #include "../sg_js.h"
-#include "../../../src/fe/fe_json.h"
+#include "../../fe/fe_json.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
