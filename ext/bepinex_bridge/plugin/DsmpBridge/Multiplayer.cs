@@ -1,5 +1,6 @@
 // DsmpBridge - lets BepInEx (IL2CPP) mods see the Dungeon Settlers multiplayer session and send gameplay actions
-// through its lockstep order path. Native side: src/mp_bridge.h (exports of baselib.dll on Windows, dsrig.dylib on Mac).
+// through its lockstep order path. Native side: src/mp_bridge.h (exports of mods\multiplayer\multiplayer.dll with the
+// mod loader or the baselib.dll proxy (old friend kit) on Windows, dsrig.dylib on Mac).
 //
 // Use from a mod (add a reference to DsmpBridge.dll and [BepInDependency(DsmpBridge.BridgePlugin.Guid)]):
 //   Multiplayer.Register("mymod.heal", (player, data, step) => ApplyHeal(data));   // once, in Load()
@@ -120,7 +121,11 @@ namespace DsmpBridge
             tried = true;
             try
             {
-                if (OperatingSystem.IsWindows()) lib = GetModuleHandleW("baselib.dll");   // our proxy, loaded by UnityPlayer
+                if (OperatingSystem.IsWindows())   // mod loader: mods\multiplayer\multiplayer.dll; old friend kit: the baselib.dll proxy
+                {
+                    lib = GetModuleHandleW("multiplayer.dll");
+                    if (lib == IntPtr.Zero || !NativeLibrary.TryGetExport(lib, "dsmp_bridge_api_version", out _)) lib = GetModuleHandleW("baselib.dll");
+                }
                 f_api = (delegate* unmanaged[Cdecl]<int>)Sym("dsmp_bridge_api_version");
                 if (f_api == null) { Log("native multiplayer bridge not found (vanilla game or old multiplayer mod)"); return; }
                 f_active = (delegate* unmanaged[Cdecl]<int>)Sym("dsmp_bridge_active");

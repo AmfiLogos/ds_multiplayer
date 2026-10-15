@@ -22,7 +22,7 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
 - C# side (`plugin/`, net6.0): `DsmpBridge.dll` (plugin `dsmp.bridge`): static `DsmpBridge.Multiplayer`:
   `Installed, Active, Role, Player, Step, Applying, Modset, Register(channel, handler), Send, Do(channel, data, local)`
   (Do = send in a session, run the handler now in single player), `AddGold`, `Order`. Finds the exports with
-  GetModuleHandle("baselib.dll") + GetExport (Windows) or dlsym(RTLD_DEFAULT) (Mac, untested: no loader on Mac).
+  GetModuleHandle("multiplayer.dll") (mod loader module, L3) then "baselib.dll" (old friend kit) + GetExport (Windows) or dlsym(RTLD_DEFAULT) (Mac, untested: no loader on Mac).
   Dispatcher = `[UnmanagedCallersOnly]` function pointer; handler exceptions are caught and logged.
   `DsmpBridgeDemo.dll`: test plugin (trigger file `<DSRIG_DIR>/bridge_demo.trigger`: `gold N` / `note text`;
   writes `bridge_demo.status`).
@@ -53,3 +53,9 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
 - INFO (expected limit): managed channel demo.note ran on W (applied_managed 1), Mac counted it unhandled 1.
 - Run 1 (21:08) had the same PASS for the action and 15202 equal fingerprints; its full-check wait read the host's
   full_ok (the host only sends; the guest compares), fixed in run 2.
+
+## Shipping with the L3 Windows loader (l3win answer, 2026-10-15 evening)
+- Multiplayer code moves to <ROOT>\mods\multiplayer\multiplayer.dll (loader module, all symbols exported): the plugin
+  looks up multiplayer.dll first, then baselib.dll. Rebuilt; the 21:20 pair test ran the baselib.dll path (not re-run).
+- Mod folder: `tools/make_mod.sh` -> mods/dsmp-bridge/ (DsmpBridge.dll + mod.json: kind bepinex, scope gameplay,
+  hidden). The loader copies enabled bepinex mods to BepInEx\plugins\<id>\ and lists them in modset_lines (HELLO).
