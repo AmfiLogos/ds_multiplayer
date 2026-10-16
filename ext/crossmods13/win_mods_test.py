@@ -29,11 +29,11 @@ while not PAIR and time.time() - t_l < float(os.environ.get("XM_LEASE_WAIT", "12
     if not PAIR: time.sleep(20)
 log("lease", PAIR or lease.stderr.strip(), f"after {time.time() - t_l:.0f} s")
 # one wine copy machine-wide (taken after the lease, so a wait for a pair never holds the wine lock)
-def wine_free(): return not subprocess.run(["pgrep", "-fl", "wine"], capture_output=True, text=True).stdout.strip()
+def wine_free(): return not subprocess.run(["pgrep", "-l", "wine"], capture_output=True, text=True).stdout.strip()
 HAVE_LOCK = False
 if PAIR:
     t_w = time.time()
-    while time.time() - t_w < 1200 and not HAVE_LOCK:
+    while time.time() - t_w < float(os.environ.get("XM_LOCK_WAIT", "3600")) and not HAVE_LOCK:
         if wine_free():
             try: os.mkdir(LOCK); HAVE_LOCK = True; open(os.path.join(LOCK, "owner"), "w").write("crossmods\n")
             except FileExistsError: pass
@@ -45,8 +45,16 @@ try:
         log("install rc", w.install(KIT))
     # profile (what the Mods window writes): our four mods + the two test probes
     md = os.path.join(w.PROF, "data", "Mods"); os.makedirs(md, exist_ok=True)
-    en = ["multiplayer", "custom-modes", "gcd-cdr", "hell-difficulty", "gcd-probe", "hell-probe"]
+    en = os.environ.get("XM_ENABLED", "multiplayer,custom-modes,gcd-cdr,hell-difficulty,gcd-probe,hell-probe").split(",")
     json.dump({"enabled": en, "order": en}, open(os.path.join(md, "active.json"), "w"))
+    for f in ("hell_probe_go.txt", "hell_probe_go.txt.done"):   # a go file left by a stopped run
+        p = os.path.join(w.PROF, f)
+        if os.path.exists(p): os.replace(p, os.path.join(OUT, "stale_" + f))
+    # mods per world: this test's save is played with this mod set (the loader's world check reads worlds.json)
+    wj = os.path.join(md, "worlds.json"); wd = json.load(open(wj)) if os.path.exists(wj) else {}
+    key = "+".join(sorted(m for m in en if m in ("custom-modes", "gcd-cdr", "hell-difficulty")))
+    wd.setdefault("worlds", {})["f816ebc6-195c-432c-9fff-754b75ee3738"] = key
+    json.dump(wd, open(wj, "w"))
     for f in ("dsload.log", "rig.log"):                      # fresh logs for this run (old ones kept)
         p = os.path.join(w.PROF, f)
         if os.path.exists(p): os.replace(p, os.path.join(OUT, "prev_" + f))
@@ -61,6 +69,8 @@ try:
         time.sleep(5)
     log("title:", {k: st.get(k) for k in ("scene", "boot_ready", "busy")}, f"{time.time() - t0:.0f} s")
     L = dsl()
+    check("reached the title (control port answers)", st.get("boot_ready") and st.get("scene") == 1)
+    if os.environ.get("XM_TITLE_ONLY"): raise SystemExit("title only")
     check("gcd-cdr loaded (Windows table, name lookups)", "global cooldown now uses cooldown reduction" in L)
     m = re.search(r"Hell difficulty ready: (\d+) code patches", L)
     npat = len([l for l in open(os.path.join(KIT, "files", "mods", "hell-difficulty", "rva", "25846389_win_patches.tsv")) if l.startswith("patch")])
@@ -74,9 +84,9 @@ try:
         t1 = time.time()
         while time.time() - t1 < 30 and f"CombatDifficulty {diff}: AFFECTER_Mage" not in dsl(): time.sleep(1)
     L = dsl()
-    k5 = re.search(r"CombatDifficulty 5: AFFECTER_Mage kit = \[([^\]]*)\]", L); k1 = re.search(r"CombatDifficulty 1: AFFECTER_Mage kit = \[([^\]]*)\]", L)
-    check("staff strip on Hell (5): no staff", k5 and "Staff" not in k5.group(1) and k5.group(1), k5.group(1) if k5 else "no probe line")
-    check("no strip on difficulty 1: staff kept", k1 and "Staff" in k1.group(1), k1.group(1) if k1 else "no probe line")
+    k5 = (re.findall(r"CombatDifficulty 5: AFFECTER_Mage kit = \[([^\]]*)\]", L) or [None])[-1]; k1 = (re.findall(r"CombatDifficulty 1: AFFECTER_Mage kit = \[([^\]]*)\]", L) or [None])[-1]
+    check("staff strip on Hell (5): no staff", k5 and "Staff" not in k5, k5 if k5 is not None else "no probe line")
+    check("no strip on difficulty 1: staff kept", k1 and "Staff" in k1, k1 if k1 is not None else "no probe line")
     check("strip log line from hell-difficulty", "Hell recruit: 1 staff item(s) removed" in L)
     # Mods window
     def ui_cmd(op, **kw):
@@ -92,7 +102,7 @@ try:
     ui_cmd("open"); time.sleep(3); s = ui_cmd("state")
     json.dump(s, open(os.path.join(OUT, "mods_window_state.json"), "w"), indent=1)
     txt = json.dumps(s)
-    names = {"multiplayer": "Multiplayer", "custom-modes": "Custom Modes", "gcd-cdr": "Global cooldown uses cooldown reduction", "hell-difficulty": "Hell difficulty"}
+    names = {i: json.load(open(os.path.join(KIT, "files", "mods", i, "mod.json")))["description"][:30] for i in ("multiplayer", "custom-modes", "gcd-cdr", "hell-difficulty")}   # rows show each mod's description
     check("Mods window lists multiplayer, custom-modes, gcd-cdr, hell-difficulty", all(v in txt for v in names.values()),
           ", ".join(k for k, v in names.items() if v not in txt) or "all four")
     ui_cmd("close")

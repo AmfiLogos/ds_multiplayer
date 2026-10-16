@@ -29,7 +29,7 @@ while not PAIR and time.time() - t_l < 1800:                       # the Mac cop
 log("lease", PAIR)
 HAVE_LOCK = False; t_w = time.time()
 while PAIR and not HAVE_LOCK and time.time() - t_w < 1800:
-    if not subprocess.run(["pgrep", "-fl", "wine"], capture_output=True, text=True).stdout.strip():
+    if not subprocess.run(["pgrep", "-l", "wine"], capture_output=True, text=True).stdout.strip():
         try: os.mkdir(LOCK); HAVE_LOCK = True; open(os.path.join(LOCK, "owner"), "w").write("crossmods\n")
         except FileExistsError: pass
     if not HAVE_LOCK: time.sleep(20)

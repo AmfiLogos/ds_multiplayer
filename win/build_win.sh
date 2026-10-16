@@ -25,7 +25,7 @@ MH=third_party/minhook
 ZL=third_party/zlib    # inflate only (pvp_wiki.c builder links): zlib 1.3.1 from the local Unity il2cpp sources
 C=${DSMP_CUSTOM:-${S:h}/custom}; export DSMP_CUSTOM=$C   # Custom Modes sources (one DLL here: -DCM_SAME_IMAGE)
 CINC=(-I$C); for d in $C/*(/N); do CINC+=(-I$d); done             # every custom/ folder (fe, pvp, units, home, ...)
-INC=(-Iport/posix -Iport -Imath -I$S/ord_test -I$S/net/steam -I$S $CINC -I$S/net -I$DSMP_ROOT/sdk -I$MH/include -I$ZL)
+INC=(-Ibuild/gen_inc -Iport/posix -Iport -Imath -I$S/ord_test -I$S/net/steam -I$S $CINC -I$S/net -I$DSMP_ROOT/sdk -I$MH/include -I$ZL)
 CF=(-O2 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_STDIO=1 -fno-strict-aliasing -DCM_SAME_IMAGE)
 TARGET=${DSMP_TARGET:-baselib}
 if [[ $TARGET == module ]]; then CF+=(-DDSMP_MODULE); INC+=(-I${DSL_SDK:-~/ds_launcher/loader/sdk}); fi

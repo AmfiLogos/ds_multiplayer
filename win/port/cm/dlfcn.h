@@ -3,7 +3,9 @@
    next to the caller; a path ending in .dylib loads the .dll of the same name. */
 #pragma once
 #include <windows.h>
+#include <tlhelp32.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #define RTLD_DEFAULT ((void *)0)
 #define RTLD_NOW 2
@@ -17,9 +19,19 @@ static inline void cm_dll_name(const char *p, char *out, size_t n) {
     if (L > 6 && !strcmp(out + L - 6, ".dylib")) snprintf(out + L - 6, n - (L - 6), ".dll");
     for (char *c = out; *c; c++) if (*c == '/') *c = '\\';
 }
+/* DSL_CM_MODLIST=1 (diagnostics): after a load, write every module's base and size to <DSRIG_DIR>/cm_modules.txt */
+static inline void cm_modlist(void) {
+    const char *d = getenv("DSRIG_DIR"); if (!d || !getenv("DSL_CM_MODLIST")) return;
+    char p[1200]; snprintf(p, sizeof p, "%s\\cm_modules.txt", d); FILE *o = fopen(p, "a"); if (!o) return;
+    HANDLE s = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId()); MODULEENTRY32 me; me.dwSize = sizeof me;
+    if (s != INVALID_HANDLE_VALUE && Module32First(s, &me)) do fprintf(o, "%p %08lx %s\n", (void *)me.modBaseAddr, (unsigned long)me.modBaseSize, me.szModule); while (Module32Next(s, &me));
+    if (s != INVALID_HANDLE_VALUE) CloseHandle(s);
+    fprintf(o, "----\n"); fclose(o);
+}
 static inline void *dlopen(const char *p, int f) {
     char n[1200]; cm_dll_name(p, n, sizeof n);
     HMODULE m = (f & RTLD_NOLOAD) ? GetModuleHandleA(n) : LoadLibraryExA(n, NULL, strchr(n, '\\') ? LOAD_WITH_ALTERED_SEARCH_PATH : 0);
+    if (m && !(f & RTLD_NOLOAD)) cm_modlist();
     if (!m) snprintf(cm_dlerr, sizeof cm_dlerr, "%s: %s (error %lu)", n, (f & RTLD_NOLOAD) ? "not loaded" : "LoadLibrary failed", GetLastError());
     return m;
 }
