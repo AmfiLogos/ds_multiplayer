@@ -41,6 +41,29 @@
   (auto-only, rc 0). Units equal at the paused tick, owner prefs unchanged, no copy left running.
   Before (lan_v12 dylib, 2026-10-15): same flip -> guest kept the flag ON -> full-state desync at step 10800.
 
+## Follow-up 2026-10-16 (lead): verdict = the mod stays GAMEPLAY
+- Merged mpfix (f2fb149) into mpfix-ws. Flip run on build/merge_mpfix/dsrig.dylib (pair EF, full-state ON): 5.2 min,
+  18 345 equal ticks, 0 / 0 desyncs, 1 full check OK, EmergencyEscape auto off / off on both units.
+- Equip test: ext/mpfix/tests/ws_equip_pair.py (host with the mod, stock guest, full-state ON, 6 min). Unit 477ad25a:
+  host re-sets its slots 1-4 (Slay, DestructiveSplit, BladeGrinding, EmergencyEscape) with SetQuickSlotRequested, so
+  the guest's 4-slot bar is full; then the host swaps CarapaceGreatSword -> WoodClub (EquipItemRequested, real order
+  path), casts SKILL_StunCharge every 8 s, and at half time swaps back.
+  - Run equip2 (pair CD): desyncs host 0 / guest 2, full checks guest 1 OK / 1 FAIL (EntityComponentSaveData).
+    After the swap to the club: host learned StunCharge (slot 0 = StunCharge); guest lost WhirlwindSlash and did NOT
+    learn StunCharge; its slot 0 still holds the stale "SKILL_WhirlwindSlash". After the swap back (post resync):
+    host learned WhirlwindSlash, guest did not (stale "SKILL_StunCharge" in slot 0).
+  - Run equip1 (pair EF): same, first desync at step 5880 (fingerprint: unit 477ad25a task 15 on host, 0 on guest)
+    right after the first StunCharge cast; full-state difference at step 21600 after the swap back.
+- Cause (decompiled, build 25846389): EquipItem (0xD4D574) unequips first. ProcessUnequip (0xD4ABB0) removes the old
+  weapon skill from SkillComponent but leaves its quick slot. ProcessEquip (0xD496D4) calls OnAddExtraSkill ->
+  TryRegisterQuickSlot (first EMPTY slot) and adds the skill only if IsRegistered. A stock bar that is full (the stale
+  key counts) gets no slot, so the skill is never learned. The mod writes slot 0 itself, so the host always learns it.
+- Not fixable safely in ord: equips also happen outside player orders (weapon breaks, death drops, task equips), so
+  the stock guest would have to run the mod's ProcessEquip / ProcessUnequip change itself (= the mod is gameplay).
+  So: scope stays "gameplay"; the QuickSlots skip is reverted (the layout gates skill learning). The skill-key orders
+  stay (correct for any layout; same result when layouts are equal).
+
+## Older notes (before the follow-up)
 ## Not covered / risk for "scope client"
 - Equip with a full bar (code-read, not run): stock ItemControlProcessor.ProcessEquip (0xD496D4) learns the weapon's
   skill only if it got a quick slot (OnAddExtraSkill -> TryRegisterQuickSlot, then IsRegistered gates AddSkill). The mod
