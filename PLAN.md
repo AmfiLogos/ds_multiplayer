@@ -450,3 +450,10 @@ multiplayer tag next to the name of the save and then just put the players that 
 - fepvp13 a646c84 (+ main = 4be8bf2) -> merged (build/merge_fepvp13): unit ALL PASS, pvp_test 597, FE guard ALL PASS; smoke 3/3;
   mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; hub_smoke 5/5; PvP v1 via menu 11/11; hub dive (Death Off, save units) 25/25;
   PvP from the hub 13/13; PvP m4_van / m4_bring / m4_ui PASS; prefs identical. Open for gate13: hub dive with one My Units unit.
+- LD crossmods b029bca (+ main) -> 30ef516: build green, run_tests 31/31, l1_test 13/13, l1_v13_test 18/18, mod.json valid
+  (no wine run here; the lane ran the kit 12/12 and Mac host + Windows guest mp2 19/19).
+- MP crossmods13 5abae88 (+ main) -> 3fe0ffc: win/ build_win.sh green on the final tree (baselib.dll; DSMP_TARGET=module:
+  multiplayer.dll, custom-modes.dll 40 files + custom-modes-mp.dll 10 files); win_map.tsv regenerated on the merged tree
+  (419adda; status counts as the lane's). Mac dylibs byte-identical to 27c56a3. The main checkout's uncommitted
+  win/inline_audit.tsv (a build output) saved to old/inline_audit_uncommitted_*.tsv before the merge.
+- ALL v13 lanes merged (MP 3fe0ffc, LD 30ef516). Next: gate13.
