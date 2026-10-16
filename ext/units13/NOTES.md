@@ -125,3 +125,9 @@ Worktree ~/ds_mp_units13, branch units13 (from main a138cb2). Brief: research/br
 ## Not covered yet
 - "New unit" -> Unit Builder -> back ticked: code path is there in both windows; no builder in the build yet (lane builder).
 - CJK unit names draw as empty boxes (kit font).
+
+## Merge gate on this build (2026-10-16 02:20-02:45; main's dsrig.dylib + DSRIG_CUSTOM=this custom-modes.dylib, pair AB)
+- rig smoke: 3/3 fp_tick_advanced (a first try met a stale copy A left in a world by an earlier lease: re-run clean).
+- mp2_test --ticks 3000: 19 PASS 0 FAIL 0 Traceback; prefs identical; rig log "Foreign Expedition + PvP on (rc 0)".
+- mu_test 148 / NET 160 PASS; FE custom guard 18 PASS; home 22/22; My Units 26/26 (+ 0.75: 26/26, 1.4: 21/21);
+  Bring Units 32/32 at 1.0 / 0.75 / 1.4; Bring from a rig command 5/5.
