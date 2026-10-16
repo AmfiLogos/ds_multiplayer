@@ -101,7 +101,10 @@ static void run_order(mp_session *s, const dsnet_cmd *cmd) {
 /* ---------------------------------------------------------------- save transfer */
 static void host_upload(mp_session *s) {
     uint8_t *g = NULL; size_t n = 0;
-    if (!s->api.save || s->api.save(s->api.user, &g, &n) || !g) { mlog("join point at step %u: game save failed", s->cur); free(g); return; }
+    if (!s->api.save || s->api.save(s->api.user, &g, &n) || !g) {   /* the waiting guests are told and leave (audit N2) */
+        mlog("join point at step %u: game save failed, waiting guests told (rc %d)", s->cur, dsnet_upload_save_failed(s->c));
+        free(g); return;
+    }
     uint8_t *b = malloc(MP_HDR + n);
     uint32_t m = MP_MAGIC; memcpy(b, &m, 4);
     b[4] = 1; b[5] = 0; b[6] = (uint8_t)s->half_acc; b[7] = (uint8_t)s->shown_speed; b[8] = (uint8_t)s->shown_paused;
@@ -110,6 +113,7 @@ static void host_upload(mp_session *s) {
     free(g);
     int rc = dsnet_upload_save(s->c, b, MP_HDR + n);
     free(b);
+    if (rc) dsnet_upload_save_failed(s->c);
     s->st.saves++;
     mlog("join point at step %u: uploaded %zu-byte save (rc %d)", s->cur, n, rc);
 }

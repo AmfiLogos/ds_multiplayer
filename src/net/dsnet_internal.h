@@ -44,6 +44,7 @@ enum {
                          = from). Relayed to all but the sender; the server drops a 5th add from one sender within 5 s */
     P_SPECT,          /* s->c  u8 allow, u8 max, u8 count, then per spectator: u8 id, u8 state, u16 ping ms, name[32] (~5 Hz) */
     P_SPECT_RULE,     /* c->s (host) u8 allow: spectators on / off during play (off: BYE reason 2 to each spectator) */
+    P_SAVE_FAIL,      /* host c->s: the game could not make the join-point save; s->c to every guest waiting for it (it leaves) */
 };
 /* SAVE: host -> server -> joiners (join point). PATCH: host -> server -> the players of a PATCH_POINT (partial resync).
    REPORT: guest -> server -> host, outside the sim (desync report part; the server stamps seq_after = the sender's slot). */
@@ -103,6 +104,7 @@ double dsnet_now_ms(void);
 int    dsnet_rx_timeout_ms(void);
 int    dsnet_hello_timeout_ms(void);
 int    dsnet_tx_stall_ms(void);
+int    dsnet_save_wait_ms(void);
 extern char     dsnet_build_id[32];
 extern uint32_t dsnet_mod_version;
 extern uint8_t  dsnet_uid[16];
