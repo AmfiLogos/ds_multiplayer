@@ -227,7 +227,7 @@ def main():
                 log('stop', i, e)
         rig.release(pair)
         log('check-prefs', 'identical' if rig.check_prefs() else 'DIFFERENT')
-        ok = results and all(results.values())
+        ok = results and all(results.values()) and sys.exc_info()[0] is None
         log('RESULT', 'PASS' if ok else 'FAIL', json.dumps(results))
 
 
@@ -360,6 +360,8 @@ def run(X, Y, PORT):
         if free:
             log('guest claims a 3rd unit', c(Y, cmd='mp_claim', guid=free[0])); time.sleep(3)
             check('refused claim: guest toast "You can control at most 2 units (host rule)"', 'You can control at most 2 units (host rule)' in log_since(Y, my), [l for l in log_since(Y, my).splitlines() if 'units' in l][:3])
+        else:
+            check('refused claim: a free unit for the guest to claim', False, 'no free unit on the base')
         c(X, cmd='ui_pop', open=1); time.sleep(1); shot(X, 'v2_panel_settings_units_host'); c(X, cmd='ui_pop', open=0)
         c(X, cmd='ui_units', dir=1); time.sleep(3)
         check('units rule back to 3', view(X).get('units_rule') == 3 and view(Y).get('units_rule') == 3)
@@ -663,8 +665,8 @@ def run(X, Y, PORT):
 
     # ---- item 26: world name tags (owner dot + name, no brackets)
     def world_tags():
-        lg = log_since(X, 0)
-        check('#26 no bracket tags left in the world (host)', True)
+        lg = [l for l in log_since(X, run_mark[X]).splitlines() if 'world name dot glyph' in l]
+        check('#26 world tags are the owner dot + name (the dot glyph was found in the world font, host)', lg and '(none in the font)' not in lg[-1], lg[-1:] or 'no log line')
         shot(X, '26_world_tags_host')
     step('world tags', world_tags)
 
@@ -717,7 +719,7 @@ def run(X, Y, PORT):
               and vb.get('esc_save_tip') == 'Only the host saves this world' and vb.get('esc_save_faded', 0) > 0, f"{vb.get('esc_save')} / tip {vb.get('esc_save_tip')} / faded {vb.get('esc_save_faded')}")
         check('#8 host Save Campaign unchanged', 'Only the host' not in va.get('esc_save', '') and va.get('esc_save'), va.get('esc_save'))
         shot(Y, 'v2_game_esc_guest')
-        check('design #3 panel hidden while the Esc menu (a popup) is open', all(p['active'] == 0 for p in va['panel']), [p['active'] for p in va['panel']])
+        check('design #3 panel hidden while the Esc menu (a popup) is open', va.get('panel') and all(p['active'] == 0 for p in va['panel']), [p['active'] for p in va.get('panel', [])])
     step('esc', esc)
 
     # ---- item 30: player panel hidden while the lobby panel is open (Esc > lobby / invite button)
@@ -792,6 +794,8 @@ def run(X, Y, PORT):
             c(X, cmd='ui_lend', guid=hk[0], action='lend', to=1); time.sleep(4)
             check('viewer: a lent unit ends the watching (banner gone)', c(Y, cmd='ui_viewer').get('viewer') == 0, c(Y, cmd='ui_viewer'))
             c(X, cmd='ui_lend', guid=hk[0], action='take'); time.sleep(2)
+        else:
+            check('viewer: a host unit to lend', False, 'the host owns no unit here')
         for g in mine_here: c(Y, cmd='mp_claim', guid=g)
         time.sleep(3)
     step('map change', map_change)
@@ -916,6 +920,8 @@ def run(X, Y, PORT):
                 if cx(X, kp[0]) != k0: break
             check('v9 Keep playing: the host moves the absent player\'s unit', cx(X, kp[0]) not in (None, k0), f"{k0} -> {cx(X, kp[0])}")
             shot(X, 'v2_v9_keep_playing_move_host')
+        else:
+            check('v9 Keep playing: an absent player\'s unit (not a fighter) on the host', False, 'none found')
         for f in fighters:                                    # the host (Keep playing) pulls the fighter back to the party:
             k1 = cx(X, kp[0]) if kp else None                 # a fight left running for minutes wiped the party (run 48)
             if k1: move_order(X, f['guid'], (k1[0] + 1, k1[1])); time.sleep(2)
@@ -982,6 +988,8 @@ def run(X, Y, PORT):
             t1 = max(st(X)['tick'], st(Y)['tick']); time.sleep(4)
             n, first = fp_equal_from(t0)
             check('v9 rejoin + moves: fingerprints equal', first is None, f'common ticks {n}, first diff {first}')
+        else:
+            check('v9 rejoin hands the unit back: an absent player\'s unit to test', False, 'none found')
         for g in S['g']: c(Y, cmd='mp_claim', guid=g)                # (his units are his again anyway: same uid)
         time.sleep(2)
     step('rejoin mid-floor', rejoin)
@@ -1052,7 +1060,7 @@ def run(X, Y, PORT):
         wait('host prompt', lambda: view(X).get('left_prompt') == 1, timeout=60, every=1)
         time.sleep(3)
         va = view(X)
-        check('v2 §5a panel hidden while the disconnect box is open', all(p['active'] == 0 for p in va['panel']), [p['active'] for p in va['panel']])
+        check('v2 §5a panel hidden while the disconnect box is open', va.get('panel') and all(p['active'] == 0 for p in va['panel']), [p['active'] for p in va.get('panel', [])])
         shot(X, 'v2_game_disconnect_box_host')
         log('host: Keep playing (secondary, left = cancel)', c(X, cmd='ui_notice', button='cancel')); time.sleep(4)
         va = view(X)

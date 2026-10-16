@@ -119,7 +119,7 @@ def fight(X, Y, us):
             if 'ui:' in line or 'AddPauseReason' in line or 'GameSpeedLock' in line:
                 log(i, '|', line)
     n, first = fp_equal_from(X, Y, t0)
-    check('fight: fingerprints equal', first is None, f'common ticks {n}')
+    check('fight: fingerprints equal', first is None and n > 300, f'common ticks {n}, first diff {first}')
 
 
 def main():
@@ -184,7 +184,7 @@ def main():
                 except Exception as e:
                     log('stop', i, e)
             rig.release(pair)
-        log('RESULT', 'PASS' if results and all(results.values()) else 'FAIL', json.dumps(results))
+        log('RESULT', 'PASS' if results and all(results.values()) and sys.exc_info()[0] is None else 'FAIL', json.dumps(results))
 
 
 if __name__ == '__main__':
