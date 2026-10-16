@@ -12,7 +12,8 @@ chk g1_bridge_unit 'unit: all PASS' $WT env BRIDGE_SRC=$WT/src zsh $HOME/ds_mult
 [[ -f $WT/build_c4/blobs.json ]] || { mkdir -p $WT/build_c4; cp -p $HOME/ds_mp_merge13/build_c4/blobs.json $WT/build_c4/; }
 chk g1_fights_build 'built:' $WT zsh $CM/fights/build.sh
 chk g1_run_eq 'files identical: 64, different/missing: 0' $WT zsh $CM/fights/test/run_eq.sh
-mkdir -p $OUT/g1_sg; chk g1_sg_cache '24 checks, 0 failed' $WT build_c4/sg_cache_test $OUT/g1_sg $HOME/dungeonsettlersdb/site
+mkdir -p $OUT/g1_sg
+chk g1_sg_cache '24 checks, 0 failed' $WT build_c4/sg_cache_test $OUT/g1_sg $HOME/dungeonsettlersdb/site
 chk g1_gal '28 checks, 0 failed' $WT build_c4/gal_test $CM/gallery/test/data
 chk g1_builder_eq '300 builds, 300 equal, 0 different' $WT zsh -c 'zsh $CM/builder/build.sh && zsh $CM/builder/test/run_eq.sh 300 13'
 chk g1_ld_host '31 passed, 0 failed' $LD/loader zsh test/run_tests.sh

@@ -9,8 +9,10 @@ H=${0:A:h}
 [[ -e $SUM ]] && { mkdir -p $OUT/old; mv $SUM $OUT/old/summary-$(date +%Y%m%d-%H%M%S).txt; }
 inputs > $OUT/inputs.txt; IN=$(shasum -a 256 $OUT/inputs.txt | cut -c1-64)
 print "v13 gate $(date '+%F %T')  inputs $IN ($(head -1 $OUT/inputs.txt))" > $SUM
-for g in g1 g2 g1ld g3 g4 g5 g6 g9 g7 g11 g12; do echo "== $g $(date +%T)"; zsh $H/$g.sh; done
+[[ -n ${GATE_ONLY:-} ]] && { echo "run_all is a full pass: unset GATE_ONLY (reruns: rerun.sh, same summary)"; exit 1; }
+G=(g1 g2 g1ld g3 g4 g5 g6 g9 g7 g11 g12)
+for g in $G; do echo "== $g $(date +%T)"; zsh $H/$g.sh; rc=$?; (( rc )) && print "group_$g FAIL exit $rc (a check after the exit point is missing)" | tee -a $SUM; done
 print "inputs_unchanged $([[ $(inputs | shasum -a 256 | cut -c1-64) == $IN ]] && echo PASS || echo FAIL)" | tee -a $SUM
 print "prefs_final $([[ $(prefs) == identical ]] && echo PASS || echo FAIL)" | tee -a $SUM
-NF=$(awk '$2 == "FAIL"' $SUM | wc -l | tr -d ' '); NP=$(awk '$2 == "PASS"' $SUM | wc -l | tr -d ' ')
-(( NF == 0 && NP > 0 )) && print "ALL GREEN $IN ($NP checks)" | tee -a $SUM || print "NOT GREEN: $NF failed, $NP passed" | tee -a $SUM
+# expect: inputs_unchanged prefs_final
+verdict $0 ${^G/#/$H/}.sh

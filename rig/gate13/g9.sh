@@ -5,15 +5,23 @@
 source ${0:A:h}/lib.sh
 gcd() {   # gcd_world_test + verdict: both runs measured, mod cooldown shorter than stock, refused world line, prefs
   (cd $LD/loader && zsh test/install_mods.sh test_env/instances/L/DungeonSettlers.app test/profile_game.json) || return 1
-  (cd $LD/loader && GAME_S=150 python3 test/gcd_world_test.py both) | tee $OUT/g9_gcd_raw.txt
+  setopt local_options pipefail
+  (cd $LD/loader && GAME_S=150 python3 test/gcd_world_test.py both) | tee $OUT/g9_gcd_raw.txt || return 1
   python3 - $OUT/g9_gcd_raw.txt <<'PY'
 import json, sys
 t = open(sys.argv[1]).read().splitlines(); r = {}
 for l in t:
     if l.startswith('RESULT '): k, j = l[7:].split(' ', 1); r[k] = json.loads(j)
 ms = {k: v.get('measured') for k, v in r.items()}
-ok = bool(ms.get('stock')) and bool(ms.get('mod')) and any(l.startswith('WORLD ') for l in t) \
-     and 'owner prefs identical after: True' in t
+# stock: every cooldown lasts its stock time; mod: units with cooldown reduction get a SHORTER one (lasted < stock and
+# about the rule time); the world with another mod set was refused (the loader's refusal line in the WORLD log)
+st, md = ms.get('stock') or [], ms.get('mod') or []
+stock_ok = bool(st) and all(abs(m['lasted'] - m['stock']) < 0.1 for m in st)
+mod_ok = bool(md) and all(m['lasted'] < m['stock'] - 0.05 and abs(m['lasted'] - m['rule']) < 0.1 for m in md if m.get('cdr', 0) > 1)
+w = [json.loads(l[6:]) for l in t if l.startswith('WORLD ')]
+refused = bool(w) and any('REFUSED' in x or 'refused' in x for x in w[0].get('log', []))
+ok = stock_ok and mod_ok and refused and 'owner prefs identical after: True' in t
+print('checks', {'stock_ok': stock_ok, 'mod_shorter': mod_ok, 'world_refused': refused})
 print('GCD', 'PASS' if ok else 'FAIL', json.dumps(ms)[:300]); sys.exit(0 if ok else 1)
 PY
 }
