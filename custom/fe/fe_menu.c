@@ -431,8 +431,7 @@ static int fe_bring_open(void) {
     return mu_bring_open(&r);
 }
 #else
-/* TODO(fepvp13): Bring Units = lane units' mu_bring (custom/units/mu_bring.h) once it is on main; until then this window */
-static int fe_bring_open(void) { return -1; }
+static int fe_bring_open(void) { return -1; }                              /* a build without My Units: the FE Bring window */
 #endif
 static void few_action(int a) {
     fe_mode_info fm;

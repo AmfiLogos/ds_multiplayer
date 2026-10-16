@@ -165,33 +165,51 @@ static char *cmd_bring(const char *line) {
    save (read only); My Units picks become copies through mu_entries (manifest source "library": never applied home). */
 #include "mu_bring.h"
 #include "myunits.h"
-int fe_bring_picks(const mu_pick *picks, int n, char *err, size_t errn) {
-    char me[33]; dsnet_client *c = cli();
-    if (!c || my_uid_hex(me)) { snprintf(err, errn, "Not in a multiplayer session."); return -1; }
-    jv *entries = jarr(); const char *files[64]; size_t nf = 0;
+/* the entries of one OK: save picks exported from their save (read only), My Units picks through mu_entries (source
+   "library": never applied home). files[i] = the save of entry i (NULL for My Units). NULL + err on failure. */
+static jv *picks_entries(const mu_pick *picks, int n, const char *me, const char **files, char *err, size_t errn) {
+    jv *entries = jarr(); size_t nf = 0;
     static char ids[64][17]; int nl = 0;
     for (int i = 0; i < n && nf < 64; i++) {
         if (picks[i].source == MU_SRC_LIBRARY) { if (nl < 64) snprintf(ids[nl++], 17, "%s", picks[i].lib_id); continue; }
         char e1[300]; jv *save = jload(picks[i].save_file, e1, sizeof e1);
         jv *e = save ? fe_export_entry(save, picks[i].unit_guid, me, e1, sizeof e1) : NULL;
         jfree(save);
-        if (!e) { jfree(entries); snprintf(err, errn, "Could not bring %s: %s", picks[i].name, e1); return -1; }
-        jpush(entries, e); files[nf++] = picks[i].save_file;
+        if (!e) { jfree(entries); snprintf(err, errn, "Could not bring %s: %s", picks[i].name, e1); return NULL; }
+        jpush(entries, e); if (files) files[nf] = picks[i].save_file; nf++;
     }
     if (nl) {
         char e2[300] = "", notes[1000] = ""; jv *lib = mu_load(e2, sizeof e2);
         jv *le = lib ? mu_entries(lib, ids, nl, me, notes, sizeof notes, e2, sizeof e2) : NULL;
         jfree(lib);
-        if (!le) { jfree(entries); snprintf(err, errn, "Could not bring the My Units units: %s", e2); return -1; }
+        if (!le) { jfree(entries); snprintf(err, errn, "Could not bring the My Units units: %s", e2); return NULL; }
         if (notes[0]) say("My Units: %s", notes);
-        for (size_t i = 0; i < le->cnt && nf < 64; i++) { jpush(entries, jcopy(le->v[i])); files[nf++] = NULL; }
+        for (size_t i = 0; i < le->cnt && nf < 64; i++) { jpush(entries, jcopy(le->v[i])); if (files) files[nf] = NULL; nf++; }
         jfree(le);
     }
+    return entries;
+}
+/* Foreign Expedition lobby */
+int fe_bring_picks(const mu_pick *picks, int n, char *err, size_t errn) {
+    char me[33]; dsnet_client *c = cli();
+    if (!c || my_uid_hex(me)) { snprintf(err, errn, "Not in a multiplayer session."); return -1; }
+    const char *files[64] = { 0 };
+    jv *entries = picks_entries(picks, n, me, files, err, errn);
+    if (!entries) return -1;
     char *r = send_entries(entries, files, me, "Bring Units");
     int ok = r && strstr(r, "\"ok\":true");
     if (!ok) snprintf(err, errn, "The units could not be sent to the host.");
     free(r); jfree(entries);
     return ok ? 0 : -1;
+}
+/* PvP (lobby of a PvP world, or the PvP window): the same picks go to the host's PvP list (custom/units/pvp_units.c) */
+int pvp_units_send_entries(jv *entries, char *err, size_t errn);
+int pvp_bring_picks(const mu_pick *picks, int n, char *err, size_t errn) {
+    char me[33]; dsnet_client *c = cli();
+    if (!c || my_uid_hex(me)) { snprintf(err, errn, "Not in a multiplayer session."); return -1; }
+    jv *entries = picks_entries(picks, n, me, NULL, err, errn);
+    if (!entries) return -1;
+    return pvp_units_send_entries(entries, err, errn);
 }
 #endif
 /* ---------------------------------------------------------------- start (host) */

@@ -497,9 +497,10 @@ static void br_wiki(void) {
     free(r);
     br_refresh();
 }
+static int pv_bring_open(void);
 static int br_click(int k) {                                            /* 1 = a Bring window button */
     if (k == PVB_BR_WIKI) { br_wiki(); return 1; }
-    if (k == PVB_BRING) { br_sent[0] = 0; br_show(1); return 1; }
+    if (k == PVB_BRING) { if (!pv_bring_open()) return 1; br_sent[0] = 0; br_show(1); return 1; }
     if (k == PVB_BR_BACK) { br_show(0); return 1; }
     if (k == PVB_BR_SEND) { br_send(); return 1; }
     if (k >= PVB_BR_SAVE0 && k < PVB_BR_SAVE0 + 8) { br_save = k - PVB_BR_SAVE0; br_sent[0] = 0; br_read_units(br_save); br_refresh(); return 1; }
@@ -756,8 +757,32 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
 
 /* ---- PvP v1 lobby (host choice "PvP"): Bring Units from the lobby, who brought what, the host's Start */
 static int v1_lobby_bring(void) { return pvp_v1_world() && !br_open; }
+#if __has_include("mu_bring.h") && __has_include("myunits.h")
+/* Bring Units = lane units' window (tabs "From a save" / "My Units", Compact Plus cards), up to this player's share */
+#include "mu_bring.h"
+int pvp_bring_picks(const mu_pick *picks, int n, char *err, size_t errn);   /* fe/fe_game.c */
+void ui_notice(const char *text) __attribute__((weak_import));
+static mu_pick pv_last_picks[8]; static int pv_nlast;
+static void pv_bring_done(const mu_pick *picks, int n, void *ud) {
+    (void)ud; if (n < 0) return;
+    char err[300] = "";
+    if (pvp_bring_picks(picks, n, err, sizeof err)) { rig_log("pvp ui: Bring Units: %s", err); snprintf(br_sent, sizeof br_sent, "Could not bring the units: %s", err); if (ui_notice) ui_notice(err); return; }
+    pv_nlast = n < 8 ? n : 8; memcpy(pv_last_picks, picks, sizeof picks[0] * (size_t)pv_nlast);
+    snprintf(br_sent, sizeof br_sent, "Brought %d unit(s). The host starts the match with them.", n);
+    rig_log("pvp ui: Bring Units: %d unit(s) sent", n);
+    if (pv_open) pv_refresh();
+}
+static int pv_bring_open(void) {
+    char sub[160]; snprintf(sub, sizeof sub, "Up to %d unit(s) for the match. Copies only: your saves and My Units do not change.", br_share());
+    mu_bring_req r = { .title = "Bring Units", .subtitle = sub, .max_units = br_share(), .sources = MU_SRC_SAVE | MU_SRC_LIBRARY,
+                       .ticked = pv_last_picks, .nticked = pv_nlast, .done = pv_bring_done };
+    return mu_bring_open(&r);
+}
+#else
+static int pv_bring_open(void) { return -1; }                              /* a build without My Units: the PvP Bring window */
+#endif
 static void v1_action(int a) {
-    if ((a & MPA_FE_BRING) && pvp_v1_world()) { br_lobby = 1; br_sent[0] = 0; br_show(1); }
+    if ((a & MPA_FE_BRING) && pvp_v1_world() && pv_bring_open()) { br_lobby = 1; br_sent[0] = 0; br_show(1); }
 }
 static int v1_brought(int player) {                                     /* units the host's roster has from this player */
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
