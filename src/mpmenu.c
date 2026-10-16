@@ -547,7 +547,7 @@ static void fields_find(Obj parent) {
         char clip[128] = ""; str_utf8(F(0x518AEA0, Obj (*)(void *))(NULL), clip, sizeof clip);   /* prefill: clipboard, if it is an address */
         char hh[128]; uint16_t pp = 0;
         int is_addr = clip[0] && strchr(clip, '.') && !ui_parse_address(clip, hh, sizeof hh, &pp, MPM_DEFAULT_PORT);
-        Obj f = field_make(src, parent, "Address, for example 192.168.1.20:47777", is_addr ? clip : "");
+        Obj f = field_make(src, parent, "Address, like 192.168.1.20:47777", is_addr ? clip : "");
         u_gc_free(h_field); h_field = f ? u_gc_new(f) : 0;
         rig_log("mpmenu: address field cloned from %s%s", from, is_addr ? " (prefilled from the clipboard)" : "");
     }

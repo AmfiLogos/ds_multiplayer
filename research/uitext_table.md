@@ -48,7 +48,7 @@ resync, ip:port, sha256, API names, raw ids); no " - " used as a dash; "they" fo
 |---|---|---|
 | src/mp_game.c:950 | This is %s's unit: the host's gear rule lets each player equip only their own units | This is %s's unit. The host's Gear rule lets you equip only your own units |
 | src/ord_game.c:614 | You cannot equip this unit (gear rule) | The host's Gear rule does not let you equip this unit |
-| src/mpmenu.c:550 | ip:port, e.g. 192.168.1.20:47777 | Address, for example 192.168.1.20:47777 |
+| src/mpmenu.c:550 | ip:port, e.g. 192.168.1.20:47777 | Address, like 192.168.1.20:47777 (fits the old 33-character field) |
 | src/mpmenu.c:1632 | Not an address: "%.40s" (use ip:port) | "%.40s" is not an address. It looks like 192.168.1.20:47777 |
 | src/mpmenu.c:2089 | Watching through Steam is not in this build. | Spectators cannot join through Steam. |
 | src/mpmenu.c:2622, 2623 | Copies your address (ip:port) so you can send it to a friend. They use Join by Address. | Copies your address so you can send it to a friend. They paste it in Join by address. |
