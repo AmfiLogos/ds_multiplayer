@@ -67,6 +67,8 @@ enum mpm_button {
     MPB_FE_OK, MPB_FE_CANCEL, MPB_FE_TGT_PREV, MPB_FE_TGT_NEXT, MPB_FE_VER_EXP, MPB_FE_VER_HOME,
     MPB_FE_RES0, MPB_FE_RES1, MPB_FE_RES2, MPB_FE_RES3, MPB_FE_RES4, MPB_FE_RES5,
     MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE,                               /* Multiplayer page, under "Host a game": Your save / New save / Foreign Expedition (ids >= 64) */
+    MPB_HOST_C1, MPB_HOST_C2, MPB_HOST_C3,                                  /* host choices 2..4 (MPB_HOST_FE = choice 1), registration order */
+    MPB_HOST_START,                                                         /* host page of a register_host_choice2 choice: Start (page_start) */
     MPB_COUNT
 };
 /* what the game side sees each frame */
@@ -114,6 +116,8 @@ enum {
     MPA_FE_START       = 1 << 21,  /* host pressed Start in a Foreign Expedition lobby: build the hub (game side), then start */
     MPA_FE_RESULTS     = 1 << 22,  /* open the Expedition results list (title) */
     MPA_FE_BRING       = 1 << 23,  /* open the Bring units window (lobby, every player) */
+    MPA_CHOICE_PAGE    = 1 << 24,  /* host page Start of a register_host_choice2 choice: call its page_start, then mpm_page_started */
+    MPA_CHOICE_LOBBY   = 1 << 25,  /* lobby Start of a session hosted from such a choice: call its lobby_start (0 = started) */
 };
 typedef struct mpm_model {
     int state;
@@ -140,6 +144,13 @@ typedef struct mpm_model {
     int host_new;           /* host page opened from "New save": its button is Host a new campaign (else Host from a save) */
     int host_choice;        /* a mod registered the third choice under "Host a game" (mpmenu_register_host_choice); 0 = not shown */
     char host_choice_label[48];   /* its label ("" = "Foreign Expedition") */
+    /* host choices under "Host a game" (mpm_choices, copied in each frame by mpm_choices_to_model). nchoice 0 with host_choice 1
+       = one old-style choice (host_choice_label). Choice k: button mpm_choice_btn(k). */
+    int nchoice;
+    char choice_label[4][48];
+    int choice_v2[4];       /* register_host_choice2: host page = Start + Back (page_start), lobby Start = lobby_start */
+    int choice_rules[4];    /* the menu's own Expedition Rules panel shows open on its host page (old API, or draw_page NULL) */
+    int choice;             /* 1..4: the choice whose host page shows or whose session runs; 0 none */
 } mpm_model;
 void mpm_init(mpm_model *m);
 /* one frame: `click` = enum mpm_button or MPB_NONE. Returns MPA_* actions to run now. */
@@ -189,6 +200,29 @@ int  mpm_tag_add(const char *path, const char *guid, const char *const *names, i
 int  mpm_tag_remove(const char *path, const char *guid);                          /* 1 = there was a tag */
 void mpm_tag_names(char names[][32], int n, int shown, char *out, size_t cap);    /* "The owner, Ana and Bo" / "The owner, Ana, Bo +2" */
 
+/* Host choices (mp_api register_host_choice / register_host_choice2; MPF API for lane fepvp). Up to MPM_CHOICES, registration
+ * order, under "Host a game" after "New save". Same id again = replace in place. */
+#define MPM_CHOICES 4
+typedef int (*mpm_host_start_fn)(int death, int xp, int loot, int recruit, char *err, size_t errn);
+typedef struct mpm_choice {
+    char id[32], label[48], tip[300];
+    int v2;                                       /* registered with register_host_choice2 */
+    void (*draw_page)(void *panel);               /* v2: NULL = the Expedition Rules panel, open; old API: never called */
+    mpm_host_start_fn on_start;                   /* old API: lobby Start of a Foreign Expedition (MPA_FE_START) */
+    int (*page_start)(char *err, size_t errn);    /* v2: host page Start; 0 = the mod queued the world load */
+    int (*lobby_start)(char *err, size_t errn);   /* v2: lobby Start; 0 = started */
+} mpm_choice;
+typedef struct mpm_choices { int n; mpm_choice c[MPM_CHOICES]; } mpm_choices;
+/* registers id / label / tip with fn's v2 flag and callbacks (fn's own texts unused): same id = replace in place, else append.
+   Returns its index, -1 refused (5th choice, no id / label, or with check_len a text over the v2 limits: id <= 31,
+   label <= 47, tip <= 299 bytes). check_len 0 = old API (texts cut to fit). */
+int  mpm_choice_register(mpm_choices *l, const char *id, const char *label, const char *tip, const mpm_choice *fn, int check_len);
+void mpm_choices_to_model(const mpm_choices *l, mpm_model *m);           /* nchoice, labels, v2, rules, host_choice */
+const char *mpm_choice_now(const mpm_choices *l, const mpm_model *m);    /* id of m->choice, "" none */
+int  mpm_choice_btn(int k);                                              /* button of choice k (0..3) */
+int  mpm_choice_of_btn(int button);                                      /* its choice index, -1 not a choice button */
+void mpm_page_started(mpm_model *m, int rc, const char *err);            /* after page_start: 0 = wait for the load, else err on the page */
+
 /* ---------------------------------------------------------------- game side (dylib only) */
 #ifndef MPM_NO_GAME
 void  mpmenu_install(void);                        /* add-image callback, after ui_install() */
@@ -205,6 +239,10 @@ int   mpmenu_spectators_set(int allow);
 /* the third choice under "Host a game" (MASTER_PLAN 2.2 B register_host_choice; Custom Modes registers "Foreign Expedition").
  * Shown only once registered. The Expedition Rules rows are still the menu's own (M.set.fe_*); on_start gets them when the
  * host presses Start on that page (0 = started; else err is shown). draw_page: kept for the page (not called yet). */
-typedef int (*mpm_host_start_fn)(int death, int xp, int loot, int recruit, char *err, size_t errn);
 int   mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), mpm_host_start_fn on_start);
+/* register_host_choice2 (mp_api.h mp_host_choice): 0 ok, -1 refused. host_choice_now: id of the choice whose host page shows or
+   whose session runs, "" none. */
+int   mpmenu_register_host_choice2(const char *id, const char *label, const char *tip, void (*draw_page)(void *panel),
+                                   int (*page_start)(char *err, size_t errn), int (*lobby_start)(char *err, size_t errn));
+const char *mpmenu_host_choice_now(void);
 #endif

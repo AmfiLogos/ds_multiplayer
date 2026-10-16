@@ -5171,7 +5171,7 @@ static void tips_frame(void) {
     }
     tip_at(u_gc_get(h_recruit_line), "Recruiting", "Units you recruit are yours. The clan limit and Units per Player both apply (host's Population rule).");
 }
-/* debug (item 1): where ui_tip.c's rect_point puts the tooltip for our header: the same calls, and the canvas facts */
+/* debug (item 1): our header's corner in screen px through the canvas camera (the calls ui_tip.c scr_rect makes), and the canvas facts */
 static char *ui_tip_where_cmd(void) {
     Obj o = u_gc_get(h_pl[PL_HDR]); Obj rect = u_alive(o) ? u_tr(o) : NULL;
     Buf b = {0}; bput(&b, "{\"ok\":true");
