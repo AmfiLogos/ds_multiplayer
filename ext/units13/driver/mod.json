@@ -1,0 +1,14 @@
+{
+ "id": "units-driver",
+ "name": "Units test driver (test only)",
+ "version": "0.1.0",
+ "author": "lane units13",
+ "kind": "code",
+ "api": 3,
+ "game_builds": ["25846389"],
+ "platforms": { "mac-arm64": { "entry": "units-driver.dylib" } },
+ "requires": ["loader>=2.0.0"],
+ "conflicts": [],
+ "description": "Test module: drives Custom Modes' windows in a hidden test copy (ext/units13/test). Never shipped.",
+ "scope": "client"
+}
