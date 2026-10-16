@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Work package M2 (menu): host choices, single / multiplayer load lists, Multiplayer world tag. One leased pair: host H, guest P.
 
-  menu_pair.py --dylib PATH [--tag NAME] [--pair-wait N]
+  menu_pair.py --dylib PATH [--tag NAME] [--pair-wait N] [--lane NAME]
 
 The dylib must be a fake-mouse build (ext/wpmenu/build_mouse.sh: -DTEAMS_MOUSE_TEST), so clicks on the toggle and on
 "Remove tag" go through the game's own Input.GetMouseButtonDown / mousePosition.
- 0. Multiplayer page: "Your save", "New save" and "Foreign Expedition" (registered by the built-in expedition code).
+ 0. Multiplayer page: "Your save", "New save" and "Foreign Expedition" (registered by the built-in expedition code), with the
+    stock title gap between every button frame from Your save down to Back (owner v12 item 4: measured on the stock title
+    buttons of the same copy, +-1 px). Host page (Your save): the Rules panel is open beside the column with its 9 rows, no
+    Rules cog button, no Done (owner v12 item 5).
  1. Fresh mp_tags.txt + mp_history.json on both. H: Your save > Host from a save: the load list is the multiplayer list
     (no tagged world yet: every world hidden, toggle "Show single-player worlds"). H hosts the demo save alone: no tag.
  2. P joins, H presses Start: both copies tag the world with both names; 0 desync (fingerprints equal for 40 s).
@@ -26,7 +29,7 @@ TAG = A[A.index('--tag') + 1] if '--tag' in A else time.strftime('menu_%H%M%S')
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'out', TAG); os.makedirs(OUT, exist_ok=True)
 LOG = open(os.path.join(OUT, 'test.log'), 'a')
 B = dict(MULTIPLAYER=1, BACK=3, LOAD_SAVE=7, START=10, JOIN_ADDR=14, CONNECT=15, HOST_SAVE=121, HOST_NEW=122, HOST_FE=123)
-LANE = 'm2menu'
+LANE = A[A.index('--lane') + 1] if '--lane' in A else 'm2menu'
 results = {}
 
 
@@ -104,17 +107,35 @@ def main():
         for x in (H, P): rig.start(x, window=True, fps=30)
         for x in (H, P): rig.wait_for(x, lambda s: s.get('scene') == 1 and not s.get('busy'), f'{x} title', timeout=1500)
         time.sleep(3)
+        for _ in range(3):                                   # a copy with old expedition results: their window first ("Later")
+            if not c(H, cmd='mpm_fewin').get('mode'): break
+            c(H, cmd='mpm_press', button=110); time.sleep(1)
+        sf = sorted(c(H, cmd='mpm_status').get('stock_frames', []), key=lambda r: -r[3])   # stock title buttons, top first
+        sgaps = [round(sf[i][1] - sf[i + 1][3], 1) for i in range(len(sf) - 1)]
+        stock_gap = min(sgaps) if sgaps else None                       # the gap between two adjacent stock buttons
+        log('stock frames', sf, 'gaps', sgaps)
         # 0. host choices
         press(H, 'MULTIPLAYER'); time.sleep(1)
         tb = c(H, cmd='mpm_status').get('title', {})
         on = {n: tb.get(str(B[n]), {}) for n in ('HOST_SAVE', 'HOST_NEW', 'HOST_FE')}
         log('host choices', json.dumps(on))
-        check('0. Multiplayer page: Your save / New save / Foreign Expedition shown',
-              all(v.get('active') for v in on.values()) and on['HOST_SAVE'].get('text', '').endswith('Your save')
-              and 'New save' in on['HOST_NEW'].get('text', '') and 'Foreign Expedition' in on['HOST_FE'].get('text', ''), json.dumps(on))
+        fr = c(H, cmd='mpm_status').get('frames', {})
+        ids = (B['HOST_SAVE'], B['HOST_NEW'], B['HOST_FE'], 14, 45, 28, B['BACK'])     # 14 Join by address, 45 Join a friend, 28 Expedition results
+        col = sorted([fr[str(i)] for i in ids if str(i) in fr], key=lambda r: -r[3])
+        gaps = [round(col[i][1] - col[i + 1][3], 1) for i in range(len(col) - 1)]   # Your save .. Join .. Back, top to bottom
+        spaced = stock_gap is not None and stock_gap > 0 and len(col) >= 5 and all(abs(g - stock_gap) <= 1 for g in gaps)
         shot(H, '0_multiplayer_page')
+        press(H, 'HOST_SAVE'); time.sleep(1)
+        ms = c(H, cmd='mpm_status'); rp = ms.get('rules_panel', {})
+        rules_open = ms.get('state') == 'title_host' and rp.get('title') == 1 and rp.get('title_rows') == 9 and rp.get('done') == 0 \
+            and not ms.get('title', {}).get('21', {}).get('active')                     # 21 = MPB_SETTINGS, the old cog row
+        shot(H, '0_host_page_rules')
+        check('0. Multiplayer page: Your save / New save / Foreign Expedition shown, stock gap between the buttons; host page: Rules open beside it',
+              all(v.get('active') for v in on.values()) and on['HOST_SAVE'].get('text', '').endswith('Your save')
+              and 'New save' in on['HOST_NEW'].get('text', '') and 'Foreign Expedition' in on['HOST_FE'].get('text', '') and spaced and rules_open,
+              f'{json.dumps(on)} stock gap {stock_gap} column gaps {gaps} rules {rp} settings row {ms.get("title", {}).get("21")}')
         # 1. Your save -> multiplayer list (nothing tagged yet), then host alone
-        press(H, 'HOST_SAVE'); press(H, 'LOAD_SAVE'); time.sleep(3)
+        press(H, 'LOAD_SAVE'); time.sleep(3)
         l1 = lst(H); log('list', json.dumps(l1))
         check('1a. Your save list = multiplayer list: no tagged world, all hidden, toggle "Show single-player worlds"',
               l1.get('open') and l1['mode'] == 1 and l1['shown'] == 0 and l1['hidden'] >= 1 and l1['toggle'] == 1

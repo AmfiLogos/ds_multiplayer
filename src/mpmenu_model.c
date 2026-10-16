@@ -125,7 +125,45 @@ void mpm_init(mpm_model *m) {
     m->set.fe_death = 0; m->set.fe_xp = 1; m->set.fe_loot = 1; m->set.fe_recruit = 0;   /* board FESettingsA defaults; death Off (owner 2026-10-15) */
 }
 
-static int go(mpm_model *m, int st) { m->state = st; m->confirm_leave = 0; return MPA_REFRESH; }
+static int go(mpm_model *m, int st) {
+    m->state = st; m->confirm_leave = 0;
+    if (st != MPM_TITLE_HOST && st != MPM_PICK_SAVE && st != MPM_PICK_NEW && st != MPM_HOST_LOADING && st != MPM_LOBBY && st != MPM_PLAYING)
+        m->choice = 0;                                   /* the host choice lasts from its host page to the end of its session */
+    return MPA_REFRESH;
+}
+/* ---- host choices (MPF API for lane fepvp: register_host_choice2). nchoice 0 + host_choice = one old-style choice. */
+static int nch(const mpm_model *m) { return m->nchoice ? m->nchoice : m->host_choice ? 1 : 0; }
+static int ch_v2(const mpm_model *m, int k) { return m->nchoice && k >= 0 && k < m->nchoice ? m->choice_v2[k] : 0; }
+static int ch_rules(const mpm_model *m, int k) { return m->nchoice && k >= 0 && k < m->nchoice ? m->choice_rules[k] : 1; }
+static int cur_v2(const mpm_model *m) { return m->choice > 0 && ch_v2(m, m->choice - 1); }
+int mpm_choice_btn(int k) { return k == 0 ? MPB_HOST_FE : k > 0 && k < MPM_CHOICES ? MPB_HOST_C1 + k - 1 : MPB_NONE; }
+int mpm_choice_of_btn(int b) { return b == MPB_HOST_FE ? 0 : b >= MPB_HOST_C1 && b <= MPB_HOST_C3 ? b - MPB_HOST_C1 + 1 : -1; }
+int mpm_choice_register(mpm_choices *l, const char *id, const char *label, const char *tip, const mpm_choice *fn, int check_len) {
+    if (!l || !id || !id[0] || !label || !label[0] || !fn) return -1;
+    if (check_len && (strlen(id) > 31 || strlen(label) > 47 || (tip && strlen(tip) > 299))) return -1;
+    int k = 0;
+    while (k < l->n && strcmp(l->c[k].id, id)) k++;
+    if (k == l->n) { if (l->n >= MPM_CHOICES) return -1; l->n++; }
+    mpm_choice *c = &l->c[k];
+    *c = *fn;
+    snprintf(c->id, sizeof c->id, "%s", id); snprintf(c->label, sizeof c->label, "%s", label); snprintf(c->tip, sizeof c->tip, "%s", tip ? tip : "");
+    return k;
+}
+void mpm_choices_to_model(const mpm_choices *l, mpm_model *m) {
+    m->nchoice = l->n; m->host_choice = l->n > 0;
+    snprintf(m->host_choice_label, sizeof m->host_choice_label, "%s", l->n ? l->c[0].label : "");
+    for (int k = 0; k < MPM_CHOICES; k++) {
+        snprintf(m->choice_label[k], sizeof m->choice_label[k], "%s", k < l->n ? l->c[k].label : "");
+        m->choice_v2[k] = k < l->n && l->c[k].v2;
+        m->choice_rules[k] = k < l->n && (!l->c[k].v2 || !l->c[k].draw_page);
+    }
+}
+const char *mpm_choice_now(const mpm_choices *l, const mpm_model *m) { return m->choice > 0 && m->choice <= l->n ? l->c[m->choice - 1].id : ""; }
+void mpm_page_started(mpm_model *m, int rc, const char *err) {
+    if (m->state != MPM_TITLE_HOST) return;
+    if (rc == 0) { m->msg[0] = 0; m->closed_frames = 0; go(m, MPM_HOST_LOADING); return; }   /* waits like "Your save" */
+    snprintf(m->msg, sizeof m->msg, "%s", err && err[0] ? err : "This mode could not start.");
+}
 static const mpm_obs *cur;
 /* a failed start or join (lan_v10, ux_flow F8): the reason goes to the stock notice box (game side), not in small type
  * in brackets on the Multiplayer button; the button stays plain */
@@ -187,11 +225,10 @@ static int rule_arrow(mpm_model *m, int c) {
 int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
     int a = 0; cur = o;
     m->steam = o->steam; m->spect = o->spectator;
-    /* Escape = Back on every title page (the Rules panel closes first) */
+    /* Escape = Back on every title page. Host page: the Rules are always open (owner v12 item 5), nothing to close first */
     if (o->escape && c == MPB_NONE && o->scene == 1) {
-        if (m->state == MPM_TITLE_HOST && m->settings_open) c = MPB_RULES_DONE;
         /* one rule (ux_flow F16): Escape = the visible Cancel if there is one, else Back */
-        else if (m->state == MPM_TITLE_MENU || m->state == MPM_TITLE_JOIN) c = m->connecting[0] ? MPB_CANCEL_JOIN : MPB_BACK;
+        if (m->state == MPM_TITLE_MENU || m->state == MPM_TITLE_JOIN) c = m->connecting[0] ? MPB_CANCEL_JOIN : MPB_BACK;
         else if (m->state == MPM_TITLE_HOST || m->state == MPM_TITLE_FRIENDS) c = MPB_BACK;
         else if (m->state == MPM_GUEST_JOINING || m->state == MPM_GUEST_LOADING) c = MPB_CANCEL_JOIN;
     }
@@ -210,9 +247,10 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (o->scene != 1) return go(m, MPM_IDLE);
         /* the three host choices under "Host a game" (owner 2026-10-15); MPB_HOST (the line itself) = Your save, as before.
            An expedition is only ever chosen on purpose (left_prompt regression 2026-10-15) */
-        if (c == MPB_HOST || c == MPB_HOST_SAVE) { m->set.fe = 0; m->host_new = 0; return go(m, MPM_TITLE_HOST); }
-        if (c == MPB_HOST_NEW) { m->set.fe = 0; m->host_new = 1; return go(m, MPM_TITLE_HOST); }
-        if (c == MPB_HOST_FE && m->host_choice) { m->set.fe = 1; m->host_new = 0; return go(m, MPM_TITLE_HOST); }
+        if (c == MPB_HOST || c == MPB_HOST_SAVE) { m->set.fe = 0; m->host_new = 0; m->choice = 0; return go(m, MPM_TITLE_HOST); }
+        if (c == MPB_HOST_NEW) { m->set.fe = 0; m->host_new = 1; m->choice = 0; return go(m, MPM_TITLE_HOST); }
+        { int k = mpm_choice_of_btn(c);                                        /* a registered host choice (only once registered) */
+          if (k >= 0 && k < nch(m)) { m->set.fe = ch_rules(m, k); m->host_new = 0; m->msg[0] = 0; m->choice = k + 1; return go(m, MPM_TITLE_HOST); } }
         if (c == MPB_JOIN_ADDR) { m->msg[0] = 0; return go(m, MPM_TITLE_JOIN); }
         if (c == MPB_FE_RESLIST && m->fe_results) return MPA_FE_RESULTS;
         if (c >= MPB_HIST0 && c <= MPB_HIST5 && m->hist_page * 6 + (c - MPB_HIST0) < m->nhist) { m->hist_pick = m->hist_page * 6 + (c - MPB_HIST0); m->msg[0] = 0; m->watch = 0; return MPA_HIST_JOIN | MPA_REFRESH; }
@@ -252,6 +290,8 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (c == MPB_PAUSE_MODE) { m->set.pause_mode = (m->set.pause_mode + 1) % 3; return MPA_REFRESH; }
         if (c == MPB_SPEEDUP) { m->set.speedup = !m->set.speedup; return MPA_REFRESH; }
         if (c == MPB_GEAR) { m->set.gear = (m->set.gear + 1) % 3; return MPA_REFRESH; }
+        if (c == MPB_HOST_START && cur_v2(m)) return MPA_CHOICE_PAGE | MPA_REFRESH;   /* the mod loads its world (mpm_page_started) */
+        if ((c == MPB_LOAD_SAVE || c == MPB_NEW_CAMPAIGN) && cur_v2(m)) break;   /* not on such a page */
         if (c == MPB_LOAD_SAVE) { m->picker_seen = 0; m->closed_frames = 0; return go(m, MPM_PICK_SAVE) | MPA_OPEN_LOAD_LIST; }
         if (c == MPB_NEW_CAMPAIGN) { m->picker_seen = 0; m->closed_frames = 0; return go(m, MPM_PICK_NEW) | MPA_OPEN_NEW; }
         if (c == MPB_BACK) return go(m, MPM_TITLE_MENU);
@@ -274,6 +314,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (c == MPB_INVITE) return o->steam ? MPA_INVITE : 0;            /* LAN app: greyed "Needs the Steam version" */
         if (c == MPB_COPY_ADDR) return MPA_COPY_ADDR;
         if (c == MPB_FE_BRINGWIN) return MPA_FE_BRING;
+        if (c == MPB_START && cur_v2(m)) return MPA_CHOICE_LOBBY;            /* the choice's lobby_start (game side) */
         if (c == MPB_START && m->set.fe) return MPA_FE_START;              /* game side builds the hub, then starts (or says why not) */
         if (c == MPB_START) return go(m, MPM_PLAYING) | MPA_LOBBY_HIDE | MPA_START_GAME;
         if (c == MPB_LOBBY_SETTINGS) { m->lobby_settings_open = !m->lobby_settings_open; return MPA_REFRESH; }
@@ -327,7 +368,8 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
 int mpm_is_visible(const mpm_model *m, const mpm_obs *o, int b) {
     if (b == MPB_WATCH) return m->state == MPM_TITLE_JOIN && !m->connecting[0];
     if (b == MPB_HOST_SAVE || b == MPB_HOST_NEW) return m->state == MPM_TITLE_MENU;
-    if (b == MPB_HOST_FE) return m->state == MPM_TITLE_MENU && m->host_choice;   /* only once a mod registered it */
+    { int k = mpm_choice_of_btn(b); if (k >= 0) return m->state == MPM_TITLE_MENU && k < nch(m); }   /* only once a mod registered it */
+    if (b == MPB_HOST_START) return m->state == MPM_TITLE_HOST && cur_v2(m);
     if (b < 0 || b >= 64) return 0;
     return (int)(mpm_visible(m, o) >> b & 1u);
 }
@@ -348,9 +390,9 @@ uint64_t mpm_visible(const mpm_model *m, const mpm_obs *o) {
         return B(MPB_HEADER) | B(MPB_LABEL_ADDR) | B(MPB_LABEL_NAME) | B(MPB_DIVIDER) | (m->connecting[0] ? B(MPB_CANCEL_JOIN) : B(MPB_CONNECT)) | B(MPB_BACK)
              | (m->connecting[0] || m->msg[0] || m->no_field ? B(MPB_INFO) : 0);
     case MPM_TITLE_HOST:                                                     /* layout v2 §2a */
-        return B(MPB_HEADER) | B(MPB_LABEL_NAME) | (m->msg[0] ? B(MPB_INFO) : 0) | B(MPB_SETTINGS)
-             /* the Rules panel (settings_open) is drawn by the game side next to the column (approved mockup B) */
-             | B(MPB_DIVIDER) | (m->host_new ? B(MPB_NEW_CAMPAIGN) : B(MPB_LOAD_SAVE)) | B(MPB_BACK);   /* the choice made on the Multiplayer page */
+        return B(MPB_HEADER) | B(MPB_LABEL_NAME) | (m->msg[0] ? B(MPB_INFO) : 0)
+             /* the Rules panel is drawn by the game side next to the column, always open (owner v12 item 5: no cog button) */
+             | B(MPB_DIVIDER) | (cur_v2(m) ? 0 : m->host_new ? B(MPB_NEW_CAMPAIGN) : B(MPB_LOAD_SAVE)) | B(MPB_BACK);   /* the choice made on the Multiplayer page; a v2 choice: Start (MPB_HOST_START, id >= 64) */
     case MPM_LOBBY: return B(MPB_INVITE) | B(MPB_COPY_ADDR) | B(MPB_START) | B(MPB_LEAVE);
     case MPM_GUEST_LOBBY: return B(MPB_LEAVE);
     case MPM_PLAYING: return o->esc_open ? ((o->role == 1 ? B(MPB_ESC_INVITE) : 0) | B(MPB_LEAVE)) : 0;
@@ -368,7 +410,9 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
         else snprintf(out, cap, "Multiplayer");
         break;
     case MPB_LABEL_ADDR: snprintf(out, cap, "Host address (ip:port)"); break;
-    case MPB_HEADER: snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? "Join a multiplayer world" : m->state == MPM_TITLE_FRIENDS ? "Join a friend on Steam"
+    case MPB_HEADER:
+        if (m->state == MPM_TITLE_HOST && cur_v2(m)) { snprintf(out, cap, "Host: %s", m->choice_label[m->choice - 1]); break; }
+        snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? "Join a multiplayer world" : m->state == MPM_TITLE_FRIENDS ? "Join a friend on Steam"
                                           : m->set.fe ? "Host a Foreign Expedition" : m->host_new ? "Host a new save" : "Host your save"); break;
     case MPB_JOIN_FRIEND: snprintf(out, cap, "%s", m->steam ? "Join a friend on Steam" : "<color=#A69085><line-height=80%>Join a friend on Steam\n<size=65%>Needs the Steam version</size></line-height></color>"); break;
     case MPB_FRIEND0: case MPB_FRIEND1: case MPB_FRIEND2: case MPB_FRIEND3: case MPB_FRIEND4: case MPB_FRIEND5:
@@ -396,7 +440,9 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_HOST: snprintf(out, cap, "Host a game"); break;
     case MPB_HOST_SAVE: snprintf(out, cap, "Your save"); break;
     case MPB_HOST_NEW: snprintf(out, cap, "New save"); break;
-    case MPB_HOST_FE: snprintf(out, cap, "%s", m->host_choice_label[0] ? m->host_choice_label : "Foreign Expedition"); break;
+    case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : "Foreign Expedition"); break;
+    case MPB_HOST_C1: case MPB_HOST_C2: case MPB_HOST_C3: snprintf(out, cap, "%s", m->choice_label[mpm_choice_of_btn(b)]); break;
+    case MPB_HOST_START: snprintf(out, cap, "Start"); break;
     case MPB_FE_RESLIST: snprintf(out, cap, "Expedition results"); break;
     case MPB_BACK: snprintf(out, cap, "Back"); break;
     case MPB_PAUSE_MODE: snprintf(out, cap, "Pause: %s", mpm_pause_text(m->set.pause_mode)); break;

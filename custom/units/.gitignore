@@ -1,7 +1,7 @@
-# test binaries, scratch and fixtures (fixtures come from the launcher tool; never committed)
+# test binaries and scratch (test/data = small launcher-made unit fixtures: keys and links only, no game data)
 test/tmp/
 test/old/
-test/fixtures/
+test/data/tmp/
 *_bin
 *.dSYM/
 test/save/tmp/

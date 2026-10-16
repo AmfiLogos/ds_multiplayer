@@ -18,7 +18,7 @@ C.install()
 sd = os.path.join(C.I, 'data', 'Saves'); os.makedirs(sd, exist_ok=True)
 if not os.path.exists(os.path.join(sd, SAVE)):
     shutil.copyfile(os.path.join(BACKUP, SAVE), os.path.join(sd, SAVE))                 # copy, never move
-shutil.copyfile(os.path.join(C.WT, 'custom/units/test/fixtures/launcher_library.json'), os.path.join(C.out_lib_dir(OUT), 'library.json'))
+shutil.copyfile(os.path.join(C.WT, 'custom/units/test/data/launcher_library.json'), os.path.join(C.out_lib_dir(OUT), 'library.json'))
 
 
 def rig(cmd, **kw):

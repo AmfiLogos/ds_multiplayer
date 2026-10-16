@@ -72,6 +72,7 @@ gal_words *gal_words_parse(const char *json, size_t n, char *err, size_t errn);
 gal_words *gal_words_fetch(char *err, size_t errn);
 void       gal_words_free(gal_words *w);
 const char *gal_word(const gal_words *w, const char *group, const char *key);   /* W.<group>[key] (first of a pair) */
+int  gal_word_keys(const gal_words *w, const char *group, const char **keys, int max);   /* keys of W.<group>, file order */
 
 /* the names, by teamname.js: a team "Elf Shield & Greatsword Fellowship", a character its race,
  * a team member "Elf 2", the author "<chosen name>" or "Elf Mage 52" */

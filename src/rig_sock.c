@@ -127,9 +127,28 @@ static void *conn_thread(void *arg) {
     return NULL;
 }
 
-static char sock_path[1100];
+static char sock_path[1100];   /* the Windows port cuts the file here (win/port/gen_port.py: TCP listener instead) */
+static char link_path[1100];   /* the asked path when it is too long (symlink to sock_path) */
+/* 1 = another process answers on this socket path (a running game; a second copy of the same folder, e.g. the
+   loader's hidden prewarm copy, must not take it over: unlink + bind would leave the running game without a socket) */
+static int sock_live(const char *path) {
+    int s = socket(AF_UNIX, SOCK_STREAM, 0); if (s < 0) return 0;
+    struct sockaddr_un a = {0}; a.sun_family = AF_UNIX;
+    snprintf(a.sun_path, sizeof a.sun_path, "%s", path);
+    int live = connect(s, (struct sockaddr*)&a, sizeof a) == 0;
+    close(s); return live;
+}
 static void *accept_thread(void *arg) {
     (void)arg;
+    if (sock_live(sock_path)) {                                  /* wait until the owner is gone, then take the path */
+        rig_log("control socket %s: another running copy owns it; waiting until it quits", sock_path);
+        while (sock_live(sock_path)) sleep(2);
+    }
+    if (link_path[0]) {
+        unlink(link_path);
+        if (symlink(sock_path, link_path)) rig_log("socket path %s is too long; link to %s failed (%s)", link_path, sock_path, strerror(errno));
+        else rig_log("socket path %s is too long (%zu bytes): listening at %s (linked)", link_path, strlen(link_path), sock_path);
+    }
     int s = socket(AF_UNIX, SOCK_STREAM, 0);
     struct sockaddr_un a = {0}; a.sun_family = AF_UNIX;
     snprintf(a.sun_path, sizeof a.sun_path, "%s", sock_path);
@@ -154,13 +173,14 @@ static void short_sock_path(const char *path, char *out, size_t n) {
     snprintf(out, n, "/tmp/dsrig-%u-%016llx.sock", (unsigned)getuid(), h);
 }
 
+/* DSRIG_NO_CTL=1: no control socket at all (a helper copy that must never answer for the game). */
 void rig_sock_start(const char *path) {
+    const char *no = getenv("DSRIG_NO_CTL");
+    if (no && *no == '1') { rig_log("control socket off (DSRIG_NO_CTL=1)"); return; }
     struct sockaddr_un probe;
     if (strlen(path) >= sizeof probe.sun_path) {
         short_sock_path(path, sock_path, sizeof sock_path);
-        unlink(path);
-        if (symlink(sock_path, path)) rig_log("socket path %s is too long; link to %s failed (%s)", path, sock_path, strerror(errno));
-        else rig_log("socket path %s is too long (%zu bytes): listening at %s (linked)", path, strlen(path), sock_path);
+        snprintf(link_path, sizeof link_path, "%s", path);
     } else {
         snprintf(sock_path, sizeof sock_path, "%s", path);
     }

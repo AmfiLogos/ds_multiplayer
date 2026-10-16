@@ -1,0 +1,214 @@
+diff --git a/Dependencies/Il2CppAssemblyGenerator/Packages/Cpp2IL.cs b/Dependencies/Il2CppAssemblyGenerator/Packages/Cpp2IL.cs
+index f5a9d97..400d1ed 100644
+--- a/Dependencies/Il2CppAssemblyGenerator/Packages/Cpp2IL.cs
++++ b/Dependencies/Il2CppAssemblyGenerator/Packages/Cpp2IL.cs
+@@ -93,7 +93,7 @@ namespace MelonLoader.Il2CppAssemblyGenerator.Packages
+ #endif
+ 
+                 "--exe-name",
+-                "\"" + Process.GetCurrentProcess().ProcessName + "\"",
++                "\"" + System.IO.Path.GetFileName(System.Environment.ProcessPath) + "\"", // LOCAL TEST PATCH: ProcessName is cut to 15 chars on macOS
+ 
+                 "--output-as",
+                 "dummydll",
+diff --git a/Directory.Build.props b/Directory.Build.props
+index b64b0e7..9308403 100644
+--- a/Directory.Build.props
++++ b/Directory.Build.props
+@@ -54,7 +54,7 @@
+         <AssetToolsVersion>3.0.4</AssetToolsVersion>
+         <AssetRipperVersion>3.2.0</AssetRipperVersion>
+         <AsmResolverVersion>6.0.0-beta.5</AsmResolverVersion>
+-        <Il2CppInteropVersion>1.5.1-ci.845</Il2CppInteropVersion>
++        <Il2CppInteropVersion>1.5.3-dsmac.1</Il2CppInteropVersion>
+ 	</PropertyGroup>
+ 	
+ 	<!--
+diff --git a/MelonLoader.Bootstrap/Exports.cs b/MelonLoader.Bootstrap/Exports.cs
+index 08a3dde..ccca379 100644
+--- a/MelonLoader.Bootstrap/Exports.cs
++++ b/MelonLoader.Bootstrap/Exports.cs
+@@ -80,7 +80,11 @@ internal static class Exports
+     // since hooking on libc's "pre main" is inherently dangerous so the less time we have this, the better
+     private static void RemoveLibraryPreloadEnv()
+     {
+-        string[] ldPreloads = Environment.GetEnvironmentVariable(LdPreloadEnvName)!.Split(":");
++        // DS LOCAL PATCH (ds_multiplayer ext/melon): another injected library may have cleared the variable already
++        string? ldPreloadValue = Environment.GetEnvironmentVariable(LdPreloadEnvName);
++        if (ldPreloadValue is null)
++            return;
++        string[] ldPreloads = ldPreloadValue.Split(":");
+         // Entries may be absolute paths: melonloader-launch.sh injects the bootstrap by its full path
+         string newLdPreload = string.Join(':', ldPreloads.Where(x => Path.GetFileName(x) != $"{CurrentAssemblyName}.{LibExtension}"));
+         string[]? ldLibraryPaths = Environment.GetEnvironmentVariable(LdPathEnvName)?.Split(":");
+diff --git a/MelonLoader/Fixes/Il2CppInterop/Il2CppICallInjector.cs b/MelonLoader/Fixes/Il2CppInterop/Il2CppICallInjector.cs
+index 121826e..bd40947 100644
+--- a/MelonLoader/Fixes/Il2CppInterop/Il2CppICallInjector.cs
++++ b/MelonLoader/Fixes/Il2CppInterop/Il2CppICallInjector.cs
+@@ -58,6 +58,20 @@ namespace MelonLoader.Fixes.Il2CppInterop
+                 if (il2cpp_add_internal_call == null)
+                     throw new Exception($"Failed to get {nameof(il2cpp_add_internal_call)} Native Export");
+ 
++                // LOCAL TEST PATCH (DS loader research): arm64 exports can be a single 4-byte `b target` thunk;
++                // a 16-byte detour there overwrites the next exports. Hook the branch target instead.
++                if (System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture == System.Runtime.InteropServices.Architecture.Arm64)
++                {
++                    uint ins = (uint)Marshal.ReadInt32(il2cpp_resolve_icall);
++                    if ((ins & 0xFC000000u) == 0x14000000u)
++                    {
++                        long imm = (long)(ins & 0x03FFFFFFu);
++                        if ((imm & 0x02000000L) != 0) imm -= 0x04000000L;
++                        IntPtr target = (IntPtr)((long)il2cpp_resolve_icall + imm * 4);
++                        MelonDebug.Msg($"il2cpp_resolve_icall is a b-thunk, hooking target 0x{(long)target:X}");
++                        il2cpp_resolve_icall = target;
++                    }
++                }
+                 MelonDebug.Msg("Patching il2cpp_resolve_icall...");
+                 IntPtr detourPtr = Marshal.GetFunctionPointerForDelegate((dil2cpp_resolve_icall)il2cpp_resolve_icall_Detour);
+                 il2cpp_resolve_icall_hook = new NativeHook<dil2cpp_resolve_icall>(il2cpp_resolve_icall, detourPtr);
+@@ -112,6 +126,15 @@ namespace MelonLoader.Fixes.Il2CppInterop
+                 return originalResult;
+             }
+ 
++            // DS LOCAL PATCH (ds_multiplayer ext/melon): native code (the DS loader's C mods) that asks for an icall the game
++            // stripped keeps il2cpp's null; calling the managed stand-in from C kills the game (fatal error in
++            // JIT_ReversePInvokeEnterRare). Only a C# caller (Il2CppInterop's unstripped Unity methods) gets the stand-in.
++            if (!HasManagedCaller())
++            {
++                MelonDebug.Msg($"Native caller for stripped icall {signatureStr}: left null");
++                return IntPtr.Zero;
++            }
++
+             // Check if Injection is Needed
+             if (!ShouldInject(ref signatureStr, out MethodInfo unityShimMethod))
+             {
+@@ -139,6 +162,18 @@ namespace MelonLoader.Fixes.Il2CppInterop
+             return pair.Item4;
+         }
+ 
++        private static bool HasManagedCaller()
++        {
++            var st = new System.Diagnostics.StackTrace(1, false);
++            for (int i = 0; i < st.FrameCount; i++)
++            {
++                var dt = st.GetFrame(i)?.GetMethod()?.DeclaringType;   // IL stubs (ILStubClass) are the native->managed entry
++                if (dt != null && dt != typeof(Il2CppICallInjector) && dt.FullName != "ILStubClass")
++                    return true;
++            }
++            return false;
++        }
++
+         private static Type FindType(string typeFullName)
+         {
+             if (string.IsNullOrEmpty(typeFullName))
+diff --git a/MelonLoader/Fixes/Il2CppInterop/Il2CppInteropInjectorHelpersSetupFix.cs b/MelonLoader/Fixes/Il2CppInterop/Il2CppInteropInjectorHelpersSetupFix.cs
+index d0329b7..7ff15a7 100644
+--- a/MelonLoader/Fixes/Il2CppInterop/Il2CppInteropInjectorHelpersSetupFix.cs
++++ b/MelonLoader/Fixes/Il2CppInterop/Il2CppInteropInjectorHelpersSetupFix.cs
+@@ -69,6 +69,11 @@ namespace MelonLoader.Fixes.Il2CppInterop
+ 
+         private static IEnumerable<CodeInstruction> Setup_Transpiler(IEnumerable<CodeInstruction> instructions)
+         {
++            // DS LOCAL PATCH (ds_multiplayer ext/melon): on arm64 our Il2CppInterop fork (1.5.3-dsmac) picks the arm64
++            // GenericMethod::GetMethod hook itself and fixed GetTypeInfoFromTypeDefinitionIndex; the x86 swaps below break it.
++            if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
++                return instructions;
++
+ #if OSX
+             // This hook isn't reliable on macOS due to potential inlining by the player's compiler resulting in il2cppinterop
+             // thinking it found the right function, but it actually found one that takes a pointer which it would then incorrectly hook
+diff --git a/MelonLoader/InternalUtils/BootstrapInterop.cs b/MelonLoader/InternalUtils/BootstrapInterop.cs
+index a80a0be..3d75fde 100644
+--- a/MelonLoader/InternalUtils/BootstrapInterop.cs
++++ b/MelonLoader/InternalUtils/BootstrapInterop.cs
+@@ -71,9 +71,33 @@ internal static unsafe class BootstrapInterop
+ 
+     internal static unsafe void NativeHookAttachDirect(nint target, nint detour)
+     {
++        *(nint*)target = FollowArm64Thunks(*(nint*)target);
+         Library.NativeHookAttach((nint*)target, detour);
+     }
+ 
++    // DS LOCAL PATCH (ds_multiplayer ext/melon, same as our BepInEx fork's FollowExportThunks): on arm64 (clang Mach-O)
++    // a function can be one 4-byte "b imm26" to its body, packed next to other code; a 16-byte detour written there
++    // overwrites the neighbours (Class::FromName on Dungeon Settlers). Hook the body instead; same behaviour for callers.
++    internal static nint FollowArm64Thunks(nint func)
++    {
++#if NET6_0_OR_GREATER
++        if (func == 0 || RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
++            return func;
++#else
++        return func;
++#endif
++        for (int hops = 0; hops < 8; hops++)
++        {
++            uint ins = (uint)Marshal.ReadInt32(func);
++            if ((ins & 0xFC000000u) != 0x14000000u)
++                break;
++            long imm = ins & 0x03FFFFFFL;
++            if ((imm & 0x02000000L) != 0) imm -= 0x04000000L;
++            func = (nint)((long)func + imm * 4);
++        }
++        return func;
++    }
++
+     public static unsafe void NativeHookDetach(nint target, nint detour)
+     {
+         NativeHookDetachDirect(target, detour);
+@@ -85,6 +109,7 @@ internal static unsafe class BootstrapInterop
+     
+     internal static unsafe void NativeHookDetachDirect(nint target, nint detour)
+     {
++        *(nint*)target = FollowArm64Thunks(*(nint*)target);
+         Library.NativeHookDetach((nint*)target, detour);
+     }
+ 
+diff --git a/MelonLoader/LoaderConfig.cs b/MelonLoader/LoaderConfig.cs
+index 12931a2..e060613 100644
+--- a/MelonLoader/LoaderConfig.cs
++++ b/MelonLoader/LoaderConfig.cs
+@@ -37,6 +37,9 @@ public class LoaderConfig
+         Environment.SetEnvironmentVariable("MELONLOADER_LOADED", "1");
+ 
+         var customBaseDir = ArgParser.GetValue("melonloader.basedir");
++        // DS LOCAL PATCH (ds_multiplayer ext/melon): the DS loader gives the base folder by env (a soft restart keeps argv)
++        if (string.IsNullOrEmpty(customBaseDir))
++            customBaseDir = Environment.GetEnvironmentVariable("MELONLOADER_BASEDIR");
+         var baseDir = Path.GetDirectoryName(Environment.ProcessPath)!;
+ 
+ #if OSX
+diff --git a/MelonLoader/Melons/MelonFolderHandler.cs b/MelonLoader/Melons/MelonFolderHandler.cs
+index 1e57e48..cea2bfe 100644
+--- a/MelonLoader/Melons/MelonFolderHandler.cs
++++ b/MelonLoader/Melons/MelonFolderHandler.cs
+@@ -80,6 +80,17 @@ public static class MelonFolderHandler
+         FindSubFolders(ScanType.Plugins, MelonEnvironment.PluginsDirectory, true, ref _userLibDirs, ref _pluginDirs, ref _modDirs);
+         FindSubFolders(ScanType.Mods, MelonEnvironment.ModsDirectory, true, ref _userLibDirs, ref _pluginDirs, ref _modDirs);
+ 
++        // DS LOCAL PATCH (ds_multiplayer ext/melon): one folder per enabled DS loader mod, ":" list (like BEPINEX_PLUGIN_DIRS)
++        string dsModDirs = Environment.GetEnvironmentVariable("MELONLOADER_MOD_DIRS");
++        if (!string.IsNullOrEmpty(dsModDirs))
++            foreach (string dsDir in dsModDirs.Split(':'))
++            {
++                if (dsDir.Length == 0 || !Directory.Exists(dsDir) || _modDirs.Contains(dsDir))
++                    continue;
++                _modDirs.Add(dsDir);
++                FindSubFolders(ScanType.Mods, dsDir, true, ref _userLibDirs, ref _pluginDirs, ref _modDirs);
++            }
++
+         // Add Directories to Resolver
+         foreach (string directory in _userLibDirs)
+         {
+diff --git a/NuGet.config b/NuGet.config
+index 063fa5b..560997c 100644
+--- a/NuGet.config
++++ b/NuGet.config
+@@ -1,6 +1,7 @@
+-﻿<?xml version="1.0" encoding="utf-8"?>
++<?xml version="1.0" encoding="utf-8"?>
+ <configuration>
+   <packageSources>
++    <add key="dsmac-local" value="../../feed.noindex" />
+     <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
+     <add key="nuget.org" value="https://www.nuget.org/api/v2/" />
+     <add key="nuget.bepinex.dev" value="https://nuget.bepinex.dev/v3/index.json" />

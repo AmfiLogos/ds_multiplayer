@@ -241,6 +241,13 @@ const char *gal_word(const gal_words *w, const char *group, const char *key) {
     return o;
 }
 
+/* the keys of W.<group> in the file's order (filter lists: races, trees). Returns the count; keys point into w. */
+int gal_word_keys(const gal_words *w, const char *group, const char **keys, int max) {
+    const jv *g = w ? jget(w->W, group) : NULL; int n = 0;
+    for (size_t i = 0; g && g->t == JN_OBJ && i < g->cnt && n < max; i++) keys[n++] = g->k[i];
+    return n;
+}
+
 /* teamname.js fill(): {name} -> value or '', whitespace runs to one space, trimmed */
 typedef struct { const char *k, *v; } kv;
 static void fill(const char *tpl, const kv *map, int nm, char *out, size_t n) {
