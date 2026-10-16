@@ -75,7 +75,7 @@ Mac uses ML patch 8 in our build instead (no plugin in the Mac zip).
 - One l1_bie_test run: copy C became the frontmost app during the soft restart and the guard killed it (next run 14/14).
   Not in this lane's files (soft restart activation).
 - crossmods' win_mods_test.py stops the wine copy in `finally` even without the wine lock (relayed to orchestrator13).
-- The Mac zip `out.noindex/pkg/melonloader-mac-arm64-0.1.0.zip` (sha256 b7a87649...6074, pinned in
-  app/melon/install_melon.sh) is not published yet: it must be a GitHub release asset `melonloader-mac-0.1.0` on
-  AmfiLogos/ds_multiplayer before the v13 ship (the BepInEx zip is `bepinex-mac-0.1.0`). A rebuilt zip gets a new sha256.
+- The Mac zip `out.noindex/pkg/melonloader-mac-arm64-0.1.0.zip` (sha256 f0f2a6e6...643e, pinned in
+  app/melon/install_melon.sh) is published as prerelease `melonloader-mac-0.1.0` (2026-10-16) on
+  AmfiLogos/ds_multiplayer; the real download + install was checked. Build paths are mapped (no user name in the DLLs). A rebuilt zip gets a new sha256.
 - Windows ML first start needs the internet (MelonLoader downloads Cpp2IL, the Unity libraries and .NET 6): 260 s here.
