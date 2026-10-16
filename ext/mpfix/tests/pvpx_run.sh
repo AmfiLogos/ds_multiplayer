@@ -11,6 +11,9 @@ P=$(python3 $R lease mpfix --pid $$ | tail -1)
 if [[ $P == [A-J][A-J] ]]; then
   (cd $HOME/ds_multiplayer/win && timeout 540 python3 xplay_run.py $P $WT/ext/fepvp13/tests/pvp_v1_pair.py --math --dylib $WT/build/dsrig.dylib --tag mpfix_$T) > $OUT/pvpx_$T.log 2>&1
   command grep -E '(PASS|FAIL) [0-9]' $OUT/pvpx_$T.log
+  np=$(command grep -cE 'PASS [0-9]' $OUT/pvpx_$T.log); nf=$(command grep -cE 'FAIL [0-9]|Traceback' $OUT/pvpx_$T.log)
+  (( np > 0 && nf == 0 )) && rc=0 || { echo "FAIL pvpx: $np PASS, $nf FAIL/Traceback"; rc=1; }
   python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P mpfix >/dev/null
-else echo "no pair: $P"; fi
+else echo "FAIL not run: no pair: $P"; rc=1; fi
 mkdir -p $HOME/ds_multiplayer/rig/old; mv $LOCK/owner $HOME/ds_multiplayer/rig/old/wine.lock.owner.mpfix.$(date +%s); rmdir $LOCK
+exit $rc

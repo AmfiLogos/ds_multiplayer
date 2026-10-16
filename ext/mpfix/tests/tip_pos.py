@@ -41,7 +41,7 @@ def main():
         pair = rig.lease(LANE, os.getpid())
         if pair: break
         time.sleep(30)
-    if not pair: log('no free pair'); return
+    if not pair: log('FAIL not run: no free pair'); sys.exit(1)
     X = pair[0]
     c = lambda **k: rig.send(X, k, timeout=120)
     st = lambda: c(cmd='status')
@@ -136,7 +136,7 @@ def main():
         c(cmd='ui_pop', open=0)
         clear()
     except Exception as e:
-        log('ERROR', repr(e)); results['error'] = repr(e)
+        check('flow completed', False, repr(e))
     finally:
         try: rig.stop(X)
         except Exception as e: log('stop', X, e)

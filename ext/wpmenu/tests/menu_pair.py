@@ -54,7 +54,7 @@ def main():
         pair = rig.lease(LANE)
         if pair: break
         time.sleep(30)
-    if not pair: log('no free pair'); return
+    if not pair: log('FAIL not run: no free pair'); sys.exit(1)
     H, P = pair[0], pair[1]
     c = lambda inst, **k: rig.send(inst, k, timeout=120)
     st = lambda x: c(x, cmd='status')
@@ -237,7 +237,7 @@ def main():
         except Exception as e: log('load', e)
         check('5c. the save loads (no session)', ok)
     except Exception as e:
-        log('ERROR', repr(e)); results['error'] = repr(e)
+        check('flow completed', False, repr(e))
     finally:
         for x in (H, P):
             try: rig.stop(x)

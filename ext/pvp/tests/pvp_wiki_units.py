@@ -180,19 +180,19 @@ def main():
         log('units in the match', names, [(u['team'], u['player']) for u in s['units']])
         if watch:
             wait('the fight begins', lambda: ps(H).get('fighting') or ps(H).get('fight_start'), timeout=300, every=1)
-            peak = {(w[0], x): w[4] for w in watch for x in (H, G)}
+            peak = {(w[0], x): w[4] for w in watch for x in (H, G)}; reads = dict.fromkeys(peak, 0)
             t0 = time.time()
             while time.time() - t0 < 25:                       # First Assault lasts 15 s from the start of combat
                 for w in watch:
                     for x in (H, G):
                         try: v = c(x, cmd='unit_stats', guid=w[0])['stats'].get(w[3])
                         except Exception: v = None
-                        if v is not None: peak[(w[0], x)] = max(peak[(w[0], x)], v)
+                        if v is not None and w[4] is not None: peak[(w[0], x)] = max(peak[(w[0], x)], v); reads[(w[0], x)] += 1
                 time.sleep(1)
             skipped = {x: c(x, cmd='pvp_arena_info')['cuts'].get('passive_skipped') for x in (H, G)}
-            log('in-fight peaks', [(w[1], w[2], w[3], w[4], peak[(w[0], H)], peak[(w[0], G)]) for w in watch], 'skipped', skipped)
+            log('in-fight peaks', [(w[1], w[2], w[3], w[4], peak[(w[0], H)], peak[(w[0], G)]) for w in watch], 'skipped', skipped, 'reads', list(reads.values()))
             check('W5 a folded passive does not add again in the fight (peak = value at rest on both copies; live grant skipped)',
-                  all(abs(peak[(w[0], x)] - w[4]) < 1e-3 for w in watch for x in (H, G)) and all(skipped.values()), str(skipped))
+                  all(reads.values()) and all(abs(peak[(w[0], x)] - w[4]) < 1e-3 for w in watch for x in (H, G)) and all(skipped.values()), f'{skipped} reads {list(reads.values())}')
         check('W4 the match runs with the 4 wiki units (2 per team)', names == want and sorted(u['team'] for u in s['units']) == [1, 1, 2, 2], str(names))
         ushot(H, 'arena_wiki_units')
         mh, mg = st(H)['mp'], st(G)['mp']

@@ -348,7 +348,8 @@ def run(H, G):
     loot = json.load(open(os.path.join(rig.idir(H), 'data', 'fe', 'runs', run_id, 'loot.json'))) if os.path.exists(os.path.join(rig.idir(H), 'data', 'fe', 'runs', run_id, 'loot.json')) else {}
     gl = [k for k, v in loot.items() if v.get('player_uid') == gu]
     log('loot tagged in the dungeon: all', len(loot), 'guest', len(gl), '| result items', len(res['items']), '| unit status', [(u['home_guid'][:8], u['status'], u.get('level_after')) for u in res['units']])
-    check('results: items = the guest\'s dungeon loot that still exists (no hub / crafted items)', set(res['items']) <= set(gl), f"{len(res['items'])} of {len(gl)}")
+    check('results: items = the guest\'s dungeon loot that still exists (no hub / crafted items)', len(res['items']) > 0 and set(res['items']) <= set(gl), f"{len(res['items'])} of {len(gl)}")
+    check('results: one unit entry per unit the guest brought', len(res['units']) == len(gpick), f"{len(res['units'])} of {len(gpick)}")
     # F6 results window (board FEResultsA): opens by itself on the guest over the Esc menu; pick the target; Apply
     w = wait('results window open on the guest', lambda: (lambda w_: w_ if w_.get('mode') == 2 else None)(c(G, cmd='mpm_fewin')), timeout=120, every=2)
     c(G, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'results_window_guest.png'))
@@ -391,7 +392,7 @@ def run(H, G):
               f"home before L{fe.comp(fe.ec_of(home)[H_], 0)['ProgressionStats']['Level']} exp {fe.comp(fe.ec_of(home)[H_], 0)['ProgressionStats']['Exp']} -> L{pe['Level']} exp {pe['Exp']}")
     ec_new, ec_home = fe.ec_of(new), fe.ec_of(home)
     added = [g for g in ec_new if g not in ec_home]
-    check('apply: returned loot items exist in the new home save', len(added) >= len(res['items']), f"{len(added)} new entities, {len(res['items'])} result items")
+    check('apply: returned loot items exist in the new home save', len(res['items']) > 0 and len(added) >= len(res['items']), f"{len(added)} new entities, {len(res['items'])} result items")
     c(G, cmd='load_save', file=r['file'], det=0)
     wait('new home loaded', lambda: (lambda s: s.get('scene') == 2 and not s.get('busy') and s.get('map') == 0 and s.get('tick', -1) > 0)(st(G)), timeout=400)
     c(G, cmd='set_speed', speed=0); time.sleep(2)

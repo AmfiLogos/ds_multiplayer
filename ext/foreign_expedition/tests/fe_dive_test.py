@@ -67,6 +67,7 @@ def main():
 
 
 def run(H, G):
+    t_run = time.time()                                   # a backup older than this run is not this run's backup
     c = lambda x, **k: rig.send(x, k, timeout=180)
     st = lambda x: c(x, cmd='status')
     mp = lambda x: st(x).get('mp', {})
@@ -339,7 +340,8 @@ def run(H, G):
     loot = json.load(open(os.path.join(rig.idir(H), 'data', 'fe', 'runs', run_id, 'loot.json'))) if os.path.exists(os.path.join(rig.idir(H), 'data', 'fe', 'runs', run_id, 'loot.json')) else {}
     gl = [k for k, v in loot.items() if v.get('player_uid') == gu]
     log('loot tagged in the dungeon: all', len(loot), 'guest', len(gl), '| result items', len(res['items']), '| unit status', [(u['home_guid'][:8], u['status'], u.get('level_after')) for u in res['units']])
-    check('results: items = the guest\'s dungeon loot that still exists (no hub / crafted items)', set(res['items']) <= set(gl), f"{len(res['items'])} of {len(gl)}")
+    check('results: items = the guest\'s dungeon loot that still exists (no hub / crafted items)', len(res['items']) > 0 and set(res['items']) <= set(gl), f"{len(res['items'])} of {len(gl)}")
+    check('results: one unit entry per unit the guest brought', len(res['units']) == len(gpick), f"{len(res['units'])} of {len(gpick)}")
     # F6 results window (board FEResultsA): opens by itself on the guest over the Esc menu; pick the target; Apply
     w = wait('results window open on the guest', lambda: (lambda w_: w_ if w_.get('mode') == 2 else None)(c(G, cmd='mpm_fewin')), timeout=120, every=2)
     c(G, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'results_window_guest.png'))
@@ -351,7 +353,7 @@ def run(H, G):
     w = c(G, cmd='mpm_fewin'); log('after Apply', {k: w.get(k) for k in ('applied', 'conflict', 'err', 'msg')})
     c(G, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'results_applied_guest.png'))
     claims = json.load(open(os.path.join(rig.idir(G), 'data', 'fe', 'claims.json')))['claims'].get(run_id, {})
-    r = {'ok': bool(w.get('applied')), 'file': claims.get('file', ''), 'backup': max(glob.glob(os.path.join(ROOT, 'backups', '*')), key=os.path.getmtime), 'report': w.get('msg')}
+    r = {'ok': bool(w.get('applied')), 'file': claims.get('file', ''), 'backup': max([p_ for p_ in glob.glob(os.path.join(ROOT, 'backups', '*')) if os.path.getmtime(p_) >= t_run] or [''], key=lambda p_: os.path.getmtime(p_) if p_ else 0), 'report': w.get('msg')}
     check('F6 results window: Apply wrote the new save (window says Brought home)', r['ok'] and os.path.exists(r['file']), str(r))
     c(G, cmd='mpm_click', button=B['FE_OK']); time.sleep(1)
     c(G, cmd='mp_quit', mode='title'); wait('guest on the title', lambda: (lambda s: s.get('scene') == 1 and not s.get('busy'))(st(G)), timeout=120)
@@ -382,7 +384,7 @@ def run(H, G):
               f"home before L{fe.comp(fe.ec_of(home)[H_], 0)['ProgressionStats']['Level']} exp {fe.comp(fe.ec_of(home)[H_], 0)['ProgressionStats']['Exp']} -> L{pe['Level']} exp {pe['Exp']}")
     ec_new, ec_home = fe.ec_of(new), fe.ec_of(home)
     added = [g for g in ec_new if g not in ec_home]
-    check('apply: returned loot items exist in the new home save', len(added) >= len(res['items']), f"{len(added)} new entities, {len(res['items'])} result items")
+    check('apply: returned loot items exist in the new home save', len(res['items']) > 0 and len(added) >= len(res['items']), f"{len(added)} new entities, {len(res['items'])} result items")
     c(G, cmd='load_save', file=r['file'], det=0)
     wait('new home loaded', lambda: (lambda s: s.get('scene') == 2 and not s.get('busy') and s.get('map') == 0 and s.get('tick', -1) > 0)(st(G)), timeout=400)
     c(G, cmd='set_speed', speed=0); time.sleep(2)

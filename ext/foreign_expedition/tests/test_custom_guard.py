@@ -4,6 +4,8 @@ Builds two fe_cli binaries with ASan + UBSan (this branch, and main's src/fe as 
 then: (a) a result of custom units only is refused, home bytes unchanged, no new file; (b) mixed custom + normal: the
 normal unit applied, the custom one reported and absent from the new save; (c) normal only: same output as main.
 Run: python3 ext/foreign_expedition/tests/test_custom_guard.py   (from the worktree root or anywhere)
+Baseline: FE_BASE_SRC = a folder holding fe sources; else tag FE_BASE_REF (default bundle-v0.1.16) of CM_REPO (default
+~/ds_custommodes), extracted with git archive into the run's out folder. FAIL when baseline and tree under test are one folder.
 Fixtures: ext/foreign_expedition/fixtures, else ~/ds_multiplayer/ext/foreign_expedition/fixtures (not in git)."""
 import copy, glob, hashlib, json, os, subprocess, sys, time, uuid
 
@@ -21,10 +23,19 @@ def fe_dir(repo):                                     # M4 split: FE moved from 
         return os.path.join(repo, 'custom', 'fe')
     cm = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')   # post-v13: Custom Modes' own repo
     return os.path.join(cm, 'fe') if os.path.isdir(os.path.join(cm, 'fe')) else os.path.join(repo, 'src', 'fe')
-BASE_SRC = os.environ.get('FE_BASE_SRC', fe_dir(os.path.expanduser('~/ds_multiplayer')))   # main: before the guard
 BUILD = os.path.join(ROOT, 'build'); os.makedirs(BUILD, exist_ok=True)
 CLI, BASE = os.path.join(BUILD, 'fe_cli'), os.path.join(BUILD, 'fe_cli_base')
 OUT = os.path.join(ROOT, 'out', 'test_custom_guard_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
+NEW_SRC = fe_dir(REPO)
+def base_src():                                       # pinned release, never the tree under test
+    if os.environ.get('FE_BASE_SRC'): return os.environ['FE_BASE_SRC']
+    cm, ref = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes'), os.environ.get('FE_BASE_REF', 'bundle-v0.1.16')
+    d = os.path.join(OUT, 'base_' + ref); os.makedirs(d)
+    a = subprocess.run(['git', '-C', cm, 'archive', ref, 'fe'], capture_output=True)
+    x = subprocess.run(['tar', '-x', '-C', d], input=a.stdout, capture_output=True)
+    if a.returncode or x.returncode: print('FAIL baseline extract', ref, a.stderr.decode()[-300:], x.stderr.decode()[-300:]); sys.exit(1)
+    return os.path.join(d, 'fe')
+BASE_SRC = base_src()
 o = lambda n: os.path.join(OUT, n)
 sha = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()
 fails = []
@@ -53,7 +64,8 @@ def dump(obj, name):
     json.dump(obj, open(o(name), 'w')); return o(name)
 
 
-build(fe_dir(REPO), CLI)
+check('baseline is not the tree under test', os.path.realpath(BASE_SRC) != os.path.realpath(NEW_SRC), f'{BASE_SRC} vs {NEW_SRC}')
+build(NEW_SRC, CLI)
 build(BASE_SRC, BASE)
 if fails: sys.exit(1)
 HOME_SHA = sha(HOME_P)
