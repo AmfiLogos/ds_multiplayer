@@ -1,4 +1,4 @@
-// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_launcher main b7ebb86, 2026-10-15) for builds without the loader tree:
+// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_launcher main 9884bda, 2026-10-15) for builds without the loader tree:
 // Custom Modes (custom/cm_module.c) and the rig host of it (src/rig_main.c). The loader build passes its own SDK=<loader>/sdk.
 // dsl_sdk.h - module SDK for the Dungeon Settlers mod loader (dsload.dylib), API version 3.
 // API 3 = API 2 + soft restart, session busy, Mods window tabs, title buttons, load-list rows / filter and the

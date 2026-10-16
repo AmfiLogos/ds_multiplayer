@@ -65,7 +65,7 @@ changes it.
 - Instance A's data has old expedition results: their window covers the lobby. tip_pos / menu_pair press "Later" first.
 - The card for a column button now sits over the left part of the Recent Worlds panel (right of the column, as asked).
 
-## 5. register_host_choice2 + host_choice_now (MPF API for lane fepvp, commit dd268a2)
+## 5. register_host_choice2 + host_choice_now (MPF API for lane fepvp, commit 740a268)
 
 - mp_api.h: `mp_host_choice` and two table fields appended after register_menu (MP_API_VERSION 1 unchanged; check size).
 - Registry in mpmenu_model.c (`mpm_choices`, unit-tested): up to 4, registration order, same id = replace in place (also

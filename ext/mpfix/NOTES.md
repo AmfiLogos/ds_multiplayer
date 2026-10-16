@@ -20,7 +20,7 @@ Branch `mpfix`, worktree ~/ds_mp_mpfix. Brief: research/briefs_v13/mpfix.md. Wor
 - Bridge: tests/run_unit.sh all PASS; bridge_xplay (Mac host + Windows guest W_BRG, pair GH) RESULT PASS:
   plugin sees the session, AddGold(250) applied once on both, full-state checks equal, 0 desyncs, 1345 equal ticks.
 - Weapon slot: flip run on build/merge_mpfix 0 desyncs; equip test desyncs (see above, expected for a gameplay mod).
-- Final merge (main 3475f5d merged in): all units pass again, smoke 3/3, mp2 19/0, left_prompt 16/0, menu_pair 17/17,
+- Final merge (main 02a258b merged in): all units pass again, smoke 3/3, mp2 19/0, left_prompt 16/0, menu_pair 17/17,
   tip_pos 8/8, choice2_pair 8/8, Windows module build clean (with the gen_port patch applied locally, not committed).
 - Runner: tests/run_on.py <dylib> [--lease LANE] <script> runs a rig test on a given dylib.
 

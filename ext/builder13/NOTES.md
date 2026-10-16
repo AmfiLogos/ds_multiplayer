@@ -27,7 +27,7 @@ It does not need fights13 full (cm_win / cm_work are not used), so it can merge 
 - Guard: the builder writes only the My Units library file. A library unit goes into a world only as a copy (Bring
   Units) and the FE guard refuses library units in a world's results (units / fepvp lanes). Test: no file in Saves.
 
-## Proofs (2026-10-16, tree = main 3e03d9b + builder13)
+## Proofs (2026-10-16, tree = main 99c65f3 + builder13)
 - Equality: `custom/builder/build.sh && custom/builder/test/run_eq.sh 300 13` -> 300 random builds made by clicks the
   state offers (19642 clicks): QuickJS model == node/V8 + the wiki's own builder.js for every build: the wiki's
   validate (its UI-part declarations, loaded WITHOUT our lifter) keeps the build unchanged, computeBuild JSON equal,
