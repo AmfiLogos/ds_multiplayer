@@ -1,0 +1,6 @@
+builder/bld_js.c
+builder/bld_embed.c
+builder/bld_work.c
+builder/bld_ui.c
+builder/bld_init.c
+builder/bld_test.c
