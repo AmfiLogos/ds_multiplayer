@@ -61,7 +61,14 @@ static void fe_ui_flags(void) {                          /* hub with Recruiting 
     A->ui_set_flag(MPUI_HIDE_GUILD_CONTACT, off);
     A->ui_set_flag(MPUI_NO_RECRUIT_POPUP, off);
 }
-static int pvp_world_build(const char *path, const char *save_name) { (void)save_name; return pvp_units_join_point(path); }
+int pvp_v1_world(void);                                  /* fe/fe_hub.c */
+int pvp_v1_keep_prefix(const char *path);
+static int pvp_world_build(const char *path, const char *save_name) {
+    (void)save_name;
+    int v1 = pvp_v1_world(), r = pvp_units_join_point(path);
+    if (r == 1 && v1) pvp_v1_keep_prefix(path);            /* the PvP v1 world stays one with the brought units in */
+    return r;
+}
 
 __attribute__((visibility("default"))) int cm_mp_start(const DSLHost *host, DSLPlugin *self, const mp_api_table *api) {
     H = host; ME = self; A = api;

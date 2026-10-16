@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <dlfcn.h>
 const pvp_state *pvp_ui_state(void) __attribute__((weak_import));
 char *pvp_units_exec(const char *cmd, const char *line) __attribute__((weak_import));
 int pvp_units_received(void) __attribute__((weak_import));
@@ -34,6 +35,17 @@ void pvp_mods_ask(int vanilla) __attribute__((weak_import));
 const char *pvp_mods_last(void) __attribute__((weak_import));
 void pvp_mods_summary(int vanilla, int host, char *out, size_t n) __attribute__((weak_import));
 
+/* PvP v1 (owner v12 13: "a map (the starting map for now), players appear there, PvP is on"): a world made from the
+   wiki base template by the host choice "PvP" (fe/fe_hub.c); every peer knows it from the campaign guid */
+int pvp_v1_world(void);
+int fe_world_is_hub(void);                                               /* fe/fe_game.c: a Foreign Expedition hub */
+static int pv_here(void) { return pvp_v1_world() || fe_world_is_hub(); }  /* the match is played on this settlement */
+int fe_world_start(int kind, char *err, size_t errn);
+int pvp_v1_page_start(char *err, size_t errn);
+int pvp_v1_lobby_start(char *err, size_t errn);
+static void v1_action(int a);
+static void v1_step(int i, int d);
+#define V1R_N 5
 /* host's choices (local until Start) */
 static const int pv_bo[3] = { 1, 3, 5 };
 static const int pv_secs[5] = { 60, 120, 180, 300, 480 };
@@ -93,7 +105,7 @@ static void pv_value(int r, char *out, size_t cap) {
                   else snprintf(out, cap, "Best of %d", pv_bo[pv.bo]); break;
     case PVR_TIME: snprintf(out, cap, "%d:%02d per round", pv_secs[pv.secs] / 60, pv_secs[pv.secs] % 60); break;
     case PVR_PAUSE: snprintf(out, cap, "%s", pv.pause ? "Planning pause every 7 s" : "No pause"); break;
-    case PVR_ARENA: snprintf(out, cap, "Dungeon floor %d (tested)", PV_FLOOR + 1); break;
+    case PVR_ARENA: if (pv_here()) snprintf(out, cap, "This settlement"); else snprintf(out, cap, "Dungeon floor %d (tested)", PV_FLOOR + 1); break;
     }
 }
 static const char *pv_label[PVR_N] = { "Mode", "To win", "Round time", "Pause", "Arena", "Vanilla check" };
@@ -102,7 +114,7 @@ static const char *pv_tip[PVR_N] = {
     "Fight: how many rounds are played at most; the first team to win most of them wins the match. Capture the Flag: how many captures win the match.",
     "Time for one round of game time at normal speed. When it runs out: Fight gives the round to the team with more health left; Capture the Flag counts it as a draw.",
     "No pause: nobody can pause during the match. Planning pause: the game stops every 7 seconds of fighting so everyone can give orders; it goes on after 5 seconds or when everyone pressed Ready.",
-    "The dungeon floor used as the arena. The same map for everyone, with no monsters, no items and no portal. Teams start at opposite ends.",
+    "Where the match is played. A dungeon floor: the same map for everyone, with no monsters, no items and no portal. In a PvP world or an expedition hub: this settlement. Teams start at opposite ends.",
     "On: vanilla only. No gameplay mods for anyone. Client mods (screen and controls) are fine.\n\nOff: mods allowed. The host's gameplay mods are required, and the launcher shares them with every player." };
 
 static void pv_build(Obj v) {
@@ -280,7 +292,7 @@ static void pv_start(void) {
     int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8);
     for (int i = 0; i < n; i++) teams[ids[i]] = (uint8_t)(pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE);
     pvp_rules r = { (uint8_t)pv_bo[pv.bo], (uint16_t)pv_secs[pv.secs], (uint8_t)(pv.pause ? PVP_PAUSE_PLANNING : PVP_PAUSE_NONE), 7, 5, (uint8_t)(pv.vanilla != 0) };
-    int rc = pvp_ui_start_match ? pvp_ui_start_match(pv.mode, teams, &r, PV_REGION, PV_FLOOR, PV_SEED) : -9;
+    int rc = pvp_ui_start_match ? pvp_ui_start_match(pv.mode, teams, &r, pv_here() ? -1 : PV_REGION, PV_FLOOR, PV_SEED) : -9;   /* region -1: here */
     rig_log("pvp ui: Start Match: rc %d", rc);
     if (rc == -4) {                                                       /* Vanilla check refused: stay, say why */
         snprintf(pv_err, sizeof pv_err, "%s", pvp_mods_last ? pvp_mods_last() : "Start Match was refused.");
@@ -290,6 +302,18 @@ static void pv_start(void) {
     Obj ev = esc_view(); if (ev && u_on(ev) && !rc) (mm_is(ev, K_SMV) ? F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL) : (void)0);   /* back to the game */
 }
 static int br_click(int k);
+/* PvP v1 world after the match: leave multiplayer (the host ends it for everyone) and go to the title */
+static void pvp_v1_to_title(void) {
+    void (*leave)(void) = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_leave_to_title");
+    if (leave) leave();
+    Obj eq = mf ? AT(mf, 0x48, Obj) : NULL;
+    if (eq && scene() == 2) {
+        Obj ev = obj_new(0x6652F28);                                      /* QuitToTitleSceneRequested(autoSaveBeforeQuit false) */
+        F(0xD61E50, void (*)(Obj, bool, void *))(ev, false, NULL);
+        F(0xCCFAD4, void (*)(Obj, Obj, void *))(eq, ev, NULL);
+    }
+    rig_log("pvp v1: back to the title after the match");
+}
 static void pv_click_do(int k) {
     int host = pvp_ui_is_host && pvp_ui_is_host();
     if (br_click(k)) return;
@@ -297,6 +321,7 @@ static void pv_click_do(int k) {
     if (k == PVB_CLOSE) { pv_show(0); return; }
     if (k == PVB_START && host) { pv_start(); return; }
     if (k == PVB_READY) { if (pvp_ui_ready) rig_log("pvp ui: Ready (rc %d)", pvp_ui_ready()); return; }
+    if (k == PVB_RESULT_OK && pvp_v1_world()) { u_active(pvt(h_pr_root), false); pr_open = 0; pvp_v1_to_title(); return; }
     if (k == PVB_RESULT_OK) { u_active(pvt(h_pr_root), false); pr_open = 0; Obj area = u_gc_get(h_pv_area); if (u_alive(area)) u_active(area, true);
                               Obj ev = esc_view(); if (ev && u_on(ev)) (mm_is(ev, K_SMV) ? F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL) : (void)0); return; }
     if (!host) return;
@@ -335,7 +360,7 @@ static void br_list_saves(void) {
     DIR *d = opendir(dir);
     for (struct dirent *e; d && (e = readdir(d)) && n < 64; ) {
         size_t l = strlen(e->d_name); if (l < 6 || strcmp(e->d_name + l - 5, ".json")) continue;
-        if (!strncmp(e->d_name, "mp_sync", 7) || !strncmp(e->d_name, "MPFE_", 5)) continue;
+        if (!strncmp(e->d_name, "mp_sync", 7) || !strncmp(e->d_name, "MPFE_", 5) || !strncmp(e->d_name, "MPPvP_", 6) || !strncmp(e->d_name, "MPHub_", 6)) continue;
         snprintf(all[n].f, sizeof all[n].f, "%s/%s", dir, e->d_name);
         snprintf(all[n].st, sizeof all[n].st, "%.*s", (int)(l - 5), e->d_name);
         struct stat sb; all[n].t = stat(all[n].f, &sb) == 0 ? sb.st_mtime : 0; n++;
@@ -433,10 +458,11 @@ static void br_refresh(void) {
     tmp_set(pvt(h_br_status), st);
     u_active(pvb(PVB_BR_SEND), npick > 0);
 }
+static int br_lobby;                                                    /* opened from the lobby (PvP v1): no PvP window behind it */
 static void br_show(int on) {
     Obj root = pvt(h_br_root), pw = pvt(h_pv_root); if (!root) return;
-    u_active(root, on); if (pw) u_active(pw, !on);
-    br_open = on; if (on) { br_list_saves(); br_refresh(); } else pv_refresh();
+    u_active(root, on); if (pw && !br_lobby) u_active(pw, !on);
+    br_open = on; if (on) { br_list_saves(); br_refresh(); } else if (br_lobby) br_lobby = 0; else pv_refresh();
 }
 static void br_send(void) {
     if (br_save < 0 || !pvp_units_exec) return;
@@ -612,7 +638,8 @@ static void pr_frame(const pvp_state *s) {
     o += (size_t)snprintf(r + o, sizeof r - o, "%s: ", s->rules.best_of && pr_nhist ? "Rounds" : "Rounds");
     for (int i = 0; i < pr_nhist && o < sizeof r - 40; i++) o += (size_t)snprintf(r + o, sizeof r - o, "%s%d %s", i ? ",  " : "", i + 1, pr_hist[i] == 1 ? "Blue" : pr_hist[i] == 2 ? "Red" : "draw");
     if (s->draws) o += (size_t)snprintf(r + o, sizeof r - o, "\nDraws: %d", s->draws);
-    snprintf(r + o, sizeof r - o, "\nThe world is back as it was before the match.");
+    snprintf(r + o, sizeof r - o, "%s", pvp_v1_world() ? "\nThis PvP world is only for the match: back to the title to play again." : "\nThe world is back as it was before the match.");
+    { Obj ok = pvb(PVB_RESULT_OK); if (ok) tmp_set(btn_label(ok, 1), pvp_v1_world() ? "Back to the Title" : "Back to the World"); }
     tmp_set(u_gc_get(h_pr_rounds), r);
     Obj area = u_gc_get(h_pv_area); if (u_alive(area)) u_active(area, false);
     u_active(root, true); pr_open = 1;
@@ -628,12 +655,13 @@ static void pvp_ui_tips(void) {
     }
     if (pv_open) {
         for (int r = 0; r < PVR_N; r++) tip_try(pvt(h_pv_rrow[r]), pv_label[r], pv_tip[r]);
-        tip_try(pvb(PVB_START), "Start Match", "Sends everyone to the arena floor with the teams and rules shown. The match begins by itself once everyone has arrived.");
+        if (pv_here()) tip_try(pvb(PVB_START), "Start Match", "Starts the match here with the teams and rules shown: each team walks to its end of the settlement, then the fight begins.");
+        else tip_try(pvb(PVB_START), "Start Match", "Sends everyone to the arena floor with the teams and rules shown. The match begins by itself once everyone has arrived.");
         tip_try(pvb(PVB_CLOSE), "Close", "Closes this window. Nothing is sent.");
         tip_try(pvb(PVB_BRING), "Bring Units", "Fight with units from one of your own saves instead of this world's units. They are copies: your save stays as it is.");
         for (int i = 0; i < 8; i++) tip_try(pvb(PVB_P0 + i), "Team", "The host clicks a player to move him to the other team. Each player brings the units he owns.");
-        tip_try(pvt(h_pv_teamh[1]), "Blue Team", "Starts at the arrival point of the arena.");
-        tip_try(pvt(h_pv_teamh[2]), "Red Team", "Starts at the far end of the arena, by the exit portal (which does not work in a match).");
+        tip_try(pvt(h_pv_teamh[1]), "Blue Team", pv_here() ? "Starts at one end of the settlement." : "Starts at the arrival point of the arena.");
+        tip_try(pvt(h_pv_teamh[2]), "Red Team", pv_here() ? "Starts at the other end of the settlement." : "Starts at the far end of the arena, by the exit portal (which does not work in a match).");
     }
     if (br_open) {
         for (int i = 0; i < br_nsaves; i++) { char tb[240]; snprintf(tb, sizeof tb, "%s\n\nA save on this computer, newest first. Click it to see its units.", br_stems[i]); tip_try(pvb(PVB_BR_SAVE0 + i), "Save", tb); }
@@ -642,7 +670,8 @@ static void pvp_ui_tips(void) {
         tip_try(pvb(PVB_BR_WIKI), "Paste Wiki Link", "Uses a team link from the Dungeon Settlers wiki builder (Share > copy link): its units are built here from the game's own data and sent to the host. A new one replaces your last Bring.");
         tip_try(pvb(PVB_BR_BACK), "Back", "Back to the PvP window.");
     }
-    if (pr_open) tip_try(pvb(PVB_RESULT_OK), "Back to the World", "Closes the result. The world is the same as before the match.");
+    if (pr_open && pvp_v1_world()) tip_try(pvb(PVB_RESULT_OK), "Back to the Title", "Ends this PvP game for everyone and goes back to the title screen. Nobody's save changed.");
+    else if (pr_open) tip_try(pvb(PVB_RESULT_OK), "Back to the World", "Closes the result. The world is the same as before the match.");
 }
 static void pvp_ui_frame(const mpm_obs *o) {
     const pvp_state *s = pvp_ui_state ? pvp_ui_state() : NULL;
@@ -664,9 +693,11 @@ static void pvp_ui_frame(const mpm_obs *o) {
         }
         if (eb0) { int show = ingame && s->phase == PVP_OFF && !pv_open && !pr_open; u_active(eb0, show); if (show) tmp_set(AT(eb0, 0x28, Obj), "PvP Match"); }
         if (pv_open && frames % 15 == 0) pv_refresh();
-    } else { pv_open = 0; pr_open = 0; br_open = 0; }
+    } else { pv_open = 0; pr_open = 0; br_open = 0; br_lobby = 0; }
     if (pv_click >= 0) { int k = pv_click; pv_click = -1; pv_click_do(k); }
     if (o->escape && br_open) br_show(0); else if (o->escape && pv_open) pv_show(0);
+    Obj lw = u_gc_get(h_lw_root);                                       /* the lobby steps aside while Bring Units is open over it */
+    if (br_open && br_lobby && u_alive(lw)) u_active(lw, false);
 }
 static char *pvp_ui_exec(const char *cmd, const char *line) {            /* tests: mpm_pvp {"action":"esc|close|start|ready|ok|player0..|arrow r d"} */
     if (strcmp(cmd, "mpm_pvp")) return NULL;
@@ -692,9 +723,20 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     else if (!strcmp(a, "br_wiki")) pv_click = PVB_BR_WIKI;
     else if (!strcmp(a, "br_back")) pv_click = PVB_BR_BACK;
     else if (!strcmp(a, "arrow")) { jnum(line, "row", &v); jnum(line, "dir", &d); pv_click = PVB_ARROW0 + 2 * (int)v + (d > 0); }
+    else if (!strcmp(a, "v1_page_start") || !strcmp(a, "v1_lobby_start")) {   /* tests: the PvP host choice's Start buttons */
+        char err[300] = ""; int rc = a[3] == 'p' ? pvp_v1_page_start(err, sizeof err) : pvp_v1_lobby_start(err, sizeof err);
+        Buf e = {0}; bput(&e, "{\"ok\":%s,\"rc\":%d,\"error\":", rc ? "false" : "true", rc); bstr(&e, err); bput(&e, ",\"v1\":%d}", pvp_v1_world()); return e.p;
+    }
+    else if (!strcmp(a, "lobby_bring")) { v1_action(MPA_FE_BRING); goto out; }
+    else if (!strcmp(a, "v1_world_file")) {                              /* tests: the PvP world file only (the test loads it with load_save det:1) */
+        int fe_world_write(int kind, char *name, size_t nn, char *path, size_t pn, char *err, size_t errn);
+        char nm[64] = "", path[1300] = "", err[300] = ""; int rc = fe_world_write(1, nm, sizeof nm, path, sizeof path, err, sizeof err);
+        Buf e = {0}; bput(&e, "{\"ok\":%s,\"file\":", rc ? "false" : "true"); bstr(&e, path); bput(&e, ",\"error\":"); bstr(&e, err); bput(&e, "}"); return e.p;
+    }
+    else if (!strcmp(a, "page_arrow")) { jnum(line, "row", &v); jnum(line, "dir", &d); if (v >= 0 && v < V1R_N) v1_step((int)v, d > 0 ? 1 : -1); goto out; }
     out:;
     Buf b = {0};
-    bput(&b, "{\"ok\":true,\"bring\":{\"open\":%d,\"saves\":[", br_open);
+    bput(&b, "{\"ok\":true,\"v1\":%d,\"bring\":{\"open\":%d,\"lobby\":%d,\"saves\":[", pvp_v1_world(), br_open, br_lobby);
     for (int i = 0; i < br_nsaves; i++) { bput(&b, "%s", i ? "," : ""); bstr(&b, br_stems[i]); }
     bput(&b, "],\"save\":%d,\"units\":[", br_save);
     for (int i = 0; i < br_nunits; i++) { bput(&b, "%s[", i ? "," : ""); bstr(&b, br_unit_name[i]); bput(&b, ",\"%s\",%d,%d]", br_unit_guid[i], br_unit_lvl[i], br_pick[i]); }
@@ -710,6 +752,118 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     return b.p;
 }
 
+/* ---- PvP v1 lobby (host choice "PvP"): Bring Units from the lobby, who brought what, the host's Start */
+static int v1_lobby_bring(void) { return pvp_v1_world() && !br_open; }
+static void v1_action(int a) {
+    if ((a & MPA_FE_BRING) && pvp_v1_world()) { br_lobby = 1; br_sent[0] = 0; br_show(1); }
+}
+static int v1_brought(int player) {                                     /* units the host's roster has from this player */
+    mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
+    int nr = pvp_units_roster ? pvp_units_roster(-1, NULL, NULL, NULL) : 0, n = 0;
+    uint8_t pu[16]; char ph[33] = "";
+    if (!c || dsnet_player_uid(c, player, pu)) return 0;
+    for (int q = 0; q < 16; q++) snprintf(ph + 2 * q, 3, "%02x", pu[q]);
+    for (int r = 0; r < nr; r++) { char ru[33], rn[64], rp[64]; pvp_units_roster(r, ru, rn, rp); n += !strcmp(ru, ph); }
+    return n;
+}
+static int v1_lobby_name(int player, const char *name, char *out, size_t cap) {
+    if (!pvp_v1_world()) return 0;
+    int nb = v1_brought(player);
+    if (nb > 0) snprintf(out, cap, "%s  <size=78%%><color=#8FD18F>%d unit%s brought</color></size>", name, nb, nb == 1 ? "" : "s");
+    else snprintf(out, cap, "%s  <size=78%%><color=#A69085>Choosing units...</color></size>", name);
+    return 1;
+}
+/* host, lobby: every player sends its mod list (Vanilla check) when the lobby opens and when someone joins */
+static void v1_lobby_frame(void) {
+    static uint32_t asked_mask = 0xFFFFFFFFu;
+    if (!pvp_v1_world() || !(pvp_ui_is_host && pvp_ui_is_host()) || M.state != MPM_LOBBY) { asked_mask = 0xFFFFFFFFu; return; }
+    mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL; if (!c) return;
+    uint32_t pm = dsnet_present_mask(c);
+    if (pm == asked_mask) return;
+    asked_mask = pm;
+    if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
+    if (pvp_mods_ask) pvp_mods_ask(pv.vanilla);
+}
+/* host choice "PvP": the host page's Start (the PvP world loads, then the lobby) */
+int pvp_v1_page_start(char *err, size_t errn) { return fe_world_start(1, err, errn); }
+/* the lobby's Start: the brought units come in, then the match is set up on this settlement (teams to its two ends) */
+int pvp_v1_lobby_start(char *err, size_t errn) {
+    if (!pvp_v1_world() || !(pvp_ui_is_host && pvp_ui_is_host())) { snprintf(err, errn, "Only the host starts the match."); return -1; }
+    if (!pvp_units_received || pvp_units_received() <= 0) { snprintf(err, errn, "Nobody brought units yet: everyone picks units with Bring Units first."); return -1; }
+    int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8), per[3] = { 0, 0, 0 };
+    pv_default_teams();
+    uint8_t teams[PVP_MAX_PLAYERS] = { 0 };
+    for (int i = 0; i < n; i++) { teams[ids[i]] = (uint8_t)(pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE); per[teams[ids[i]]] += v1_brought(ids[i]); }
+    if (!per[PVP_TEAM_BLUE] || !per[PVP_TEAM_RED]) { snprintf(err, errn, "Each team needs brought units: Blue has %d, Red has %d.", per[PVP_TEAM_BLUE], per[PVP_TEAM_RED]); return -1; }
+    if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
+    pvp_rules r = { (uint8_t)pv_bo[pv.bo], (uint16_t)pv_secs[pv.secs], (uint8_t)(pv.pause ? PVP_PAUSE_PLANNING : PVP_PAUSE_NONE), 7, 5, (uint8_t)(pv.vanilla != 0) };
+    int rc = pvp_ui_start_match ? pvp_ui_start_match(pv.mode, teams, &r, -1, 0, 0) : -9;
+    rig_log("pvp v1: lobby Start: teams %d/%d brought units, rc %d", per[1], per[2], rc);
+    if (rc == -4) { snprintf(err, errn, "%s", pvp_mods_last ? pvp_mods_last() : "The Vanilla check refused the start."); return -1; }
+    if (rc) { snprintf(err, errn, "The match could not start (%d).", rc); return -1; }
+    return 0;
+}
+/* host choice "PvP": its rules on the host page, in their own panel, open (owner v12 5), each row with the game's tooltip.
+   The menu calls this every frame while the page shows with an empty panel it placed (NULL once when the page closes).
+   Rows = the PvP window's (mode, to win, round time, pause, Vanilla check); the map is fixed: this settlement. The arrows
+   are title-view images, so a click is read here (mouse down + rect), like the menu's own list toggle. */
+static const int v1_rows[V1R_N] = { PVR_MODE, PVR_WIN, PVR_TIME, PVR_PAUSE, PVR_VANILLA };
+static uintptr_t h_v1_root, h_v1_parent, h_v1_row[V1R_N], h_v1_val[V1R_N], h_v1_arrow[V1R_N][2], h_v1_note;
+static void v1_page_build(Obj panel) {
+    Obj tv = title_view(); Obj src = tv ? AT(tv, 0x50, Obj) : NULL; if (!u_alive(src)) return;
+    if (!scan_done) assets_scan_now();
+    Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x130, Obj);
+    const float pw = 430, rh = 48, step = 62, ph = 68 + step * V1R_N + 70;
+    #define QX(x) ((x) - pw / 2)
+    #define QY(y) (ph / 2 - (y))
+    #define KEEP(hh, o) { Obj o_ = (o); u_gc_free(hh); hh = o_ ? u_gc_new(o_) : 0; }
+    Obj root = mk_img(tpl_img, panel, S_BOX, C_WHITE, 0, 0, pw, ph); if (!root) return;
+    Obj R = u_tr(root); KEEP(h_v1_root, root); KEEP(h_v1_parent, panel);
+    mk_img(tpl_img, R, -1, C_BAND, 0, QY(27), pw - 4, 50); mk_img(tpl_img, R, -1, C_COPPER, 0, QY(52), pw - 4, 1);
+    { Obj t = mk_txt(tpl_txt, R, 1, 24, 514, 0, 0, QY(27), 400, 40, C_MAIN); tmp_set(t, "PvP Rules"); }
+    for (int i = 0; i < V1R_N; i++) {
+        float yc = QY(62 + step * i + rh / 2);
+        KEEP(h_v1_row[i], mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, QX(18 + 197), yc, 394, rh));
+        { Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, QX(18 + 77), yc, 130, 40, C_SUB); tmp_set(lb, pv_label[v1_rows[i]]); }
+        KEEP(h_v1_val[i], mk_txt(tpl_txt, R, 0, 15, 514, 0, QX(18 + 261), yc, 186, 40, C_MAIN));
+        for (int a = 0; a < 2; a++) {
+            Obj ar = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(18 + (a ? 368 : 154)), yc, 28, 28);
+            Obj at = ar ? mk_txt(tpl_txt, u_tr(ar), 0, 16, 514, 0, 0, 0, 28, 28, C_MAIN) : NULL; if (at) tmp_set(at, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9");
+            KEEP(h_v1_arrow[i][a], ar);
+        }
+    }
+    KEEP(h_v1_note, mk_txt(tpl_txt, R, 0, 12, 513, 1, 0, QY(62 + step * V1R_N + 28), 394, 44, C_SUB));
+    tmp_set(pvt(h_v1_note), "Map: the starting settlement. In the lobby each player brings units; Start puts the teams at the two ends of the map.");
+    #undef QX
+    #undef QY
+    #undef KEEP
+    rig_log("pvp v1: host page rules panel built");
+}
+static int v1_pt_in(Obj o, V3 m) { float r[4]; return u_on(o) && rect_of(o, r) && m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]; }
+static void v1_step(int i, int d) {
+    int r = v1_rows[i];
+    if (r == PVR_MODE) pv.mode = pv.mode == PVP_MODE_FIGHT ? PVP_MODE_CTF : PVP_MODE_FIGHT;
+    if (r == PVR_WIN) pv.bo = (pv.bo + d + 3) % 3;
+    if (r == PVR_TIME) pv.secs = (pv.secs + d + 5) % 5;
+    if (r == PVR_PAUSE) pv.pause = !pv.pause;
+    if (r == PVR_VANILLA) pv.vanilla = !pv.vanilla;
+}
+void pvp_v1_page_draw(void *panel) {
+    Obj root = pvt(h_v1_root);
+    if (!panel) { if (root) u_active(root, false); return; }
+    if (!root || u_gc_get(h_v1_parent) != (Obj)panel) { v1_page_build((Obj)panel); root = pvt(h_v1_root); if (!root) return; }
+    u_active(root, true);
+    if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
+    if (F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) {                    /* Input.GetMouseButtonDown(0) */
+        V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL);
+        for (int i = 0; i < V1R_N; i++) for (int a = 0; a < 2; a++) if (v1_pt_in(pvt(h_v1_arrow[i][a]), m)) { v1_step(i, a ? 1 : -1); rig_log("pvp v1: host page %s %s", pv_label[v1_rows[i]], a ? "next" : "previous"); }
+    }
+    for (int i = 0; i < V1R_N; i++) { char v[64]; pv_value(v1_rows[i], v, sizeof v); tmp_set(pvt(h_v1_val[i]), v); }
+    for (int i = 0; i < V1R_N; i++) if (tip_try(pvt(h_v1_row[i]), pv_label[v1_rows[i]], pv_tip[v1_rows[i]])) break;
+}
+static void pvp_frame_all(const mpm_obs *o) { v1_lobby_frame(); pvp_ui_frame(o); }
+
 /* ---- menu hooks (mpmenu.c calls them where this file was called before the split) */
-static const mp_menu_hooks pvp_hooks = { .tips = pvp_ui_tips, .frame_late = pvp_ui_frame, .press = pvp_ui_press, .exec = pvp_ui_exec };
+static const mp_menu_hooks pvp_hooks = { .tips = pvp_ui_tips, .frame_late = pvp_frame_all, .press = pvp_ui_press, .exec = pvp_ui_exec,
+    .lobby_bring = v1_lobby_bring, .action = v1_action, .lobby_name = v1_lobby_name };
 const mp_menu_hooks *pvp_menu_hooks(void) { return &pvp_hooks; }

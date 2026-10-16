@@ -17,8 +17,18 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <unistd.h>
 
 enum { FE_WORLD_HUB = 0, FE_WORLD_PVP = 1 };
+/* a PvP v1 world's campaign guid starts with this (every peer can tell it plays in one: lobby Bring Units, the match on
+   the settlement, the result window's way back to the title). Kept through the brought-units build (pvp_units.c). */
+#define PVP_V1_PREFIX "b45e0"
+int pvp_v1_world(void) {
+    Obj c = cdc(); Obj clan = c ? AT(c, 0x50, Obj) : NULL;
+    if (!clan) return 0;
+    char gs[40]; guid_str(AT(clan, 0x10, Guid), gs);
+    return !strncmp(gs, PVP_V1_PREFIX, 5);
+}
 
 /* Test Fights' wiki cache (custom/fights/sg_cache.h, lane fights): downloads the template when it is not cached yet.
    Found at run time (dlsym): without it only an already cached template is used. Same layout as sgc in sg_cache.h. */
@@ -93,6 +103,7 @@ static jv *fe_world_build(int kind, char *out_name, size_t on, char *err, size_t
     if (kind == FE_WORLD_HUB) unlock_all(w, &nres, &nreg);
     char cg[37], ver[80], stem[64], ts[32];
     fe_new_guid(cg);
+    if (kind == FE_WORLD_PVP) memcpy(cg, PVP_V1_PREFIX, 5);
     game_version(ver, sizeof ver);
     snprintf(stem, sizeof stem, "%s_%.8s", kind == FE_WORLD_HUB ? "MPHub" : "MPPvP", cg);
     const char *disp = kind == FE_WORLD_HUB ? "Foreign Expedition Hub" : "PvP Base";
@@ -115,18 +126,42 @@ static void queue_load(const char *name) {
     F(0xCCFAD4, void (*)(Obj, Obj, void *))(AT(mf, 0x48, Obj), ev, NULL);
 }
 
-/* host, at the title: build the world, write it into data/Saves and load it. 0 = the load is queued. */
-int fe_world_start(int kind, char *err, size_t errn) {
-    if (scene() != 1 || !mf) { snprintf(err, errn, "Start this from the title screen."); return -1; }
-    char name[64];
-    jv *w = fe_world_build(kind, name, sizeof name, err, errn);
+/* build the world and write it into data/Saves; name = its SaveName, path (optional) = the file. 0 ok. */
+int fe_world_write(int kind, char *name, size_t nn, char *path, size_t pn, char *err, size_t errn) {
+    jv *w = fe_world_build(kind, name, nn, err, errn);
     if (!w) { rig_log("fe hub: %s", err); return -1; }
     char dir[1100], p[1300];
     snprintf(dir, sizeof dir, "%s/data/Saves", rig_dir); mkdir(dir, 0755);
     snprintf(p, sizeof p, "%s/%s.json", dir, name);
     int rc = jsave_new(w, p); jfree(w);
     if (rc) { snprintf(err, errn, "The hub map could not be written into the Saves folder."); rig_log("fe hub: write %s failed (%s)", p, strerror(errno)); return -1; }
-    queue_load(name);
-    rig_log("fe hub: %s written, load queued", p);
+    if (path) snprintf(path, pn, "%s", p);
+    rig_log("fe hub: %s written", p);
     return 0;
+}
+/* host, at the title: build the world, write it into data/Saves and load it. 0 = the load is queued. */
+int fe_world_start(int kind, char *err, size_t errn) {
+    if (scene() != 1 || !mf) { snprintf(err, errn, "Start this from the title screen."); return -1; }
+    char name[64];
+    if (fe_world_write(kind, name, sizeof name, NULL, 0, err, errn)) return -1;
+    queue_load(name);
+    rig_log("fe hub: load of %s queued", name);
+    return 0;
+}
+
+/* the brought-units build (pvp_units.c, fe_build_hub) gives the world a new campaign guid: a PvP v1 world keeps its
+   prefix (host, join point, right after that build). 0 ok. */
+int pvp_v1_keep_prefix(const char *path) {
+    char err[300]; jv *w = jload(path, err, sizeof err);
+    if (!w) { rig_log("pvp v1: %s: %s", path, err); return -1; }
+    jv *h = jget(w, "CampaignSaveHeader"), *cl = jget(w, "ClanSaveData"), *g = h ? jget(h, "CampaignGuid") : NULL;
+    if (!g || g->t != JN_STR || g->n != 36 || !cl) { jfree(w); return -1; }
+    char cg[37]; memcpy(cg, g->s, 36); cg[36] = 0; memcpy(cg, PVP_V1_PREFIX, 5);
+    jset(h, "CampaignGuid", jstrv(cg)); jset(cl, "CampaignGuid", jstrv(cg));
+    char tmp[1400]; snprintf(tmp, sizeof tmp, "%s.v1", path);
+    unlink(tmp);
+    int rc = jsave_new(w, tmp) || rename(tmp, path) ? -1 : 0;
+    jfree(w);
+    rig_log("pvp v1: world with the brought units keeps the PvP v1 campaign prefix (%s): rc %d", cg, rc);
+    return rc;
 }

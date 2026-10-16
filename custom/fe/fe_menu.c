@@ -402,7 +402,8 @@ static int few_escape(void) {
     return MPB_FE_CANCEL;
 }
 static void few_action(int a) {
-    if (a & MPA_FE_BRING) few_open(FEW_BRING, NULL);
+    fe_mode_info fm;
+    if ((a & MPA_FE_BRING) && fe_mode_get(&fm)) few_open(FEW_BRING, NULL);   /* an expedition lobby (PvP v1 has its own) */
     if (a & MPA_FE_RESULTS) few_open(FEW_LIST, NULL);
 }
 static int few_lobby_bring(void) { fe_mode_info fm; return fe_mode_get(&fm) && W.mode == FEW_NONE; }

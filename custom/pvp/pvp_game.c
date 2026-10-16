@@ -426,6 +426,56 @@ static int send_to_ends(int map) {
     (void)map;
     return sent;
 }
+/* PvP v1 on the settlement map (BASE): the two team ends = the two ends of the longest straight walkable line near the
+   teams (owner v12 13: "players appear there, PvP is on"; default logged in MORNING_QUESTIONS). Lines: every row and every
+   column within BASE_SCAN cells of the units' mean cell; a line = contiguous cells RuntimeMapData.IsMovable says yes to,
+   through or next to that centre band, cut to BASE_HALF cells each side of the centre (so the teams meet in seconds).
+   Same map data on every peer: same ends. Blue goes to the low end (smaller x or y), Red to the high end. */
+#define VA_MAP_MOVABLE 0xBEF2F0      /* RuntimeMapData.IsMovable(Vector2Int) */
+#define BASE_SCAN 12
+#define BASE_HALF 18
+#define BASE_INSET 2
+typedef struct { int32_t x, y; } V2I;
+static int movable(Obj rd, int x, int y, int mx, int my) {
+    if (x < 0 || y < 0 || x >= mx || y >= my) return 0;
+    V2I v = { x, y };
+    return F(VA_MAP_MOVABLE, bool (*)(Obj, V2I, void *))(rd, v, NULL);
+}
+static void find_base_ends(int map) {
+    Obj h = combat_of(map), rd = h ? AT(h, 0x10, Obj) : NULL;             /* CombatDataHandler._runtimeData */
+    int64_t sx = 0, sy = 0; int nu = 0;
+    for (int i = 0; i < g.nunits; i++) { int32_t c[2]; if (unit_cell(map, g.units[i].guid, c)) { sx += c[0]; sy += c[1]; nu++; } }
+    if (!rd || !nu) { rig_log("pvp: base ends: no map data (%p) or no unit cell (%d): teams stay where they are", rd, nu); return; }
+    int cx = (int)(sx / nu), cy = (int)(sy / nu), mx = AT(rd, 0x28, int32_t), my = AT(rd, 0x2C, int32_t);   /* _maxSize */
+    int best = 0, bax = 0, a0 = 0, a1 = 0, line = 0;                         /* axis 0: a row (x varies), 1: a column */
+    for (int axis = 0; axis < 2; axis++)
+        for (int d = -BASE_SCAN; d <= BASE_SCAN; d++) {
+            int fixed = axis ? cx + d : cy + d, mid = axis ? cy : cx, lo = mid - BASE_HALF, hi = mid + BASE_HALF;
+            for (int k = lo; k <= hi; ) {                                   /* runs of movable cells inside [lo, hi] */
+                if (!(axis ? movable(rd, fixed, k, mx, my) : movable(rd, k, fixed, mx, my))) { k++; continue; }
+                int st = k; while (k <= hi && (axis ? movable(rd, fixed, k, mx, my) : movable(rd, k, fixed, mx, my))) k++;
+                int len = k - st;
+                if (len > best) { best = len; bax = axis; a0 = st; a1 = k - 1; line = fixed; }
+            }
+        }
+    if (best < 2 * BASE_INSET + 3) { rig_log("pvp: base ends: no walkable line near (%d,%d) (best %d): teams stay where they are", cx, cy, best); return; }
+    int32_t blue[2], red[2];
+    if (bax == 0) { blue[0] = a0 + BASE_INSET; blue[1] = line; red[0] = a1 - BASE_INSET; red[1] = line; }
+    else { blue[0] = line; blue[1] = a0 + BASE_INSET; red[0] = line; red[1] = a1 - BASE_INSET; }
+    pvp_set_ends(&g, blue, red);
+    rig_log("pvp: base ends: centre (%d,%d), longest walkable %s %d cells (%d..%d at %d): blue (%d,%d) red (%d,%d)", cx, cy,
+            bax ? "column" : "row", best, a0, a1, line, blue[0], blue[1], red[0], red[1]);
+}
+static int send_both_to_ends(void) {
+    int sent = 0;
+    if (!g.end_cell[PVP_TEAM_RED][0] && !g.end_cell[PVP_TEAM_RED][1]) return 0;
+    for (int i = 0; i < g.nunits; i++) {
+        int t = g.units[i].team; if (t != PVP_TEAM_BLUE && t != PVP_TEAM_RED) continue;
+        Guid gg; memcpy(&gg, g.units[i].guid, 16);
+        if (!rig_order_move(gg, g.end_cell[t][0], g.end_cell[t][1])) sent++;
+    }
+    return sent;
+}
 /* fight start (inside the sim tick): every PvP unit still in gets an attack order on the closest enemy (cells, ties by
    guid order), the RUN payload of a right-click attack applied on every peer (no network: every peer runs the same
    rule at the same tick) */
@@ -488,11 +538,12 @@ static void fight_kick_idle(int map, int only_idle) {
 #define PLACE_MAX_TICKS 3600         /* placing ends after 60 s of game time even if Red is not there */
 static void placing_step(int map) {
     int arrived = 1, any = 0;
-    for (int i = 0; i < g.nunits; i++) {
-        if (g.units[i].team != PVP_TEAM_RED || g.units[i].out) continue;
+    for (int i = 0; i < g.nunits; i++) {                  /* dungeon: Red walks, Blue holds; base: both walk */
+        int t = g.units[i].team;
+        if ((t != PVP_TEAM_RED && !(g.arena == PVP_WHERE_BASE && t == PVP_TEAM_BLUE)) || g.units[i].out) continue;
         int32_t c[2]; if (!unit_cell(map, g.units[i].guid, c)) continue;
         any = 1;
-        int dx = c[0] - g.end_cell[PVP_TEAM_RED][0], dy = c[1] - g.end_cell[PVP_TEAM_RED][1];
+        int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1];
         if (dx * dx + dy * dy > 16) arrived = 0;
     }
     if ((any && arrived && g.ticks >= 60) || g.ticks >= PLACE_MAX_TICKS || g.countdown_at) {
@@ -598,7 +649,8 @@ static int pvp_order(mp_session *s, int player, const uint8_t guid[16], const ui
     if (rc) n_rejected++;
     if (!was && pvp_active(&g) && h) pair_all(h, 1);
     if (!rc && n >= 2 && a[1] == PVP_OP_ARENA) arena_go(s);
-    if (!rc && n >= 2 && a[1] == PVP_OP_START && g.arena) { find_ends(cur_map()); rig_log("pvp: %d Red units sent to their end", send_to_ends(cur_map())); }
+    if (!rc && n >= 2 && a[1] == PVP_OP_START && g.arena == PVP_WHERE_DUNGEON) { find_ends(cur_map()); rig_log("pvp: %d Red units sent to their end", send_to_ends(cur_map())); }
+    if (!rc && n >= 2 && a[1] == PVP_OP_START && g.arena == PVP_WHERE_BASE) { find_base_ends(cur_map()); rig_log("pvp: %d units sent to their team's end of the base", send_both_to_ends()); }
     rig_log("pvp: command op %d from player %d at step %u: %s (phase %d, %d units, map %d handler %p)", n >= 2 ? a[1] : -1, player,
             mp_cur_step(s), pvp_err_text(rc), g.phase, g.nunits, cur_map(), h);
     return 0;                                     /* consumed on every peer (an error is a rule result, not a bad order) */
@@ -824,7 +876,7 @@ int pvp_ui_start_match(int mode, const uint8_t teams[PVP_MAX_PLAYERS], const pvp
     int rc = send_cmd(b, n);
     if (rc) return rc;
     if (snap_take(&snap_world, "world")) return -2;
-    n = pvp_cmd_arena(b, sizeof b, region, floor, seed);
+    n = region < 0 ? pvp_cmd_simple(b, sizeof b, PVP_OP_BASE) : pvp_cmd_arena(b, sizeof b, region, floor, seed);   /* region < 0: here, on the settlement */
     rc = send_cmd(b, n);
     if (!rc) auto_start_match = (int)g.matches;
     rig_log("pvp: match set up from the window: mode %d, best of %d, %d s, pause %d, vanilla check %d, floor %d seed %d: rc %d", mode, r->best_of, r->round_secs, r->pause_rule, r->vanilla, floor, seed, rc);
@@ -886,12 +938,13 @@ static void auto_start_frame(void) {
     mp_session *s = sess(); dsnet_client *c = s ? mp_client(s) : NULL;
     int floor_now = dd ? AT(dd, 0x14, int32_t) : -1;
     static int64_t ok_since = -1;
-    int ready = floor_now == g.floor && !busy() && !(trn_flow_busy && trn_flow_busy()) && rig_det_mp_ready() && c && !dsnet_busy_mask(c);
+    int there = g.arena == PVP_WHERE_BASE ? cur_map() == 0 : floor_now == g.floor;   /* base: nobody travels */
+    int ready = there && !busy() && !(trn_flow_busy && trn_flow_busy()) && rig_det_mp_ready() && c && !dsnet_busy_mask(c);
     if (!ready) { ok_since = -1; return; }
     if (ok_since < 0) { ok_since = tick(); return; }
     if (tick() - ok_since < 60) return;                  /* one second on the floor for everyone */
     uint8_t b[4]; size_t n = pvp_cmd_simple(b, sizeof b, PVP_OP_START);
-    rig_log("pvp: everyone on the arena floor: START (rc %d)", send_cmd(b, n));
+    rig_log("pvp: everyone %s: START (rc %d)", g.arena == PVP_WHERE_BASE ? "at the settlement" : "on the arena floor", send_cmd(b, n));
     auto_start_match = -1; ok_since = -1;
 }
 void pvp_frame(void) {
@@ -981,6 +1034,11 @@ char *pvp_exec(const char *cmd, const char *line) {
     if (!strcmp(cmd, "pvp_arena")) {                 /* {"region":r,"floor":f,"seed":s} (host, SETUP phase) */
         double r = 1, f = 1, sd = 1; jnum(line, "region", &r); jnum(line, "floor", &f); jnum(line, "seed", &sd);
         uint8_t b[32]; size_t n = pvp_cmd_arena(b, sizeof b, (int32_t)r, (int32_t)f, (int32_t)sd);
+        if (is_host() && snap_take(&snap_world, "world")) return errj("world snapshot failed");
+        Buf q = {0}; bput(&q, "{\"ok\":true,\"rc\":%d}", send_cmd(b, n)); return okj(&q);
+    }
+    if (!strcmp(cmd, "pvp_base")) {                  /* host, SETUP phase: play on the settlement map (PvP v1) */
+        uint8_t b[4]; size_t n = pvp_cmd_simple(b, sizeof b, PVP_OP_BASE);
         if (is_host() && snap_take(&snap_world, "world")) return errj("world snapshot failed");
         Buf q = {0}; bput(&q, "{\"ok\":true,\"rc\":%d}", send_cmd(b, n)); return okj(&q);
     }
