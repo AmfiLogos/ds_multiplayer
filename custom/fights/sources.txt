@@ -1,0 +1,11 @@
+fights/qjs_quickjs.c
+fights/qjs_cutils.c
+fights/qjs_dtoa.c
+fights/qjs_regexp.c
+fights/qjs_unicode.c
+fights/tinf/tinflate.c
+fights/sg_embed.c
+fights/sg_js.c
+fights/cm_http.c
+fights/sg_cache.c
+fe/fe_json.c
