@@ -227,8 +227,8 @@ static int modset_refused(dsnet_server *s, const sconn *c, char *why, size_t n) 
     if (!h) return 0;
     int vanilla_c = !strcmp(eff_modset(c), DSNET_MODSET_NONE), vanilla_h = !strcmp(eff_modset(h), DSNET_MODSET_NONE);
     if (h->rule == DSNET_MATCH_VANILLA) {
-        if (!vanilla_h) { snprintf(why, n, "the host's match is vanilla only, but the host runs gameplay mods (%s)", mods_or_none(h)); return 1; }
-        if (!vanilla_c) { snprintf(why, n, "this match is vanilla only: turn off your gameplay mods (%s) in the launcher", mods_or_none(c)); return 1; }
+        if (!vanilla_h) { snprintf(why, n, "the host allows no gameplay mods but has some on (%s)", mods_or_none(h)); return 1; }
+        if (!vanilla_c) { snprintf(why, n, "this game allows no gameplay mods: turn off %s in the Mods window", mods_or_none(c)); return 1; }
         return 0;
     }
     if (strcmp(eff_modset(c), eff_modset(h))) {

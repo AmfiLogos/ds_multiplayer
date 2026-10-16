@@ -133,8 +133,8 @@ static void test_votes(void) {
     v.allow_pause = 0;
     CHECK(!ui_is_paused(&v));
     v.story_pause = 0;
-    ui_status_line(UI_NET_DESYNC, &v, &p, 0, line, sizeof line);  CHECKS(line, "Resyncing with host...");
-    ui_status_line(UI_NET_LOADING, &v, &p, 0, line, sizeof line); CHECKS(line, "Resyncing with host... (loading)");
+    ui_status_line(UI_NET_DESYNC, &v, &p, 0, line, sizeof line);  CHECKS(line, "Catching up with the host...");
+    ui_status_line(UI_NET_LOADING, &v, &p, 0, line, sizeof line); CHECKS(line, "Catching up with the host... (loading)");
     ui_status_line(UI_NET_OFF, &v, &p, 0, line, sizeof line);     CHECKS(line, "");
     /* labels and tags */
     char nm[40];
@@ -358,8 +358,8 @@ static void test_view(void) {
     ui_pause_line(&p, -1, 1, l, sizeof l); CHECKS(l, "Paused for a story event");
     ui_pause_line(&p, -1, 0, l, sizeof l); CHECKS(l, "Paused");
     strcpy(p.name[0], "Alex");
-    ui_resync_text(&p, 1, 0, l, sizeof l); CHECKS(l, "B's game went out of sync: reloading everyone from Alex's save");
-    ui_resync_text(&p, 1, 1, l, sizeof l); CHECKS(l, "Your game went out of sync: reloading everyone from Alex's save");
+    ui_resync_text(&p, 1, 0, l, sizeof l); CHECKS(l, "B's game went out of sync. Everyone reloads Alex's save");
+    ui_resync_text(&p, 1, 1, l, sizeof l); CHECKS(l, "Your game went out of sync. Everyone reloads Alex's save");
     ui_owner_tag_world(&p, 1, "\u25CF", l, sizeof l); CHECKS(l, " <color=#44AAFF>\u25CF B</color>");
     ui_owner_tag_world(&p, 1, NULL, l, sizeof l); CHECKS(l, " <color=#44AAFF>B</color>");
     ui_owner_tag_world(&p, -1, "\u25CF", l, sizeof l); CHECKS(l, "");

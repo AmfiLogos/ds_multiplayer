@@ -836,7 +836,7 @@ method	AstarPath$$BlockUntilCalculated	0xfe138c	0xcef090	ok		src/DETERMINISM_NOT
 method	AstarPath$$StartPath	0xfe19c0	0xcf24a0	ok		src/DETERMINISM_NOTES.md:60,src/rig_det.c:45
 code-inside	AstarPath.<ScanGraph>d__141$$MoveNext+0x255	0xfe4081		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:806
 code-inside	Pathfinding.RichAI$$FinalMovement+0x308	0xff0000		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/cutils.h:234
-code-inside	Pathfinding.Polygon$$CompressMesh+0x473	0xffffff		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	src/net/steam/dsnet_steam.c:825,src/ui_game.c:2888
+code-inside	Pathfinding.Polygon$$CompressMesh+0x473	0xffffff		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	src/net/steam/dsnet_steam.c:827,src/ui_game.c:2888
 code-inside	Pathfinding.Polygon$$CompressMesh+0x480	0x100000c		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	rig/make_instance.sh:20,rig/make_instance.sh:33
 code-inside	Pathfinding.Polygon$$TraceContours+0x166	0x100023e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:807
 code-inside	Pathfinding.NodeLink3$$Apply+0x77e	0x101c0be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:807

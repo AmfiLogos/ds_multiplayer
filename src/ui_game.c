@@ -1032,7 +1032,7 @@ static void prompt_show(void) {
     Obj v = find_view(&h_notice, "Refactor.UI", "CommonNoticeView");
     char txt[512];
     prompt_t0 = now_s();
-    if (!u_alive(v)) { notice("A map change vote (no prompt window: counted as yes)"); prompt_id = mapv.id; map_vote_send(1); return; }
+    if (!u_alive(v)) { notice("A map change vote (counted as yes)"); prompt_id = mapv.id; map_vote_send(1); return; }
     prompt_text(v, txt, sizeof txt);
     prompt_id = mapv.id;
     rig_log("ui: map vote prompt: %s", txt);
@@ -4992,7 +4992,7 @@ static void report_frame(void) {
     if (!fn) return;
     char path[600] = ""; uint32_t n = fn(path, sizeof path);
     if (!init) { init = 1; seen = n; return; }
-    if (n > seen && on() && me() == 0) notice("Desync report saved: %s", path);
+    if (n > seen && on() && me() == 0) notice("The game went out of sync. A report was saved: %s", path);
     seen = n;
 }
 
@@ -5021,7 +5021,7 @@ static void tip_at(Obj o, const char *title, const char *body) {
 }
 static const char *conn_words(int lvl) {                     /* 3.7: no milliseconds (owner rule) */
     return lvl >= 3 ? "Good connection. In sync." : lvl == 2 ? "Slow connection, or catching up with the game."
-         : lvl == 1 ? "Poor connection, or loading, or resyncing." : "Disconnected. The game waits, or the host keeps playing their units.";
+         : lvl == 1 ? "Slow connection, or the game is loading or catching up." : "Disconnected. The game waits, or the host keeps playing their units.";
 }
 static void tips_frame(void) {
     game_tip_frame();
@@ -5062,7 +5062,7 @@ static void tips_frame(void) {
             { PL_CFADE, "Chat Fade Time", "How long a chat message stays on screen (3 to 120 seconds). Press Enter to see the recent messages again." },
             { PL_CJOIN, "Join and Leave Lines", "Shows a chat line when a player joins, leaves or reconnects." },
             { PL_CHAT, "Chat", "Turns the chat on or off on your screen." },
-            { PL_FJOIN, "Fast Join", "On: your loading screen ends as soon as the world is ready, without the game's 1.5 to 3.5 second settle wait. Joins, resyncs and reloads finish sooner; the first moments can stutter. Only your own loads change, never the game." },
+            { PL_FJOIN, "Fast Join", "On: your loading screen closes as soon as the world is ready, 1.5 to 3.5 seconds sooner. Joins and reloads finish faster, but the first moments can stutter. Only your own screen changes." },
             { PL_UNITS, "Units per Player", "The most units each player can control (1, 2, 3, 4 or 6). Changes apply to everyone at once." },
             { PL_ADMIN, "Admin Mode", "On: you can order every unit and release the units of absent players." },
             { PL_SPECT, "Spectators", "On: anyone you invite can join to watch (at most 8). They see everything, can chat and ping, own no units, and cannot pause or vote. Off: nobody can watch; turning it off removes the spectators (you are asked first)." } };

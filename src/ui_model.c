@@ -140,8 +140,8 @@ void ui_status_line(ui_net_state st, const ui_votes *v, const ui_players *p, int
     case UI_NET_OFF: return;
     case UI_NET_CONNECTING: snprintf(out, cap, "Connecting to host..."); return;
     case UI_NET_WAITING: snprintf(out, cap, "Waiting for the host's game..."); return;
-    case UI_NET_DESYNC: snprintf(out, cap, "Resyncing with host..."); return;
-    case UI_NET_LOADING: snprintf(out, cap, "Resyncing with host... (loading)"); return;
+    case UI_NET_DESYNC: snprintf(out, cap, "Catching up with the host..."); return;
+    case UI_NET_LOADING: snprintf(out, cap, "Catching up with the host... (loading)"); return;
     case UI_NET_LOST: snprintf(out, cap, "Connection to host lost"); return;
     case UI_NET_PLAYING: break;
     }
@@ -450,8 +450,8 @@ int ui_local_order(const int *owner, int n, int me, int *out) {
 void ui_resync_text(const ui_players *p, int who, int me, char *out, size_t cap) {
     char nm[40], hn[40];
     ui_player_label(p, 0, hn);
-    if (who == me) snprintf(out, cap, "Your game went out of sync: reloading everyone from %s's save", hn);
-    else snprintf(out, cap, "%s's game went out of sync: reloading everyone from %s's save", ui_player_label(p, who, nm), hn);
+    if (who == me) snprintf(out, cap, "Your game went out of sync. Everyone reloads %s's save", hn);
+    else snprintf(out, cap, "%s's game went out of sync. Everyone reloads %s's save", ui_player_label(p, who, nm), hn);
 }
 void ui_owner_tag_world(const ui_players *p, int owner, const char *dot, char *out, size_t cap) {
     if (!cap) return;

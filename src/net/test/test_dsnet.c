@@ -771,8 +771,8 @@ static void test_modset(void) {
         { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0:aa:bb\nzz-mod@1.2.0:cc", M2, "cheaper-recruits@1.0.0:dd", DSNET_REJ_MODSET, "(host: hell-difficulty@2.0.0, zz-mod@1.2.0; you: cheaper-recruits@1.0.0)" },
         { DSNET_MATCH_MODS,    "", "", DSNET_MODSET_NONE, "", 0, NULL },            /* no launcher == the hash of no mods */
         { DSNET_MATCH_VANILLA, "", "", "", "", 0, NULL },
-        { DSNET_MATCH_VANILLA, "", "", M1, "hell-difficulty@2.0.0", DSNET_REJ_MODSET, "vanilla only: turn off your gameplay mods (hell-difficulty@2.0.0)" },
-        { DSNET_MATCH_VANILLA, M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "the host runs gameplay mods" },
+        { DSNET_MATCH_VANILLA, "", "", M1, "hell-difficulty@2.0.0", DSNET_REJ_MODSET, "allows no gameplay mods: turn off hell-difficulty@2.0.0 in the Mods window" },
+        { DSNET_MATCH_VANILLA, M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "the host allows no gameplay mods but has some on" },
     };
     int n = (int)(sizeof cases / sizeof *cases), in = 0, out = 0;
     for (int i = 0; i < n; i++) {

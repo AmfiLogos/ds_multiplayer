@@ -1293,7 +1293,7 @@ static void send_marks(int ready, const uint8_t (*marks)[16], int n) {
     dsnet_client *c = cli();
     if (!have_ready_api() || !c) {                           /* local only until netcore has EXPEDITION_READY */
         local_marks_n = n; memcpy(local_marks, marks, (size_t)n * 16);
-        if (ready) notice("Ready is not available in this build");
+        if (ready) notice("Ready does not work with this Multiplayer version. Update the mod");
         return;
     }
     if (dsnet_expedition_ready(c, ready, marks, n)) notice("Your team could not be sent");
@@ -1982,7 +1982,7 @@ static int tip_on(Obj comp, const char *title, const char *body) {
 }
 static const char *conn_body(int lv) {
     return lv >= 3 ? "Good connection. In sync." : lv == 2 ? "Slow connection, or catching up with the game."
-         : lv == 1 ? "Poor connection, or loading, or resyncing." : "Disconnected. The game waits, or the host keeps playing their units.";
+         : lv == 1 ? "Slow connection, or the game is loading or catching up." : "Disconnected. The game waits, or the host keeps playing their units.";
 }
 static int tip_card(Obj card, int u) {
     char nm[64], t[64]; unit_label(u, nm);

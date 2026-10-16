@@ -947,7 +947,7 @@ __attribute__((visibility("default"))) void mp_gear_refusal_text(const uint8_t u
     if (o == DSNET_OWNER_RESERVED) snprintf(out, n, "This unit is reserved for %s: only its owner can change its gear", name[0] ? name : "a player who left");
     else if (o < 0) snprintf(out, n, "Only the host can change the gear of a unit nobody owns");
     else { const char *pn = dsnet_player_name(c, o);
-           snprintf(out, n, "This is %s's unit: the host's gear rule lets each player equip only their own units", pn && pn[0] ? pn : "another player"); }
+           snprintf(out, n, "This is %s's unit. The host's Gear rule lets you equip only your own units", pn && pn[0] ? pn : "another player"); }
 }
 
 int mp_game_host(const mp_config *c) {
