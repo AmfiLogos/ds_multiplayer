@@ -71,11 +71,13 @@ static void read_list(rd *r, errs *E, int *cnt, int *out, int table_n, const cha
         out[(*cnt)++] = (int)v;
     }
 }
+/* retired traits (the designers' test rows, D.retired) are dropped, as builder.js dsbDecBuild dropGone */
+static void drop_retired(int *a, int *n) { int k = 0; for (int i = 0; i < *n; i++) if (!WK_IND_RETIRED[a[i]]) a[k++] = a[i]; *n = k; }
 static int dec_build(rd *r, wk_build *b, errs *E) {
     memset(b, 0, sizeof *b); b->bg = -1; b->portrait = -1;
     for (int s = 0; s < WK_SLOTS; s++) b->eq[s] = -1;
     uint32_t race = ru(r); if ((int)race >= WK_RACE_N) { fail(E, "race index %u outside the table", race); return -1; }
-    b->race = (int)race;
+    b->race = WK_RACE_RETIRED[race] ? WK_RACE_DEFAULT : (int)race;   /* as builder.js dsbDecBuild: a retired race comes back as Human */
     uint32_t bg = ru(r); if (bg) { if ((int)bg - 1 >= WK_BG_N) { fail(E, "background index %u outside the table", bg - 1); return -1; } b->bg = (int)bg - 1; }
     b->lvl = (int)ru(r);
     if (b->lvl < 1 || b->lvl > 255) { fail(E, "level %d", b->lvl); return -1; }
@@ -88,6 +90,7 @@ static int dec_build(rd *r, wk_build *b, errs *E) {
     int hasName = (fl >> 6) & 1, hasPort = (fl >> 7) & 1, hasMan = (fl >> 8) & 1, hasMB = (fl >> 9) & 1, hasPStk = (fl >> 10) & 1, hasSouls = (fl >> 11) & 1,
         hasSI = (fl >> 12) & 1, hasSC = (fl >> 13) & 1, hasAcq = (fl >> 14) & 1, hasElix = (fl >> 16) & 1, hasCond = (fl >> 17) & 1;
     read_list(r, E, &b->ninds, b->inds, WK_IND_N, "traits");
+    drop_retired(b->inds, &b->ninds);
     read_list(r, E, &b->ntrees, b->trees, WK_TREE_N, "skill trees");
     read_list(r, E, &b->nlearned, b->learned, WK_SKILL_N, "skills");
     read_list(r, E, &b->ninsc, b->insc, WK_INSC_N, "inscriptions");
@@ -124,7 +127,7 @@ static int dec_build(rd *r, wk_build *b, errs *E) {
         for (uint32_t k = 0; k < n; k++) { int sk = (int)ru(r), st = (int)ru(r); if (sk < WK_SKILL_N) { b->pstk[b->npstk].skill = sk; b->pstk[b->npstk].st = st; b->npstk++; } }
     }
     if (hasSouls) read_list(r, E, &b->nsouls, b->souls, WK_SOUL_N, "souls");
-    if (hasSI) read_list(r, E, &b->nsaved_inds, b->saved_inds, WK_IND_N, "saved traits");
+    if (hasSI) { b->has_saved_inds = 1; read_list(r, E, &b->nsaved_inds, b->saved_inds, WK_IND_N, "saved traits"); drop_retired(b->saved_inds, &b->nsaved_inds); }
     if (hasSC) read_list(r, E, &b->nsaved_insc, b->saved_insc, WK_INSC_N, "saved inscriptions");
     if (hasAcq) read_list(r, E, &b->nacq, b->acq, WK_ACQ_N, "acquired traits");
     if (hasElix) { b->has_elix = 1; uint32_t n = ru(r); for (uint32_t k = 0; k < n; k++) { int u = (int)ru(r); if (k < 6) b->elix[k] = u; } }
@@ -162,6 +165,17 @@ int wk_decode(const char *text, wk_build *out, int max, int *fp_mismatch, char *
     }
     free(by);
     return k;
+}
+
+int wk_fp(void) { return WK_FP; }
+int wk_code_fp(const char *code) {
+    size_t n = 0; while (code[n] && code[n] != '&' && code[n] != '#' && code[n] != ' ' && code[n] != '\n' && code[n] != '\r') n++;
+    size_t bn; uint8_t *by = b64url_dec(code, n, &bn); if (!by) return -1;
+    int fp = -1;
+    if (bn >= 4 && (by[0] == 1 || by[0] == 2)) fp = by[1] << 8 | by[2];         /* v1 raw */
+    size_t in; uint8_t *raw = inflate_raw(by, bn, &in);                            /* v2 deflated (raw first, as the decoder) */
+    if (raw) { if (in >= 4 && (raw[0] == 1 || raw[0] == 2)) fp = raw[1] << 8 | raw[2]; free(raw); }
+    free(by); return fp;
 }
 
 /* ---- JSON (key names) */
@@ -218,4 +232,132 @@ uint64_t wk_hash(const wk_build *b, int n) {
     char *j = wk_json(b, n); uint64_t h = 1469598103934665603ULL;
     for (char *p = j; *p; p++) { h ^= (uint8_t)*p; h *= 1099511628211ULL; }
     free(j); return h;
+}
+
+/* ---- builder JSON build -> wk_build (dsbEncBuild's packing; see pvp_wiki.h) */
+#include "fe/fe_json.h"
+#include <math.h>
+static int key_ix(const char *const *tab, int n, const jv *v) {
+    if (!v || v->t != JN_STR) return -1;
+    for (int i = 0; i < n; i++) if (strlen(tab[i]) == v->n && !memcmp(tab[i], v->s, v->n)) return i;
+    return -1;
+}
+static double num_of(const jv *v, int *ok) {                            /* a number, or a number in a string (manual) */
+    *ok = 0; if (!v) return 0;
+    if (v->t == JN_NUM) { *ok = 1; return jnumv(v); }
+    if (v->t == JN_STR && v->n && v->n < 40) { char t[48], *e; memcpy(t, v->s, v->n); t[v->n] = 0; double d = strtod(t, &e); if (e != t && !*e) { *ok = 1; return d; } }
+    return 0;
+}
+static long jround(double x) { return (long)floor(x + 0.5); }        /* JavaScript Math.round */
+/* a JSON string (raw, escapes kept) -> UTF-8 */
+static size_t junesc(const jv *v, char *o, size_t n) {
+    size_t k = 0; if (!v || v->t != JN_STR || !n) { if (n) o[0] = 0; return 0; }
+    for (size_t i = 0; i < v->n && k + 4 < n; i++) {
+        char c = v->s[i];
+        if (c != '\\' || i + 1 >= v->n) { o[k++] = c; continue; }
+        c = v->s[++i];
+        if (c == 'u' && i + 4 < v->n) {
+            unsigned u = 0; for (int j = 1; j <= 4; j++) { int h = v->s[i + j]; u = u * 16 + (unsigned)(h <= '9' ? h - '0' : (h | 32) - 'a' + 10); } i += 4;
+            if (u >= 0xD800 && u < 0xDC00 && i + 6 < v->n && v->s[i + 1] == '\\' && v->s[i + 2] == 'u') {
+                unsigned l = 0; for (int j = 3; j <= 6; j++) { int h = v->s[i + j]; l = l * 16 + (unsigned)(h <= '9' ? h - '0' : (h | 32) - 'a' + 10); }
+                if (l >= 0xDC00 && l < 0xE000) { u = 0x10000 + ((u - 0xD800) << 10) + (l - 0xDC00); i += 6; }
+            }
+            if (u < 0x80) o[k++] = (char)u;
+            else if (u < 0x800) { o[k++] = (char)(0xC0 | u >> 6); o[k++] = (char)(0x80 | (u & 63)); }
+            else if (u < 0x10000) { o[k++] = (char)(0xE0 | u >> 12); o[k++] = (char)(0x80 | (u >> 6 & 63)); o[k++] = (char)(0x80 | (u & 63)); }
+            else { o[k++] = (char)(0xF0 | u >> 18); o[k++] = (char)(0x80 | (u >> 12 & 63)); o[k++] = (char)(0x80 | (u >> 6 & 63)); o[k++] = (char)(0x80 | (u & 63)); }
+        } else o[k++] = c == 'n' ? '\n' : c == 't' ? '\t' : c == 'r' ? '\r' : c == 'b' ? '\b' : c == 'f' ? '\f' : c;
+    }
+    o[k] = 0; return k;
+}
+static int key_list(errs *E, const jv *a, const char *const *tab, int tn, int *cnt, int *out, const char *what) {
+    *cnt = 0;
+    for (size_t i = 0; a && a->t == JN_ARR && i < a->cnt; i++) {
+        int ix = key_ix(tab, tn, a->v[i]);
+        if (ix < 0) { fail(E, "%s %.*s is not in this game version", what, a->v[i]->t == JN_STR ? (int)a->v[i]->n : 1, a->v[i]->t == JN_STR ? a->v[i]->s : "?"); return -1; }
+        if (*cnt >= WK_MAX_LIST) { fail(E, "%s: more than %d", what, WK_MAX_LIST); return -1; }
+        out[(*cnt)++] = ix;
+    }
+    return 0;
+}
+int wk_from_json(const jv *j, wk_build *b, char *err, size_t errn) {
+    errs E = { err, errn, 0 }; if (err && errn) err[0] = 0;
+    memset(b, 0, sizeof *b); b->bg = -1; b->portrait = -1;
+    for (int s = 0; s < WK_SLOTS; s++) b->eq[s] = -1;
+    if (!j || j->t != JN_OBJ) { fail(&E, "not a unit build"); return -1; }
+    jv *v = jget(j, "race"); b->race = key_ix(WK_RACE, WK_RACE_N, v);
+    if (b->race < 0) { fail(&E, "race %.*s is not in this game version", v && v->t == JN_STR ? (int)v->n : 1, v && v->t == JN_STR ? v->s : "?"); return -1; }
+    v = jget(j, "bg");
+    if (v && v->t == JN_STR) { b->bg = key_ix(WK_BG, WK_BG_N, v); if (b->bg < 0) { fail(&E, "background %.*s is not in this game version", (int)v->n, v->s); return -1; } }
+    int ok; double lv = num_of(jget(j, "lvl"), &ok); long L = ok ? (long)lv : 0;          /* b.lvl|0, clamped 1..255 */
+    b->lvl = L < 1 ? 1 : L > 255 ? 255 : (int)L;
+    jv *tal = jget(j, "tal");
+    for (int i = 0; i < 6; i++) { int t = key_ix(WK_TIER, WK_TIER_N, jget(tal, WK_MAJ[i])); b->tal[i] = t < 0 ? 1 : t; }   /* dsbTierIx: unknown = Moderate */
+    v = jget(j, "offer"); b->offer = jstreq(v, "Ordinary") ? 1 : jstreq(v, "Plentiful") ? 2 : 0;
+    v = jget(j, "roll"); b->roll = jstreq(v, "min") ? 0 : jstreq(v, "max") ? 2 : 1;
+    b->advanced = jtruthy(jget(j, "advanced")); b->add_shield = jtruthy(jget(j, "addShield")); b->hide_head = jtruthy(jget(j, "hideHead"));
+    if (key_list(&E, jget(j, "inds"), WK_IND, WK_IND_N, &b->ninds, b->inds, "trait") ||
+        key_list(&E, jget(j, "insctrees"), WK_TREE, WK_TREE_N, &b->ntrees, b->trees, "skill tree") ||
+        key_list(&E, jget(j, "learned"), WK_SKILL, WK_SKILL_N, &b->nlearned, b->learned, "skill") ||
+        key_list(&E, jget(j, "insc"), WK_INSC, WK_INSC_N, &b->ninsc, b->insc, "inscription")) return -1;
+    jv *eq = jget(j, "eq"), *tags = jget(j, "tags");
+    for (int s = 0; s < WK_SLOT_N && s < WK_SLOTS; s++) {
+        jv *k = jget(eq, WK_SLOT[s]); if (!k || k->t != JN_STR || !k->n) continue;
+        int it = key_ix(WK_ITEM, WK_ITEM_N, k);
+        if (it < 0) { fail(&E, "item %.*s is not in this game version", (int)k->n, k->s); return -1; }
+        b->eq[s] = it;
+        jv *pk = jget(tags, WK_SLOT[s]);
+        for (size_t q = 0; pk && pk->t == JN_ARR && q < pk->cnt && b->ntag[s] < 8; q++) {
+            jv *p = pk->v[q]; int okv = 0; double idx = p && p->t == JN_OBJ ? num_of(jget(p, "i"), &ok) : num_of(p, &ok);
+            if (!ok || idx < 0 || idx >= WK_ITEM_NTAGS[it] || idx != floor(idx)) continue;              /* as the encoder: a tag the item lacks is dropped */
+            double lo = WK_TAG_RANGE[2 * (WK_ITEM_TAG_AT[it] + (int)idx)], hi = WK_TAG_RANGE[2 * (WK_ITEM_TAG_AT[it] + (int)idx) + 1];
+            double val = p && p->t == JN_OBJ ? num_of(jget(p, "v"), &okv) : 0; if (!okv) val = lo + (hi - lo) * 0.5;
+            long fr = hi > lo ? jround((val - lo) / (hi - lo) * 255) : 0; if (fr < 0) fr = 0; if (fr > 255) fr = 255;
+            b->tag[s][b->ntag[s]].idx = (int)idx; b->tag[s][b->ntag[s]].v = (float)(lo + (fr / 255.0) * (hi - lo)); b->ntag[s]++;
+        }
+    }
+    char nm[200]; size_t nl = junesc(jget(j, "name"), nm, sizeof nm);
+    { size_t a = 0; while (a < nl && (nm[a] == ' ' || nm[a] == '\t' || nm[a] == '\n' || nm[a] == '\r')) a++;      /* String(b.name).trim() */
+      while (nl > a && (nm[nl - 1] == ' ' || nm[nl - 1] == '\t' || nm[nl - 1] == '\n' || nm[nl - 1] == '\r')) nl--;
+      size_t len = nl - a; if (len > 48) { len = 48; while (len > 0 && ((unsigned char)nm[a + len] & 0xC0) == 0x80) len--; }   /* DSBW.str: 48 bytes, whole UTF-8 chars */
+      if (len >= sizeof b->name) len = sizeof b->name - 1;
+      memcpy(b->name, nm + a, len); b->name[len] = 0;
+      for (char *p = b->name; *p; p++) if ((unsigned char)*p < 32 || *p == '"' || *p == '\\') *p = ' '; }
+    v = jget(j, "portrait");
+    if (v && v->t == JN_STR && WK_PORTRAITS[b->race]) for (int i = 0; i < WK_PORTRAITS_N[b->race]; i++)
+        if (strlen(WK_PORTRAITS[b->race][i]) == v->n && !memcmp(WK_PORTRAITS[b->race][i], v->s, v->n)) { b->portrait = i; break; }
+    if (WK_RACE_RETIRED[b->race]) {                                     /* encoded, then decoded by the builder: Human */
+        b->race = WK_RACE_DEFAULT; if (b->portrait >= WK_PORTRAITS_N[b->race]) b->portrait = -1;
+    }
+    jv *man = jget(j, "manual");
+    for (size_t i = 0; man && man->t == JN_OBJ && i < man->cnt && b->nman < WK_MAX_LIST; i++) {
+        double d = num_of(man->v[i], &ok); if (!ok) continue;
+        for (int si = 0; si < WK_STAT_N; si++) if (strlen(WK_STAT[si]) == man->kn[i] && !memcmp(WK_STAT[si], man->k[i], man->kn[i])) {
+            b->man[b->nman].stat = si; b->man[b->nman].v = (float)(jround(d * 100) / 100.0); b->nman++; break; }
+    }
+    jv *mb = jget(j, "majorBase");
+    if (mb && mb->t == JN_OBJ) for (int k = 0; k < 6; k++) { jv *x = jget(mb, WK_MAJ[k]); if (x && x->t != JN_NULL) b->has_mb = 1; }
+    if (b->has_mb) for (int k = 0; k < 6; k++) { double d = num_of(jget(mb, WK_MAJ[k]), &ok); b->mb[k] = (float)(jround((ok ? d : 0) * 100) / 100.0); }
+    jv *ps = jget(j, "passiveStacks");
+    for (size_t i = 0; ps && ps->t == JN_OBJ && i < ps->cnt && b->npstk < WK_MAX_LIST; i++) {
+        double st = num_of(ps->v[i], &ok); if (!ok || st < 0) continue;
+        for (int sk = 0; sk < WK_SKILL_N; sk++) if (strlen(WK_SKILL[sk]) == ps->kn[i] && !memcmp(WK_SKILL[sk], ps->k[i], ps->kn[i])) {
+            b->pstk[b->npstk].skill = sk; b->pstk[b->npstk].st = (int)st; b->npstk++; break; }
+    }
+    if (key_list(&E, jget(j, "souls"), WK_SOUL, WK_SOUL_N, &b->nsouls, b->souls, "soul stone") ||
+        key_list(&E, jget(j, "savedInds"), WK_IND, WK_IND_N, &b->nsaved_inds, b->saved_inds, "trait") ||
+        key_list(&E, jget(j, "savedInsc"), WK_INSC, WK_INSC_N, &b->nsaved_insc, b->saved_insc, "inscription") ||
+        key_list(&E, jget(j, "acqInds"), WK_ACQ, WK_ACQ_N, &b->nacq, b->acq, "acquired trait")) return -1;
+    b->has_saved_inds = b->nsaved_inds > 0;
+    drop_retired(b->inds, &b->ninds); drop_retired(b->saved_inds, &b->nsaved_inds);
+    jv *el = jget(j, "elix");
+    for (int k = 0; k < 6; k++) { double d = num_of(jget(el, WK_MAJ[k]), &ok); long n = ok ? (long)floor(d) : 0; if (n > 0) { b->has_elix = 1; b->elix[k] = n > 99 ? 99 : (int)n; } }
+    jv *cd = jget(j, "cond");
+    if (cd && cd->t == JN_ARR && cd->cnt) {
+        int any = 0;
+        for (int g = 0; g < WK_COND_N && g < 8; g++) for (int o = 0; o < WK_COND_OPTS[g] && !b->cond[g]; o++)
+            for (size_t i = 0; i < cd->cnt; i++) if (key_ix(&WK_COND[g][o], 1, cd->v[i]) == 0) { b->cond[g] = o + 1; any = 1; break; }
+        if (any) b->ncond = WK_COND_N < 8 ? WK_COND_N : 8;
+    }
+    return E.bad ? -1 : 0;
 }

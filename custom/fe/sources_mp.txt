@@ -1,4 +1,2 @@
-fe/fe_json.c
-fe/fe_save.c
 fe/fe_game.c
 fe/fe_menu.c
