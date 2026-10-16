@@ -14,7 +14,7 @@ NET = opt.get('net', '1') != '0'
 OUT = os.path.abspath(os.path.expanduser(args[0] if args else
       f'~/ds_mp_units13/ext/units13/out/myunits_{("s%s_" % SCALE) if SCALE else ""}{time.strftime("%Y%m%d-%H%M%S")}'))
 os.makedirs(OUT, exist_ok=True)
-FX = os.path.expanduser('~/ds_mp_units13/custom/units/test/fixtures')
+FX = os.path.expanduser('~/ds_mp_units13/custom/units/test/data')
 LONG = open(os.path.join(FX, 'team_jEkTAd.txt')).read().strip()                     # 4 units
 ONE = json.load(open(os.path.join(FX, 'launcher_links.json')))[1]['link']           # 1 unit, a name with accents
 SHORT = 'https://dungeonsettlers.wiki/fr/build/NNUGfJ'                              # short link, 1 unit
