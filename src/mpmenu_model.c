@@ -19,7 +19,7 @@ void mpm_settings_summary(const mpm_settings *s, char *out, size_t cap) {
              ev[s->events >= 0 && s->events < 4 ? s->events : 0], s->admin ? "on" : "off", s->fog ? "on" : "off", s->spectators ? "on" : "off");
 }
 const char *mpm_population_desc(int mode) {           /* owner's wording (lead 2026-10-13) */
-    return mode == 1 ? "Each player can recruit up to the clan limit for himself"
+    return mode == 1 ? "Each player can recruit up to the full clan limit"
          : mode == 2 ? "The clan limit is divided between the players"
          : mode == 3 ? "Clan limit x players connected, shared by all" : "One clan limit for everyone, first come";
 }
@@ -410,7 +410,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
         if (m->msg[0]) snprintf(out, cap, "Multiplayer <size=60%%>(%s)</size>", m->msg);
         else snprintf(out, cap, "Multiplayer");
         break;
-    case MPB_LABEL_ADDR: snprintf(out, cap, "Host address (ip:port)"); break;
+    case MPB_LABEL_ADDR: snprintf(out, cap, "Host address"); break;
     case MPB_HEADER:
         if (m->state == MPM_TITLE_HOST && cur_v2(m)) { snprintf(out, cap, "Host: %s", m->choice_label[m->choice - 1]); break; }
         snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? "Join a multiplayer world" : m->state == MPM_TITLE_FRIENDS ? "Join a friend on Steam"
@@ -435,7 +435,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
             snprintf(out, cap, "<size=75%%>Joining %s's game%s...%s</size>", m->host[0] ? m->host : "the host", m->spect ? " as a spectator" : "", m->state == MPM_GUEST_LOADING ? " loading" : "");
         else if (m->connecting[0]) snprintf(out, cap, "<size=70%%>Connecting to %s%s...</size>", m->connecting, m->watch ? " to watch" : "");
         else if (m->msg[0]) snprintf(out, cap, "<color=#F16071>%s</color>", m->msg);   /* Lora 14 (game side) */
-        else if (m->no_field) snprintf(out, cap, "<size=60%%>Copy the host's address (ip:port), then press Connect</size>");
+        else if (m->no_field) snprintf(out, cap, "<size=60%%>Copy the host's address, then press Connect</size>");
         else out[0] = 0;
         break;
     case MPB_HOST: snprintf(out, cap, "Host a game"); break;
@@ -455,7 +455,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_NEW_CAMPAIGN: snprintf(out, cap, "Host a new campaign"); break;
     case MPB_INVITE: case MPB_ESC_INVITE: snprintf(out, cap, "Steam invite"); break;
     case MPB_JOIN_ADDR: snprintf(out, cap, "Join by address"); break;
-    case MPB_CONNECT: snprintf(out, cap, "%s", m->no_field ? "Connect (address from the clipboard)" : "Connect"); break;
+    case MPB_CONNECT: snprintf(out, cap, "%s", m->no_field ? "Connect with the copied address" : "Connect"); break;
     case MPB_COPY_ADDR: snprintf(out, cap, "Copy direct address"); break;
     case MPB_START: snprintf(out, cap, "Start"); break;
     case MPB_LEAVE: snprintf(out, cap, "Leave multiplayer"); break;

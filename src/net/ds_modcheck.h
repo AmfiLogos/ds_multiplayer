@@ -103,7 +103,7 @@ __attribute__((unused)) static int dsmc_guest_text(const char *host_lines, const
     int total = c.missing + c.extra + c.version + c.files;
     if (!total || !n) return total;
     if (vanilla) {
-        dsmc_put(&b, "This host uses the Vanilla check: no gameplay mods. Turn off: ");
+        dsmc_put(&b, "This host allows no gameplay mods. Turn off: ");
         dsmc_list(&b, DSMC_K_EXTRA, h, nh, g, ng, names, 1);
         dsmc_put(&b, ". Client mods (comfort mods) are fine.");
     } else {

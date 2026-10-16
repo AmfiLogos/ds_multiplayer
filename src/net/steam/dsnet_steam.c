@@ -516,7 +516,8 @@ static void join_on_enter(dsnet_steam_join *j, const uint8_t *r, int cub, bool f
     uint32_t resp = 0;
     if (!failed && cub >= 20) memcpy(&resp, r + 16, 4);         /* LobbyEnter_t.m_EChatRoomEnterResponse */
     if (resp != k_EChatRoomEnterResponseSuccess) {
-        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "could not enter lobby (response %u)", resp); return;
+        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "could not enter the host's Steam lobby");
+        dsnet_logf("steam: could not enter lobby (response %u)", resp); return;
     }
     I mm = S.SteamMatchmaking();
     const char *b = S.GetLobbyData(mm, j->lobby, "dsmp_build"), *m = S.GetLobbyData(mm, j->lobby, "dsmp_mod");
@@ -528,7 +529,7 @@ static void join_on_enter(dsnet_steam_join *j, const uint8_t *r, int cub, bool f
     }
     j->host_id = S.GetLobbyOwner(mm, j->lobby);
     if (!j->host_id || j->host_id == dsnet_steam_my_id()) {
-        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "lobby has no other owner"); return;
+        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "the host left the Steam lobby"); return;
     }
 }
 
@@ -577,7 +578,8 @@ static void join_step(dsnet_steam_join *j) {
         if (st == k_StateConnected) { j->state = J_READY; dsnet_logf("steam: connected to host"); }
         else if (state_dead(st) || dsnet_now_ms() - j->t_connect > CONNECT_TIMEOUT_MS) {
             if (j->br) bridge_close(j->br);
-            j->state = J_FAILED; snprintf(j->err, sizeof j->err, "could not reach the host over Steam (state %d)", st);
+            j->state = J_FAILED; snprintf(j->err, sizeof j->err, "could not reach the host through Steam");
+            dsnet_logf("steam: could not reach the host (state %d)", st);
         }
         return;
     }
@@ -594,7 +596,7 @@ static void join_step(dsnet_steam_join *j) {
     if (!b) {
         if (lfd >= 0) close(lfd);
         if (conn) S.CloseConnection(S.SNS(), conn, 0, NULL, false);
-        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "ConnectP2P failed"); return;
+        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "Steam could not connect you to the host"); return;
     }
     b->join = j; j->br = b; j->port = port; j->state = J_CONNECTING; j->t_connect = dsnet_now_ms();
     dsnet_logf("steam: connecting to %llu, dsnet on 127.0.0.1:%u", (unsigned long long)j->host_id, port);
@@ -755,7 +757,7 @@ dsnet_steam_join *dsnet_steam_join_lobby(uint64_t lobby, const char *build_id, u
     snprintf(j->build, sizeof j->build, "%s", build_id ? build_id : dsnet_build_id);
     j->mod = mod_version ? mod_version : dsnet_mod_version;
     j->call = S.JoinLobby(G_mm, lobby);
-    if (!j->call) { j->state = J_FAILED; snprintf(j->err, sizeof j->err, "JoinLobby failed"); }
+    if (!j->call) { j->state = J_FAILED; snprintf(j->err, sizeof j->err, "Steam could not open the host's lobby"); }
     UNLOCK();
     return j;
 }
@@ -774,7 +776,7 @@ dsnet_steam_join *dsnet_steam_join_adopt(uint32_t hconn) {
     int lfd = loopback_listen(&port);
     bridge *b = lfd >= 0 ? bridge_new(hconn, -1, lfd) : NULL;
     if (b) { b->join = j; j->br = b; j->port = port; j->state = J_READY; }
-    else { if (lfd >= 0) close(lfd); j->state = J_FAILED; snprintf(j->err, sizeof j->err, "no bridge"); }
+    else { if (lfd >= 0) close(lfd); j->state = J_FAILED; snprintf(j->err, sizeof j->err, "the connection could not be set up on this computer"); }
     UNLOCK();
     return j;
 }

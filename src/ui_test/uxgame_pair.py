@@ -1039,8 +1039,8 @@ def run(X, Y, PORT):
         time.sleep(1.2); shot(X, '10_resync_host'); shot(Y, '10_resync_guest')
         time.sleep(20)
         lx, ly = log_since(X, mx), log_since(Y, my)
-        check('#10 host toast "Ben\'s game went out of sync: reloading everyone from the owner\'s save"', "ui: Ben's game went out of sync: reloading everyone from the owner's save" in lx, [l for l in lx.splitlines() if 'out of sync' in l])
-        check('#10 guest toast "Your game went out of sync: ..."', "ui: Your game went out of sync: reloading everyone from the owner's save" in ly, [l for l in ly.splitlines() if 'out of sync' in l])
+        check('#10 host toast "Ben\'s game went out of sync. Everyone reloads the owner\'s save"', "ui: Ben's game went out of sync. Everyone reloads the owner's save" in lx, [l for l in lx.splitlines() if 'out of sync' in l])
+        check('#10 guest toast "Your game went out of sync: ..."', "ui: Your game went out of sync. Everyone reloads the owner's save" in ly, [l for l in ly.splitlines() if 'out of sync' in l])
         wait('both running after the resync', lambda: ticking((X, Y), 4)[0], timeout=300, every=3)
     step('resync', resync)
 

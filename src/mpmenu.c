@@ -547,7 +547,7 @@ static void fields_find(Obj parent) {
         char clip[128] = ""; str_utf8(F(0x518AEA0, Obj (*)(void *))(NULL), clip, sizeof clip);   /* prefill: clipboard, if it is an address */
         char hh[128]; uint16_t pp = 0;
         int is_addr = clip[0] && strchr(clip, '.') && !ui_parse_address(clip, hh, sizeof hh, &pp, MPM_DEFAULT_PORT);
-        Obj f = field_make(src, parent, "ip:port, e.g. 192.168.1.20:47777", is_addr ? clip : "");
+        Obj f = field_make(src, parent, "Address, like 192.168.1.20:47777", is_addr ? clip : "");
         u_gc_free(h_field); h_field = f ? u_gc_new(f) : 0;
         rig_log("mpmenu: address field cloned from %s%s", from, is_addr ? " (prefilled from the clipboard)" : "");
     }
@@ -1634,7 +1634,7 @@ static void join_by_address(void) {
     mp_config fj; if (mp_config_load(p, &fj) == 0) snprintf(c.name, sizeof c.name, "%s", fj.name);
     uint16_t port = 0;
     if (ui_parse_address(txt, c.host_addr, sizeof c.host_addr, &port, MPM_DEFAULT_PORT)) {
-        snprintf(M.msg, sizeof M.msg, "Not an address: \"%.40s\" (use ip:port)", txt); return;
+        snprintf(M.msg, sizeof M.msg, "\"%.40s\" is not an address. It looks like 192.168.1.20:47777", txt); return;
     }
     c.port = port;
     char nm[64]; field_text(h_namefield, nm, sizeof nm); if (nm[0]) snprintf(my_name, sizeof my_name, "%s", nm);
@@ -2091,7 +2091,7 @@ static void hist_join(int k) {
         if (!M.steam) { snprintf(M.msg, sizeof M.msg, "This world was joined through Steam: needs the Steam version."); return; }
         { static void (*next_spect)(int); static int looked;                /* core (dlsym): the next mp_game_join watches */
           if (!looked) { looked = 1; next_spect = (void (*)(int))dlsym(RTLD_DEFAULT, "mp_game_next_spectator"); }
-          if (M.watch && !next_spect) { snprintf(M.msg, sizeof M.msg, "Watching through Steam is not in this build."); return; }
+          if (M.watch && !next_spect) { snprintf(M.msg, sizeof M.msg, "Spectators cannot join through Steam."); return; }
           if (next_spect) next_spect(M.watch); }
         friends_refresh();
         for (int i = 0; i < M.nfriends; i++) if (friend_id[i] == h->steamid) {
@@ -2624,11 +2624,11 @@ static void tips_frame(const mpm_obs *o) {
             TIP(u_gc_get(h_lwb[LW_GEAR]), "Rules", "Shows how this world plays. Only the host can change them.");
             TIP(lwt(T_RULES), "Rules", "Shows how this world plays. Only the host can change them.");
             TIP(u_gc_get(h_lwb[LW_INVITE]), "Steam Invite", "Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version.");
-            TIP(u_gc_get(h_lwb[LW_COPY]), "Copy Address", "Copies your address (ip:port) so you can send it to a friend. They use Join by Address.");
-            TIP(u_gc_get(h_lw_addrbox[0]), "Copy Address", "Copies your address (ip:port) so you can send it to a friend. They use Join by Address.");
+            TIP(u_gc_get(h_lwb[LW_COPY]), "Copy Address", "Copies your address so you can send it to a friend. They paste it in Join by address.");
+            TIP(u_gc_get(h_lw_addrbox[0]), "Copy Address", "Copies your address so you can send it to a friend. They paste it in Join by address.");
             TIP(lwt(T_PLAYERS), "Players", "Everyone in this world. The bars show each player's connection.");
             for (int i = 0; i < LW_ROWS; i++) {
-                static const char *lv[4] = { "Disconnected. The game waits, or the host keeps playing their units.", "Poor connection, or loading, or resyncing.",
+                static const char *lv[4] = { "Disconnected. The game waits, or the host keeps playing their units.", "Slow connection, or the game is loading or catching up.",
                                              "Slow connection, or catching up with the game.", "Good connection. In sync." };
                 if (lw_level[i] >= 0 && lw_level[i] <= 3) for (int k = 0; k < 3; k++) TIP(u_gc_get(h_lw_bar[i][k]), lw_rowname[i], lv[lw_level[i]]);
                 if (lw_rowname[i][0]) TIP(u_gc_get(h_lw_rowbg[i]), lw_rowname[i], "The colour is this player's colour everywhere: names above units, portraits, Teams and chat.");
@@ -2659,7 +2659,7 @@ static void tips_frame(const mpm_obs *o) {
     TIP(tb(MPB_HOST_NEW), "New Save", "Start a new campaign and open it to other players as soon as it is created.");
     for (int k = 0; k < hcl.n; k++) TIP(tb(mpm_choice_btn(k)), hcl.c[k].label, hcl.c[k].tip);
     TIP(tb(MPB_HOST_START), "Start", "Prepares the world for this mode and opens the lobby. Friends join you there.");
-    TIP(tb(MPB_JOIN_ADDR), "Join by Address", "Join a friend's world with their address (ip:port). Use it when Steam is not available, or on the same home network.");
+    TIP(tb(MPB_JOIN_ADDR), "Join by Address", "Join a friend's world with their address. Use it without Steam, or on the same home network.");
     TIP(tb(MPB_JOIN_FRIEND), "Join a Friend on Steam", "Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game.");
     for (int i = 0; i < 6; i++) { char l[160], t[64]; mpm_label(&M, MPB_FRIEND0 + i, l, sizeof l); const char *q = strstr(l, "Join ");
         snprintf(t, sizeof t, "%s", q && strstr(q, "'s") ? q : "Join a Friend's World"); { char *z = strchr(t, '<'); if (z) *z = 0; }

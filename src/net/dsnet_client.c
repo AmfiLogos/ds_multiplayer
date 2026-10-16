@@ -541,10 +541,10 @@ int dsnet_wait_welcome(dsnet_client *c, int timeout_ms) {
 
 const char *dsnet_reject_text(int why) {
     switch (why) {
-    case DSNET_REJ_PROTO: return "the multiplayer version is different from the host's: both players need the same Dungeon Settlers MP app";
+    case DSNET_REJ_PROTO: return "your Multiplayer mod is a different version from the host's: both players need the same version";
     case DSNET_REJ_BUILD: return "your game version is different from the host's: update both games";
-    case DSNET_REJ_MOD: return "the mod version is different from the host's: both players need the same Dungeon Settlers MP app";
-    case DSNET_REJ_ROUNDING: return "your Mac does math differently from the host's Mac, so the two games would drift apart";
+    case DSNET_REJ_MOD: return "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version";
+    case DSNET_REJ_ROUNDING: return "your computer does the game's math differently from the host's, so the two games would not stay the same";
     case DSNET_REJ_FULL: return "the game is full";
     case DSNET_REJ_DUP_ID: return "you are already in this game (same Steam account or same copy of the game)";
     case DSNET_REJ_OTHER_WORLD: return "the host is playing another world now";
