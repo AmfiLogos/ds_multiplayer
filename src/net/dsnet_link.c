@@ -61,6 +61,16 @@ int dsnet_rx_timeout_ms(void) {
 }
 void dsnet_set_rx_timeout_ms(int ms) { rx_timeout = ms < 0 ? 0 : ms; }
 
+static int env_ms(int *v, const char *name, int def) {
+    if (*v < 0) { const char *e = getenv(name); *v = e && *e ? atoi(e) : def; if (*v < 0) *v = 0; }
+    return *v;
+}
+static int hello_timeout = -1, tx_stall = -1;
+int  dsnet_hello_timeout_ms(void) { return env_ms(&hello_timeout, "DSNET_HELLO_TIMEOUT_MS", 10000); }
+void dsnet_set_hello_timeout_ms(int ms) { hello_timeout = ms < 0 ? 0 : ms; }
+int  dsnet_tx_stall_ms(void) { return env_ms(&tx_stall, "DSNET_TX_STALL_MS", 10000); }
+void dsnet_set_tx_stall_ms(int ms) { tx_stall = ms < 0 ? 0 : ms; }
+
 double dsnet_now_ms(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6;
@@ -112,6 +122,11 @@ static int reserve(uint8_t **buf, size_t *off, size_t *len, size_t *cap, size_t 
 }
 
 static int append_frame_locked(dsnet_link *l, const uint8_t *a, uint32_t alen, const uint8_t *b, uint32_t blen) {
+    if (l->out_len - l->out_off + 4 + alen + blen > DSNET_OUT_MAX) {   /* the peer stopped reading: cut it, never grow on */
+        dsnet_logf("link: send queue over %u bytes (%zu queued), peer not reading, dropped", DSNET_OUT_MAX, l->out_len - l->out_off);
+        l->dead = 1;
+        return -1;
+    }
     if (reserve(&l->out, &l->out_off, &l->out_len, &l->out_cap, 4 + alen + blen)) return -1;
     uint8_t *p = put32(l->out + l->out_len, alen + blen);
     memcpy(p, a, alen);
@@ -158,29 +173,55 @@ int dsnet_link_flush(dsnet_link *l) {
         long w = l->tr.write(l->tr.t, l->out + l->out_off, l->out_len - l->out_off);
         if (w < 0) l->dead = 1;
         else if (w == 0) break;
-        else l->out_off += w;
+        else { l->out_off += w; l->out_stall = 0; }
+    }
+    if (l->dead || l->out_len == l->out_off) l->out_stall = 0;
+    else {                             /* output waits: cut a peer that has not taken a byte for the stall limit */
+        double now = dsnet_now_ms(); int lim = dsnet_tx_stall_ms();
+        if (!l->out_stall) l->out_stall = now;
+        else if (lim && now - l->out_stall > lim) {
+            dsnet_logf("link: %zu bytes queued, peer took nothing for %d ms, dropped", l->out_len - l->out_off, (int)(now - l->out_stall));
+            l->dead = 1;
+        }
     }
     int r = l->dead ? -1 : 0;
     pthread_mutex_unlock(&l->mu);
     return r;
 }
 
+/* the next frame's length, checked as soon as its 4 header bytes are in: -1 bad (link dead), 0 header incomplete */
+static int head_bad(dsnet_link *l) {
+    if (l->in_len - l->in_off < 4) return 0;
+    uint32_t n = get32(l->in + l->in_off);
+    if (n && n <= MAX_FRAME) return 0;
+    dsnet_logf("link: bad frame length %u (max %u), dropped", n, (unsigned)MAX_FRAME);
+    l->dead = 1;
+    return -1;
+}
+
+/* Reads into a fixed DSNET_IN_MAX buffer: the rest waits in the socket (TCP flow control), so one call does bounded
+ * work and a peer that never stops sending cannot grow memory. Two max frames fit, so a whole frame always fits. */
 int dsnet_link_fill(dsnet_link *l) {
     if (l->dead) return -1;
-    for (;;) {
-        if (reserve(&l->in, &l->in_off, &l->in_len, &l->in_cap, 65536)) return -1;
+    if (!l->in) {
+        if (!(l->in = malloc(DSNET_IN_MAX))) { l->dead = 1; return -1; }
+        l->in_cap = DSNET_IN_MAX;
+    }
+    if (l->in_off) { memmove(l->in, l->in + l->in_off, l->in_len - l->in_off); l->in_len -= l->in_off; l->in_off = 0; }
+    while (l->in_len < l->in_cap) {
         long r = l->tr.read(l->tr.t, l->in + l->in_len, l->in_cap - l->in_len);
         if (r < 0) { l->dead = 1; return -1; }
-        if (r == 0) return 0;
+        if (r == 0) break;
         l->in_len += r;
+        if (head_bad(l)) return -1;
     }
+    return 0;
 }
 
 int dsnet_link_next(dsnet_link *l, const uint8_t **body, uint32_t *len) {
     size_t avail = l->in_len - l->in_off;
-    if (avail < 4) return 0;
+    if (avail < 4 || head_bad(l)) return 0;
     uint32_t n = get32(l->in + l->in_off);
-    if (n == 0 || n > MAX_FRAME) { l->dead = 1; return 0; }
     if (avail < 4 + (size_t)n) return 0;
     *body = l->in + l->in_off + 4; *len = n;
     l->in_off += 4 + n;      /* body stays valid until the next fill */

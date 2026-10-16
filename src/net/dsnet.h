@@ -18,6 +18,9 @@
 #define DSNET_MAX_PAYLOAD  60000
 #define DSNET_MAX_BLOB     (64u * 1024 * 1024)
 #define DSNET_FRAG         1024
+#define DSNET_OUT_MAX      (DSNET_MAX_BLOB + 32u * 1024 * 1024)   /* queued output per link: one max blob + its fragment
+                                                                     headers + the command log; real saves are ~5-7 MB */
+#define DSNET_IN_MAX       (128u * 1024)  /* unread input kept per link (two max frames): bounds memory and work per read */
 #define DSNET_NO_PLAYER    0xFF
 #define DSNET_MAX_KNOWN    64                   /* players remembered by a world (stable ids) */
 #define DSNET_COLORS        8                   /* player colours (= ui_player_color palette size) */
@@ -377,6 +380,13 @@ void     dsnet_test_spectator_sends(dsnet_client *c); /* test: a spectator's com
 /* Silence limit for both sides (default 5000 ms, env DSNET_RX_TIMEOUT_MS, 0 = off). Heartbeats come from the
  * network threads, so a game thread frozen by a map load or a big save does not count as silence. */
 void     dsnet_set_rx_timeout_ms(int ms);
+/* Handshake limit (server): a remote connection with no accepted HELLO by then is closed and its slot freed
+ * (default 10000 ms, env DSNET_HELLO_TIMEOUT_MS, 0 = off). The host's own local link is exempt. */
+void     dsnet_set_hello_timeout_ms(int ms);
+/* Send-stall limit for both sides: queued output that cannot move for this long (the peer stopped reading)
+ * drops the link (default 10000 ms, env DSNET_TX_STALL_MS, 0 = off). The queue also has a byte cap,
+ * DSNET_OUT_MAX; a send past it drops the link. */
+void     dsnet_set_tx_stall_ms(int ms);
 size_t   dsnet_save_overhead(dsnet_client *c);       /* bytes dsnet would put in front of a save now */
 /* Player list (from the server, ~5 Hz). state: enum dsnet_net_state. 0 ok, -1 absent. */
 enum dsnet_net_state { DSNET_NET_ABSENT = 0, DSNET_NET_IN_SYNC, DSNET_NET_RESYNCING, DSNET_NET_LOADING };
