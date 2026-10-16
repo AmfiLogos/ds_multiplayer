@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "mp_dlsym.h"      /* dlsym(RTLD_DEFAULT, ...) also finds RTLD_LOCAL images (the loader opens modules so) */
 
 #define RIG_BUILD "25846389"
 #define RIG_GA_UUID "3C5DD8BD-E371-3C0E-A674-A81042B0AC9F"
