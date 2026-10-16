@@ -1,7 +1,0 @@
-# test binaries and scratch (test/data = small launcher-made unit fixtures: keys and links only, no game data)
-test/tmp/
-test/old/
-test/data/tmp/
-*_bin
-*.dSYM/
-test/save/tmp/

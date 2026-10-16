@@ -4,6 +4,8 @@
 # Env: GATE_DIR (default ext/gate13/out of this worktree). Exports DSRIG_RELEASE=1 (gate owns rig/release.lock).
 export DSRIG_RELEASE=1
 WT=${WT:-$HOME/ds_mp_gate13}; LD=${LD:-$HOME/ds_launcher}
+# Custom Modes: its own repo since post-v13 (checkout CM_REPO, default ~/ds_custommodes); its test tools build into $MP_ROOT
+export CM=${CM_REPO:-$HOME/ds_custommodes} MP_ROOT=$WT
 D=$WT/build/dsrig.dylib; M=$WT/build/gate13_mouse/dsrig.dylib
 OUT=${GATE_DIR:-$WT/ext/gate13/out}; SUM=$OUT/summary.txt; mkdir -p $OUT
 _once() {   # <name> <regex> <cwd> <cmd...> -> 0 pass / 1 fail

@@ -6,16 +6,16 @@
 # builds (build_bld/eq, run_eq.sh first).
 # usage: ext/builder13/test/tf_check.sh [groups]
 set -e
-H=${0:A:h}; R=${H:h:h:h}; B=$R/build_bld; F=$R/custom/fights; SITE=$HOME/dungeonsettlersdb/site
+H=${0:A:h}; R=${H:h:h:h}; B=$R/build_bld; CM=${CM_REPO:-$HOME/ds_custommodes}; F=$CM/fights; SITE=$HOME/dungeonsettlersdb/site
 G=${1:-24}
 # sg_cli from Test Fights' engine files (custom/fights/build.sh also builds the game windows, which need more include
 # folders than it passes on this tree; only the engine is needed here)
-CF=(-arch arm64 -mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE -O2 -w -fwrapv -I$R/custom -I$R/custom/fe -I$F)
+CF=(-arch arm64 -mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE -O2 -w -fwrapv -I$CM -I$CM/fe -I$F)
 mkdir -p $B/tfobj; OBJS=()
 for s in qjs_quickjs qjs_cutils qjs_dtoa qjs_regexp qjs_unicode tinf/tinflate sg_embed sg_js; do
   o=$B/tfobj/${s:t}.o; OBJS+=($o); [[ $o -nt $F/$s.c ]] || nice -n 19 clang $CF -c $F/$s.c -o $o
 done
-nice -n 19 clang $CF -o $B/sg_cli $F/test/sg_cli.c $OBJS $R/custom/fe/fe_json.c -lm
+nice -n 19 clang $CF -o $B/sg_cli $F/test/sg_cli.c $OBJS $CM/fe/fe_json.c -lm
 O=$B/tf; [[ -d $O ]] && mkdir -p $B/old && mv $O $B/old/tf_$(date +%s); mkdir -p $O/ref $O/qjs
 LIBF=$(ls -td $R/ext/builder13/out/builder_2*/library_after.json(N) | head -1)
 python3 - "$LIBF" $B/eq $G $O <<'PY'

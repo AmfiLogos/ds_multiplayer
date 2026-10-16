@@ -484,3 +484,22 @@ multiplayer tag next to the name of the save and then just put the players that 
 - Flakes seen: mu_dive_mac check 4 failed once then passed; left_prompt race (test fixed by mpfix 7072214).
 - Owner's Mac: old "Dungeon Settlers Modded.app" -> ~/Applications/old_versions/Dungeon Settlers Modded-2026-10-16-1225.app;
   new app installed (not launched), identical to the release zip.
+
+## post-v13 custommodes: Custom Modes in its own repo (2026-10-16)
+- New public repo github.com/AmfiLogos/ds_custommodes (MIT): `git subtree split -P custom` of main 769eb9a (40 commits),
+  + README, LICENSE, .gitignore, NOTES.md, standalone build.sh (mp_pin.txt = d6a6156), mpfix b4d50e1 (PvP IsRelation hook),
+  test tools that find the MP root (MP_ROOT, else ~/ds_multiplayer). Tag `v13` there = f657e52 = custom/ at d6a6156.
+  History scan (owner name, home paths, binaries, keys): 0 hits.
+- ds_launcher branch cmrepo: loader/cm_pin.txt; loader/build.sh (Mac) and modules/build_mods.sh (Windows) build Custom Modes
+  from that pin. Same bytes as v13 on Mac; Windows the same as a main build in the same folder once the PE time stamp is zeroed.
+- This branch: custom/ = README.md only (pointer). Readers of custom/ now use the checkout CM_REPO (default ~/ds_custommodes):
+  src/build.sh, win/build_win.sh (a clean copy into win/build/cm_src; a tree whose custom/ has build_module.sh, as the
+  loader's pinned tree, is still used as is), win/win_map.py (paths stay custom/... in win_map.tsv), rig/gate13 (lib.sh exports
+  CM + MP_ROOT; g1, g6, mu_dive_mac/win, mu_lcopy), ext/units13/test (cmrig, bring_test, bring_rig_test),
+  ext/builder13/test/tf_check.sh, ext/foreign_expedition/tests/test_custom_guard.py.
+- Not changed (lane tools; new path = $CM_REPO/<same path without custom/>): ext/fights13/tools/mktree.sh + build_game.sh,
+  ext/units13/test/myunits_test.py (fixed ~/ds_mp_units13 path), ext/fepvp13/build_lane.sh. Local untracked
+  ext/merger13/tools/unit.sh: its line `run pvp custom/pvp/pvp_test make test` must become the pvp_test folder of CM_REPO.
+- Green on this branch: src/build.sh (dsrig + custom-modes from the checkout), win/build_win.sh baselib + module, MP units
+  (net, mp_test, mpmenu, trn, ui, teams, guard) + pvp_test 597 at the new path, ord_test 65607; CM suites with MP_ROOT = this
+  worktree: My Units 148, fights run_eq 64/64, gallery 28, sg_cache 24, builder 300/300.

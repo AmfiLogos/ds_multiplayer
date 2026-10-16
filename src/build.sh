@@ -5,8 +5,9 @@
 # Multiplayer menu (mpmenu*).
 # Transitions (trn_*): floor seeds, flow barrier, host-only autosave.
 # Multiplayer API (mp_api.c / mp_api.h, MASTER_PLAN 2.2 B) + the menu kit (mpmenu_kit.h) for Custom Modes.
-# Custom Modes (Foreign Expedition, PvP, units; ../custom) is its OWN dylib since the M4 split: built after this one by
-# ../custom/build_module.sh into ../build/custom-modes.dylib + custom-modes-mp.dylib (the rig loads it from next to
+# Custom Modes (Foreign Expedition, PvP, units) is its OWN dylib since the M4 split and its own repo since post-v13
+# (github.com/AmfiLogos/ds_custommodes; checkout CM_REPO, default ~/ds_custommodes): built after this one by
+# $CM_REPO/build_module.sh into ../build/custom-modes.dylib + custom-modes-mp.dylib (the rig loads it from next to
 # dsrig.dylib like the loader does; DSRIG_CUSTOM=0 = without it). Install name @rpath/multiplayer.dylib = the loader
 # module's, so custom-modes-mp binds to whichever multiplayer image is loaded. OUT=<dir> builds into another folder.
 # Mac math swap (windows lane, win/NOTES.md sections 7 + 17): ON by default since v9 (-DDSMATH_DEFAULT_ON=1, same as the
@@ -25,4 +26,6 @@ nice -n 19 clang -arch arm64 -mmacosx-version-min=12.0 -O2 -Wall -Wno-unused-fun
 codesign -f -s - $OUT/dsrig.dylib.tmp 2>/dev/null
 mv -f $OUT/dsrig.dylib.tmp $OUT/dsrig.dylib     # new inode: never overwrite a mapped dylib
 echo built $OUT/dsrig.dylib
-MP_DYLIB=$OUT/dsrig.dylib OUT=$OUT SDK=../sdk zsh ../custom/build_module.sh
+CM=${CM_REPO:-$HOME/ds_custommodes}
+[[ -f $CM/build_module.sh ]] || { echo "Custom Modes checkout not found: $CM (git clone https://github.com/AmfiLogos/ds_custommodes, or set CM_REPO)" >&2; exit 1; }
+MP_DYLIB=${OUT:A}/dsrig.dylib OUT=${OUT:A} SDK=${PWD:h}/sdk MP_SRC=$PWD zsh $CM/build_module.sh

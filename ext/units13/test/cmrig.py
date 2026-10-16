@@ -18,6 +18,7 @@ I = r.idir(X)
 APP = os.path.join(I, 'DungeonSettlers.app')
 WT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))   # the worktree
 B = os.path.join(WT, 'build')
+CM = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')   # Custom Modes' own repo (post-v13)
 DSLOAD = os.path.expanduser('~/ds_launcher/loader/build/dsload.dylib')
 MP_MOD = os.path.expanduser('~/ds_launcher/loader/build/mods/multiplayer')
 STAGE = '-20000,-20000'
@@ -74,7 +75,7 @@ def install():
     put(mpd, os.path.join(md, 'multiplayer', 'multiplayer.dylib'))
     for f in ('custom-modes.dylib', 'custom-modes-mp.dylib'):
         put(os.path.join(B, f), os.path.join(md, 'custom-modes', f))
-    put(os.path.join(WT, 'custom', 'mod.json'), os.path.join(md, 'custom-modes', 'mod.json'))
+    put(os.path.join(CM, 'mod.json'), os.path.join(md, 'custom-modes', 'mod.json'))
     put(os.path.join(B, 'units-driver.dylib'), os.path.join(md, 'units-driver', 'units-driver.dylib'))
     put(os.path.join(WT, 'ext/units13/driver/mod.json'), os.path.join(md, 'units-driver', 'mod.json'))
     sh(f'codesign -f -s - "{APP}/Contents/MacOS/Dungeon Settlers"')

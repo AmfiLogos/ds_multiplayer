@@ -28,7 +28,8 @@ LANE = 'gate13_mu'
 OUT = os.path.join(WT, 'ext', 'gate13', 'out', 'mudive', 'mac_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
 FIX = os.path.expanduser('~/ds_multiplayer/ext/foreign_expedition/fixtures')
 TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')
-LIBFIX = os.path.join(WT, 'custom/units/test/data/launcher_library.json')
+CM = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')   # Custom Modes' own repo (post-v13)
+LIBFIX = os.path.join(CM, 'units/test/data/launcher_library.json')
 BTN = json.loads(os.popen(f'python3 {WT}/ext/fepvp13/tools/mpm_ids.py {WT}').read())
 SI = dict(HealthHead=12, HealthBody=13, Energy=14, Hunger=15, Level=17, Exp=18)
 LOGF = open(os.path.join(OUT, 'test.log'), 'a'); results = []
