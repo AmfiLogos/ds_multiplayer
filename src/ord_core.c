@@ -305,6 +305,7 @@ int ord_msg_write(const ord_env *env, ord_wbuf *w, const ord_msg *m) {
             ow_u8(w, m->party_active ? 1 : 0); ow_u8(w, (uint8_t)m->nparty);
             for (int i = 0; i < m->nparty; i++) ow_guid(w, &m->party[i]);
         }
+        if (m->ev->flags & ORD_EF_QSLOT) { ow_str(w, m->qkey[0] ? m->qkey : NULL); ow_str(w, m->qkey2[0] ? m->qkey2 : NULL); ow_u8(w, m->qreg ? 1 : 0); }
         break;
     case ORD_K_MOVE_ALL: case ORD_K_WP_RESERVE: ow_i32(w, m->x); ow_i32(w, m->y); break;
     case ORD_K_MOVE_TRY: case ORD_K_WP_CLEAR: break;
@@ -393,6 +394,10 @@ int ord_msg_read(const ord_env *env, const uint8_t *p, size_t n, ord_msg *m) {
             if (m->party_active > 1 || m->nparty > ORD_MAX_SEL) return -4;
             for (int i = 0; i < m->nparty; i++) or_guid(&r, &m->party[i]);
         }
+        if (m->ev->flags & ORD_EF_QSLOT) {
+            or_str(&r, m->qkey, sizeof m->qkey); or_str(&r, m->qkey2, sizeof m->qkey2); m->qreg = or_u8(&r);
+            if (m->qreg > 1) return -4;
+        }
         break;
     }
     case ORD_K_MOVE_ALL: case ORD_K_WP_RESERVE: m->x = or_i32(&r); m->y = or_i32(&r); break;
@@ -426,4 +431,128 @@ int ord_msg_read(const ord_env *env, const uint8_t *p, size_t n, ord_msg *m) {
     if (r.err) return -8;
     if (r.i != r.n) return -9;   /* trailing bytes: version mismatch */
     return 0;
+}
+
+/* ---------------------------------------------------------------- quick slots by skill key
+ * Handlers (InputEventHandler.OnEvent, decompiled at 0xD97474 / 0xD96708 / 0xD9789C / 0xD96040; IQuickSlotViewer
+ * GetSkillAt / IsRegistered / GetIndexOfSkill, IQuickSlotModifier AddQuickSlotAt / RemoveQuickSlotAt):
+ *   Toggle(i):   k = GetSkillAt(i); if k and IsRegistered(k): SkillComponent.ChangeAutoSkillData(k)  (flips _autoUse[k])
+ *   Unset(i):    k = GetSkillAt(i); RemoveQuickSlotAt(i); if k and !IsRegistered(k): RemoveSkill(k) + unregister passive
+ *   Set(s, i):   (skill check) if !IsRegistered(s): AddSkill(s) + register passive; remove s from every slot; AddQuickSlotAt(i, s)
+ *   Move(i, t):  a = slot i, b = slot t; b set: swap; else slot t <- a, slot i <- empty   (layout only)
+ * Set keeps every skill in one slot at most, so a key resolves to one slot. */
+int ord_qs_kind(const ord_evdef *d) {
+    if (!d || !(d->flags & ORD_EF_QSLOT)) return 0;
+    if (!strcmp(d->name, "ToggleAutoSkillRequested")) return ORD_QS_TOGGLE;
+    if (!strcmp(d->name, "SetQuickSlotRequested")) return ORD_QS_SET;
+    if (!strcmp(d->name, "UnsetQuickSlotRequested")) return ORD_QS_UNSET;
+    if (!strcmp(d->name, "MoveQuickSlotRequested")) return ORD_QS_MOVE;
+    return 0;
+}
+void ord_qs_fields(const ord_evdef *d, int *idx_off, int *tgt_off, int *skill_off) {
+    /* fields after Map (I32) and UnitGuid (GUID): Index [, TargetIndex] (I32) and Skill (STR) */
+    *idx_off = *tgt_off = *skill_off = -1;
+    if (!ord_qs_kind(d)) return;
+    for (int i = 2; i < d->nf; i++) {
+        if (d->f[i].kind == ORD_F_STR && *skill_off < 0) *skill_off = d->f[i].off;
+        else if (d->f[i].kind == ORD_F_I32) { if (*idx_off < 0) *idx_off = d->f[i].off; else if (*tgt_off < 0) *tgt_off = d->f[i].off; }
+    }
+}
+static const char *qs_at(const ord_qslots *s, int32_t i) { return (s && i >= 0 && i < s->n) ? s->k[i] : ""; }
+static void qs_copy(char *dst, const char *src) { size_t n = strlen(src); if (n >= ORD_STR) n = ORD_STR - 1; memcpy(dst, src, n); dst[n] = 0; }
+static int qs_count(const ord_qslots *s, const char *key, int except) {
+    int c = 0;
+    for (int i = 0; s && key[0] && i < s->n; i++) c += i != except && !strcmp(s->k[i], key);
+    return c;
+}
+void ord_qs_capture(const ord_env *env, ord_msg *m, const ord_qslots *s) {
+    m->qkey[0] = m->qkey2[0] = 0; m->qreg = 0;
+    int io, to, so; ord_qs_fields(m->ev, &io, &to, &so);
+    if (io < 0 || !m->evobj) return;
+    int32_t i = AT(m->evobj, io, int32_t);
+    qs_copy(m->qkey, qs_at(s, i));
+    if (to >= 0) qs_copy(m->qkey2, qs_at(s, AT(m->evobj, to, int32_t)));
+    char sk[ORD_STR];
+    if (ord_qs_kind(m->ev) == ORD_QS_UNSET) m->qreg = qs_count(s, m->qkey, i) > 0;
+    else if (ord_qs_kind(m->ev) == ORD_QS_SET && so >= 0 && env->str_get(AT(m->evobj, so, ord_obj), sk, sizeof sk) > 0)
+        m->qreg = qs_count(s, sk, -1) > 0;
+}
+int ord_qs_resolve(const ord_qslots *s, const char *key, int hint) {
+    if (!s || !key || !key[0]) return -1;
+    if (hint >= 0 && hint < s->n && !strcmp(s->k[hint], key)) return hint;
+    for (int i = 0; i < s->n; i++) if (!strcmp(s->k[i], key)) return i;
+    return -1;
+}
+/* destination slot named by the key it held on the issuer; an empty slot on the issuer = the same index if it is
+   empty here too */
+static int qs_dest(const ord_qslots *s, const char *key, int32_t i) {
+    if (key[0]) return ord_qs_resolve(s, key, i);
+    return (i >= 0 && i < s->n && !s->k[i][0]) ? i : -1;
+}
+static void qw(ord_qwrite *w, int *n, int32_t slot, const char *key) { if (*n < ORD_QP_W) { w[*n].slot = slot; qs_copy(w[*n].key, key); (*n)++; } }
+static int qs_helper(const ord_qslots *s, int not) { for (int i = 0; i < s->n; i++) if (i != not) return i; return -1; }
+/* make "key is in a slot other than run" true (want 1) or false (want 0) for the handler, and undo it afterwards */
+static int qs_force_registered(const ord_qslots *s, const char *key, int except, int run, int want, ord_qplan *p) {
+    int have = qs_count(s, key, except) > 0;
+    if (have == want) return 0;
+    if (!want) {   /* clear the (other) slots holding key: the issuer has it in none */
+        for (int i = 0; i < s->n; i++) if (i != except && !strcmp(s->k[i], key)) qw(p->pre, &p->npre, i, "");
+        return 0;
+    }
+    int h = qs_helper(s, run);            /* lend one more slot (not the one the handler runs at) to the key */
+    if (h < 0) return -1;
+    qw(p->pre, &p->npre, h, key); qw(p->post, &p->npost, h, s->k[h]);
+    return 0;
+}
+void ord_qs_plan(const ord_env *env, const ord_msg *m, const ord_qslots *s, ord_qplan *p) {
+    static const ord_qslots none;
+    memset(p, 0, sizeof *p);
+    if (!s) s = &none;
+    int kind = ord_qs_kind(m->ev), io, to, so;
+    ord_qs_fields(m->ev, &io, &to, &so);
+    if (!kind || io < 0 || !m->evobj) return;
+    int32_t i = AT(m->evobj, io, int32_t), t = to >= 0 ? AT(m->evobj, to, int32_t) : -1;
+    const char *k1 = m->qkey, *k2 = m->qkey2;
+    switch (kind) {
+    case ORD_QS_TOGGLE: {
+        if (!k1[0]) return;                                   /* empty slot on the issuer: the handler does nothing */
+        int l = ord_qs_resolve(s, k1, i);
+        if (l >= 0) { p->act = ORD_QP_RUN; p->idx = l; return; }
+        p->act = ORD_QP_AUTO; qs_copy(p->key, k1);           /* the auto-use flag of the skill, no slot */
+        return;
+    }
+    case ORD_QS_UNSET: {
+        if (!k1[0]) return;
+        int l = ord_qs_resolve(s, k1, i);
+        if (l < 0) {                                          /* no slot here: lend slot 0 to the key */
+            if (s->n <= 0) return;
+            l = 0; qw(p->pre, &p->npre, 0, k1); qw(p->post, &p->npost, 0, s->k[0]);
+        }
+        if (qs_force_registered(s, k1, l, l, m->qreg, p)) { memset(p, 0, sizeof *p); return; }
+        p->act = ORD_QP_RUN; p->idx = l;
+        return;
+    }
+    case ORD_QS_SET: {
+        char sk[ORD_STR];
+        if (so < 0 || env->str_get(AT(m->evobj, so, ord_obj), sk, sizeof sk) <= 0) return;   /* null skill: no effect */
+        int l = qs_dest(s, k1, i);
+        if (l < 0) {
+            if (!strcmp(sk, k1) || s->n <= 0) return;         /* same skill again, into a slot not here: no effect */
+            /* no slot here: run at slot 0, then give slot 0 back its key (empty if that was the skill itself) */
+            l = 0; qw(p->post, &p->npost, 0, strcmp(s->k[0], sk) ? s->k[0] : "");
+        }
+        /* the handler learns the skill only if no slot holds it: same answer as on the issuer */
+        if (qs_force_registered(s, sk, -1, l, m->qreg, p)) { memset(p, 0, sizeof *p); return; }
+        p->act = ORD_QP_RUN; p->idx = l;
+        return;
+    }
+    case ORD_QS_MOVE: {
+        if (!k1[0] && !k2[0]) return;
+        int li = qs_dest(s, k1, i), lt = qs_dest(s, k2, t);
+        if (li >= 0 && lt >= 0) { if (li != lt) { p->act = ORD_QP_RUN; p->idx = li; p->idx2 = lt; } return; }
+        if (li >= 0) { p->act = ORD_QP_WRITE; qw(p->post, &p->npost, li, k2); return; }   /* a leaves, b comes */
+        if (lt >= 0) { p->act = ORD_QP_WRITE; qw(p->post, &p->npost, lt, k1); return; }   /* b leaves, a comes */
+        return;
+    }
+    }
 }
