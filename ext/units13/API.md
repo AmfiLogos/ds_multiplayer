@@ -40,3 +40,6 @@ library_id). Use myunits.h (mu_load / mu_entries) to turn lib ids into hub entri
 ## My Units store + decoder (custom/units, after step 2)
 myunits.h (mu_load / mu_add_build / mu_team_* / mu_rename / mu_delete), wk_link.h (wkl_resolve / wkl_decode_offline:
 the one rule for old links). FIG and BLD call these, never their own decoder.
+
+## Rig commands (tests; multiplayer's socket)
+mu_bring_open {"max":N,"sources":S}, mu_bring_state, mu_bring_result, mu_bring_close, mu_open, mu_state, mu_overflow.
