@@ -39,6 +39,31 @@ void dsnet_set_modset(int rule, const char *modset, const char *lines) {
     snprintf(dsnet_mod_lines, sizeof dsnet_mod_lines, "%s", lines ? lines : "");
 }
 const char *dsnet_my_mod_lines(void) { return dsnet_mod_lines; }
+char dsnet_reject_host_rel[16];
+static char my_rel[16]; static int my_rel_set;
+static void rel_clean(char *out, size_t n, const char *s) {        /* keep [0-9A-Za-z._-], drop a leading 'v' */
+    size_t k = 0; if (n) out[0] = 0;
+    if (!s || !n) return;
+    if (*s == 'v' || *s == 'V') s++;
+    for (; *s && k + 1 < n; s++) {
+        char ch = *s;
+        if ((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '.' || ch == '-' || ch == '_') out[k++] = ch;
+        else break;
+    }
+    out[k] = 0;
+}
+void dsnet_set_release(const char *release) { rel_clean(my_rel, sizeof my_rel, release); my_rel_set = 1; }
+const char *dsnet_my_release(void) {
+    if (!my_rel_set) { rel_clean(my_rel, sizeof my_rel, getenv("DSML_RELEASE")); my_rel_set = 1; }
+    return my_rel;
+}
+const char *dsnet_reject_host_release(void) { return dsnet_reject_host_rel; }
+int dsnet_release_text(const char *host, const char *mine, char *out, size_t n) {
+    if (n) out[0] = 0;
+    if (!host || !mine || !*host || !*mine || !strcmp(host, mine)) return 0;
+    snprintf(out, n, "Host has v%s, you have v%s: update and try again.", host, mine);
+    return 1;
+}
 int dsnet_reject_host_mods(int *host_rule, char *lines, size_t n) {
     if (!dsnet_reject_has_host) return -1;
     if (host_rule) *host_rule = dsnet_reject_host_rule;

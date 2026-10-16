@@ -760,6 +760,51 @@ static void test_handshake(void) {
     printf("%s join_checks: %s (%.1fs)\n", ok ? "PASS" : "FAIL", res, (now_ms() - t0) / 1000);
 }
 
+/* ---- 7c. loader release (DSML_RELEASE) in the HELLO: a MODSET refusal names both releases when they differ ---- */
+static void test_release(void) {
+    int ok = 1; double t0 = now_ms();
+    const char *M1 = "1111111111111111111111111111111111111111111111111111111111111111";
+    const char *M2 = "2222222222222222222222222222222222222222222222222222222222222222";
+    struct { const char *hrel, *jrel, *jset; int want; const char *prefix; } cases[] = {
+        { "13.3", "13.2", M2, DSNET_REJ_MODSET, "Host has v13.3, you have v13.2: update and try again. your gameplay mods" },
+        { "13.2", "v13.3", M2, DSNET_REJ_MODSET, "Host has v13.2, you have v13.3: update and try again. your gameplay mods" },
+        { "13.3", "13.3", M2, DSNET_REJ_MODSET, "your gameplay mods" },      /* same release: today's words */
+        { "",     "13.2", M2, DSNET_REJ_MODSET, "your gameplay mods" },      /* older host loader: today's words */
+        { "13.3", "",     M2, DSNET_REJ_MODSET, "your gameplay mods" },      /* older joiner loader */
+        { "13.3", "13.2", M1, 0, NULL },                                     /* same mods: releases alone never refuse */
+    };
+    int n = (int)(sizeof cases / sizeof *cases);
+    for (int i = 0; i < n; i++) {
+        dsnet_cfg cfg = test_cfg(1);
+        dsnet_server *srv = dsnet_server_start(&cfg);
+        dsnet_set_modset(DSNET_MATCH_MODS, M1, "hell-difficulty@2.0.0"); dsnet_set_release(cases[i].hrel);
+        dsnet_client *h = dsnet_client_connect_local(srv, "host");
+        CHECK(dsnet_wait_welcome(h, 2000) == 0, "case %d: host not in", i);
+        dsnet_set_modset(DSNET_MATCH_MODS, cases[i].jset, cases[i].jset == M1 ? "hell-difficulty@2.0.0" : "cheaper-recruits@1.0.0");
+        dsnet_set_release(cases[i].jrel);
+        dsnet_client *c = dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "joiner");
+        int r = dsnet_wait_welcome(c, 2000), why = dsnet_reject_reason(c);
+        if (cases[i].want) {
+            const char *w = dsnet_reject_text(why);
+            CHECK(r == -2 && why == cases[i].want && !strncmp(w, cases[i].prefix, strlen(cases[i].prefix)), "case %d: rc %d reason %d words '%s'", i, r, why, w);
+            char rel[96]; int named = dsnet_release_text(dsnet_reject_host_release(), dsnet_my_release(), rel, sizeof rel);
+            CHECK(named == (strncmp(cases[i].prefix, "Host has", 8) == 0) && (!named || !strncmp(w, rel, strlen(rel))),
+                  "case %d: guest-side text '%s' (host release '%s')", i, rel, dsnet_reject_host_release());
+        } else {
+            CHECK(r == 0 && why == 0, "case %d: rc %d reason %d", i, r, why);
+            dsnet_chat_send(c, "hi");                          /* the server stamps the name it read from the HELLO */
+            dsnet_chat_msg m; int got = 0;
+            for (int k = 0; k < 200 && !got; k++) { while (!got && dsnet_chat_poll(h, &m)) got = m.kind == DSNET_CHAT_TEXT; if (!got) usleep(10000); }
+            CHECK(got && !strcmp(m.name, "joiner"), "case %d: name with a release after it '%s'", i, got ? m.name : "(no line)");
+        }
+        dsnet_client_close(c); dsnet_client_close(h);
+        dsnet_server_stop(srv);
+    }
+    dsnet_set_modset(DSNET_MATCH_MODS, "", ""); dsnet_set_release("");
+    printf("%s release: %d cases, the refusal names both loader releases only when they differ (%.1fs)\n",
+           ok ? "PASS" : "FAIL", n, (now_ms() - t0) / 1000);
+}
+
 /* ---- 7b. HELLO gameplay mod set + match rule (launcher session): the host's HELLO is the reference ---- */
 static void test_modset(void) {
     int ok = 1; double t0 = now_ms();
@@ -2216,6 +2261,7 @@ int main(int argc, char **argv) {
     RUN("logtrim", test_log_trim());
     RUN("handshake", test_handshake());
     RUN("modset", test_modset());
+    RUN("release", test_release());
     RUN("connect", test_connect());
     RUN("rules", test_rules());
     RUN("lend", test_lend());

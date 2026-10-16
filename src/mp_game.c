@@ -895,6 +895,12 @@ __attribute__((visibility("default"))) int mp_game_modset_text(char *out, size_t
     char body[600];
     if (!dsmc_guest_text(host, dsnet_my_mod_lines(), rule == 1, NULL, body, sizeof body, NULL))
         snprintf(body, sizeof body, "%s", dsnet_reject_text(DSNET_REJ_MODSET));   /* same lines, other hash: the host's words */
+    else {                                     /* loader releases differ: say so first (the host's words already do) */
+        char rel[96];
+        if (dsnet_release_text(dsnet_reject_host_release(), dsnet_my_release(), rel, sizeof rel)) {
+            char tmp[sizeof body]; snprintf(tmp, sizeof tmp, "%s\n%s", rel, body); snprintf(body, sizeof body, "%s", tmp);
+        }
+    }
     snprintf(out, n, "<size=150%%>Could not join</size>\n%s", body);
     for (char *q = body; *q; q++) if (*q == '\n') *q = '|';                      /* one log line */
     rig_log("mp: modset refusal: %s", body);
