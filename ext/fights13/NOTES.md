@@ -81,3 +81,11 @@ pair, hidden window off-screen, muted; no guard violation in any run after run2.
 
 Open: guard kill in run2 (01:08:51, a 305x190 window of the copy at x 40, y 742) came while the game sat in a cancelled
 load (before the TryRefreshSave fix); not seen again in 14 later runs.
+
+## Merge-ready (main 3e03d9b merged into fights13, 2026-10-16 03:55)
+Build build/merge_fights (src/build.sh: dsrig.dylib + custom-modes.dylib 33 sources + custom-modes-mp.dylib).
+- run_eq 64/64 local + 64/64 live, sg_cache_test 24/24 + live 13/13, gal_test 28/28 + live 7/7, gal_names identical (178 / 780).
+- Game, copy O with this build: m1 gallery + boss 22 PASS 0 FAIL; m2 arena + dps 17 PASS 0 FAIL; m3 solo 5 PASS 0 FAIL.
+- rig smoke on this dsrig.dylib (pair AB): 3/3 fp_tick_advanced, prefs identical.
+- custom/fights/build.sh now builds only the engine / cache / gallery client for the test tools (the windows need
+  custom/home + custom/units; the module build covers them).
