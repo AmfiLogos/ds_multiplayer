@@ -54,7 +54,7 @@ resync, ip:port, sha256, API names, raw ids); no " - " used as a dash; "they" fo
 | src/mpmenu.c:2622, 2623 | Copies your address (ip:port) so you can send it to a friend. They use Join by Address. | Copies your address so you can send it to a friend. They paste it in Join by address. |
 | src/mpmenu.c:2626, ui_game.c:5024, ui_teams.c:1985 | Poor connection, or loading, or resyncing. | Slow connection, or the game is loading or catching up. |
 | src/mpmenu.c:2657 | Join a friend's world with their address (ip:port). Use it when Steam is not available, or on the same home network. | Join a friend's world with their address. Use it without Steam, or on the same home network. |
-| src/mpmenu_model.c:22 | Each player can recruit up to the clan limit for himself | Each player can recruit up to the clan limit |
+| src/mpmenu_model.c:22 | Each player can recruit up to the clan limit for himself | Each player can recruit up to the full clan limit |
 | src/mpmenu_model.c:412 | Host address (ip:port) | Host address |
 | src/mpmenu_model.c:437 | Copy the host's address (ip:port), then press Connect | Copy the host's address, then press Connect |
 | src/mpmenu_model.c:455 | Connect (address from the clipboard) | Connect with the copied address |
