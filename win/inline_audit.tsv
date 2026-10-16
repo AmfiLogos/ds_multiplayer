@@ -121,6 +121,7 @@ Refactor.UI.SubUI_UnitShortCutParts$$RefreshUnitName	0xc2a500	0xf1aeb0	mac_calle
 Refactor.UI.RecruitView$$OnRecruitCandidate	0xc2f9c0	0xf27e18	mac_callers=0	win_callers=0
 Refactor.UI.SubUI_SystemMenuButton$$OnPressButton	0xc36a40	0xf2dc30	mac_callers=0	win_callers=0
 Refactor.UI.SystemMenuView$$OnLoadCampaignPressed	0xc37bb0	0xf2eea8	mac_callers=0	win_callers=0
+Refactor.UI.Tooltip_Base$$SetTooltipAlignment	0xc40c20	0xf387dc	mac_callers=3	win_callers=3
 Refactor.UI.Tooltip_ETC$$Show	0xc45b00	0xf3d8b8	mac_callers=0	win_callers=0
 Refactor.UI.PopUpUI_Base$$SetTimeLock	0xc535b0	0xf5a538	mac_callers=1	win_callers=0
 Refactor.UI.PopUpUI_Base$$UnsetTimeLock	0xc537a0	0xf5a6f0	mac_callers=1	win_callers=0

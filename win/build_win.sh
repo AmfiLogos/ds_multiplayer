@@ -32,11 +32,13 @@ TARGET=${DSMP_TARGET:-baselib}
 if [[ $TARGET == module ]]; then CF+=(-DDSMP_MODULE); INC+=(-I${DSL_SDK:-~/ds_launcher/loader/sdk}); fi
 GEN=(build/gen/*.c build/gen/net/dsnet_link.c build/gen/net/dsnet_server.c build/gen/net/dsnet_client.c)
 CM_SOLO=(); CM_MP=(); while read k f; do if [[ $k == solo ]]; then CM_SOLO+=(build/gen_cm/$f); else CM_MP+=(build/gen_cm/$f); fi; done < build/gen_cm/lists.txt
-[[ $TARGET == module ]] || GEN+=($CM_MP)                           # rig baselib.dll: Custom Modes' mp part in the same DLL
+# rig baselib.dll: Custom Modes in the same DLL (its mp part calls the solo part: My Units, fe_json); cm_module.c is the
+# loader's entry, not used by the rig
+[[ $TARGET == module ]] || GEN+=(${(u)CM_MP} ${(u)${CM_SOLO:#*/cm_module.c}})
 NET=()
 O=build/obj; [[ $TARGET == module ]] && O=build/obj_module
 mkdir -p $O build/old_obj; olds=($O/*.o(N)); (( ${#olds} )) && mv -f $olds build/old_obj/
-for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do nice -n 5 $TC $CF $INC -include dswin.h -c $f -o $O/${f:t:r}.o; done
+for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do nice -n 5 $TC $CF -fwrapv $CEMB $INC -include dswin.h -include port/cm/xm_bsd_win.h -c $f -o $O/${f:t:r}.o; done
 for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $ZL/zutil.c; do nice -n 5 $TC -O2 -w -c $f -o $O/zl_${f:t:r}.o; done
 if [[ $TARGET == module ]]; then
 nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o
@@ -49,7 +51,7 @@ echo built build/multiplayer.dll
 OC=build/obj_cm; mkdir -p $OC/solo $OC/mp; for o in $OC/solo/*.o(N) $OC/mp/*.o(N); do mv -f $o build/old_obj/; done
 # solo part: no multiplayer link; dlopen / dlsym / dladdr = LoadLibrary / GetProcAddress (port/cm/dlfcn.h); WinHTTP for
 # fights/cm_http.c; zlib inflate objects of this build. Its import library: the mp part calls My Units etc. in it.
-for f in $CM_SOLO; do nice -n 5 $TC ${CF:#-DCM_SAME_IMAGE} -fwrapv $CEMB -Iport/cm $INC -include dswin.h -include cm_win.h -c $f -o $OC/solo/${f:t:r}.o; done
+for f in $CM_SOLO; do nice -n 5 $TC ${CF:#-DCM_SAME_IMAGE} -fwrapv $CEMB -Iport/cm $INC -include dswin.h -include xm_bsd_win.h -c $f -o $OC/solo/${f:t:r}.o; done
 nice -n 5 $TC $CF -c port/dswin.c -o $OC/solo/zz_dswin.o                 # its own copy of the POSIX shims (dsw_rename ...)
 nice -n 5 $TC -shared -o build/link/custom-modes.dll $OC/solo/*.o $O/zl_*.o -Wl,--export-all-symbols -Wl,--out-implib,build/libcustom-modes.dll.a -static -static-libgcc -lwinhttp -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/link/custom-modes.dll build/custom-modes.dll
@@ -84,7 +86,7 @@ print("module folder", d, files["custom-modes.dll"][:16], files["custom-modes-mp
 PY
 else
 for f in port/dswin.c $MH/src/hook.c $MH/src/buffer.c $MH/src/trampoline.c $MH/src/hde/hde64.c; do nice -n 5 $TC $CF -I$MH/include -c $f -o $O/${f:t:r}.o; done
-nice -n 5 $TC -shared -o build/baselib.dll.tmp $O/*.o math/build/libdsmath_win64.a build/baselib_exports.def -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
+nice -n 5 $TC -shared -o build/baselib.dll.tmp $O/*.o math/build/libdsmath_win64.a build/baselib_exports.def -static -static-libgcc -lwinhttp -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/baselib.dll.tmp build/baselib.dll
 echo built build/baselib.dll
 fi
