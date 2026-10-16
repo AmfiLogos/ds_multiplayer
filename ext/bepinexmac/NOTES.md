@@ -87,7 +87,7 @@ Class::FromIl2CppType 0x76801c, Class::FromName 0x76b774 (-> 0x75cb1c). Class::I
 - New BepInEx env `BEPINEX_PLUGIN_DIRS` (path list, `:` on Mac, `;` on Windows): one folder per enabled mod,
   scanned after BepInEx/plugins and searched for dependencies. Verified with 4 plugins in separate folders.
 - dsload (l1-core build) first + libdoorstop second in DYLD_INSERT_LIBRARIES: both start; dsload logs Doorstop as
-  "other loader", keeps its entry. l1core (l1-core 3a30d86) tested the launcher path: install from the zip,
+  "other loader", keeps its entry. l1core (l1-core 8d29c78) tested the launcher path: install from the zip,
   soft restart with env lines (300 s first start, own marker ds_ready_<build>), and a dsload hook + a Harmony
   postfix on the SAME function (MainFlow.Update) both fire (logs ~/ds_launcher/loader/test_env/l1_out/bie5).
 

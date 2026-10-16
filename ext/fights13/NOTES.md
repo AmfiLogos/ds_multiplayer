@@ -1,7 +1,7 @@
 # Lane fights (v13 WP FIG): Gallery + Test Fights in the game
 
 Branch `fights13`, worktree ~/ds_mp_fights13. History of the code part: ext/c4-fights/NOTES.md (branch c4-fights, 2 commits
-replayed onto main a1b7852 with no conflict).
+replayed onto main 1e81d75 with no conflict).
 
 ## Step 1 (engine, cache, gallery client on main; no game wiring)
 
@@ -29,7 +29,7 @@ Proof 2026-10-16 (all green):
 | build.sh (Mac arm64, solo dylib link) | ok |
 | build.sh win (llvm-mingw, every listed file) | ok |
 
-Merge point for slot 3 (step 1 alone): branch `fights13-step1` (1a49c26). Branch `fights13` goes on with the game part,
+Merge point for slot 3 (step 1 alone): branch `fights13-step1` (fb44791). Branch `fights13` goes on with the game part,
 which needs lane units' custom/home (cm_home.h) and custom/units (myunits.h, wk_link.h): it merges after units full.
 
 ## Steps 2-4: Gallery and Test Fights in the game (2026-10-16)
@@ -82,7 +82,7 @@ pair, hidden window off-screen, muted; no guard violation in any run after run2.
 Open: guard kill in run2 (01:08:51, a 305x190 window of the copy at x 40, y 742) came while the game sat in a cancelled
 load (before the TryRefreshSave fix); not seen again in 14 later runs.
 
-## Merge-ready (main 99c65f3 merged into fights13, 2026-10-16 03:55)
+## Merge-ready (main 9afb4cd merged into fights13, 2026-10-16 03:55)
 Build build/merge_fights (src/build.sh: dsrig.dylib + custom-modes.dylib 33 sources + custom-modes-mp.dylib).
 - run_eq 64/64 local + 64/64 live, sg_cache_test 24/24 + live 13/13, gal_test 28/28 + live 7/7, gal_names identical (178 / 780).
 - Game, copy O with this build: m1 gallery + boss 22 PASS 0 FAIL; m2 arena + dps 17 PASS 0 FAIL; m3 solo 5 PASS 0 FAIL.

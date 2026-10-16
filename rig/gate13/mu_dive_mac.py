@@ -133,14 +133,14 @@ def run(H, G, gs, home, lib):
         return s.get('open') == 1, s, via
 
     def kit_at_title(c):
-        """loader fix 713e363 (2026-10-16 03:07): the kit takes its templates at the first title by itself. A dsload built
+        """loader fix 17f9be9 (2026-10-16 03:07): the kit takes its templates at the first title by itself. A dsload built
         before it takes them only when a kit window opens at the title, so a window opened first in a world fails ("kit not
         ready"). Check 0 records which dsload this is; when it is the old one, a Bring window is opened and closed once at the
         title (rig mu_bring_open / mu_bring_close) so checks 1-4 can still run."""
         lg = lambda: open(os.path.join(c.I, 'dsload.log'), errors='replace').read()
         own = 'ui: templates from the title' in lg()
         check(f'0 loader kit ready in a world without a title window first ({c.x}: templates taken at the title by itself)', own,
-              f"dsload.dylib {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(M.DSLOAD)))}; a dsload before loader commit 713e363 needs a kit window at the title")
+              f"dsload.dylib {time.strftime('%Y-%m-%d %H:%M', time.localtime(os.path.getmtime(M.DSLOAD)))}; a dsload before loader commit 17f9be9 needs a kit window at the title")
         if not own:
             a = c.rig('mu_bring_open', max=1, sources=3); time.sleep(1.5); b = c.rig('mu_bring_close'); time.sleep(1)
             log(c.x, 'warm-up at the title: mu_bring_open', a, 'close', b, '| templates now', 'ui: templates from the title' in lg())

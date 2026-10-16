@@ -1,8 +1,8 @@
 # mpfix-ws: weapon slot host-only (v13 brief step 5), 2026-10-16
 
 ## What changed (branch mpfix-ws)
-- 288d4bb: re-applies 7909c11. The full-state check skips PlayerUnitsSaveData/QuickSlots (src/mp_game.c full_local).
-- b1ff30a: quick-slot index orders go by skill key (src/ord_core.c/.h, src/ord_game.c, ord_test).
+- 162d86a: re-applies f24ed79. The full-state check skips PlayerUnitsSaveData/QuickSlots (src/mp_game.c full_local).
+- 6d471dc: quick-slot index orders go by skill key (src/ord_core.c/.h, src/ord_game.c, ord_test).
   - ToggleAutoSkill / SetQuickSlot / UnsetQuickSlot / MoveQuickSlot get the flag ORD_EF_QSLOT. The order carries the
     issuer's skill key at Index (and at TargetIndex for Move) and one flag `qreg`.
   - Each copy finds the key in its own quick slots (MainFlow +0xC8 -> +0x48 -> +0x20 -> Dictionary<Guid, QuickSlotData>
@@ -42,7 +42,7 @@
   Before (lan_v12 dylib, 2026-10-15): same flip -> guest kept the flag ON -> full-state desync at step 10800.
 
 ## Follow-up 2026-10-16 (lead): verdict = the mod stays GAMEPLAY
-- Merged mpfix (979cbfa) into mpfix-ws. Flip run on build/merge_mpfix/dsrig.dylib (pair EF, full-state ON): 5.2 min,
+- Merged mpfix (c9dfbf1) into mpfix-ws. Flip run on build/merge_mpfix/dsrig.dylib (pair EF, full-state ON): 5.2 min,
   18 345 equal ticks, 0 / 0 desyncs, 1 full check OK, EmergencyEscape auto off / off on both units.
 - Equip test: ext/mpfix/tests/ws_equip_pair.py (host with the mod, stock guest, full-state ON, 6 min). Unit 477ad25a:
   host re-sets its slots 1-4 (Slay, DestructiveSplit, BladeGrinding, EmergencyEscape) with SetQuickSlotRequested, so
