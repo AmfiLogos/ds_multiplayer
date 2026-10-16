@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Shipped with MelonLoader by the DS loader (Plugins/): native mods keep il2cpp's own answer for stripped icalls. -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>DSMelonGuard</AssemblyName>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <MLDir Condition="'$(MLDir)' == ''">$(MSBuildThisFileDirectory)../../dl.noindex/ml073/x/MelonLoader</MLDir>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(MLDir)/net6/MelonLoader.dll" Private="false" />
+    <Reference Include="$(MLDir)/net6/0Harmony.dll" Private="false" />
+  </ItemGroup>
+</Project>
