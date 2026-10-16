@@ -1459,9 +1459,10 @@ static void test_multiproc(const char *self) {
 
 /* ---- latency proxy: forwards both ways, each chunk delayed base +- jitter, order kept ---- */
 typedef struct chunk { double due; size_t n; struct chunk *next; uint8_t b[]; } chunk;
-struct proxy { int lfd; uint16_t up; int base, jit; uint32_t rng; volatile int frozen; int loss_pct; int stalls; };
+struct proxy { int lfd; uint16_t up; int base, jit; uint32_t rng; volatile int frozen, deaf; int loss_pct; int stalls; };
 static int proxy_stalls(proxy *x) { return x->stalls; }
 static void proxy_freeze(proxy *x) { x->frozen = 1; }
+static void proxy_deaf(proxy *x) { x->deaf = 1; }   /* stops reading the server side: the guest still sends, gets nothing */
 static void *proxy_main(void *a) {
     proxy *x = a;
     int dn = accept(x->lfd, NULL, NULL);
@@ -1472,12 +1473,14 @@ static void *proxy_main(void *a) {
     int one = 1;
     setsockopt(dn, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
     setsockopt(upfd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
+    setsockopt(dn, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);      /* a deaf proxy writes into a socket the server closed */
+    setsockopt(upfd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof one);
     int fds[2] = { dn, upfd };
     chunk *head[2] = { 0 }, *tail[2] = { 0 };
     double last_due[2] = { 0 };
     for (;;) {
         if (x->frozen) { sleep_ms(5); continue; }      /* silent cut: nothing moves, no FIN/RST */
-        struct pollfd pf[2] = { { dn, POLLIN, 0 }, { upfd, POLLIN, 0 } };
+        struct pollfd pf[2] = { { dn, POLLIN, 0 }, { x->deaf ? -1 : upfd, POLLIN, 0 } };
         poll(pf, 2, 1);
         for (int d = 0; d < 2; d++) if (pf[d].revents) {
             uint8_t buf[65536];
@@ -1674,6 +1677,108 @@ static void test_spectator_nosave(void) {
     stop_all(ps, 3, srv);
     printf("%s spectator_nosave: no cached save -> 1 join point, no pause, every guest reloaded once, all equal (%.1fs)\n",
            ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
+}
+
+
+/* ---- F3: sockets that never send a HELLO fill every slot; the deadline frees them, then a real guest joins ---- */
+static int raw_connect(uint16_t port) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(port) };
+    a.sin_addr.s_addr = inet_addr("127.0.0.1");
+    if (connect(fd, (struct sockaddr *)&a, sizeof a)) { close(fd); return -1; }
+    return fd;
+}
+static int raw_closed(int fd) {        /* 1 once the server closed it (EOF or reset) */
+    struct pollfd pf = { fd, POLLIN, 0 };
+    if (poll(&pf, 1, 0) <= 0) return 0;
+    char b[256]; ssize_t r = recv(fd, b, sizeof b, MSG_DONTWAIT);
+    return r == 0 || (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK);
+}
+static void test_hello_deadline(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_set_hello_timeout_ms(1000);
+    dsnet_cfg cfg = test_cfg(1);
+    dsnet_server *srv = dsnet_server_start(&cfg);
+    uint16_t port = dsnet_server_port(srv);
+    dsnet_client *host = dsnet_client_connect_local(srv, "host");
+    CHECK(dsnet_wait_welcome(host, 2000) == 0, "host not welcomed");
+    /* a bad frame length is refused at its header, long before the deadline */
+    int bad = raw_connect(port); uint8_t h[4] = { 0xff, 0xff, 0xff, 0xff };
+    double tb = now_ms(); send(bad, h, 4, 0);
+    while (!raw_closed(bad) && now_ms() - tb < 900) sleep_ms(2);
+    double t_bad = now_ms() - tb;
+    CHECK(t_bad < 500, "bad length closed after %.0f ms", t_bad);
+    close(bad);
+    /* 63 silent sockets + the host's local link = all 64 slots */
+    int fds[63], n = 0;
+    double tf = now_ms();
+    for (int i = 0; i < 63; i++) { int fd = raw_connect(port); if (fd >= 0) fds[n++] = fd; }
+    CHECK(n == 63, "only %d raw connects", n);
+    sleep_ms(150);
+    dsnet_client *early = dsnet_client_connect_tcp("127.0.0.1", port, "early");
+    int r_early = early ? dsnet_wait_welcome(early, 300) : -9;
+    CHECK(r_early != 0, "a guest got in while every slot was taken");
+    if (early) dsnet_client_close(early);
+    CHECK(now_ms() - tf < 900, "slots-full check ran past the deadline (%.0f ms)", now_ms() - tf);
+    int closed = 0; double t_all = 0;
+    while (now_ms() - tf < 4000 && closed < n) {
+        closed = 0; for (int i = 0; i < n; i++) closed += raw_closed(fds[i]) || fds[i] < 0;
+        sleep_ms(10);
+    }
+    t_all = now_ms() - tf;
+    for (int i = 0; i < n; i++) close(fds[i]);
+    CHECK(closed == n && t_all >= 950 && t_all < 2500, "%d of %d silent sockets closed, last after %.0f ms (deadline 1000)", closed, n, t_all);
+    dsnet_client *late = dsnet_client_connect_tcp("127.0.0.1", port, "late");
+    CHECK(late && dsnet_wait_welcome(late, 2000) == 0, "a real guest could not join after the deadline");
+    sleep_ms(1300);                    /* past the deadline again: welcomed players and the local host stay */
+    CHECK(!dsnet_is_disconnected(host) && late && !dsnet_is_disconnected(late), "a welcomed player was cut by the HELLO deadline");
+    dsnet_server_stats st; dsnet_server_get_stats(srv, &st);
+    CHECK(st.players == 2, "server counts %d players", st.players);
+    if (late) dsnet_client_close(late);
+    dsnet_client_close(host);
+    dsnet_server_stop(srv);
+    dsnet_set_hello_timeout_ms(10000);
+    printf("%s hello_deadline: bad length closed in %.0f ms; 63 silent sockets + host filled 64 slots, guest refused; all closed after %.0f ms (limit 1000), then a guest joined; host + guest kept (%.1fs)\n",
+           ok ? "PASS" : "FAIL", t_bad, t_all, (now_ms() - t0) / 1000);
+}
+
+/* ---- F4: a guest that keeps sending but stops reading is cut by the send stall limit; the others play on ---- */
+static void test_tx_stall(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_set_rx_timeout_ms(0);              /* the deaf guest's own silence cut must not be what ends it */
+    dsnet_set_tx_stall_ms(1000);
+    dsnet_cfg cfg = test_cfg(3);
+    dsnet_server *srv; peer *ps[4];
+    int lat[3] = { 0, 0, 1 }, jit[3] = { 0, 0, 0 };
+    if (setup_cfg(&srv, ps, 3, 700, lat, jit, &cfg)) { printf("  FAIL setup\n"); failures++; return; }
+    proxy *px = last_proxy;
+    ps[0]->save_pad = 4u << 20;              /* the join point sends 4 MB to every guest: more than the socket buffers */
+    for (int i = 0; i < 3; i++) { ps[i]->orders_every = 5; peer_go(ps[i]); }
+    while (ps[0]->timer < 100) sleep_ms(2);
+    proxy_deaf(px);
+    ps[2]->stop = 1; pthread_join(ps[2]->th, NULL);   /* its steps stop; its net thread keeps sending keep-alives */
+    while (ps[0]->timer < 150 && now_ms() - t0 < 10000) sleep_ms(2);
+    double tj = now_ms();
+    ps[3] = peer_new("late", dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "late"), 700);
+    CHECK(dsnet_wait_welcome(ps[3]->c, 2000) == 0, "no welcome");
+    ps[3]->orders_every = 5; peer_go(ps[3]);
+    double t_cut = 0;
+    while (now_ms() - tj < 8000 && !t_cut) { if (!(dsnet_present_mask(ps[0]->c) & 4)) t_cut = now_ms() - tj; sleep_ms(5); }
+    peer *live[3] = { ps[0], ps[1], ps[3] };
+    CHECK(t_cut > 0 && t_cut < 4000, "deaf guest not cut (%.0f ms)", t_cut);
+    CHECK(wait_done(live, 3, 25000) == 0, "host / c1 / late did not go on");
+    CHECK(ps[3]->loads >= 1 && !ps[3]->save_bad, "late joiner loads %d bad %d", ps[3]->loads, ps[3]->save_bad);
+    int common;
+    CHECK(compare(ps[0], ps[1], &common) && common > 650, "c1 diverged");
+    CHECK(compare(ps[0], ps[3], &common) && common > 300, "late joiner diverged (%d common)", common);
+    for (int i = 0; i < 4; i++) if (i != 2) { ps[i]->stop = 1; pthread_join(ps[i]->th, NULL); }
+    for (int i = 0; i < 4; i++) { dsnet_client_close(ps[i]->c); }
+    dsnet_server_stop(srv);
+    for (int i = 0; i < 4; i++) free(ps[i]);
+    dsnet_set_tx_stall_ms(10000);
+    dsnet_set_rx_timeout_ms(5000);
+    printf("%s tx_stall: guest stopped reading at step 100, 4 MB join save queued for it -> cut %.0f ms after the join (limit 1000), host / c1 / late joiner ran to 700, equal (%.1fs)\n",
+           ok ? "PASS" : "FAIL", t_cut, (now_ms() - t0) / 1000);
 }
 
 static void test_chat(void) {
@@ -2129,6 +2234,8 @@ int main(int argc, char **argv) {
     RUN("prestart", test_prestart_save());
     RUN("silentcut", test_silent_cut());
     RUN("bye", test_bye());
+    RUN("hello_deadline", test_hello_deadline());
+    RUN("tx_stall", test_tx_stall());
     RUN("identity", test_identity());
     RUN("hold", test_hold());
     RUN("ownersplit", test_owner_split());
