@@ -204,6 +204,8 @@ def main():
     os.makedirs(os.path.join(DATA, 'Saves'), exist_ok=True)
     import shutil; shutil.copy(seed, os.path.join(DATA, 'Saves', os.path.basename(seed)))   # one normal world in the lists
     extra = {'DSMP_UNITS_LIB': LIB}
+    if 'solo' in PH:
+        return solo(extra)
     with Copy(['multiplayer', 'custom-modes', 'units-driver'], OUT, extra=extra, lane='fights') as c:
         st = c.wait_title()
         home = go_home(c)
@@ -224,6 +226,16 @@ def main():
             c.click('gallery:f.kind1', wait=0.5)
             g = wait(lambda: (lambda s: s if s.get('gal', {}).get('items', 0) > 0 and not s['gal'].get('loading') else None)(fstate(c)), 'gallery units', 60, 2)
             C('Gallery Units tab loads', g, json.dumps((g or {}).get('gal'))[:200])
+            c.click('gallery:more', wait=0.5)
+            m = wait(lambda: (lambda s: s if s.get('gal', {}).get('items', 0) > 24 and not s['gal'].get('loading') else None)(fstate(c)), 'show more', 60, 2)
+            C('Gallery Show more adds the next page', m, json.dumps((m or fstate(c)).get('gal', {}).get('items')))
+            set_value(c, 'gallery:f.race', 2); time.sleep(0.5)
+            f2 = wait(lambda: (lambda s: s if not s.get('gal', {}).get('loading') else None)(fstate(c)), 'race filter', 60, 2)
+            C('Gallery race filter answers (items or the wiki empty text)', f2 and (f2['gal']['items'] > 0 or 'No public builds' in f2['gal']['status']),
+              f"{(f2 or {}).get('gal', {}).get('items')} {(f2 or {}).get('gal', {}).get('status')}")
+            c.cap('p3b_gallery_filtered')
+            set_value(c, 'gallery:f.race', 0); time.sleep(0.5)
+            wait(lambda: (lambda s: s if not s.get('gal', {}).get('loading') and s['gal']['items'] else None)(fstate(c)), 'race any', 60, 2)
             c.click('gallery:c0.test', wait=0.5)
             f = wait(lambda: (lambda s: s if 'fights' in s.get('windows', '') and s.get('tf', {}).get('src') == 1 else None)(fstate(c)), 'fights from gallery', 120, 2)
             C('Test Fight from the Gallery opens Test Fights with that build', f, json.dumps((f or fstate(c)).get('tf'))[:300])
@@ -278,6 +290,33 @@ def main():
                 c.cap('p10_dps')
                 g, names = test_names_now(); SEEN_G.update(g); LAST_DISP.update(test_display_names())
                 load_list_check(c, 'DPS Check', names + g)
+        C('no guard violation (never on screen)', not c.violations, json.dumps(c.violations)[:300])
+    return C.save()
+
+
+def solo(extra):
+    """Custom Modes without multiplayer (no rig socket): the page, Gallery, Test Fights, a test world loads (player.log)"""
+    with Copy(['custom-modes', 'units-driver'], OUT, extra=extra, lane='fights') as c:
+        c.wait_title()
+        btns = go_home(c).get('buttons', '')
+        C('solo: page lists Gallery and Test Fights', 'Gallery' in btns and 'Test Fights' in btns, btns)
+        c.click('home:Gallery', wait=1.0)
+        g = wait(lambda: (lambda s: s if s.get('gal', {}).get('items', 0) > 0 else None)(fstate(c)), 'gallery items', 60, 2)
+        C('solo: Gallery shows live builds', g)
+        c.click('gallery:c0.save', wait=0.5)
+        s1 = wait(lambda: (lambda s: s if 'Saved to My Units' in s.get('gal', {}).get('status', '') else None)(fstate(c)), 'save', 30)
+        C('solo: Save to My Units', s1)
+        cm(c, cmd='close', win='gallery'); time.sleep(0.5)
+        c.click('home:Test Fights', wait=1.0); engine_ready(c)
+        c.click('fights:l.src0', wait=0.8); c.click('fights:l.team0', wait=0.8)
+        set_value(c, 'fights:r.mode', 1); time.sleep(0.5)
+        pl = os.path.join(I, 'player.log'); n0 = len(open(pl, errors='ignore').read())
+        c.click('fights:start', wait=0.5)
+        ok = wait(lambda: 'Load campaign start' in open(pl, errors='ignore').read()[n0:] or None, 'solo load', 120, 2)
+        time.sleep(8)
+        tail = open(pl, errors='ignore').read()[n0:]
+        C('solo: Boss fight test world loads (player.log)', ok and 'Load request cancelled' not in tail, tail[-300:].replace('\n', ' | '))
+        c.cap('solo_world')
         C('no guard violation (never on screen)', not c.violations, json.dumps(c.violations)[:300])
     return C.save()
 

@@ -28,3 +28,56 @@ Proof 2026-10-16 (all green):
 | gal_names.sh (178 live items, 780 names) | identical to teamname.js |
 | build.sh (Mac arm64, solo dylib link) | ok |
 | build.sh win (llvm-mingw, every listed file) | ok |
+
+Merge point for slot 3 (step 1 alone): branch `fights13-step1` (80355ae). Branch `fights13` goes on with the game part,
+which needs lane units' custom/home (cm_home.h) and custom/units (myunits.h, wk_link.h): it merges after units full.
+
+## Steps 2-4: Gallery and Test Fights in the game (2026-10-16)
+
+Files (all in custom/fights, custom/gallery):
+
+| File | What |
+|---|---|
+| fights/cm_win.{c,h} | game-style window on the loader kit (dim backdrop, centred panel like the Mods window, Cinzel title, X / Esc); frame tick = hook on InputDispatcher.Update (by name; multiplayer does not hook it); the game's folders (Application.persistentDataPath, SaveLoadHelper.GetSaveDirectory); LoadCampaignRequested through MainFlow's EventQueue (the InputDispatcher's _eventQueue); after we change Saves: CampaignSaveLoader.TryRefreshSave + TitleMenuPresenter.RefreshSaveState; test channel (cmf_test via lane units' driver "call", targets fights:<name>, gallery:<name>) |
+| fights/cm_work.{c,h} | one worker thread (8 MB stack): wiki downloads, the QuickJS engine, sg_generate; results back on the main thread |
+| fights/tf_ui.c, tf.h | Test Fights window: Squad (My Units: teams + units, max = panel maxSquad; or a Gallery build), What do you want (DPS Check / Boss fight / Custom fight), Which fight / room, Magic Saturation (Abyss), monsters (search + How many + Remove), Difficulty (Combat, Management follows unless ticked), Battle kits + carry inscription, Start. Texts = the wiki panel's (builder.js renderSaveGen). `cm_fights_init` registers "Test Fights" (order 40) |
+| fights/tf_worlds.{c,h} | test worlds: <persistentDataPath>/Mods/custom-modes/test_worlds.json (campaign GUIDs), load-list filter (title Load list, New Campaign, multiplayer host list), removal on the title |
+| gallery/gal_ui.c | Gallery window: Teams / Units, Most popular / Newest, Complete only, Races, Weapon trees, cards (title, author, opens / copies / likes, members with level + trees), Save to My Units, Test Fight, Show more. Texts = the gallery page's (site/builds C.UI). `cm_gallery_init` registers "Gallery" (order 30) |
+
+Decisions (safe defaults, no owner question needed):
+- Links go through lane units' decoder (wk_link, the one rule for old links). Save to My Units: a team = mu_add_team from
+  the wk_link decode; a character = mu_add_build with its stored build JSON ("b:" blob). Test Fight from the Gallery
+  uses the wiki's own decoder (sg_decode_blob) for the squad, after wk_link said yes: for the 6 team blobs both give the
+  same builds; for the 6 single characters wk_json drops fields the stored JSON has (setWeapon, shelf, stackLv, tag values
+  rounded, names cut at 64), so the wiki decoder is the one that matches the wiki's "Test this team"
+  (ext/fights13/test/wk_vs_wiki.c). Told nobody else: only matters inside this lane.
+- The wiki's scripts are asked again after 6 h (offline: the cached copy). A wiki build tag that differs from the game
+  build shows a message and Start stays off.
+- Test worlds are removed when the title shows again (the game's own delete is off in this build:
+  CampaignSaveDeletionService.IsAvailable is `mov w0,#0; ret`). Without that the title's Continue pointed at the test
+  world (found in run8). To fight again: Start again (2.6 s).
+- No hover cards on the page entries (tip NULL), as the owner's v12-1 rule for title buttons.
+
+Game facts found:
+- A save written by a mod is not loadable until the game's save list knows it ("Save header was not found during load
+  preflight"): CampaignSaveLoader.TryRefreshSave first.
+- loader data_dir() is the folder of the profile file (test copies: the instance folder), not always <game data>/Mods:
+  use the game's own Application.persistentDataPath / SaveLoadHelper.GetSaveDirectory.
+- rig `set_speed 3` freezes the sim (tick stops); tests use 2.
+- The kit refuses widgets over 1024 live: a gallery card is 5 widgets.
+- The main build's multiplayer host list shows only multiplayer worlds (no toggle), so the seed world is hidden there too.
+
+Test: copy O (~/ds_launcher/loader/test_env/instances/O, make_instance.sh O), ext/fights13/test/cmrig.py (lane units'
+cmrig, copy O), tf_test.py, build ext/fights13/tools/build_game.sh (tree = units13 + this worktree). Every run leased a
+pair, hidden window off-screen, muted; no guard violation in any run after run2.
+
+| Run (out/) | Result |
+|---|---|
+| run14 gallery + boss | 22 PASS 0 FAIL: page Gallery then Test Fights; live builds; team saved to My Units; Units tab; Show more 48; Races filter; Test Fight from Gallery; engine ready; Boss Golem with the My Units team loads in 2.6 s, 4 units + golem, golem HP 18000 -> 17508 after a move order; test world saves removed on the title; Continue = the player's own world; absent from Load list and MP host list |
+| run15 arena + dps | 17 PASS 0 FAIL: Arena (Abyss Acid Slogel x3) HP 2000 -> 1586; DPS Check loads, world runs |
+| run16 solo (no multiplayer) | 5 PASS 0 FAIL: page, Gallery, Save to My Units, Boss fight loads (player.log) |
+| run6 | filter proof while a test world still existed: title Load list shows only the seed ("Autosave 0"), dsload "1 hidden by filters" |
+| Windows | every listed file compiles with llvm-mingw, no warning (not run on Windows) |
+
+Open: guard kill in run2 (01:08:51, a 305x190 window of the copy at x 40, y 742) came while the game sat in a cancelled
+load (before the TryRefreshSave fix); not seen again in 14 later runs.
