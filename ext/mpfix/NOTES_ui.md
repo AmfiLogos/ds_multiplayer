@@ -64,3 +64,22 @@ changes it.
 
 - Instance A's data has old expedition results: their window covers the lobby. tip_pos / menu_pair press "Later" first.
 - The card for a column button now sits over the left part of the Recent Worlds panel (right of the column, as asked).
+
+## 5. register_host_choice2 + host_choice_now (MPF API for lane fepvp, commit dd268a2)
+
+- mp_api.h: `mp_host_choice` and two table fields appended after register_menu (MP_API_VERSION 1 unchanged; check size).
+- Registry in mpmenu_model.c (`mpm_choices`, unit-tested): up to 4, registration order, same id = replace in place (also
+  across the two APIs), 5th refused, v2 texts over id 31 / label 47 / tip 299 bytes refused (old API: cut, as before).
+- Buttons: choice 1 = MPB_HOST_FE (123), 2..4 = MPB_HOST_C1..C3 (124..126), under "Host a game" after "New save"; stock
+  row size (stock gap). Host page Start of a v2 choice = MPB_HOST_START (127), red primary style.
+- v2 host page: header "Host: <label>", Your name, Start + Back (no Load save / New campaign). draw_page set: box where the
+  Rules panel sits, `panel` = an empty RectTransform (new GameObject + RectTransform, 12 units inside the box), called
+  every frame while the page shows, draw_page(NULL) once when it closes (Back, Start -> loading, scene change).
+  draw_page NULL: M.set.fe = 1 and the Expedition Rules panel open without Done (custom fe_menu's fe_host_mode sees fe = 1).
+- Start: page_start(err) -> 0: HOST_LOADING -> (campaign ready) LOBBY + MPA_HOST_START, as Your save; != 0: err in the
+  page's INFO line. Lobby Start: lobby_start(err) -> 0: PLAYING + LOBBY_HIDE + START_GAME; != 0: ui_notice(err).
+- host_choice_now: id from the host page to the end of that session (cleared on Back / IDLE / title pages).
+- Old register_host_choice: one choice per id; its page and lobby Start (MPA_FE_START -> on_start of the choice this
+  session came from, else the first old one with on_start) unchanged. The src fallback FE registration stays.
+- Test: `mpm_testchoice {action: register|set|status, id, label, tip, draw, save, page_err, lobby_err}`;
+  ext/mpfix/tests/choice2_pair.py (8 checks); lease_wait.py takes a lease before a test on a busy machine.
