@@ -105,7 +105,7 @@ export	il2cpp_gchandle_free	0x6f95e4	0x45ce60	ok		src/mp_fog.c:43,src/mpmenu_kit
 export	il2cpp_object_get_class	0x6f96c0	0x48a740	ok		src/mpmenu.c:31,src/mpmenu.c:54,src/ui_game.c:212,src/ui_game.c:26,src/ui_teams.c:42,src/ui_teams.c:59,+1
 export	il2cpp_object_new	0x6f96cc	0x49ddf0	ok		src/mpmenu.c:722,src/ord_game.c:77,src/ord_test/OFFSETS.md:143,src/ord_test/ord_smoke.c:64,src/ui_game.c:1452,src/ui_game.c:1485,+3
 export	il2cpp_runtime_invoke	0x6f971c	0x49dee0	ok		src/ord_game.c:82,src/ord_test/OFFSETS.md:148
-export	il2cpp_string_new	0x6f9738	0x49e320	ok		custom/fe/fe_hub.c:123,custom/pvp/pvp_game.c:593,src/UI_NOTES.md:113,src/mp_game.c:1247,src/mpmenu_kit.h:17,src/ord_game.c:78,+7
+export	il2cpp_string_new	0x6f9738	0x49e320	ok		custom/fe/fe_hub.c:123,custom/pvp/pvp_game.c:593,src/UI_NOTES.md:113,src/mp_game.c:1253,src/mpmenu_kit.h:17,src/ord_game.c:78,+7
 export	il2cpp_type_get_object	0x6f97ac	0x49e560	ok		custom/pvp/pvp_ui.c:194,custom/pvp/pvp_ui.c:534,src/mp_game.c:854,src/mpmenu.c:1063,src/mpmenu.c:113,src/mpmenu.c:156,+11
 internal	il2cpp internal	0x6fb6fc	0x443af0	ok-vote	149/150 caller twins agree	research/PLAN_V13.md:42,src/rig_cmd.c:27
 internal	il2cpp internal	0x6fb9c4	0x443d40	ok-vote	150/150 caller twins agree	src/rig_cmd.c:30
@@ -822,7 +822,7 @@ method	Refactor.InMapDataInterface$$GetCenterOfWorldOccupies	0xfc9a18	0xccd860	o
 method	Refactor.CampaignSaveHelper$$RequestAutoSave	0xfca3c0	0xcc87d0	ok		research/transitions_design.md:174,research/transitions_design.md:175,research/transitions_design.md:95,src/TRN_NOTES.md:32,src/trn_game.c:34
 method	Refactor.CampaignSaveHelper$$StartAutoSave	0xfca970	0xcc9810	ok		research/transitions_design.md:94
 method	Refactor.CampaignSaveHelper$$IsAutoSaveTimingSafe	0xfcac00	0xcc83c0	ok		research/transitions_design.md:95
-method	Refactor.CampaignSaveHelper$$SaveAutoSaveFile	0xfcb300	0xcc92d0	ok		research/transitions_design.md:96,src/mp_game.c:1018,src/mp_game.c:1245
+method	Refactor.CampaignSaveHelper$$SaveAutoSaveFile	0xfcb300	0xcc92d0	ok		research/transitions_design.md:96,src/mp_game.c:1024,src/mp_game.c:1251
 method	Refactor.CampaignSaveHelper$$GetCurrentAutoSaveCapacity	0xfcb670	0xcc8070	ok		src/MPMENU_NOTES.md:63
 method	Refactor.CampaignSaveHelper.<ProcessPendingAutoSave>d__50$$MoveNext	0xfcce18	0xce4560	ok		research/transitions_design.md:95,src/TRN_NOTES.md:32,src/trn_game.c:36
 method	Refactor.CampaignSaveHelper.<StartAutoSave>d__53$$MoveNext	0xfcd068	0xce4e30	ok		research/transitions_design.md:143,research/transitions_design.md:175,research/transitions_design.md:94,src/TRN_NOTES.md:32,src/trn_game.c:35
@@ -1880,6 +1880,10 @@ field	ClipperOffset.Group.lowestPathIdx	0x24	0x24	ok
 field	ClipperOffset.Group.pathsReversed	0x20	0x20	ok		
 field	CommandEvent.Command.value__	0x0	0x0	ok		
 field	CommandEvent.Type.value__	0x0	0x0	ok		
+field	ConcurrentDictionary.Node<TKey,._hashcode	0x0	0x0	ok		
+field	ConcurrentDictionary.Node<TKey,._key	0x0	0x0	ok		
+field	ConcurrentDictionary.Node<TKey,._next	0x0	0x0	ok		
+field	ConcurrentDictionary.Node<TKey,._value	0x0	0x0	ok		
 field	ConcurrentDictionary.Tables<TKey,._buckets	0x0	0x0	ok		
 field	ConcurrentDictionary.Tables<TKey,._countPerLock	0x0	0x0	ok		
 field	ConcurrentDictionary.Tables<TKey,._locks	0x0	0x0	ok		
@@ -2095,6 +2099,9 @@ field	DeflateManager.Config.MaxChainLength	0x1c	0x1c	ok
 field	DeflateManager.Config.MaxLazy	0x14	0x14	ok		
 field	DeflateManager.Config.NiceLength	0x18	0x18	ok		
 field	DeflateManager.Config.static:Table	0x0	0x0	ok		
+field	Dict.Node<TValue>._key	0x0	0x0	ok		
+field	Dict.Node<TValue>._next	0x0	0x0	ok		
+field	Dict.Node<TValue>._prev	0x0	0x0	ok		
 field	Dictionary.Entry<TKey,.hashCode	0x0	0x0	ok		
 field	Dictionary.Entry<TKey,.key	0x0	0x0	ok		
 field	Dictionary.Entry<TKey,.next	0x0	0x0	ok		
@@ -2237,6 +2244,14 @@ field	GPUSort.Args.maxDepth	0x4	0x4	ok
 field	GPUSort.Args.resources	0x18	0x18	ok		
 field	GPUSort.Args.workGroupCount	0x28	0x28	ok		
 field	GUILayoutOption.Type.value__	0x0	0x0	ok		
+field	GeneratorPlanner.Node<TLayout,.<Children>k__BackingField	0x0	0x0	ok		
+field	GeneratorPlanner.Node<TLayout,.<Depth>k__BackingField	0x0	0x0	ok		
+field	GeneratorPlanner.Node<TLayout,.<Id>k__BackingField	0x0	0x0	ok		
+field	GeneratorPlanner.Node<TLayout,.<IsFinished>k__BackingField	0x0	0x0	ok		
+field	GeneratorPlanner.Node<TLayout,.<IterationsGeneratingChildren>k__BackingField	0x0	0x0	ok		
+field	GeneratorPlanner.Node<TLayout,.<IterationsToGenerate>k__BackingField	0x0	0x0	ok		
+field	GeneratorPlanner.Node<TLayout,.<Parent>k__BackingField	0x0	0x0	ok		
+field	GeneratorPlanner.Node<TLayout,.enumerator	0x0	0x0	ok		
 field	Google.Apis.Sheets.v4.Data.GridData.<ColumnMetadata>k__BackingField	0x10	0x10	ok		
 field	Google.Apis.Sheets.v4.Data.GridData.<ETag>k__BackingField	0x38	0x38	ok		
 field	Google.Apis.Sheets.v4.Data.GridData.<RowData>k__BackingField	0x18	0x18	ok		
@@ -2462,6 +2477,13 @@ field	ImmutableList.Enumerator<T>._root	0x0	0x0	ok
 field	ImmutableList.Enumerator<T>._stack	0x0	0x0	ok		
 field	ImmutableList.Enumerator<T>._startIndex	0x0	0x0	ok		
 field	ImmutableList.Enumerator<T>.static:s_EnumeratingStacks	0x0	0x0	ok		
+field	ImmutableList.Node<T>._count	0x0	0x0	ok		
+field	ImmutableList.Node<T>._frozen	0x0	0x0	ok		
+field	ImmutableList.Node<T>._height	0x0	0x0	ok		
+field	ImmutableList.Node<T>._key	0x0	0x0	ok		
+field	ImmutableList.Node<T>._left	0x0	0x0	ok		
+field	ImmutableList.Node<T>._right	0x0	0x0	ok		
+field	ImmutableList.Node<T>.static:EmptyNode	0x0	0x0	ok		
 field	ImmutableQueue.Enumerator<T>._originalQueue	0x0	0x0	ok		
 field	ImmutableQueue.Enumerator<T>._remainingBackwardsStack	0x0	0x0	ok		
 field	ImmutableQueue.Enumerator<T>._remainingForwardsStack	0x0	0x0	ok		
@@ -2479,6 +2501,13 @@ field	ImmutableSortedDictionary.Enumerator<TKey,._poolUserId	0x0	0x0	ok
 field	ImmutableSortedDictionary.Enumerator<TKey,._root	0x0	0x0	ok		
 field	ImmutableSortedDictionary.Enumerator<TKey,._stack	0x0	0x0	ok		
 field	ImmutableSortedDictionary.Enumerator<TKey,.static:s_enumeratingStacks	0x0	0x0	ok		
+field	ImmutableSortedDictionary.Node<TKey,._frozen	0x0	0x0	ok		
+field	ImmutableSortedDictionary.Node<TKey,._height	0x0	0x0	ok		
+field	ImmutableSortedDictionary.Node<TKey,._key	0x0	0x0	ok		
+field	ImmutableSortedDictionary.Node<TKey,._left	0x0	0x0	ok		
+field	ImmutableSortedDictionary.Node<TKey,._right	0x0	0x0	ok		
+field	ImmutableSortedDictionary.Node<TKey,._value	0x0	0x0	ok		
+field	ImmutableSortedDictionary.Node<TKey,.static:EmptyNode	0x0	0x0	ok		
 field	ImmutableSortedSet.Builder<T>._comparer	0x0	0x0	ok		
 field	ImmutableSortedSet.Builder<T>._immutable	0x0	0x0	ok		
 field	ImmutableSortedSet.Builder<T>._root	0x0	0x0	ok		
@@ -2492,6 +2521,13 @@ field	ImmutableSortedSet.Enumerator<T>._reverse	0x0	0x0	ok
 field	ImmutableSortedSet.Enumerator<T>._root	0x0	0x0	ok		
 field	ImmutableSortedSet.Enumerator<T>._stack	0x0	0x0	ok		
 field	ImmutableSortedSet.Enumerator<T>.static:s_enumeratingStacks	0x0	0x0	ok		
+field	ImmutableSortedSet.Node<T>._count	0x0	0x0	ok		
+field	ImmutableSortedSet.Node<T>._frozen	0x0	0x0	ok		
+field	ImmutableSortedSet.Node<T>._height	0x0	0x0	ok		
+field	ImmutableSortedSet.Node<T>._key	0x0	0x0	ok		
+field	ImmutableSortedSet.Node<T>._left	0x0	0x0	ok		
+field	ImmutableSortedSet.Node<T>._right	0x0	0x0	ok		
+field	ImmutableSortedSet.Node<T>.static:EmptyNode	0x0	0x0	ok		
 field	ImmutableStack.Enumerator<T>._originalStack	0x0	0x0	ok		
 field	ImmutableStack.Enumerator<T>._remainingStack	0x0	0x0	ok		
 field	IncludeAdditionalRPAssets.Version.value__	0x0	0x0	ok		
@@ -2814,6 +2850,10 @@ field	Pathfinding.Util.Guid.static:zeroString	0x10	0x10	ok
 field	PerformanceAnalyzer.Split.<End>k__BackingField	0x20	0x20	ok		
 field	PerformanceAnalyzer.Split.<Name>k__BackingField	0x10	0x10	ok		
 field	PerformanceAnalyzer.Split.<Start>k__BackingField	0x18	0x18	ok		
+field	PointKDTree.Node.count	0xc	0xc	ok		
+field	PointKDTree.Node.data	0x0	0x0	ok		
+field	PointKDTree.Node.split	0x8	0x8	ok		
+field	PointKDTree.Node.splitAxis	0xe	0xe	ok		
 field	PointerEvent.Button.value__	0x0	0x0	ok		
 field	PointerEvent.Type.value__	0x0	0x0	ok		
 field	ProbeAdjustmentVolume.Mode.value__	0x0	0x0	ok		
@@ -2848,6 +2888,18 @@ field	Queue.Enumerator<T>._currentElement	0x0	0x0	ok
 field	Queue.Enumerator<T>._index	0x0	0x0	ok		
 field	Queue.Enumerator<T>._q	0x0	0x0	ok		
 field	Queue.Enumerator<T>._version	0x0	0x0	ok		
+field	RBTree.Node<K>._keyOfNode	0x0	0x0	ok		
+field	RBTree.Node<K>._leftId	0x0	0x0	ok		
+field	RBTree.Node<K>._nextId	0x0	0x0	ok		
+field	RBTree.Node<K>._nodeColor	0x0	0x0	ok		
+field	RBTree.Node<K>._parentId	0x0	0x0	ok		
+field	RBTree.Node<K>._rightId	0x0	0x0	ok		
+field	RBTree.Node<K>._selfId	0x0	0x0	ok		
+field	RBTree.Node<K>._subTreeSize	0x0	0x0	ok		
+field	RVOQuadtree.Node.child00	0x0	0x0	ok		
+field	RVOQuadtree.Node.count	0x10	0x10	ok		
+field	RVOQuadtree.Node.linkedList	0x8	0x8	ok		
+field	RVOQuadtree.Node.maxSpeed	0x14	0x14	ok		
 field	Random.State.s0	0x0	0x0	ok		
 field	Random.State.s1	0x4	0x4	ok		
 field	Random.State.s2	0x8	0x8	ok		
@@ -6585,6 +6637,10 @@ field	SortedSet.Enumerator<T>._stack	0x0	0x0	ok
 field	SortedSet.Enumerator<T>._tree	0x0	0x0	ok		
 field	SortedSet.Enumerator<T>._version	0x0	0x0	ok		
 field	SortedSet.Enumerator<T>.static:s_dummyNode	0x0	0x0	ok		
+field	SortedSet.Node<T>.<Color>k__BackingField	0x0	0x0	ok		
+field	SortedSet.Node<T>.<Item>k__BackingField	0x0	0x0	ok		
+field	SortedSet.Node<T>.<Left>k__BackingField	0x0	0x0	ok		
+field	SortedSet.Node<T>.<Right>k__BackingField	0x0	0x0	ok		
 field	Span.Enumerator<T>._index	0x0	0x0	ok		
 field	Span.Enumerator<T>._span	0x0	0x0	ok		
 field	Stack.Enumerator<T>._currentElement	0x0	0x0	ok		
