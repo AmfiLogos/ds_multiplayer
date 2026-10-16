@@ -15,6 +15,8 @@ if not lease: sys.exit('no lease')
 try:
     sys.argv = ['l1_bie_test.py', sys.argv[1]]
     import l1_bie_test
+    l1_bie_test.ENV['DSML_BEPINEX_SCRIPT'] = os.path.expanduser('~/ds_launcher_melon/app/bepinex/install_bepinex.sh')   # this branch's pin
+    print('installer', l1_bie_test.ENV['DSML_BEPINEX_SCRIPT'], flush=True)
     l1_bie_test.main()
 finally:
     subprocess.run([sys.executable, RIG, 'release', lease, 'melon'])
