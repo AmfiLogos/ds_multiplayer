@@ -81,6 +81,7 @@ static Obj combat_of(int map) {
     Obj h = rd ? AT(rd, 0x60, Obj) : NULL;
     return h ? h : (map >= 0 && map < MAXMAPS ? handler_of[map] : NULL);
 }
+Obj pvp_runtime_map(int map) { Obj h = combat_of(map); return h ? AT(h, 0x10, Obj) : NULL; }   /* CombatDataHandler._runtimeData (fe/fe_hub.c) */
 static Obj hed_of(Obj h, const uint8_t g16[16]) { return h ? dict_guid_get(AT(h, 0x30, Obj), g16) : NULL; }
 
 static void add_hostile(Obj hed, const uint8_t who[16], uint64_t pos) {

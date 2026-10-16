@@ -401,9 +401,42 @@ static int few_escape(void) {
     rig_log("mpmenu: Escape closed the Foreign Expedition window");
     return MPB_FE_CANCEL;
 }
+#if __has_include("mu_bring.h") && __has_include("myunits.h")
+/* Bring Units = lane units' window (tabs "From a save" / "My Units", Compact Plus cards); the picks go to the host in one send */
+#include "mu_bring.h"
+int fe_bring_picks(const mu_pick *picks, int n, char *err, size_t errn);
+void ui_notice(const char *text) __attribute__((weak_import));
+static mu_pick fe_last_picks[8]; static int fe_nlast;
+static int fe_bring_saves(mu_save_ref *out, int max, void *ud) {   /* this player's saves of the hub's game version */
+    (void)ud; fe_save_info si[64]; fe_mode_info m; fe_mode_get(&m);
+    int n = fe_list_saves(si, 64), k = 0;
+    for (int i = 0; i < n && k < max; i++) {
+        if (!si[i].ok || (m.version[0] && strcmp(si[i].version, m.version))) continue;
+        snprintf(out[k].path, sizeof out[k].path, "%s", si[i].path); snprintf(out[k].name, sizeof out[k].name, "%s", si[i].clan);
+        snprintf(out[k].when, sizeof out[k].when, "Day %d", si[i].day); k++;
+    }
+    return k;
+}
+static void fe_bring_done(const mu_pick *picks, int n, void *ud) {
+    (void)ud; if (n < 0) return;
+    char err[300] = "";
+    if (fe_bring_picks(picks, n, err, sizeof err)) { rig_log("fe: Bring Units: %s", err); if (ui_notice) ui_notice(err); return; }
+    fe_nlast = n < 8 ? n : 8; memcpy(fe_last_picks, picks, sizeof picks[0] * (size_t)fe_nlast);
+    rig_log("fe: Bring Units: %d unit(s) sent", n);
+}
+static int fe_bring_open(void) {
+    fe_mode_info m; fe_mode_get(&m); char sub[400]; few_rules_line(&m, sub, sizeof sub);
+    mu_bring_req r = { .title = "Bring Units", .subtitle = sub, .max_units = m.units > 0 ? m.units : 3, .sources = MU_SRC_SAVE | MU_SRC_LIBRARY,
+                       .ticked = fe_last_picks, .nticked = fe_nlast, .list_saves = fe_bring_saves, .done = fe_bring_done };
+    return mu_bring_open(&r);
+}
+#else
+/* TODO(fepvp13): Bring Units = lane units' mu_bring (custom/units/mu_bring.h) once it is on main; until then this window */
+static int fe_bring_open(void) { return -1; }
+#endif
 static void few_action(int a) {
     fe_mode_info fm;
-    if ((a & MPA_FE_BRING) && fe_mode_get(&fm)) few_open(FEW_BRING, NULL);   /* an expedition lobby (PvP v1 has its own) */
+    if ((a & MPA_FE_BRING) && fe_mode_get(&fm) && fe_bring_open()) few_open(FEW_BRING, NULL);   /* an expedition lobby (PvP v1 has its own) */
     if (a & MPA_FE_RESULTS) few_open(FEW_LIST, NULL);
 }
 static int few_lobby_bring(void) { fe_mode_info fm; return fe_mode_get(&fm) && W.mode == FEW_NONE; }

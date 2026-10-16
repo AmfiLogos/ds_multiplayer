@@ -306,6 +306,8 @@ static int br_click(int k);
 static void pvp_v1_to_title(void) {
     void (*leave)(void) = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_leave_to_title");
     if (leave) leave();
+    void pvp_v1_forget_world(void);
+    pvp_v1_forget_world();                                                /* host: the world was only for the match */
     Obj eq = mf ? AT(mf, 0x48, Obj) : NULL;
     if (eq && scene() == 2) {
         Obj ev = obj_new(0x6652F28);                                      /* QuitToTitleSceneRequested(autoSaveBeforeQuit false) */

@@ -115,6 +115,29 @@ static void host_take_entries(const char *uid_hex, jv *entries) {
         jpush(recv_entries, e);
     }
 }
+/* the exports kept locally (data/fe/exports/<export_id>.json; source_file = the save each came from, none for My Units /
+   wiki copies), then the entries go to the host (mail) or straight into the host's list. A new send replaces this
+   player's last one. files: one per entry (raw path or NULL). Returns the JSON answer (malloc). */
+static char *send_entries(jv *entries, const char *const *files, const char *me, const char *what) {
+    Buf b = { 0 }; dsnet_client *c = cli();
+    char dir[1300]; fe_path(dir, sizeof dir, "exports"); mkdirs(dir);
+    for (size_t i = 0; i < entries->cnt; i++) {
+        jv *keep = jcopy(entries->v[i]);
+        if (files && files[i]) jset(keep, "source_file", jstrv(files[i]));     /* raw path: test paths have no quotes */
+        char p[1500]; snprintf(p, sizeof p, "%s/%s.json", dir, jget(jget(entries->v[i], "manifest"), "export_id")->s);
+        write_json(p, keep); jfree(keep);
+    }
+    int rc = 0; size_t sz = 0;
+    if (dsnet_is_host(c)) host_take_entries(me, entries);
+    else {
+        jv *m = jobj(); jset(m, "entries", jcopy(entries));
+        char *s = jdump(m, 0, &sz); jfree(m);
+        rc = dsnet_mail_send(c, NULL, FE_M_UNITS, s, sz); free(s);
+    }
+    say("brought %zu unit(s) from %s (%s, %zu bytes)", entries->cnt, what, dsnet_is_host(c) ? "kept on the host" : rc ? "MAIL FAILED" : "mailed to the host", sz);
+    bput(&b, "{\"ok\":%s,\"n\":%zu,\"bytes\":%zu}", rc ? "false" : "true", entries->cnt, sz);
+    return b.p;
+}
 static char *cmd_bring(const char *line) {
     char file[1024] = "", gl[2048] = "", err[400] = "", me[33];
     Buf b = { 0 };
@@ -124,31 +147,53 @@ static char *cmd_bring(const char *line) {
     jv *save = jload(file, err, sizeof err);
     if (!save) { bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, err); bput(&b, "}"); return b.p; }
     jv *entries = jarr();
-    char dir[1300]; fe_path(dir, sizeof dir, "exports"); mkdirs(dir);
+    const char *files[64]; size_t nf = 0;
     char *sp = NULL;
     for (char *t = strtok_r(gl, ",", &sp); t; t = strtok_r(NULL, ",", &sp)) {
         while (*t == ' ') t++;
         jv *e = fe_export_entry(save, t, me, err, sizeof err);
-        if (!e) { jfree(entries); jfree(save); bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, err); bput(&b, "}"); return b.p; }
-        jv *keep = jcopy(e); jset(keep, "source_file", jstrv(file));             /* raw path: test paths have no quotes */
-        char p[1500]; snprintf(p, sizeof p, "%s/%s.json", dir, jget(jget(e, "manifest"), "export_id")->s);
-        write_json(p, keep); jfree(keep);
-        jpush(entries, e);
+        if (!e || nf >= 64) { jfree(e); jfree(entries); jfree(save); bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, e ? "too many units" : err); bput(&b, "}"); return b.p; }
+        jpush(entries, e); files[nf++] = file;
     }
     jfree(save);
-    int rc = 0; size_t sz = 0;
-    if (dsnet_is_host(c)) host_take_entries(me, entries);
-    else {
-        jv *m = jobj(); jset(m, "entries", jcopy(entries));
-        char *s = jdump(m, 0, &sz); jfree(m);
-        rc = dsnet_mail_send(c, NULL, FE_M_UNITS, s, sz); free(s);
-    }
-    say("brought %zu unit(s) from %s (%s, %zu bytes)", entries->cnt, file, dsnet_is_host(c) ? "kept on the host" : rc ? "MAIL FAILED" : "mailed to the host", sz);
-    bput(&b, "{\"ok\":%s,\"n\":%zu,\"bytes\":%zu}", rc ? "false" : "true", entries->cnt, sz);
+    char *r = send_entries(entries, files, me, file);
     jfree(entries);
-    return b.p;
+    return r;
 }
-
+#if __has_include("mu_bring.h") && __has_include("myunits.h")
+/* Bring Units (custom/units/mu_bring.h, lane units): the picks of one OK = one send. Save picks are exported from their
+   save (read only); My Units picks become copies through mu_entries (manifest source "library": never applied home). */
+#include "mu_bring.h"
+#include "myunits.h"
+int fe_bring_picks(const mu_pick *picks, int n, char *err, size_t errn) {
+    char me[33]; dsnet_client *c = cli();
+    if (!c || my_uid_hex(me)) { snprintf(err, errn, "Not in a multiplayer session."); return -1; }
+    jv *entries = jarr(); const char *files[64]; size_t nf = 0;
+    static char ids[64][17]; int nl = 0;
+    for (int i = 0; i < n && nf < 64; i++) {
+        if (picks[i].source == MU_SRC_LIBRARY) { if (nl < 64) snprintf(ids[nl++], 17, "%s", picks[i].lib_id); continue; }
+        char e1[300]; jv *save = jload(picks[i].save_file, e1, sizeof e1);
+        jv *e = save ? fe_export_entry(save, picks[i].unit_guid, me, e1, sizeof e1) : NULL;
+        jfree(save);
+        if (!e) { jfree(entries); snprintf(err, errn, "Could not bring %s: %s", picks[i].name, e1); return -1; }
+        jpush(entries, e); files[nf++] = picks[i].save_file;
+    }
+    if (nl) {
+        char e2[300] = "", notes[1000] = ""; jv *lib = mu_load(e2, sizeof e2);
+        jv *le = lib ? mu_entries(lib, ids, nl, me, notes, sizeof notes, e2, sizeof e2) : NULL;
+        jfree(lib);
+        if (!le) { jfree(entries); snprintf(err, errn, "Could not bring the My Units units: %s", e2); return -1; }
+        if (notes[0]) say("My Units: %s", notes);
+        for (size_t i = 0; i < le->cnt && nf < 64; i++) { jpush(entries, jcopy(le->v[i])); files[nf++] = NULL; }
+        jfree(le);
+    }
+    char *r = send_entries(entries, files, me, "Bring Units");
+    int ok = r && strstr(r, "\"ok\":true");
+    if (!ok) snprintf(err, errn, "The units could not be sent to the host.");
+    free(r); jfree(entries);
+    return ok ? 0 : -1;
+}
+#endif
 /* ---------------------------------------------------------------- start (host) */
 static const char *fe_host_name(void);
 static char *cmd_start(const char *line) {
@@ -209,8 +254,11 @@ int fe_menu_start(int death, int xp, int loot, int recruit, char *err, size_t er
 }
 /* mp_core: DSNET_FE_START executed (every peer, same step). The host arms the hub build for the next join point. */
 static int armed;
+int fe_hub_template_world(void);
+int fe_hub_stock(void);
 void fe_on_start(const uint8_t *payload, size_t len) {
     char rid[33] = ""; if (len >= 16) hex_of(payload, rid);
+    if (fe_hub_template_world()) fe_hub_stock();                        /* every peer, same step: the neutral hub's stock */
     dsnet_client *c = cli();
     if (c && dsnet_is_host(c) && pending_start && jstreq(jget(pending_start, "run_id"), rid)) armed = 1;
     say("FE_START executed (run %.8s)%s", rid, armed ? ": the next join point builds the hub" : "");
