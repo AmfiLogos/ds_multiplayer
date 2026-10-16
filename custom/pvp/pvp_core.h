@@ -14,7 +14,10 @@
 enum pvp_team  { PVP_TEAM_NONE = 0, PVP_TEAM_BLUE = 1, PVP_TEAM_RED = 2 };
 enum pvp_phase { PVP_OFF = 0, PVP_SETUP = 1, PVP_MATCH = 2 };
 enum pvp_mode  { PVP_MODE_FIGHT = 1, PVP_MODE_CTF = 2 };
-enum pvp_op    { PVP_OP_SETUP = 1, PVP_OP_START = 2, PVP_OP_END = 3, PVP_OP_ARENA = 4, PVP_OP_READY = 5, PVP_OP_RESUME = 6 };
+enum pvp_op    { PVP_OP_SETUP = 1, PVP_OP_START = 2, PVP_OP_END = 3, PVP_OP_ARENA = 4, PVP_OP_READY = 5, PVP_OP_RESUME = 6, PVP_OP_BASE = 7 };
+/* arena: where the match is played. 0 = where the units stand (no arena rules), 1 = a dungeon floor (ARENA), 2 = the
+   settlement map the units are on (BASE, PvP v1: teams walk to the two ends of the map, arena rules on). */
+enum pvp_where { PVP_WHERE_HERE = 0, PVP_WHERE_DUNGEON = 1, PVP_WHERE_BASE = 2 };
 enum pvp_pause { PVP_PAUSE_NONE = 0, PVP_PAUSE_PLANNING = 1 };
 /* round results / reset kinds */
 enum { PVP_RESET_NONE = 0, PVP_RESET_ROUND = 1, PVP_RESET_MATCH = 2 };
@@ -74,6 +77,7 @@ enum { PVP_EV_TAKEN = 1, PVP_EV_DROPPED = 2, PVP_EV_RETURNED = 4, PVP_EV_CAPTURE
  *   SETUP: u8 mode, u8 team_of[32], u8 best_of, u16 round_secs, u8 pause_rule, u8 plan_every_s, u8 plan_len_s, u8 vanilla (40 after the head)
  *   READY: nothing (any team player, planning pause only); RESUME: nothing (host)
  *   ARENA: i32 region, i32 floor, i32 seed   (12 bytes; SETUP phase only)
+ *   BASE:  nothing                           (SETUP phase only): play on the settlement map, teams at its two ends
  *   START: nothing                           the unit table is taken from the owners given to pvp_apply
  *   END:   nothing */
 size_t pvp_cmd_setup(uint8_t *out, size_t cap, int mode, const uint8_t team_of[PVP_MAX_PLAYERS], const pvp_rules *r);

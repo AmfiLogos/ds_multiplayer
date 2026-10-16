@@ -53,12 +53,28 @@ void pvp_install(void);
 const mp_menu_hooks *pvp_menu_hooks(void);
 
 static const mp_api_table *A;
+/* host choices (mp_api register_host_choice2, lane mpfix): Foreign Expedition = the neutral hub (fe/fe_hub.c; the menu's
+   own Expedition Rules panel, open), PvP = PvP v1 on the starting map (pvp/pvp_ui.c; its rules panel). Each page's Start
+   builds + loads its world; the lobby's Start starts the expedition / the match. */
+int fe_world_start(int kind, char *err, size_t errn);
+static int fe_page_start(char *err, size_t errn) { return fe_world_start(0, err, errn); }
+static int fe_lobby_start(char *err, size_t errn) { return fe_menu_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, errn); }
+void pvp_v1_page_draw(void *panel);
+int pvp_v1_page_start(char *err, size_t errn);
+int pvp_v1_lobby_start(char *err, size_t errn);
 static void fe_ui_flags(void) {                          /* hub with Recruiting Off: Guild Contact hidden, popup 8 not offered */
     int off = !fe_recruit_allowed();
     A->ui_set_flag(MPUI_HIDE_GUILD_CONTACT, off);
     A->ui_set_flag(MPUI_NO_RECRUIT_POPUP, off);
 }
-static int pvp_world_build(const char *path, const char *save_name) { (void)save_name; return pvp_units_join_point(path); }
+int pvp_v1_world(void);                                  /* fe/fe_hub.c */
+int pvp_v1_keep_prefix(const char *path);
+static int pvp_world_build(const char *path, const char *save_name) {
+    (void)save_name;
+    int v1 = pvp_v1_world(), r = pvp_units_join_point(path);
+    if (r == 1 && v1) pvp_v1_keep_prefix(path);            /* the PvP v1 world stays one with the brought units in */
+    return r;
+}
 
 __attribute__((visibility("default"))) int cm_mp_start(const DSLHost *host, DSLPlugin *self, const mp_api_table *api) {
     H = host; ME = self; A = api;
@@ -72,9 +88,10 @@ __attribute__((visibility("default"))) int cm_mp_start(const DSLHost *host, DSLP
     bad |= api->register_frame(MP_FRAME_ALWAYS, fe_ui_flags);
     bad |= api->register_order_filter(fe_recruit_allowed, fe_note_loot);
     bad |= api->register_rig_cmd("fe_", fe_exec);
-    bad |= api->register_host_choice("foreign-expedition", "Foreign Expedition",
-                                     "Everyone brings units from their own saves into a copy of your world. Nobody's save changes until they bring the results home.",
-                                     NULL, fe_menu_start);
+    { static const mp_host_choice fe = { "foreign-expedition", "Foreign Expedition",
+          "Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home.",
+          NULL, fe_page_start, fe_lobby_start };
+      bad |= api->register_host_choice2(&fe); }
     bad |= api->register_menu(fe_menu_hooks());
     /* PvP */
     bad |= api->register_sim_cmd(DSNET_FE_START, pvp_on_units_start);         /* own units use the same command; each acts on its own run id */
@@ -88,6 +105,10 @@ __attribute__((visibility("default"))) int cm_mp_start(const DSLHost *host, DSLP
     bad |= api->register_unit_tag(pvp_unit_tag, pvp_tag_sig);
     bad |= api->register_teams_portal(pvp_portal_blocked);
     bad |= api->register_menu(pvp_menu_hooks());
+    { static const mp_host_choice pv = { "pvp", "PvP",
+          "Everyone brings units onto the starting map and the teams fight each other. A world made only for the match: nobody's save changes.",
+          pvp_v1_page_draw, pvp_v1_page_start, pvp_v1_lobby_start };
+      bad |= api->register_host_choice2(&pv); }
     pvp_install();                                       /* hostility hooks */
     rig_log("custom-modes: Foreign Expedition + PvP registered with multiplayer (API %u)%s", api->version, bad ? " (a registration was refused)" : "");
     return bad ? 2 : 0;

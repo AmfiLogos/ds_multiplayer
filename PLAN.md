@@ -446,3 +446,18 @@ multiplayer tag next to the name of the save and then just put the players that 
 - fights13 9e46c06 (+ main = 70ae387) -> 34da6db (build/merge_fights13full; disjoint from fepvp, merged before it): run_eq 64/64,
   sg_cache 24/24, gal_test 28/28; unit ALL PASS; smoke 3/3; mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; copy O:
   gallery + boss 22/0, arena + dps 17/0 (needs FIGHTS_LIB = the gallery run's library; without it squad 0 -> 2 FAIL), solo 5/0.
+- units13 d1f2ba0 -> a8f154d (test data + custom/mod.json win-x64; build_module.sh conflict -> main's line; dylibs unchanged): mu_test 148, unit ALL PASS.
+- fepvp13 a646c84 (+ main = 4be8bf2) -> merged (build/merge_fepvp13): unit ALL PASS, pvp_test 597, FE guard ALL PASS; smoke 3/3;
+  mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; hub_smoke 5/5; PvP v1 via menu 11/11; hub dive (Death Off, save units) 25/25;
+  PvP from the hub 13/13; PvP m4_van / m4_bring / m4_ui PASS; prefs identical. Open for gate13: hub dive with one My Units unit.
+- LD crossmods b029bca (+ main) -> 30ef516: build green, run_tests 31/31, l1_test 13/13, l1_v13_test 18/18, mod.json valid
+  (no wine run here; the lane ran the kit 12/12 and Mac host + Windows guest mp2 19/19).
+- MP crossmods13 5abae88 (+ main) -> 3fe0ffc: win/ build_win.sh green on the final tree (baselib.dll; DSMP_TARGET=module:
+  multiplayer.dll, custom-modes.dll 40 files + custom-modes-mp.dll 10 files); win_map.tsv regenerated on the merged tree
+  (419adda; status counts as the lane's). Mac dylibs byte-identical to 27c56a3. The main checkout's uncommitted
+  win/inline_audit.tsv (a build output) saved to old/inline_audit_uncommitted_*.tsv before the merge.
+- ALL v13 lanes merged (MP 3fe0ffc, LD 30ef516). Next: gate13.
+- mpfix 79c2dee (gate13 fix, already on main 3dfac26) -> 4abd432: src/mpmenu.c world/save row table 64 -> 512. Merge build
+  build/merge_mpfix79 (+ _mouse): unit ALL PASS (pvp 597, FE guard). Game tests (smoke, mp2, menu_pair, choice2) left to
+  gate13's G2 rerun first, then run 06:22-06:35 (DSRIG_RELEASE=1, lead ok): smoke 3/3, mp2 19/0, choice2 8/8,
+  menu_pair 17/17, left_prompt 16/0 (one earlier run 15/1, rejoin row timing). build/ dylibs = this build.

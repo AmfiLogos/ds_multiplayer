@@ -2730,7 +2730,10 @@ static void tag_frame(const mpm_obs *o) {
     if (mpm_tag_add(p, gid, nm, n)) rig_log("mpmenu: Multiplayer tag on world %s (%d players present)", gid, n);
 }
 /* the load list's rows we decorated: world rows (case, guid, its stock name text string, our "Remove tag" text) and save rows */
-#define TAG_ROWS 64
+/* world rows (SubUI_SettlerNameCase) and save rows we know, for every live load list. The title's Load list and the
+   Multiplayer page's list are two views alive at once: 64 held 35 worlds in one list only (gate13 2026-10-16: 6 worlds
+   of the Your save list had no entry, so the filter never hid them). A full table is logged once. */
+#define TAG_ROWS 512
 typedef struct { uintptr_t row, name0, rm; char guid[40]; int hid; } tag_row;   /* hid: a save row the list filter turned off (it was on) */
 static tag_row tcase[TAG_ROWS], tslot[TAG_ROWS];
 static char tag_pending[40];                                                /* the world the Remove box asks about */
@@ -2742,6 +2745,7 @@ static tag_row *tag_row_of(tag_row *t, Obj row) {
         if (!free_at && !u_alive(r)) free_at = &t[i];
     }
     if (free_at) { u_gc_free(free_at->row); u_gc_free(free_at->name0); u_gc_free(free_at->rm); memset(free_at, 0, sizeof *free_at); free_at->row = u_gc_new(row); }
+    else { static int said; if (!said++) rig_log("mpmenu: world/save row table full (%d rows): a row is not filtered or tagged", TAG_ROWS); }
     return free_at;
 }
 static void tag_slot_seen(Obj slot, const char *guid) { tag_row *r = tag_row_of(tslot, slot); if (r) snprintf(r->guid, sizeof r->guid, "%s", guid); }

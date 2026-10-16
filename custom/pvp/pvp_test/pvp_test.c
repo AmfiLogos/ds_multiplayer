@@ -322,6 +322,29 @@ int main(void) {
       CHECK(pvp_modset_check(0, &none, &unk, "Ben", 0, why, sizeof why) == 0);
       CHECK(pvp_modset_check(0, &unk, &unk, "Ben", 0, why, sizeof why) == 0); }
 
+    /* PvP v1 (fepvp13): BASE = the settlement map, teams walk to its two ends (placing), no transfer */
+    {
+        pvp_state b; pvp_init(&b);
+        CHECK(simple(&b, 0, PVP_OP_BASE, NULL, 0) == PVP_ERR_PHASE);                 /* only in SETUP */
+        CHECK(setup(&b, 0, teams) == PVP_OK);
+        CHECK(simple(&b, 1, PVP_OP_BASE, NULL, 0) == PVP_ERR_NOT_HOST && b.arena == 0);
+        uint8_t big[4] = { PVP_VERSION, PVP_OP_BASE, 0, 0 }; CHECK(pvp_apply(&b, 0, big, 3, NULL, 0) == PVP_ERR_BAD);
+        CHECK(simple(&b, 0, PVP_OP_BASE, NULL, 0) == PVP_OK && b.arena == PVP_WHERE_BASE && pvp_arena(&b));
+        CHECK(simple(&b, 0, PVP_OP_START, own, 6) == PVP_OK && pvp_active(&b) && b.placing && !b.fight_start && !pvp_fighting(&b));
+        int32_t e1[2] = { 120, 146 }, e2[2] = { 170, 146 }; pvp_set_ends(&b, e1, e2);
+        uint8_t blk[2048]; size_t bl = pvp_save(&b, blk, sizeof blk); pvp_state b2;
+        CHECK(bl && pvp_load(&b2, blk, bl) == 0 && b2.arena == PVP_WHERE_BASE && pvp_hash(&b2) == pvp_hash(&b) && b2.end_cell[2][0] == 170);
+        blk[6 + 32 + 8] = 3; CHECK(pvp_load(&b2, blk, bl) == -1);                     /* arena byte 3: refused */
+        for (int t = 0; t < PVP_COUNTDOWN_TICKS + 2 && !pvp_fighting(&b); t++) { pvp_on_tick(&b); pvp_place_done(&b); }
+        CHECK(pvp_fighting(&b) && b.fight_start);
+        for (int i = 0; i < b.nunits; i++) if (b.units[i].team == PVP_TEAM_BLUE) pvp_mark_out(&b, b.units[i].guid);
+        uint32_t hp[3] = { 0, 0, 500 };                                                /* Blue has nobody left: round to Red */
+        CHECK(pvp_round_check(&b, hp) == PVP_RESET_ROUND && b.score[PVP_TEAM_RED] == 1);
+        pvp_state nx; pvp_next_round(&b, &nx);
+        CHECK(nx.round == 2 && nx.arena == PVP_WHERE_BASE && nx.placing && !nx.fight_start);   /* round 2 places again */
+        pvp_state am; b.resetting = PVP_RESET_MATCH; pvp_after_match(&b, &am);
+        CHECK(am.phase == PVP_OFF && am.arena == 0 && !pvp_arena(&am));                /* match over: arena rules off */
+    }
     printf(fails ? "pvp_test: %d of %d FAILED\n" : "pvp_test: all %2$d checks passed\n", fails, checks);
     return fails != 0;
 }

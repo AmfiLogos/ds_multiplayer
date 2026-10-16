@@ -296,6 +296,19 @@ static void next_free_pos(jv *posmap, const jv *prefer, double *ox, double *oy) 
         if (!taken) { *ox = x; *oy = y; return; }
     }
     double x = 100.5, y = 100.5;
+    /* every preferred cell taken (an item lying there counts: the hub / PvP template has ground items): the nearest free
+       cell around the first preferred one, never the map's first entity (pair test v1_g: a unit landed at (124,147),
+       outside the settlement, and walked off) */
+    if (prefer && prefer->cnt) {
+        double px = jnumv(jget(prefer->v[0], "x")), py = jnumv(jget(prefer->v[0], "y"));
+        for (int r = 1; r <= 6; r++)
+            for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx++) {
+                if (dx != -r && dx != r && dy != -r && dy != r) continue;
+                double cx = px + dx, cy = py + dy; int taken = 0;
+                for (size_t j = 0; j < posmap->cnt && !taken; j++) taken = jnumv(jget(posmap->v[j], "x")) == cx && jnumv(jget(posmap->v[j], "y")) == cy;
+                if (!taken) { *ox = cx; *oy = cy; return; }
+            }
+    }
     if (posmap->cnt) { x = jnumv(jget(posmap->v[0], "x")); y = jnumv(jget(posmap->v[0], "y")); }
     for (int again = 1; again; ) {
         again = 0;
