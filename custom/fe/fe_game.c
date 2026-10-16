@@ -630,7 +630,8 @@ int fe_list_saves(fe_save_info *out, int max) {
         DIR *dp = opendir(dirs[d]);
         for (struct dirent *e; dp && (e = readdir(dp)) && n < max && n < 64; ) {
             size_t l = strlen(e->d_name);
-            if (l < 6 || strcmp(e->d_name + l - 5, ".json") || !strncmp(e->d_name, "mp_sync", 7) || !strncmp(e->d_name, "MPFE_", 5) || strstr(e->d_name, "SaveHeaderCache")) continue;
+            if (l < 6 || strcmp(e->d_name + l - 5, ".json") || !strncmp(e->d_name, "mp_sync", 7) || !strncmp(e->d_name, "MPFE_", 5) || strstr(e->d_name, "SaveHeaderCache")
+                || !strncmp(e->d_name, "MPHub_", 6) || !strncmp(e->d_name, "MPPvP_", 6) || !strncmp(e->d_name, "mp_fullcheck", 12)) continue;   /* hub / PvP worlds: no home units */
             char p[1400]; snprintf(p, sizeof p, "%s/%s", dirs[d], e->d_name);
             struct stat st; if (stat(p, &st)) continue;
             if (read_header(p, &out[n])) continue;
