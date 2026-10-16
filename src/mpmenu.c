@@ -385,7 +385,7 @@ Obj mk_txt(Obj tpl_txt, Obj parent_tr, int cinzel, float size, int align, int wr
  * after LABEL_NAME. The selector arrows are children of their rows (arrow_ids), not column entries. */
 static const int title_ids[] = { MPB_MULTIPLAYER, MPB_HEADER, MPB_LABEL_ADDR, MPB_LABEL_NAME, MPB_INFO,
                                  MPB_FRIEND0, MPB_FRIEND1, MPB_FRIEND2, MPB_FRIEND3, MPB_FRIEND4, MPB_FRIEND5, MPB_SETTINGS,
-                                 MPB_DIVIDER, MPB_HOST, MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE, MPB_JOIN_ADDR, MPB_JOIN_FRIEND, MPB_FE_RESLIST, MPB_LOAD_SAVE, MPB_NEW_CAMPAIGN, MPB_CONNECT, MPB_WATCH, MPB_CANCEL_JOIN, MPB_BACK };
+                                 MPB_DIVIDER, MPB_HOST, MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE, MPB_HOST_C1, MPB_HOST_C2, MPB_HOST_C3, MPB_JOIN_ADDR, MPB_JOIN_FRIEND, MPB_FE_RESLIST, MPB_LOAD_SAVE, MPB_HOST_START, MPB_NEW_CAMPAIGN, MPB_CONNECT, MPB_WATCH, MPB_CANCEL_JOIN, MPB_BACK };
 /* the Rules panel's buttons (title: SubUI_TitleMenuButton clones registered in h_tb; lobby: in h_lwb) */
 static const int arrow_ids[] = { MPB_PAUSE_PREV, MPB_PAUSE_NEXT, MPB_SPEED_PREV, MPB_SPEED_NEXT, MPB_GEAR_PREV, MPB_GEAR_NEXT,
                                  MPB_UNITS_PREV, MPB_UNITS_NEXT, MPB_POP_PREV, MPB_POP_NEXT, MPB_EVENTS_PREV, MPB_EVENTS_NEXT, MPB_ADMIN_PREV, MPB_ADMIN_NEXT,
@@ -716,6 +716,19 @@ static void fe_update(fepanel *p, const mpm_settings *st, int show) {
         Obj d = u_gc_get(p->desc[i]); if (u_alive(d)) tmp_set(d, mpm_fe_desc(st, i));
     }
 }
+static uintptr_t h_cp_root, h_cp_panel;                 /* host choice panel (draw_page): box + the empty RectTransform given to the mod */
+static Obj empty_rt(Obj parent_tr, const char *name) {    /* new GameObject(name) + RectTransform, under parent (its layer) */
+    void *kg = class_by_name("UnityEngine", "GameObject"); Obj ty = type_obj("UnityEngine", "RectTransform");
+    Obj go = kg && ty ? F(0x6F96CC, Obj (*)(void *))(kg) : NULL;                        /* il2cpp_object_new */
+    if (!go) return NULL;
+    F(0x50F4674, void (*)(Obj, Obj, void *))(go, u_str(name), NULL);                  /* GameObject..ctor(string) */
+    if (!u_alive(go)) return NULL;
+    Obj rt = F(0x50F2B90, Obj (*)(Obj, Obj, void *))(go, ty, NULL);                   /* GameObject.AddComponent(Type) */
+    if (!mm_is(rt, K_RT)) { rig_log("mpmenu: host choice panel: no RectTransform"); return NULL; }
+    F(0x50F3204, void (*)(Obj, int, void *))(go, F(0x50F3118, int (*)(Obj, void *))(u_go(parent_tr), NULL), NULL);   /* the parent's layer */
+    F(0x510B2C4, void (*)(Obj, Obj, bool, void *))(rt, parent_tr, false, NULL);       /* Transform.SetParent(parent, false) */
+    return rt;
+}
 static void title_build(Obj v) {
     Obj src = AT(v, 0x50, Obj), after = AT(v, 0x40, Obj);
     if (!u_alive(src) || !u_alive(after)) { rig_log("mpmenu: title buttons not found"); return; }
@@ -743,7 +756,7 @@ static void title_build(Obj v) {
             Obj bg = first_image(u_tr(b), 0);
             if (bg && mm_is(bg, K_GR)) { F(0x52602F8, void (*)(Obj, Col, void *))(bg, (Col){ 1, 1, 1, 0 }, NULL); F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL); }
         }
-        if (id == MPB_LOAD_SAVE) {                                          /* the main path: the red primary style */
+        if (id == MPB_LOAD_SAVE || id == MPB_HOST_START) {                  /* the main path: the red primary style */
             Obj bg = first_image(u_tr(b), 0); if (bg) img_set(bg, spr(S_RECRUIT), spr(S_RECRUIT) ? C_WHITE : spr_fallback(S_RECRUIT));
             if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);
             txt_color(l, C_START);
@@ -751,7 +764,7 @@ static void title_build(Obj v) {
         if (id == MPB_HOST) { row_height(b, 262, 30); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB); }   /* "Host a game": the line over its 3 choices */
         /* owner v12 item 4: the stock row height (the clone keeps the stock button's size), so the column's spacing gives the
            stock gap. A smaller row (40 before) left the stock frame image at full size: the frames touched. */
-        if (id == MPB_HOST_SAVE || id == MPB_HOST_NEW || id == MPB_HOST_FE) txt_style(l, 0, 19, 514, 0);
+        if (id == MPB_HOST_SAVE || id == MPB_HOST_NEW || mpm_choice_of_btn(id) >= 0) txt_style(l, 0, 19, 514, 0);
         if (id == MPB_SETTINGS) {                                           /* [cog] Rules  ›  + summary under it */
             row_height(b, 262, 104);
             Obj bg = first_image(u_tr(b), 0); if (bg) { stretch(bg); u_gc_free(h_title_box); h_title_box = u_gc_new(bg); }
@@ -824,6 +837,11 @@ static void title_build(Obj v) {
     /* owner v12 item 5: always open on the host page, no Done; the top stays where it was (the panels lost their Done row) */
     rp_build(&rp_title, u_tr(v), src, 0, tpl_img, tpl_txt, -78, -89 + 26, "Saved with this world. New worlds start with your last rules.", h_tb, 0);
     fe_build(&rp_fe, u_tr(v), src, tpl_img, tpl_txt, -78, -89 + 26);
+    /* a register_host_choice2 choice's own panel (draw_page): a box where the Rules panel sits, an empty RectTransform inside */
+    { Obj root = mk_img(tpl_img, u_tr(v), S_BOX, C_WHITE, -78, -89 + 26, 430, 588), pnl = root ? empty_rt(u_tr(root), "DSMP_HostChoicePanel") : NULL;
+      u_gc_free(h_cp_root); h_cp_root = root ? u_gc_new(root) : 0; u_gc_free(h_cp_panel); h_cp_panel = pnl ? u_gc_new(pnl) : 0;
+      if (pnl) { stretch(pnl); F(0x5107110, void (*)(Obj, V2, void *))(pnl, (V2){ -24, -24 }, NULL); }   /* 12 inside each edge */
+      if (root) u_active(root, false); }
     u_gc_free(h_field); h_field = 0; u_gc_free(h_namefield); h_namefield = 0; primed = 0; fields_seen = 0;
     u_gc_free(h_title_built); h_title_built = u_gc_new(v);
     stock_hidden = 0;
@@ -855,7 +873,7 @@ static void title_sync(const mpm_obs *o) {
         if (bx && mm_is(bx, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bx, true, NULL);
     }
     /* owner v12 item 5: the Rules rows in their own panel beside the host page, always open (no cog click, no Done) */
-    rp_update(&rp_title, &M.set, M.state == MPM_TITLE_HOST && !M.set.fe);
+    rp_update(&rp_title, &M.set, M.state == MPM_TITLE_HOST && !M.set.fe && M.choice == 0);   /* a host choice: its panel or the FE rules */
     fe_update(&rp_fe, &M.set, M.state == MPM_TITLE_HOST && M.set.fe);
     u_active(tb(MPB_RULES_DONE), false); u_active(tb(MPB_FE_DONE), false);
     /* Recent worlds (Multiplayer page) */
@@ -1492,8 +1510,9 @@ static void h_slot_set(Obj self, const void *hdr, bool inter, Obj act, void *mi)
 
 /* owner rule: no loading another world during a multiplayer session (host or guest). The Esc menu's Load button is
  * disabled with a note; its click and the quick-load key do nothing. Leaving multiplayer restores them. */
-/* the third host choice (mpmenu_register_host_choice, below) */
-static struct { int on; char id[32], label[48], tip[300]; void (*draw_page)(void *); mpm_host_start_fn on_start; } hchoice;
+/* host choices under "Host a game" (mpmenu_register_host_choice / _choice2, below; up to 4) */
+static mpm_choices hcl;
+static mpm_choice *cur_choice(void) { return M.choice > 0 && M.choice <= hcl.n ? &hcl.c[M.choice - 1] : NULL; }
 
 static int in_session(void) { return mp_game_session() != NULL; }
 static void (*o_esc_load)(Obj, void *);
@@ -2446,6 +2465,23 @@ static void chat_frame(const mpm_obs *o) {
     }
 }
 
+/* a register_host_choice2 choice with draw_page: called each frame while its host page shows (panel = the empty RectTransform
+   in the box beside the column), draw_page(NULL) once when that page closes (Back, Start -> loading, another page) */
+static int cp_drawn;                                     /* 1 + the choice whose draw_page got the panel last frame; 0 none */
+static unsigned cp_calls, cp_null_calls;                 /* test read-back */
+static void choice_page_frame(void) {
+    mpm_choice *hc = M.choice > 0 && M.choice <= hcl.n ? &hcl.c[M.choice - 1] : NULL;
+    Obj root = u_gc_get(h_cp_root), pnl = u_gc_get(h_cp_panel);
+    int on = M.state == MPM_TITLE_HOST && hc && hc->v2 && hc->draw_page && u_alive(root) && u_alive(pnl);
+    if (cp_drawn && cp_drawn != (on ? M.choice : 0)) {
+        mpm_choice *d = cp_drawn <= hcl.n ? &hcl.c[cp_drawn - 1] : NULL;
+        if (d && d->draw_page) { d->draw_page(NULL); cp_null_calls++; }
+        cp_drawn = 0;
+    }
+    if (u_alive(root)) u_active(root, on);
+    if (on) { hc->draw_page(pnl); cp_drawn = M.choice; cp_calls++; }
+}
+
 /* ---------------------------------------------------------------- actions */
 void ui_notice(const char *text) __attribute__((weak_import));   /* ui_game.c */
 static void run_actions(int a, const mpm_obs *o) {
@@ -2485,11 +2521,29 @@ static void run_actions(int a, const mpm_obs *o) {
     if ((a & MPA_JOIN_CANCEL) && conn) { dsnet_connect_free(conn); conn = NULL; rig_log("mpmenu: connect cancelled"); }
     if (a & MPA_FE_START) {                                                 /* build the hub with the Expedition Rules, then start */
         char err[200] = "";
-        int rc = hchoice.on_start ? hchoice.on_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, sizeof err) : -1;   /* the registered start (Custom Modes: Foreign Expedition); 0 = started */
-        if (!hchoice.on_start) snprintf(err, sizeof err, "No mod offers this choice.");
+        mpm_choice *hc = cur_choice();                                       /* the old-API choice this session was hosted from */
+        for (int k = 0; (!hc || !hc->on_start) && k < hcl.n; k++) if (!hcl.c[k].v2 && hcl.c[k].on_start) hc = &hcl.c[k];   /* else the first one that can */
+        int rc = hc && hc->on_start ? hc->on_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, sizeof err) : -1;   /* the registered start (Custom Modes: Foreign Expedition); 0 = started */
+        if (!hc || !hc->on_start) snprintf(err, sizeof err, "No mod offers this choice.");
         rig_log("mpmenu: Foreign Expedition start rc %d %s", rc, err);
         if (rc == 0) { M.state = MPM_PLAYING; run_actions(MPA_LOBBY_HIDE | MPA_START_GAME, o); }
         else if (ui_notice) ui_notice(err);
+    }
+    if (a & MPA_CHOICE_PAGE) {                                              /* host page Start of a register_host_choice2 choice */
+        char err[200] = ""; mpm_choice *hc = cur_choice();
+        int rc = hc && hc->page_start ? hc->page_start(err, sizeof err) : -1;
+        if (!hc || !hc->page_start) snprintf(err, sizeof err, "No mod offers this choice.");
+        rig_log("mpmenu: host choice \"%s\" page start rc %d %s", hc ? hc->id : "?", rc, err);
+        { char nm[64]; field_text(h_namefield, nm, sizeof nm); if (nm[0]) snprintf(my_name, sizeof my_name, "%s", nm); }   /* name typed on the page */
+        mpm_page_started(&M, rc, err);                                        /* 0: wait for the load like Your save (HOST_LOADING -> LOBBY) */
+    }
+    if (a & MPA_CHOICE_LOBBY) {                                             /* lobby Start of a session hosted from such a choice */
+        char err[200] = ""; mpm_choice *hc = cur_choice();
+        int rc = hc && hc->lobby_start ? hc->lobby_start(err, sizeof err) : -1;
+        if (!hc || !hc->lobby_start) snprintf(err, sizeof err, "No mod offers this choice.");
+        rig_log("mpmenu: host choice \"%s\" lobby start rc %d %s", hc ? hc->id : "?", rc, err);
+        if (rc == 0) { M.state = MPM_PLAYING; run_actions(MPA_LOBBY_HIDE | MPA_START_GAME, o); }
+        else if (ui_notice) ui_notice(err[0] ? err : "This mode could not start.");
     }
     if (a & MPA_START_GAME) lobby_hold(0);
     if (a & MPA_RULES) rules_send("lobby");
@@ -2598,7 +2652,8 @@ static void tips_frame(const mpm_obs *o) {
     /* Multiplayer: no tooltip (owner 2026-10-15) */
     TIP(tb(MPB_HOST_SAVE), "Your Save", "Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer.");
     TIP(tb(MPB_HOST_NEW), "New Save", "Start a new campaign and open it to other players as soon as it is created.");
-    if (hchoice.on) TIP(tb(MPB_HOST_FE), hchoice.label, hchoice.tip);
+    for (int k = 0; k < hcl.n; k++) TIP(tb(mpm_choice_btn(k)), hcl.c[k].label, hcl.c[k].tip);
+    TIP(tb(MPB_HOST_START), "Start", "Prepares the world for this mode and opens the lobby. Friends join you there.");
     TIP(tb(MPB_JOIN_ADDR), "Join by Address", "Join a friend's world with their address (ip:port). Use it when Steam is not available, or on the same home network.");
     TIP(tb(MPB_JOIN_FRIEND), "Join a Friend on Steam", "Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game.");
     for (int i = 0; i < 6; i++) { char l[160], t[64]; mpm_label(&M, MPB_FRIEND0 + i, l, sizeof l); const char *q = strstr(l, "Join ");
@@ -2882,14 +2937,26 @@ static void lf_frame(void) {
 }
 
 /* ---------------------------------------------------------------- the third host choice (MASTER_PLAN 2.2 B register_host_choice) */
+/* old API: one choice per id (same id = replace), its page = Load save + the Expedition Rules, lobby Start = on_start
+   (MPA_FE_START). draw_page is kept but never called (as before). 1 = ok. */
 __attribute__((visibility("default"))) int mpmenu_register_host_choice(const char *id, const char *label, const char *tip, void (*draw_page)(void *root), mpm_host_start_fn on_start) {
-    if (!id || !label) return 0;
-    if (hchoice.on && strcmp(hchoice.id, id)) { rig_log("mpmenu: host choice \"%s\" refused (\"%s\" has the place)", id, hchoice.id); return 0; }
-    snprintf(hchoice.id, sizeof hchoice.id, "%s", id); snprintf(hchoice.label, sizeof hchoice.label, "%s", label);
-    snprintf(hchoice.tip, sizeof hchoice.tip, "%s", tip ? tip : ""); hchoice.draw_page = draw_page; hchoice.on_start = on_start; hchoice.on = 1;
-    rig_log("mpmenu: host choice \"%s\" registered (%s)", label, id);
+    mpm_choice fn = { .v2 = 0, .draw_page = draw_page, .on_start = on_start };
+    int k = mpm_choice_register(&hcl, id, label, tip, &fn, 0);
+    if (k < 0) { rig_log("mpmenu: host choice \"%s\" refused (%d registered)", id ? id : "", hcl.n); return 0; }
+    rig_log("mpmenu: host choice \"%s\" registered (%s, place %d)", label, id, k + 1);
     return 1;
 }
+/* register_host_choice2 (mp_api.h mp_host_choice): page = Start + Back (page_start), the mod's own panel (draw_page) or the
+   Expedition Rules open (draw_page NULL); lobby Start = lobby_start. 0 ok, -1 refused. */
+__attribute__((visibility("default"))) int mpmenu_register_host_choice2(const char *id, const char *label, const char *tip, void (*draw_page)(void *panel),
+                                                                        int (*page_start)(char *, size_t), int (*lobby_start)(char *, size_t)) {
+    mpm_choice fn = { .v2 = 1, .draw_page = draw_page, .page_start = page_start, .lobby_start = lobby_start };
+    int k = mpm_choice_register(&hcl, id, label, tip, &fn, 1);
+    if (k < 0) { rig_log("mpmenu: host choice \"%s\" refused (5th choice or bad texts; %d registered)", id ? id : "", hcl.n); return -1; }
+    rig_log("mpmenu: host choice \"%s\" registered (%s, API 2, place %d)", label, id, k + 1);
+    return 0;
+}
+__attribute__((visibility("default"))) const char *mpmenu_host_choice_now(void) { return mpm_choice_now(&hcl, &M); }
 
 /* Esc-menu buttons of a mod (mp_api register_esc_button): a Report bug clone above Leave multiplayer, in a multiplayer game */
 #define MAX_ESCB 4
@@ -2939,13 +3006,14 @@ void mpmenu_frame(void) {
     mpm_obs o; observe(&o);
     o.edited = fields_edited; fields_edited = 0;
     int c = pending_click; pending_click = MPB_NONE;
-    M.host_choice = hchoice.on; snprintf(M.host_choice_label, sizeof M.host_choice_label, "%s", hchoice.label);
+    mpm_choices_to_model(&hcl, &M);
     for (int k = 0; k < nhooks && c != MPB_NONE; k++) if (hooks[k].click && hooks[k].click(c)) c = MPB_NONE;   /* Custom Modes windows (FE) */
     int st0 = M.state;
     int a = mpm_step(&M, &o, c);
     if (M.state != st0) rig_log("mpmenu: state %d -> %d (click %d)", st0, M.state, c);
     if (o.failed && o.msg[0] && (M.state == MPM_FAILED || M.state == MPM_IDLE)) mp_steam_ack();   /* the message is in M.msg now */
     if (a & ~MPA_REFRESH) run_actions(a, &o);
+    choice_page_frame();
     int lobby = M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY;
     if (lobby && o.campaign_ready && !o.esc_open && !(a & MPA_LOBBY_SHOW) && !M.confirm_leave && lbox_up != BX_SPECT_OFF && frames % 30 == 0) {   /* not under the Leave / spectators box */
         /* the lobby stays until Start / Leave, but never over another window: a stock popup (story, level-up...) or the
@@ -3204,6 +3272,43 @@ static char *ui_shot(const char *path) {
     Buf b = {0}; bput(&b, "{\"ok\":true,\"w\":%d,\"h\":%d,\"canvases\":%d,\"bytes\":%zu}", w, h, nsw, nb); return b.p;
 }
 
+/* ---- test only: dummy register_host_choice2 choices (mpm_testchoice). page_start queues the stock load of a save already in
+   data/Saves (what a mod does), lobby_start says started; both can be told to fail. Counts read back by action "status". */
+static struct { char save[256], page_err[120], lobby_err[120]; unsigned page_calls, lobby_calls, draw_calls, draw_null; int panel_rt; } tch;
+static void tch_draw(void *panel) { if (!panel) { tch.draw_null++; return; } tch.draw_calls++; tch.panel_rt = mm_is((Obj)panel, K_RT); }
+static int tch_page(char *err, size_t n) {
+    tch.page_calls++;
+    if (tch.page_err[0] || !tch.save[0] || !mf) { snprintf(err, n, "%s", tch.page_err[0] ? tch.page_err : "Test choice: no save given."); return -1; }
+    Obj ev = obj_new(0x6651118);                                                      /* LoadCampaignRequested(save name) */
+    F(0xDCFD78, void (*)(Obj, Obj, void *))(ev, u_str(tch.save), NULL);
+    F(0xCCFAD4, void (*)(Obj, Obj, void *))(AT(mf, 0x48, Obj), ev, NULL);
+    return 0;
+}
+static int tch_lobby(char *err, size_t n) {
+    tch.lobby_calls++;
+    if (tch.lobby_err[0]) { snprintf(err, n, "%s", tch.lobby_err); return -1; }
+    return 0;
+}
+static char *testchoice_exec(const char *line) {
+    char act[16] = "status", id[64] = "", label[96] = "", tip[400] = ""; double draw = 1;
+    jstr(line, "action", act, sizeof act); jstr(line, "save", tch.save, sizeof tch.save);
+    jstr(line, "page_err", tch.page_err, sizeof tch.page_err); jstr(line, "lobby_err", tch.lobby_err, sizeof tch.lobby_err);
+    int rc = 0;
+    if (!strcmp(act, "register")) {
+        jstr(line, "id", id, sizeof id); jstr(line, "label", label, sizeof label); jstr(line, "tip", tip, sizeof tip); jnum(line, "draw", &draw);
+        rc = mpmenu_register_host_choice2(id, label, tip, draw != 0 ? tch_draw : NULL, tch_page, tch_lobby);
+    }
+    Buf b = {0};
+    bput(&b, "{\"ok\":true,\"rc\":%d,\"page_calls\":%u,\"lobby_calls\":%u,\"draw_calls\":%u,\"draw_null\":%u,\"panel_rt\":%d,\"menu_draw_calls\":%u,\"menu_null_calls\":%u,\"choice_now\":",
+         rc, tch.page_calls, tch.lobby_calls, tch.draw_calls, tch.draw_null, tch.panel_rt, cp_calls, cp_null_calls);
+    bstr(&b, mpmenu_host_choice_now());
+    { float r[4] = { 0 }; Obj pnl = u_gc_get(h_cp_panel), root = u_gc_get(h_cp_root); if (u_on(root)) rect_of(pnl, r);
+      bput(&b, ",\"panel_on\":%d,\"panel_rect\":[%.0f,%.0f,%.0f,%.0f],\"choices\":[", u_on(root), r[0], r[1], r[2], r[3]); }
+    for (int k = 0; k < hcl.n; k++) { bput(&b, "%s{\"id\":", k ? "," : ""); bstr(&b, hcl.c[k].id); bput(&b, ",\"label\":"); bstr(&b, hcl.c[k].label);
+                                      bput(&b, ",\"v2\":%d,\"own_page\":%d,\"button\":%d}", hcl.c[k].v2, hcl.c[k].v2 && hcl.c[k].draw_page != NULL, mpm_choice_btn(k)); }
+    bput(&b, "]}");
+    return b.p;
+}
 char *mpmenu_exec(const char *cmd, const char *line) {
     for (int k = 0; k < nhooks; k++) { char *r = hooks[k].exec ? hooks[k].exec(cmd, line) : NULL; if (r) return r; }   /* Custom Modes: mpm_fewin, mpm_pvp */
     if (!strcmp(cmd, "mpm_shot")) {
@@ -3243,6 +3348,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         if (!u_alive(f)) { F(0x518AFE0, void (*)(Obj, void *))(u_str(t), NULL); return strdup("{\"ok\":true,\"via\":\"clipboard\"}"); }
         (mm_is(f, K_FIELD) ? F(0x4EFAE8C, void (*)(Obj, Obj, void *))(f, u_str(t), NULL) : (void)0); return strdup("{\"ok\":true}");
     }
+    if (!strcmp(cmd, "mpm_testchoice")) return testchoice_exec(line);    /* test: dummy register_host_choice2 choices */
     if (!strcmp(cmd, "mpm_newcampaign")) {                                  /* test: what the new-campaign screen's Start sends */
         char nm[64] = "MP Test", sd[32] = "12345"; double sc = 1; jstr(line, "name", nm, sizeof nm); jstr(line, "seed", sd, sizeof sd); jnum(line, "scenario", &sc);
         Obj ev = obj_new(0x664BC18);                                        /* CreateCampaignRequested */

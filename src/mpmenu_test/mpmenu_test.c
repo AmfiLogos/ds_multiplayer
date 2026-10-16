@@ -314,6 +314,57 @@ int main(void) {
         mpm_model e; mpm_init(&e); e.host_choice = 1; mpm_step(&e, &t, MPB_MULTIPLAYER); mpm_step(&e, &t, MPB_HOST_FE); mpm_step(&e, &t, MPB_LOAD_SAVE);
         CHECK(e.state == MPM_PICK_SAVE && mpm_list_mode(&e) == MPM_LIST_ALL);   /* an expedition copies any world */
     }
+    {   /* host choices (MPF API for lane fepvp: register_host_choice2): list of 4, replace, 5th refused, host_choice_now */
+        mpm_choices L = {0}; mpm_choice fe = {0}, v2a = {0}, v2b = {0}; mpm_obs t = title(); char s[160];
+        fe.on_start = NULL;                                                   /* old API: FE (src fallback) */
+        v2a.v2 = 1; v2a.draw_page = (void (*)(void *))1;                      /* own panel (pointer never called here) */
+        v2b.v2 = 1;                                                           /* draw_page NULL: the Expedition Rules panel */
+        CHECK(mpm_choice_register(&L, "foreign-expedition", "Foreign Expedition", "tip", &fe, 0) == 0);
+        CHECK(mpm_choice_register(&L, "arena", "Arena", "Fight.", &v2a, 1) == 1);
+        CHECK(mpm_choice_register(&L, "hub", "Hub", "", &v2b, 1) == 2);
+        CHECK(mpm_choice_register(&L, "arena", "Arena Two", "Again.", &v2a, 1) == 1 && L.n == 3 && !strcmp(L.c[1].label, "Arena Two"));   /* same id = replace */
+        CHECK(mpm_choice_register(&L, "foreign-expedition", "Foreign Expedition", "new", &v2b, 1) == 0 && L.c[0].v2 == 1);   /* v2 replaces the old one in place */
+        CHECK(mpm_choice_register(&L, "x4", "Fourth", "", &v2a, 1) == 3 && L.n == 4);
+        CHECK(mpm_choice_register(&L, "x5", "Fifth", "", &v2a, 1) == -1 && L.n == 4);    /* 5th refused */
+        CHECK(mpm_choice_register(&L, "", "No id", "", &v2a, 1) == -1 && mpm_choice_register(&L, "x", NULL, "", &v2a, 1) == -1);
+        { mpm_choices L2 = {0}; char big[64]; memset(big, 'a', 40); big[40] = 0;
+          CHECK(mpm_choice_register(&L2, big, "Label", "", &v2a, 1) == -1);       /* id over 31 bytes: v2 refuses */
+          CHECK(mpm_choice_register(&L2, big, "Label", "", &fe, 0) == 0 && strlen(L2.c[0].id) == 31); }   /* old API: cut */
+        L.c[0].v2 = 0; L.n = 3;                                               /* back to: FE (old), Arena (own page), Hub (rules panel) */
+        mpm_model h; mpm_init(&h); mpm_choices_to_model(&L, &h);
+        CHECK(h.nchoice == 3 && h.host_choice == 1 && !strcmp(h.host_choice_label, "Foreign Expedition"));
+        mpm_step(&h, &t, MPB_MULTIPLAYER);
+        CHECK(mpm_is_visible(&h, &t, MPB_HOST_FE) && mpm_is_visible(&h, &t, MPB_HOST_C1) && mpm_is_visible(&h, &t, MPB_HOST_C2) && !mpm_is_visible(&h, &t, MPB_HOST_C3));
+        mpm_label(&h, MPB_HOST_C1, s, sizeof s); CHECK(!strcmp(s, "Arena Two"));
+        mpm_label(&h, MPB_HOST_C2, s, sizeof s); CHECK(!strcmp(s, "Hub"));
+        CHECK(mpm_choice_btn(0) == MPB_HOST_FE && mpm_choice_btn(2) == MPB_HOST_C2 && mpm_choice_of_btn(MPB_HOST_C3) == 3 && mpm_choice_of_btn(MPB_BACK) == -1);
+        CHECK(!mpm_choice_now(&L, &h)[0]);
+        /* Arena: own page, Start + Back only */
+        mpm_model k = h; mpm_step(&k, &t, MPB_HOST_C1); uint64_t v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && k.choice == 2 && !k.set.fe && !strcmp(mpm_choice_now(&L, &k), "arena"));
+        CHECK(!(v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)) && (v & B(MPB_BACK)) && mpm_is_visible(&k, &t, MPB_HOST_START));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host: Arena Two"));
+        CHECK(mpm_step(&k, &t, MPB_LOAD_SAVE) == 0 && k.state == MPM_TITLE_HOST);   /* no Load save here */
+        CHECK(mpm_step(&k, &t, MPB_HOST_START) & MPA_CHOICE_PAGE);
+        mpm_page_started(&k, -1, "No arena map."); CHECK(k.state == MPM_TITLE_HOST && !strcmp(k.msg, "No arena map.") && (mpm_visible(&k, &t) & B(MPB_INFO)));
+        mpm_page_started(&k, 0, ""); CHECK(k.state == MPM_HOST_LOADING && !k.msg[0] && !strcmp(mpm_choice_now(&L, &k), "arena"));
+        { mpm_obs g = {0}; g.scene = 2; g.campaign_ready = 1;
+          CHECK((mpm_step(&k, &g, MPB_NONE) & MPA_HOST_START) && k.state == MPM_LOBBY);   /* like Your save */
+          g.role = 1; CHECK(mpm_step(&k, &g, MPB_START) == MPA_CHOICE_LOBBY && k.state == MPM_LOBBY);   /* the game side calls lobby_start */
+          CHECK(!strcmp(mpm_choice_now(&L, &k), "arena"));
+          k.state = MPM_PLAYING; mpm_obs q = title(); for (int i = 0; i < 95; i++) mpm_step(&k, &q, MPB_NONE);
+          CHECK(k.state == MPM_IDLE && k.choice == 0 && !mpm_choice_now(&L, &k)[0]); }   /* session over: no choice */
+        /* Hub: v2 with draw_page NULL: the Expedition Rules (set.fe) open, Start + Back */
+        k = h; mpm_step(&k, &t, MPB_HOST_C2); v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && k.choice == 3 && k.set.fe == 1 && !(v & B(MPB_LOAD_SAVE)) && mpm_is_visible(&k, &t, MPB_HOST_START));
+        mpm_step(&k, &t, MPB_BACK); CHECK(k.state == MPM_TITLE_MENU && k.choice == 0);
+        /* FE (old API): old page and lobby Start unchanged */
+        k = h; mpm_step(&k, &t, MPB_HOST_FE); v = mpm_visible(&k, &t);
+        CHECK(k.state == MPM_TITLE_HOST && k.choice == 1 && k.set.fe == 1 && (v & B(MPB_LOAD_SAVE)) && !mpm_is_visible(&k, &t, MPB_HOST_START));
+        CHECK(mpm_step(&k, &t, MPB_HOST_START) == 0);
+        { mpm_obs g = {0}; g.scene = 2; g.campaign_ready = 1; g.role = 1; k.state = MPM_LOBBY; CHECK(mpm_step(&k, &g, MPB_START) == MPA_FE_START); }
+        k = h; mpm_step(&k, &t, MPB_HOST_SAVE); CHECK(k.choice == 0 && !k.set.fe);   /* Your save: no choice */
+    }
     {   /* Multiplayer world tag file (mp_tags.txt) */
         char tp[512]; const char *td = getenv("TMPDIR"); snprintf(tp, sizeof tp, "%s/mp_tags_test_%d.txt", td && *td ? td : "/tmp", (int)getpid());
         FILE *z = fopen(tp, "w"); if (z) fclose(z);                         /* empty file (left in TMPDIR: no rm) */
