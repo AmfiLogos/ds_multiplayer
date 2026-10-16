@@ -10,6 +10,14 @@
 set -e; export DSMP_ROOT=${0:A:h:h}   # the tools read src/ and write win/build of THIS checkout (worktrees too); before the cd (relative $0)
 cd "${0:A:h}"; mkdir -p build
 TC=~/tools/llvm-mingw/bin/x86_64-w64-mingw32-clang
+C=${DSMP_CUSTOM:-${${DSMP_SRC:-$DSMP_ROOT/src}:h}/custom}   # Custom Modes sources (one DLL here: -DCM_SAME_IMAGE): custom/ of a tree that has them (the loader's pin)
+if [[ ! -f $C/build_module.sh ]]; then   # since post-v13 its own repo: a clean copy of that checkout (its build/ holds other trees; the tools scan all)
+  CM=${CM_REPO:-$HOME/ds_custommodes}
+  [[ -f $CM/build_module.sh ]] || { echo "Custom Modes checkout not found: $CM (git clone https://github.com/AmfiLogos/ds_custommodes, or set CM_REPO)" >&2; exit 1; }
+  mkdir -p build/old; [[ -d build/cm_src ]] && mv build/cm_src build/old/cm_src-$(date +%Y%m%d-%H%M%S)
+  rsync -a --exclude /build/ --exclude /old/ --exclude /.git/ $CM/ build/cm_src/; C=$PWD/build/cm_src
+fi
+export DSMP_CUSTOM=$C
 if [[ -z "$SKIP_GEN" ]]; then nice -n 5 python3 win_map.py > /dev/null
 python3 port/gen_port.py; fi
 python3 port/gen_def.py
@@ -23,7 +31,6 @@ S=${DSMP_SRC:-$DSMP_ROOT/src}   # DSMP_SRC: build from a frozen snapshot (releas
 export DSMP_SRC=$S
 MH=third_party/minhook
 ZL=third_party/zlib    # inflate only (pvp_wiki.c builder links): zlib 1.3.1 from the local Unity il2cpp sources
-C=${DSMP_CUSTOM:-${S:h}/custom}; export DSMP_CUSTOM=$C   # Custom Modes sources (one DLL here: -DCM_SAME_IMAGE)
 CINC=(-I$C); CEMB=(--embed-dir=$C)                               # every custom/ folder (fe, pvp, units, home, fights/tinf ...)
 for d in $C/**/*(/N); do [[ ${d:t} == test || $d == */test/* ]] || { CINC+=(-I$d); CEMB+=(--embed-dir=$d); }; done
 INC=(-Ibuild/gen_inc -Iport/posix -Iport -Imath -I$S/ord_test -I$S/net/steam -I$S $CINC -I$S/net -I$DSMP_ROOT/sdk -I$MH/include -I$ZL)

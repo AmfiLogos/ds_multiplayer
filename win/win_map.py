@@ -34,8 +34,11 @@ EXTS = (".c", ".h", ".cpp", ".md", ".py", ".sh")
 HEX = re.compile(r"\b0x([0-9A-Fa-f]{5,8})\b")
 used = collections.defaultdict(list)          # value -> ["file:line"]
 idents = set()
+CM = os.environ.get("CM_REPO") or os.path.join(HOME, "ds_custommodes")   # Custom Modes' own repo since post-v13
 for top in ("src", "custom", "research", "rig", "PLAN.md"):
     p = os.path.join(ROOT, top)
+    if top == "custom" and not os.path.exists(os.path.join(p, "build_module.sh")):
+        p = CM                                    # its files keep the names custom/... in win_map.tsv
     walk = [(os.path.dirname(p), [], [os.path.basename(p)])] if os.path.isfile(p) else os.walk(p)
     for d, dirs, files in walk:
         dirs[:] = [x for x in dirs if x not in SKIP_DIRS]
@@ -43,7 +46,7 @@ for top in ("src", "custom", "research", "rig", "PLAN.md"):
             if not f.endswith(EXTS):
                 continue
             fp = os.path.join(d, f)
-            rel = os.path.relpath(fp, ROOT)
+            rel = os.path.join("custom", os.path.relpath(fp, p)) if p == CM else os.path.relpath(fp, ROOT)
             for n, line in enumerate(open(fp, errors="replace"), 1):
                 idents.update(re.findall(r"[A-Za-z_][A-Za-z0-9_]{3,}", line))
                 for m in HEX.finditer(line):

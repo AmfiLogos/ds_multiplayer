@@ -1,3 +1,0 @@
-fe/fe_game.c
-fe/fe_menu.c
-fe/fe_hub.c
