@@ -86,15 +86,20 @@ def main():
         r1 = tc(action='register', id='test-arena', label='Test Arena', tip='A dummy mode with its own page.', draw=1, save=name, page_err='', lobby_err='')
         r2 = tc(action='register', id='test-hub', label='Test Hub', tip='A dummy mode with the Expedition Rules.', draw=0)
         log('registered', r1.get('rc'), r2.get('rc'), json.dumps(r2.get('choices')))
+        # Custom Modes may have registered real choices first (Foreign Expedition, PvP): take the button ids from the list
+        chs = r2.get('choices') or []
+        btn = {ch['id']: ch['button'] for ch in chs}
+        B['C1'], B['C2'] = btn.get('test-arena', 124), btn.get('test-hub', 125)
+        fe_v2 = next((ch.get('v2') for ch in chs if ch['id'] == 'foreign-expedition'), 0)
         # 1. three choices, stock gap
         press('MULTIPLAYER'); time.sleep(1)
         s = ms(); fr = s.get('frames', {}); t = s.get('title', {})
-        col = sorted([fr[str(i)] for i in (B['HOST_SAVE'], 122, B['HOST_FE'], B['C1'], B['C2'], B['JOIN_ADDR']) if str(i) in fr], key=lambda r: -r[3])   # 122 New save
+        col = sorted([fr[str(i)] for i in (B['HOST_SAVE'], 122, *[ch['button'] for ch in chs], B['JOIN_ADDR']) if str(i) in fr], key=lambda r: -r[3])   # 122 New save
         gaps = [round(col[i][1] - col[i + 1][3], 1) for i in range(len(col) - 1)]
-        labels = [t.get(str(B[k]), {}).get('text') for k in ('HOST_FE', 'C1', 'C2')]
+        labels = [t.get(str(ch['button']), {}).get('text') for ch in chs]
         shot('1_multiplayer_page')
         check('1. Foreign Expedition, Test Arena, Test Hub under "Host a game", in registration order, stock gap',
-              r1.get('rc') == 0 and r2.get('rc') == 0 and labels == ['Foreign Expedition', 'Test Arena', 'Test Hub'] and len(col) == 6
+              r1.get('rc') == 0 and r2.get('rc') == 0 and labels == [ch['label'] for ch in chs] and labels[0] == 'Foreign Expedition' and labels[-2:] == ['Test Arena', 'Test Hub'] and len(col) == len(chs) + 3
               and stock_gap and all(abs(g - stock_gap) <= 1 for g in gaps), f'labels {labels} stock gap {stock_gap} gaps {gaps}')
         # 2. Arena page: Start + Back, draw_page with a panel, then NULL once on Back
         press('C1'); time.sleep(1)
@@ -116,11 +121,13 @@ def main():
               and rp.get('title') == 0 and q.get('draw_calls') == q2.get('draw_calls') and q.get('choice_now') == 'test-hub' and q.get('panel_on') == 0,
               f'rules {rp} draw {q.get("draw_calls")} now {q.get("choice_now")}')
         press('BACK')
-        # 4. FE (old API) page unchanged
-        press('HOST_FE'); time.sleep(1); s = ms()
-        check('4. Foreign Expedition (old API) page unchanged: Load save, no Start, Expedition Rules open',
-              s.get('state') == 'title_host' and act(s, 'LOAD_SAVE') and not act(s, 'HOST_START') and s.get('rules_panel', {}).get('fe') == 1,
-              f'load {act(s, "LOAD_SAVE")} start {act(s, "HOST_START")} rules {s.get("rules_panel")}')
+        # 4. FE page: old API (src fallback) = Load save, no Start; registered by Custom Modes with register_host_choice2 and
+        #    no draw_page = Start + Back, no Load save. Both: the Expedition Rules open, no Done.
+        press('HOST_FE'); time.sleep(1); s = ms(); rp = s.get('rules_panel', {})
+        check('4. Foreign Expedition page: ' + ('v2 (Custom Modes): Start, no Load save' if fe_v2 else 'old API: Load save, no Start') + ', Expedition Rules open, no Done',
+              s.get('state') == 'title_host' and act(s, 'LOAD_SAVE') == (not fe_v2) and act(s, 'HOST_START') == bool(fe_v2)
+              and rp.get('fe') == 1 and not rp.get('fe_done'),
+              f'v2 {fe_v2} load {act(s, "LOAD_SAVE")} start {act(s, "HOST_START")} rules {rp}')
         press('BACK')
         # 5. page_start error shown on the page
         press('C1'); tc(action='set', page_err='Test: no arena map.'); press('HOST_START'); time.sleep(1)
