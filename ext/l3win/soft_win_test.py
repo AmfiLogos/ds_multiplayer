@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Soft restart on Windows (loader kit in the DSMP bottle, -batchmode, no window): flow J through the loader's own
 test switch (DSL_SOFT_TEST=1: apply by <profile>/softrestart/apply_request.json).
-  round 1: A at the title -> apply -> B at the title, A gone
-  round 2: A in a loaded world (camera nudged) -> apply -> B loads the autosave of A, same camera target, A gone
+  title round: A at the title -> apply -> B at the title, A gone
+The old world round (apply inside a loaded world, B loads A's autosave) is gone: since v13 the loader refuses to apply
+inside a world on purpose (the player applies at the title), so that path no longer exists to test.
 Output: ext/l3win/soft_out/<round>/ (dsload logs of A and B, handoff) + printed PASS / FAIL lines."""
 import glob, json, os, re, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -77,6 +78,5 @@ def round_(name, world):
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     round_("title", False)
-    round_("world", True)
     json.dump(res, open(f"{OUT}/summary.json", "w"), indent=1)
     log("RESULTS", sum(res.values()), "/", len(res))
