@@ -238,12 +238,31 @@ static void test_max_blob(void) {
     dsnet_link_free(&a); dsnet_link_free(&b);
 }
 
+/* code review #6: a blob's continuation must keep the first fragment's kind and size (MAIL and REPORT share one rx) */
+static void test_blob_kind(void) {
+    int ok = 1;
+    uint8_t f[BLOB_HDR + 1024] = { 0 }, *p = f;
+    p = put32(p, 5); p = put8(p, BLOB_REPORT); p = put32(p, 2048); p = put32(p, 0);
+    dsnet_blob_rx rx = { 0 };
+    int r0 = dsnet_blob_feed(&rx, f, sizeof f);
+    f[4] = BLOB_MAIL; put32(f + 9, 1024);
+    int r1 = dsnet_blob_feed(&rx, f, sizeof f);
+    f[4] = BLOB_REPORT; put32(f + 5, 4096);
+    int r2 = dsnet_blob_feed(&rx, f, sizeof f);
+    put32(f + 5, 2048);
+    int r3 = dsnet_blob_feed(&rx, f, sizeof f);
+    CHECK(r0 == 0 && r1 == -1 && r2 == -1 && r3 == 1 && rx.kind == BLOB_REPORT, "feeds %d %d %d %d", r0, r1, r2, r3);
+    free(rx.buf);
+    printf("%s blob_kind: a continuation with another kind or size is refused; the right one completes the blob\n", ok ? "PASS" : "FAIL");
+}
+
 int main(void) {
     test_header();
     test_fragments();
     test_flood_in();
     test_out_cap();
     test_max_blob();
+    test_blob_kind();
     printf("%d failure(s)\n", failures);
     return failures != 0;
 }
