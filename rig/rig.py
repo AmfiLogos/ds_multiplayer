@@ -233,6 +233,10 @@ def prepare_data(x):
     for k, v in (('Screenmanager Fullscreen mode', 3), ('Screenmanager Resolution Width', 960),
                  ('Screenmanager Resolution Height', 540), ('Screenmanager Resolution Use Native', 0)):
         subprocess.run(['defaults', 'write', dom, k, '-int', str(v)])
+    # a copy that would still open full screen never starts (a full-screen test copy switched the owner's Space, 2026-10-16)
+    m = subprocess.run(['defaults', 'read', dom, 'Screenmanager Fullscreen mode'], capture_output=True, text=True).stdout.strip()
+    if m in ('0', '1'):
+        raise SystemExit(f'refused: test copy {x} ({dom}) would open full screen (Screenmanager Fullscreen mode {m})')
 
 
 # ------------------------------------------------------------------ start / stop
