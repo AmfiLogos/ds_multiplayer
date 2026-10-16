@@ -22,7 +22,7 @@ typedef struct sconn {
     int spectator;                                  /* watches: outside the sim, never holds the timer, commands dropped */
     int patch_wanted, patching, auto_paused;
     double mark_t[DSNET_MARK_SPAM_N]; int mark_i;   /* times of this sender's last ping adds (spam limit) */   /* lan_v10 partial resync: asked / in the issued PATCH_POINT; desync pause sent */
-    double last_rx;
+    double last_rx, born;                          /* born: accepted at (HELLO deadline) */
     uint8_t uid[16];
     int ticks_behind; uint32_t behind_at;
     float frame_ms;
@@ -567,7 +567,7 @@ static void add_conn(dsnet_server *s, int fd, int local) {
     for (int i = 0; i < MAX_CONNS; i++) if (!s->conn[i]) {
         sconn *c = calloc(1, sizeof *c);
         dsnet_link_init(&c->link, dsnet_fd_transport(fd));
-        c->local = local; c->id = -1; c->last_rx = dsnet_now_ms();
+        c->local = local; c->id = -1; c->last_rx = c->born = dsnet_now_ms();
         s->conn[i] = c;
         return;
     }
@@ -703,6 +703,12 @@ static void *server_main(void *arg) {
             int tmo = dsnet_rx_timeout_ms();
             if (c->id >= 0 && tmo && t - c->last_rx > tmo && !c->link.dead) {
                 dsnet_logf("server: player %d silent for %d ms, dropped", c->id, (int)(t - c->last_rx));
+                c->link.dead = 1;
+            }
+            /* no accepted HELLO in time (silent socket, or a refused one that never reads its REJECT): free the slot */
+            int hto = dsnet_hello_timeout_ms();
+            if (c->id < 0 && !c->local && hto && t - c->born > hto && !c->link.dead) {
+                dsnet_logf("server: connection without a HELLO for %d ms, closed", (int)(t - c->born));
                 c->link.dead = 1;
             }
         }
