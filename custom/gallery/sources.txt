@@ -1,1 +1,2 @@
 gallery/gallery.c
+gallery/gal_ui.c

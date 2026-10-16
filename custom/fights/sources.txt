@@ -8,4 +8,7 @@ fights/sg_embed.c
 fights/sg_js.c
 fights/cm_http.c
 fights/sg_cache.c
-fe/fe_json.c
+fights/cm_win.c
+fights/cm_work.c
+fights/tf_worlds.c
+fights/tf_ui.c
