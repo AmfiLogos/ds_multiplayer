@@ -307,6 +307,13 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
             c->rx.buf = NULL;
             return;
         }
+        if (c->rx.kind == BLOB_FULL) {           /* the host's full-state list (dsnet_full_take), text: NUL-terminated */
+            uint8_t *f = c->is_host ? NULL : realloc(c->rx.buf, c->rx.total + 1);
+            if (f) { f[c->rx.total] = 0; free(c->full); c->full = f; c->full_len = c->rx.total; c->full_tick = c->rx.tick; c->has_full = 1; }
+            else free(c->rx.buf);
+            c->rx.buf = NULL;
+            return;
+        }
         if (c->rx.kind == BLOB_REPORT) {         /* host: a guest's desync report part (seq_after = its slot) */
             if (c->is_host && c->nreports < 4) {
                 c->reports[c->nreports].data = c->rx.buf; c->reports[c->nreports].len = c->rx.total;
@@ -386,9 +393,11 @@ static dsnet_client *client_new(int fd, const char *name, int want_host, int rol
     pthread_mutex_init(&c->mu, NULL);
     pthread_cond_init(&c->cv, NULL);
     c->player = -1; c->exec_player = -1; c->fp_interval = 30; c->tpt_ms = 1000.0f / 60; c->role = role;
-    uint8_t b[128 + DSNET_MODLINES_MAX], *p = b;
+    /* fixed part 28 + build (u8 len) + rule + modset (u8 len) + lines (u16 len) + role + name: every field bounded */
+    uint8_t b[28 + 1 + sizeof dsnet_build_id + 2 + sizeof dsnet_modset + 2 + DSNET_MODLINES_MAX + 1 + 32], *p = b;
     size_t nl = name ? strlen(name) : 0; if (nl > 31) nl = 31;
-    size_t bl = strlen(dsnet_build_id), ml = strlen(dsnet_modset), dl = strlen(dsnet_mod_lines);
+    size_t bl = strnlen(dsnet_build_id, sizeof dsnet_build_id - 1), ml = strnlen(dsnet_modset, sizeof dsnet_modset - 1),
+           dl = strnlen(dsnet_mod_lines, DSNET_MODLINES_MAX - 1);
     p = put8(p, P_HELLO); p = put16(p, DSNET_PROTO); p = put8(p, want_host);
     p = put32(p, dsnet_mod_version); p = put32(p, (uint32_t)fegetround());
     if (dsnet_uid_set) memcpy(p, dsnet_uid, 16); else arc4random_buf(p, 16);
@@ -1563,12 +1572,9 @@ int dsnet_send_report(dsnet_client *c, const uint8_t *data, size_t len) {
     return dsnet_link_send_blob(&c->link, 0x20000000u | ++report_id, BLOB_REPORT, 0, 0, data, (uint32_t)len);
 }
 int dsnet_send_full(dsnet_client *c, uint32_t tick, const uint8_t *data, size_t len) {
-    if (!c->is_host || len > (8u << 20)) return -1;
-    uint8_t *b = malloc(5 + len); if (!b) return -1;
-    b[0] = P_FULL; put32(b + 1, tick); memcpy(b + 5, data, len);
-    int r = dsnet_link_send(&c->link, b, (uint32_t)(5 + len));
-    free(b);
-    return r;
+    if (!c->is_host || len > DSNET_FULL_MAX) return -1;
+    static uint32_t full_id;   /* a blob in 1 KB fragments: one frame is at most ~60 KB, a big world's list is more */
+    return dsnet_link_send_blob(&c->link, 0x10000000u | ++full_id, BLOB_FULL, tick, 0, data, (uint32_t)len);
 }
 int dsnet_full_take(dsnet_client *c, uint32_t *tick, uint8_t **data, size_t *len) {
     pthread_mutex_lock(&c->mu);
