@@ -117,9 +117,12 @@ static void pair_all(Obj h, int on) {
 }
 
 /* ---------------------------------------------------------------- hooks */
+/* the teams are enemies now. On the settlement (BASE) not while they walk to their ends: they start mixed together, and
+   hostile from START they fought on the spot (pair test v1_b: placing timed out, units in combat at match tick 45) */
+static int hostile_now(void) { return pvp_active(&g) && !(g.arena == PVP_WHERE_BASE && g.placing); }
 static int (*o_getrel)(Obj, Obj, void *);
 static int h_getrel(Obj a, Obj b, void *mi) {
-    if (pvp_active(&g) && a && b) {
+    if (hostile_now() && a && b) {
         G16 ga = gget(a), gb = gget(b);
         if (pvp_hostile(&g, (const uint8_t *)&ga, (const uint8_t *)&gb) == 1) { n_rel_hostile++; return 1; }   /* RelationType.Hostile */
     }
@@ -127,7 +130,7 @@ static int h_getrel(Obj a, Obj b, void *mi) {
 }
 static bool (*o_ishostile)(Obj, Obj, void *);
 static bool h_ishostile(Obj a, Obj b, void *mi) {
-    if (pvp_active(&g) && a && b) {
+    if (hostile_now() && a && b) {
         G16 ga = gget(a), gb = gget(b);
         if (pvp_hostile(&g, (const uint8_t *)&ga, (const uint8_t *)&gb) == 1) { n_ishostile++; return true; }
     }
@@ -137,7 +140,7 @@ static void (*o_init)(Obj, Obj, void *);
 static void h_init(Obj self, Obj rd, void *mi) { o_init(self, rd, mi); note_handler(self); }
 
 static int team_of(Obj unit, G16 *gu) {
-    if (!pvp_active(&g) || !unit) return PVP_TEAM_NONE;
+    if (!hostile_now() || !unit) return PVP_TEAM_NONE;
     *gu = gget(unit);
     return pvp_team_of_unit(&g, (const uint8_t *)gu);
 }
@@ -430,17 +433,19 @@ static int send_to_ends(int map) {
 /* PvP v1 on the settlement map (BASE): the two team ends = the two ends of the longest straight walkable line near the
    teams (owner v12 13: "players appear there, PvP is on"; default logged in MORNING_QUESTIONS). Lines: every row and every
    column within BASE_SCAN cells of the units' mean cell; a line = contiguous cells RuntimeMapData.IsMovable says yes to,
-   through or next to that centre band, cut to BASE_HALF cells each side of the centre (so the teams meet in seconds).
+   (and explored), cut to BASE_HALF cells each side of the centre (so the teams meet in seconds).
    Same map data on every peer: same ends. Blue goes to the low end (smaller x or y), Red to the high end. */
 #define VA_MAP_MOVABLE 0xBEF2F0      /* RuntimeMapData.IsMovable(Vector2Int) */
+#define VA_MAP_VISITED 0xBEF354      /* RuntimeMapData.IsVisited(Vector2Int) */
 #define BASE_SCAN 12
 #define BASE_HALF 18
 #define BASE_INSET 2
 typedef struct { int32_t x, y; } V2I;
 static int movable(Obj rd, int x, int y, int mx, int my) {
     if (x < 0 || y < 0 || x >= mx || y >= my) return 0;
-    V2I v = { x, y };
-    return F(VA_MAP_MOVABLE, bool (*)(Obj, V2I, void *))(rd, v, NULL);
+    V2I v = { x, y };                                                     /* walkable AND explored: the lit settlement (grid probe */
+    return F(VA_MAP_MOVABLE, bool (*)(Obj, V2I, void *))(rd, v, NULL)      /* 2026-10-16: movable-only cells run far into the dark, */
+        && F(VA_MAP_VISITED, bool (*)(Obj, V2I, void *))(rd, v, NULL);     /* where the units never got) */
 }
 static void find_base_ends(int map) {
     Obj h = combat_of(map), rd = h ? AT(h, 0x10, Obj) : NULL;             /* CombatDataHandler._runtimeData */
@@ -545,11 +550,13 @@ static void placing_step(int map) {
         int32_t c[2]; if (!unit_cell(map, g.units[i].guid, c)) continue;
         any = 1;
         int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1];
-        if (dx * dx + dy * dy > 16) arrived = 0;
+        if (dx * dx + dy * dy > (g.arena == PVP_WHERE_BASE ? 36 : 16)) arrived = 0;   /* base: two walkers share one end cell */
     }
+    if (g.arena == PVP_WHERE_BASE && !arrived && g.ticks % 120 == 0) send_both_to_ends();   /* a settler job took a unit off its walk */
     if ((any && arrived && g.ticks >= 60) || g.ticks >= PLACE_MAX_TICKS || g.countdown_at) {
         if (!pvp_place_done(&g)) return;            /* M4: 3 s countdown first (units hold where they are) */
-        rig_log("pvp: fight begins at match tick %u (%s)", g.ticks, arrived ? "Red at its end" : "placing time out");
+        if (g.arena == PVP_WHERE_BASE) { Obj h = combat_of(map); if (h) pair_all(h, 1); }   /* enemies from now on */
+        rig_log("pvp: fight begins at match tick %u (%s)", g.ticks, arrived ? (g.arena == PVP_WHERE_BASE ? "teams at their ends" : "Red at its end") : "placing time out");
         fight_kick(map);
     }
 }
@@ -648,7 +655,7 @@ static int pvp_order(mp_session *s, int player, const uint8_t guid[16], const ui
     int rc = pvp_apply(&g, player, a, n, own, no);
     last_rc = rc;
     if (rc) n_rejected++;
-    if (!was && pvp_active(&g) && h) pair_all(h, 1);
+    if (!was && hostile_now() && h) pair_all(h, 1);                  /* BASE: when the fight begins (placing_step) */
     if (!rc && n >= 2 && a[1] == PVP_OP_ARENA) arena_go(s);
     if (!rc && n >= 2 && a[1] == PVP_OP_START && g.arena == PVP_WHERE_DUNGEON) { find_ends(cur_map()); rig_log("pvp: %d Red units sent to their end", send_to_ends(cur_map())); }
     if (!rc && n >= 2 && a[1] == PVP_OP_START && g.arena == PVP_WHERE_BASE) { find_base_ends(cur_map()); rig_log("pvp: %d units sent to their team's end of the base", send_both_to_ends()); }
@@ -1037,6 +1044,21 @@ char *pvp_exec(const char *cmd, const char *line) {
         uint8_t b[32]; size_t n = pvp_cmd_arena(b, sizeof b, (int32_t)r, (int32_t)f, (int32_t)sd);
         if (is_host() && snap_take(&snap_world, "world")) return errj("world snapshot failed");
         Buf q = {0}; bput(&q, "{\"ok\":true,\"rc\":%d}", send_cmd(b, n)); return okj(&q);
+    }
+    if (!strcmp(cmd, "pvp_cellmap")) {              /* test: the settlement grid around (x, y): M movable, B blocked, V visited bits */
+        double x0 = 120, y0 = 120, w = 60, h = 60; jnum(line, "x", &x0); jnum(line, "y", &y0); jnum(line, "w", &w); jnum(line, "h", &h);
+        Obj rd = pvp_runtime_map(cur_map()); if (!rd) return errj("no map data");
+        Buf q = {0}; bput(&q, "{\"ok\":true,\"rows\":[");
+        for (int y = (int)(y0 + h) - 1; y >= (int)y0; y--) {
+            char row[260]; int k = 0;
+            for (int x = (int)x0; x < (int)(x0 + w) && k < 250; x++) {
+                V2I v = { x, y };
+                int m = F(VA_MAP_MOVABLE, bool (*)(Obj, V2I, void *))(rd, v, NULL), b = F(0xBEF2BC, bool (*)(Obj, V2I, void *))(rd, v, NULL), vi = F(0xBEF354, bool (*)(Obj, V2I, void *))(rd, v, NULL);
+                row[k++] = (char)('0' + (m | b << 1 | vi << 2));
+            }
+            row[k] = 0; bput(&q, "%s\"%s\"", y == (int)(y0 + h) - 1 ? "" : ",", row);
+        }
+        bput(&q, "]}"); return okj(&q);
     }
     if (!strcmp(cmd, "pvp_base")) {                  /* host, SETUP phase: play on the settlement map (PvP v1) */
         uint8_t b[4]; size_t n = pvp_cmd_simple(b, sizeof b, PVP_OP_BASE);

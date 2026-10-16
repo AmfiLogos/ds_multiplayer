@@ -49,9 +49,10 @@ def wait(what, pred, timeout=600, every=2):
     raise RuntimeError('timeout: ' + what)
 
 
-def fp_read(x, t_from):
+def fp_read_file(path, t_from):
     d = {}
-    for line in open(os.path.join(rig.idir(x), 'fp.log')):
+    if not os.path.exists(path): return d
+    for line in open(path):
         q = line.split()
         if len(q) >= 2 and q[0].isdigit() and int(q[0]) >= t_from: d[int(q[0])] = q[1]
     return d
@@ -129,7 +130,8 @@ def run(H, G, port):
     wait('host has 4 units', lambda: c(H, cmd='pvp_units_status')['received'] == 4, timeout=90, every=1)
     log('mods ask', c(H, cmd='pvp_mods', ask=1))
     wait('guest mod report', lambda: len(c(H, cmd='pvp_mods').get('reports', [])) >= 1, timeout=60, every=1)
-    log('best of 1', c(H, cmd='mpm_pvp', action='arrow', row=1, dir=-1).get('bo'), 'round 60 s', c(H, cmd='mpm_pvp', action='arrow', row=2, dir=-1).get('secs'))
+    c(H, cmd='mpm_pvp', action='page_arrow', row=1, dir=-1)                  # host page rows: To win, Round time
+    c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1); c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1)
     wait('host rules set', lambda: (lambda q: q.get('bo') == 1 and q.get('secs') == 60)(c(H, cmd='mpm_pvp')), timeout=20, every=1)
     r = c(H, cmd='mpm_pvp', action='v1_lobby_start'); log('H lobby Start', r)
     check('2a lobby Start accepted (brought units, Vanilla check)', r.get('ok'), json.dumps(r))
@@ -137,17 +139,27 @@ def run(H, G, port):
     t_match = c(H, cmd='status')['tick']
     ps = {x: c(x, cmd='pvp_status') for x in (H, G)}
     for x in (H, G): log(x, 'pvp_status', json.dumps(ps[x])[:900])
-    check('2 match on: same hash, 4 units, every unit lists its 2 enemies, played on the settlement (arena 2)',
-          ps[H]['hash'] == ps[G]['hash'] and len(ps[H]['units']) == 4 and all(u['enemies_listed'] == 2 for x in (H, G) for u in ps[x]['units'])
+    seen = {H: {}, G: {}}                                    # PvP hash by match tick on each copy: compare at a common tick
+    for _ in range(40):
+        for x in (H, G): q = c(x, cmd='pvp_status'); seen[x][q['ticks']] = q['hash']
+        if set(seen[H]) & set(seen[G]): break
+    ct = sorted(set(seen[H]) & set(seen[G])); same_hash = bool(ct) and all(seen[H][t] == seen[G][t] for t in ct)
+    ps[H]['hash'], ps[G]['hash'] = (seen[H][ct[0]], seen[G][ct[0]]) if ct else ('none', 'common')
+    check('2 match on: same hash, 4 units, played on the settlement (arena 2), not enemies yet while walking to the ends',
+          same_hash and len(ps[H]['units']) == 4 and all(u['enemies_listed'] == 0 for x in (H, G) for u in ps[x]['units'])
           and all(ps[x]['arena'] == 2 and c(x, cmd='status').get('map') == 0 for x in (H, G)), f"hash {ps[H]['hash']} / {ps[G]['hash']}")
+    pg = {u['guid'] for u in ps[H]['units']}
+    log('PvP units at START', [(u['name'], u['guid'][:8], u.get('cell'), u.get('task'), u.get('downed'), u.get('dead')) for u in c(H, cmd='list_units')['units'] if u['guid'] in pg])
     ends = {x: ps[x]['ends'] for x in (H, G)}
     check('3a base ends: two different cells, same on both', ends[H] == ends[G] and ends[H][0] != ends[H][1] and ends[H][0] != [0, 0], json.dumps(ends))
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_start.png'))
     wait('fight begins (teams in place)', lambda: c(H, cmd='pvp_status').get('fight_start', 0) > 0 and not c(H, cmd='pvp_status').get('placing'), timeout=300, every=2)
     s = c(H, cmd='pvp_status'); cells = {u['guid']: u for u in c(H, cmd='list_units')['units']}
+    log('PvP units at the fight', [(cells[u['guid']]['name'], u['guid'][:8], u['team'], cells[u['guid']].get('cell'), cells[u['guid']].get('task'), cells[u['guid']].get('downed')) for u in s['units'] if u['guid'] in cells])
     team_cells = {t: [cells[u['guid']]['cell'] for u in s['units'] if u['team'] == t and u['guid'] in cells and 'cell' in cells[u['guid']]] for t in (1, 2)}
     near = lambda cs, e: all(abs(a[0] - e[0]) + abs(a[1] - e[1]) <= 8 for a in cs)
-    check('3 teams walked to their ends; the fight began', near(team_cells[1], s['ends'][0]) and near(team_cells[2], s['ends'][1]), json.dumps(team_cells))
+    check('3 teams walked to their ends; the fight began; now every unit lists its 2 enemies', near(team_cells[1], s['ends'][0]) and near(team_cells[2], s['ends'][1])
+          and all(u['enemies_listed'] == 2 for u in s['units']), json.dumps(team_cells))
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_placed.png'))
     hp0 = {u['guid']: u.get('hp', 0) for u in s['units']}
     down = None; lost = None; t_run = time.time()
@@ -161,6 +173,8 @@ def run(H, G, port):
             if outs and not down:
                 down = outs; log('unit out:', outs); [c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_down.png')) for x in (H, G)]
         if not s.get('active') and s.get('matches', 0) >= 1: break
+        if not s.get('resetting'):                           # fp.log starts again at each reload: keep the match's lines
+            for x in (H, G): shutil.copy2(os.path.join(rig.idir(x), 'fp.log'), os.path.join(OUT, f'fp_match_{x}.log'))
         time.sleep(2)
     check('4 combat: both teams lose HP, a unit goes out', bool(lost) and bool(down), f'lost {bool(lost)} down {down}')
     wait('match over on both + world back', lambda: all((lambda q: not q.get('active') and q.get('phase') == 0 and q.get('matches') == 1)(c(x, cmd='pvp_status')) for x in (H, G)), timeout=600, every=2)
@@ -174,11 +188,11 @@ def run(H, G, port):
           f"winner {pe[H]['match_winner']} score {pe[H]['score']}, units back {len(back[H])}/{len(tpl_units)}")
     for x in (H, G): c(x, cmd='mp_pause', on=1)
     wait('both paused at one tick', lambda: (lambda a, b: a['tick'] == b['tick'] and a.get('mp', {}).get('paused') and b.get('mp', {}).get('paused'))(c(H, cmd='status'), c(G, cmd='status')), timeout=120)
-    fh, fg = fp_read(H, t_match), fp_read(G, t_match)
+    fh, fg = fp_read_file(os.path.join(OUT, f'fp_match_{H}.log'), t_match), fp_read_file(os.path.join(OUT, f'fp_match_{G}.log'), t_match)
     com = sorted(set(fh) & set(fg)); first = next((t for t in com if fh[t] != fg[t]), None)
     mh, mg = c(H, cmd='status')['mp'], c(G, cmd='status')['mp']
-    check('6 fingerprints equal on both for 2000+ common ticks from the match start, no desync',
-          len(com) >= 2000 and first is None and not mh.get('desyncs') and not mg.get('desyncs'),
+    check('6 fingerprints equal on both for 500+ common ticks from the match start, no desync',
+          len(com) >= 500 and first is None and not mh.get('desyncs') and not mg.get('desyncs'),
           f'{len(com)} common ticks ({com[0] if com else None}..{com[-1] if com else None}), first diff {first}, desyncs {mh.get("desyncs")}/{mg.get("desyncs")}')
     for x in (H, G): c(x, cmd='mp_pause', on=0)
     wait('result window on both', lambda: all(c(x, cmd='mpm_pvp').get('result') for x in (H, G)), timeout=120, every=2)

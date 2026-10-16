@@ -125,7 +125,13 @@ static jv *fe_world_build(int kind, char *out_name, size_t on, char *err, size_t
     jv *cs = jget(w, "CampaignSettingSaveData");
     if (cs) jset(cs, "GameSpeed", jnum_i(1));                              /* the template was saved paused: the world runs */
     jv *css = jpath(w, "CampaignSettingSaveData.CampaignStartSettingSaveData");
-    if (css) { jset(css, "IronModeEnabled", jbool(0)); jset(css, "CampaignName", jstrv(disp)); }
+    if (css) {
+        jset(css, "IronModeEnabled", jbool(0)); jset(css, "CampaignName", jstrv(disp));
+        /* the template predates "Lock Consecration Results": without these two fields the game asks at load (pause
+           reason ConsecrationNotice, a Yes / No box) and a multiplayer world waits there. Off = the stock default. */
+        if (!jget(css, "LockConsecrationEnabled")) jset(css, "LockConsecrationEnabled", jbool(0));
+        jset(css, "LockConsecrationNoticeAcknowledged", jbool(1));
+    }
     jv *cl = jget(w, "ClanSaveData"); jset(cl, "CampaignGuid", jstrv(cg)); jset(cl, "ClanName", jstrv(disp));
     snprintf(out_name, on, "%s", stem);
     rig_log("fe hub: %s world %s built from the base template (%s): %d research done, %d regions open", kind == FE_WORLD_HUB ? "hub" : "PvP", stem, ver, nres, nreg);
@@ -172,7 +178,7 @@ int fe_world_start(int kind, char *err, size_t errn) {
 }
 
 /* the brought-units build (pvp_units.c, fe_build_hub) gives the world a new campaign guid: a PvP v1 world keeps its
-   prefix (host, join point, right after that build). 0 ok. */
+   prefix (host, join point, right after that build); its fighters are fed and rested. 0 ok. */
 int pvp_v1_keep_prefix(const char *path) {
     char err[300]; jv *w = jload(path, err, sizeof err);
     if (!w) { rig_log("pvp v1: %s: %s", path, err); return -1; }
@@ -180,6 +186,21 @@ int pvp_v1_keep_prefix(const char *path) {
     if (!g || g->t != JN_STR || g->n != 36 || !cl) { jfree(w); return -1; }
     char cg[37]; memcpy(cg, g->s, 36); cg[36] = 0; memcpy(cg, PVP_V1_PREFIX, 5);
     jset(h, "CampaignGuid", jstrv(cg)); jset(cl, "CampaignGuid", jstrv(cg));
+    /* the fighters arrive fed and rested: a hungry settler left its walk to the team's end for the food (pair test v1_d);
+       they are copies in a world made only for the match, nothing goes home */
+    jv *pl = jpath(w, "EntityContainerSaveData.UnitContainerSaveData.Base.PlayerGuidList"), *ec = jpath(w, "EntityComponentSaveData.EntityComponents");
+    int fed = 0;
+    for (size_t i = 0; pl && ec && i < pl->cnt; i++) {
+        jv *u = pl->v[i]; if (!jis(u, JN_STR)) continue;
+        char gk[40]; snprintf(gk, sizeof gk, "%.*s", (int)u->n, u->s);
+        jv *st = fe_comp(jget(ec, gk), 0), *ss = st ? jget(st, "StateStats") : NULL;
+        if (!jis(ss, JN_OBJ)) continue;
+        jset(ss, "Hunger", jnum_d(1.0)); jset(ss, "Energy", jnum_d(1.0)); jset(ss, "Stress", jnum_d(0.0)); fed++;
+        /* no settler jobs: they hauled the template's ground items instead of walking / fighting (v1_e, task 15) */
+        jv *tp = jget(jget(jpath(w, "PlayerUnitsSaveData.TaskPriorities"), gk), "Priority");
+        for (size_t k = 0; jis(tp, JN_OBJ) && k < tp->cnt; k++) { jfree(tp->v[k]); tp->v[k] = jnum_i(0); }
+    }
+    rig_log("pvp v1: %d fighter(s) fed and rested, settler jobs off", fed);
     char tmp[1400]; snprintf(tmp, sizeof tmp, "%s.v1", path);
     unlink(tmp);
     int rc = jsave_new(w, tmp) || rename(tmp, path) ? -1 : 0;
@@ -230,7 +251,8 @@ int fe_hub_stock(void) {
                 if (++step >= len) { step = 0; if (++side == 4) { side = 0; ring += 2; } }
                 if (x < 0 || y < 0 || x >= mx || y >= my) continue;
                 v.x = x; v.y = y;
-                found = F(0xBEF2F0, bool (*)(Obj, HV2I, void *))(rd, v, NULL);   /* RuntimeMapData.IsMovable */
+                found = F(0xBEF2F0, bool (*)(Obj, HV2I, void *))(rd, v, NULL)    /* RuntimeMapData.IsMovable */
+                     && F(0xBEF354, bool (*)(Obj, HV2I, void *))(rd, v, NULL);  /* + IsVisited: the lit settlement */
             }
             if (!found) { rig_log("fe hub: stock: no free cell left after %d stacks", stacks); goto done; }
             int cnt = left < HUB_STACK ? left : HUB_STACK;
