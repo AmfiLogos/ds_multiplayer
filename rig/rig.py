@@ -510,8 +510,29 @@ def _free_stale(d):
         copies_up = any(alive(read_pid(x)) for x in pair)
         dead_pid = l.get('pid') and not _pid_alive(l['pid']) and not copies_up and now - l.get('since', 0) > 600
         if dead_pid or now - used > STALE_S:
+            # 2026-10-16: never free a pair while any process runs from its instances/<X>/ folder (a copy started
+            # without a pid file, its guard, a test's helper); every auto-free is logged in rig/lease_free.log
+            procs = [q for x in pair for q in _procs_in(x)]
+            why = 'lease pid dead' if dead_pid else f'unused {int(now - used)} s'
+            _free_log(f'{pair} {l["lane"]} pid={l.get("pid")}: {why}; ' + (f'KEPT, processes in its folders: {procs[:6]}' if procs else 'freed'))
+            if procs:
+                continue
             print(f'freed stale lease {pair} ({l["lane"]})', file=sys.stderr)
             del d[pair]
+
+
+def _procs_in(x):
+    """pids of every process whose command line runs from instances/<x>/ (pgrep -f on the folder path)"""
+    out = subprocess.run(['pgrep', '-f', idir(x) + '/'], capture_output=True, text=True).stdout
+    return [int(q) for q in out.split() if int(q) != os.getpid()]
+
+
+def _free_log(msg):
+    try:
+        with open(os.path.join(ROOT, 'rig', 'lease_free.log'), 'a') as f:
+            f.write(time.strftime('%Y-%m-%d %H:%M:%S ') + msg + '\n')
+    except OSError:
+        pass
 
 
 def _inst_used(x):

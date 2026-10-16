@@ -446,3 +446,7 @@ multiplayer tag next to the name of the save and then just put the players that 
 - fights13 9e46c06 (+ main = 70ae387) -> 34da6db (build/merge_fights13full; disjoint from fepvp, merged before it): run_eq 64/64,
   sg_cache 24/24, gal_test 28/28; unit ALL PASS; smoke 3/3; mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; copy O:
   gallery + boss 22/0, arena + dps 17/0 (needs FIGHTS_LIB = the gallery run's library; without it squad 0 -> 2 FAIL), solo 5/0.
+- units13 d1f2ba0 -> a8f154d (test data + custom/mod.json win-x64; build_module.sh conflict -> main's line; dylibs unchanged): mu_test 148, unit ALL PASS.
+- fepvp13 a646c84 (+ main = 4be8bf2) -> merged (build/merge_fepvp13): unit ALL PASS, pvp_test 597, FE guard ALL PASS; smoke 3/3;
+  mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; hub_smoke 5/5; PvP v1 via menu 11/11; hub dive (Death Off, save units) 25/25;
+  PvP from the hub 13/13; PvP m4_van / m4_bring / m4_ui PASS; prefs identical. Open for gate13: hub dive with one My Units unit.
