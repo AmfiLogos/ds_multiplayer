@@ -475,6 +475,14 @@ int      dsnet_report_take(dsnet_client *c, uint8_t **data, size_t *len, int *fr
 int dsnet_request_resync(dsnet_client *c);
 /* Host only, from inside the DSNET_JOIN_POINT callback. len <= 64 MB - DSNET_SAVE_OVERHEAD, sent in 1 KB fragments. */
 int dsnet_upload_save(dsnet_client *c, const uint8_t *data, size_t len);
+/* Host only, instead of dsnet_upload_save when the game could not make the save: every guest waiting for it is told
+ * (dsnet_save_failed 1) and leaves instead of waiting forever. */
+int dsnet_upload_save_failed(dsnet_client *c);
+/* Guest: why the wait for a save ended the session. 0 none, 1 the host's save failed, 2 no save byte arrived for the
+ * save-wait limit (default 90000 ms, env DSNET_SAVE_WAIT_MS, 0 = off). The link is closed in both cases. */
+enum { DSNET_SAVE_FAIL_HOST = 1, DSNET_SAVE_FAIL_TIMEOUT = 2 };
+int dsnet_save_failed(dsnet_client *c);
+void dsnet_set_save_wait_ms(int ms);
 
 /* Mail (Foreign Expedition, plan F3): an addressed message outside the simulation (never stamped, never in saves or
  * hashes), any size up to DSNET_MAIL_MAX, sent in 1 KB fragments. to_uid NULL = the host. The server stamps the sender's

@@ -22,7 +22,15 @@ test: build/test_dsnet build/test_link
 	nice -n 19 ./build/test_link
 	nice -n 19 ./build/test_dsnet
 
+# AddressSanitizer build of the library + tests (memory errors abort with a report)
+asan:
+	@mkdir -p build/asan
+	$(CC) $(CFLAGS) -O1 -fsanitize=address -fno-omit-frame-pointer $(SRC) test/test_dsnet.c -lpthread -o build/asan/test_dsnet
+	$(CC) $(CFLAGS) -O1 -fsanitize=address -fno-omit-frame-pointer $(SRC) test/test_link.c -lpthread -o build/asan/test_link
+	./build/asan/test_link
+	./build/asan/test_dsnet --only big_cmd
+
 clean:
 	rm -rf build
 
-.PHONY: all test clean
+.PHONY: all test clean asan

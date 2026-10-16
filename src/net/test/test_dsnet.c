@@ -69,6 +69,7 @@ typedef struct peer {
     uint32_t busy_at; int busy_ms, busy_done; double busy_since;
     int want_run, vote_while_desynced, sent_desync_vote;   /* auto-pause policy of the toy game */
     size_t save_pad; int save_bad, upload_rc, oversize_rc;
+    int save_fail_mode;           /* host: 1 = the game's save fails (notice sent), 2 = it fails and nothing is sent */
     int lossy_save;               /* host: a save loses s[7] (like in-progress tasks) and the host reloads it itself */
     int partial, patch_fail, patch_tried, patch_rc_host, reports_sent; uint32_t patch_tick, patch_count;   /* lan_v10 */
     uint8_t *report; size_t report_len; int report_from;                                                  /* host: got */
@@ -119,6 +120,7 @@ static void on_cmd(const dsnet_cmd *cmd, void *user) {
         if (dsnet_is_host(p->c)) p->patch_rc_host = dsnet_upload_patch(p->c, (const uint8_t *)&p->st, sizeof p->st);
         break;
     case DSNET_JOIN_POINT:
+        if (dsnet_is_host(p->c) && p->save_fail_mode) { if (p->save_fail_mode == 1) dsnet_upload_save_failed(p->c); break; }
         if (dsnet_is_host(p->c)) {
             p->oversize_rc = dsnet_upload_save(p->c, (const uint8_t *)p, DSNET_MAX_BLOB);   /* must refuse */
             size_t n = sizeof p->st + p->save_pad;
@@ -1742,6 +1744,86 @@ static void test_hello_deadline(void) {
            ok ? "PASS" : "FAIL", t_bad, t_all, (now_ms() - t0) / 1000);
 }
 
+/* ---- audit N1: a joined peer's command longer than DSNET_MAX_PAYLOAD (a frame may be 64 bytes longer) is dropped;
+ * the longest legal one still goes through. Before the fix: stack overflow in issue() (ASan: make asan) ---- */
+static int raw_hello(uint16_t port, const char *name) {
+    int fd = raw_connect(port);
+    uint8_t b[128], *p = b + 4;
+    p[0] = 1; p[1] = DSNET_PROTO & 0xff; p[2] = DSNET_PROTO >> 8; p[3] = 0;   /* P_HELLO, proto, want_host 0 */
+    memset(p + 4, 0, 4); int rm = fegetround(); memcpy(p + 8, &rm, 4);       /* mod version 0 (test cfg), rounding */
+    for (int i = 0; i < 16; i++) p[12 + i] = (uint8_t)(0xa0 + i);              /* uid */
+    p[28] = 0; p[29] = 0; p[30] = 0; p[31] = 0; p[32] = 0;                    /* build "", rule, modset "", lines "" */
+    p[33] = DSNET_ROLE_PLAYER; size_t nl = strlen(name); memcpy(p + 34, name, nl);
+    uint32_t n = 34 + (uint32_t)nl; b[0] = n; b[1] = n >> 8; b[2] = 0; b[3] = 0;
+    send(fd, b, 4 + n, 0);
+    return fd;
+}
+static void raw_cmd(int fd, uint16_t declared, uint32_t body) {   /* P_CMD game order: declared payload length, real body */
+    uint32_t n = 5 + body;
+    uint8_t *b = calloc(1, 4 + n);
+    b[0] = n; b[1] = n >> 8; b[2] = n >> 16; b[3] = n >> 24;
+    b[4] = 3; b[5] = DSNET_GAME_ORDER; b[6] = 0; b[7] = declared & 0xff; b[8] = declared >> 8;   /* P_CMD = 3 */
+    for (size_t off = 0; off < 4 + n; ) { ssize_t w = send(fd, b + off, 4 + n - off, 0); if (w <= 0) break; off += w; }
+    free(b);
+}
+static void test_big_cmd(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_cfg cfg = test_cfg(1);
+    dsnet_server *srv = dsnet_server_start(&cfg);
+    uint16_t port = dsnet_server_port(srv);
+    peer *host = peer_new("host", dsnet_client_connect_local(srv, "host"), 400);
+    CHECK(dsnet_wait_welcome(host->c, 2000) == 0, "host not welcomed");
+    peer_go(host);
+    int fd = raw_hello(port, "raw");
+    while (dsnet_present_mask(host->c) != 3 && now_ms() - t0 < 2000) sleep_ms(5);
+    CHECK(dsnet_present_mask(host->c) == 3, "raw peer did not join (mask %x)", dsnet_present_mask(host->c));
+    raw_cmd(fd, DSNET_MAX_PAYLOAD, DSNET_MAX_PAYLOAD);              /* the longest legal command */
+    raw_cmd(fd, DSNET_MAX_PAYLOAD + 64 - 5, DSNET_MAX_PAYLOAD + 64 - 5);   /* a whole max frame: 59 bytes over */
+    raw_cmd(fd, DSNET_MAX_PAYLOAD + 1, DSNET_MAX_PAYLOAD + 1);
+    raw_cmd(fd, 5, 5);                                               /* a normal one after: the link still works */
+    double tw = now_ms();
+    while (host->orders_from[1] < 2 && now_ms() - tw < 3000) sleep_ms(5);
+    sleep_ms(200);
+    CHECK(host->orders_from[1] == 2, "raw peer orders applied %u (want 2: max-size + normal)", host->orders_from[1]);
+    CHECK(!dsnet_is_disconnected(host->c), "host lost its link");
+    CHECK(wait_done(&host, 1, 15000) == 0, "host stopped");
+    close(fd);
+    host->stop = 1; pthread_join(host->th, NULL);
+    dsnet_client_close(host->c); dsnet_server_stop(srv); free(host);
+    printf("%s big_cmd: 60000-byte command applied, 60059 / 60001-byte ones dropped, server and host fine (%.1fs)\n",
+           ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
+}
+
+/* ---- audit N2: the host's join-point save fails -> the late joiner is told and leaves; or nothing comes -> it leaves
+ * after the save-wait limit. Host and the other guest play on. ---- */
+static void test_save_fail(int mode) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_set_save_wait_ms(1000);
+    dsnet_cfg cfg = test_cfg(2);
+    dsnet_server *srv; peer *ps[3];
+    if (setup_cfg(&srv, ps, 2, 600, NULL, NULL, &cfg)) { printf("  FAIL setup\n"); failures++; return; }
+    ps[0]->save_fail_mode = mode;
+    for (int i = 0; i < 2; i++) { ps[i]->orders_every = 5; peer_go(ps[i]); }
+    while (ps[0]->timer < 150) sleep_ms(2);
+    double tj = now_ms();
+    ps[2] = peer_new("late", dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "late"), 600);
+    CHECK(dsnet_wait_welcome(ps[2]->c, 2000) == 0, "no welcome");
+    peer_go(ps[2]);
+    double t_out = 0;
+    while (now_ms() - tj < 6000 && !t_out) { if (dsnet_is_disconnected(ps[2]->c)) t_out = now_ms() - tj; sleep_ms(5); }
+    int why = dsnet_save_failed(ps[2]->c);
+    CHECK(t_out > 0 && why == mode, "late joiner: out after %.0f ms, reason %d (want %d)", t_out, why, mode);
+    CHECK(mode == 1 ? t_out < 900 : t_out >= 900 && t_out < 3000, "late joiner out after %.0f ms", t_out);
+    CHECK(wait_done(ps, 2, 20000) == 0, "host / c1 did not go on");
+    int common;
+    CHECK(compare(ps[0], ps[1], &common) && common > 550, "c1 diverged");
+    CHECK(dsnet_save_failed(ps[1]->c) == 0 && !dsnet_is_disconnected(ps[1]->c), "c1 was told / cut");
+    stop_all(ps, 3, srv);
+    dsnet_set_save_wait_ms(90000);
+    printf("%s save_fail_%s: late joiner left after %.0f ms (reason %d), host and c1 ran to 600, equal (%.1fs)\n",
+           ok ? "PASS" : "FAIL", mode == 1 ? "notice" : "timeout", t_out, why, (now_ms() - t0) / 1000);
+}
+
 /* ---- F4: a guest that keeps sending but stops reading is cut by the send stall limit; the others play on ---- */
 static void test_tx_stall(void) {
     int ok = 1; double t0 = now_ms();
@@ -2236,6 +2318,8 @@ int main(int argc, char **argv) {
     RUN("bye", test_bye());
     RUN("hello_deadline", test_hello_deadline());
     RUN("tx_stall", test_tx_stall());
+    RUN("big_cmd", test_big_cmd());
+    RUN("save_fail", (test_save_fail(1), test_save_fail(2)));
     RUN("identity", test_identity());
     RUN("hold", test_hold());
     RUN("ownersplit", test_owner_split());

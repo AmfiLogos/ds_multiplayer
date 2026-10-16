@@ -111,6 +111,7 @@ static void send_log_from(dsnet_server *s, sconn *c, uint32_t seq) {
 /* CommandHandler.Send: stamp tick + player, log, broadcast to everyone in game. */
 static void issue(dsnet_server *s, uint8_t type, uint8_t player, uint8_t scope, const uint8_t *pl, uint16_t len) {
     uint8_t b[16 + DSNET_MAX_PAYLOAD], *p = b;
+    if (len > DSNET_MAX_PAYLOAD) { dsnet_logf("server: BUG: command type %u with %u bytes refused (max %u)", type, len, DSNET_MAX_PAYLOAD); return; }
     p = put8(p, P_SCMD); p = put32(p, s->log_n); p = put8(p, type); p = put32(p, s->timer);
     p = put8(p, player); p = put8(p, scope); p = put16(p, len);
     if (len) memcpy(p, pl, len);
@@ -309,6 +310,10 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
     case P_HELLO: on_hello(s, c, p, n); break;
     case P_CMD: {
         if (n < 5 || 5 + (uint32_t)get16(p + 3) > n || c->spectator) return;   /* spectators change nothing */
+        if (get16(p + 3) > DSNET_MAX_PAYLOAD) {    /* a frame may be 64 bytes longer than a command: never past issue()'s buffer */
+            dsnet_logf("server: player %d sent a %u-byte command (max %u), dropped", c->id, get16(p + 3), DSNET_MAX_PAYLOAD);
+            return;
+        }
         uint8_t type = p[1];
         if (type != DSNET_GAME_ORDER && type != DSNET_SPEED_VOTE && type != DSNET_PAUSE_VOTE && type != DSNET_OWNERSHIP &&
             type != DSNET_STORY_PAUSE && type != DSNET_EXPEDITION_READY && type != DSNET_ITEM_OWNER &&
@@ -400,6 +405,17 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         dsnet_logf("server: player %d partial resync %s", c->id, p[1] ? "applied" : "failed");
         patch_settle(s);
         break;
+    case P_SAVE_FAIL: {                        /* host: no save this time; the guests waiting for it leave (they are told) */
+        if (!c->is_host) return;
+        int told = 0;
+        for (int i = 0; i < MAX_CONNS; i++) {
+            sconn *o = s->conn[i];
+            if (o && o != c && o->id >= 0 && !o->closing && o->status == ST_LOADING) { dsnet_link_send(&o->link, p, 1); told++; }
+        }
+        s->jp_pending = 0;
+        dsnet_logf("server: the host's save failed, %d waiting guest(s) told", told);
+        break;
+    }
     case P_RESYNC_REQ:
         if (c->spectator) {                    /* resync or "no world yet": the cached save, never a pause */
             if (c->status == ST_LOADING && c->resync) return;

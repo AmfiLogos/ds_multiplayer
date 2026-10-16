@@ -1079,7 +1079,10 @@ void mp_game_poll(void) {
                                    dsnet_is_disconnected(mp_client(S)))) {   /* host gone (Steam link or TCP) */
         /* ux_flow_v10 #2: only a BYE from the server means the host ended it; else our own link dropped and the
            host is waiting for us (auto pause + "Wait / Keep playing" on his side) */
-        end_session(dsnet_bye_reason(mp_client(S)) == DSNET_BYE_SPECTATORS_OFF ? "The host turned spectators off"
+        int sf = dsnet_save_failed(mp_client(S));
+        end_session(sf == DSNET_SAVE_FAIL_HOST ? "The host's game could not save the world for you. Try to join again"
+                    : sf == DSNET_SAVE_FAIL_TIMEOUT ? "The host's world did not arrive. Try to join again"
+                    : dsnet_bye_reason(mp_client(S)) == DSNET_BYE_SPECTATORS_OFF ? "The host turned spectators off"
                     : dsnet_host_left(mp_client(S)) ? "The host left the game" : "Connection to the host lost");
         quit_pending = 1;
     }
