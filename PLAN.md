@@ -443,3 +443,6 @@ multiplayer tag next to the name of the save and then just put the players that 
   melon b3d5612 (+ main, dsl_reg.c conflict resolved by melon's own recorded resolution) -> b40a5c2: run_tests 31/31,
   l1_test 13/13, l1_v13_test 18/18, l1_ml_test 17/17, l1_bie_test 14/14. MP melon (ext/melon, ext/bepinexmac) -> b1f4233
   (no dylib change; its untracked copies in the main checkout were identical, moved to old/melon_untracked_*).
+- fights13 9e46c06 (+ main = 70ae387) -> 34da6db (build/merge_fights13full; disjoint from fepvp, merged before it): run_eq 64/64,
+  sg_cache 24/24, gal_test 28/28; unit ALL PASS; smoke 3/3; mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; copy O:
+  gallery + boss 22/0, arena + dps 17/0 (needs FIGHTS_LIB = the gallery run's library; without it squad 0 -> 2 FAIL), solo 5/0.
