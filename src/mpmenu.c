@@ -598,7 +598,7 @@ Obj btn_label(Obj b, int esc) { return b ? AT(b, esc ? 0x28 : 0x130, Obj) : NULL
 #define RP_WIDE_W 830
 #define RP_WIDE_H 376                                            /* 9 rules rows: the right column has 5 */
 static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt, float cx, float cy, const char *note, uintptr_t *reg, int wide) {
-    float pw = wide ? RP_WIDE_W : 430, ph = wide ? RP_WIDE_H : 640;     /* narrow: 9 rows (+ Shared fog, Spectators) */
+    float pw = wide ? RP_WIDE_W : 430, ph = wide ? RP_WIDE_H : 588;     /* narrow: 9 rows (+ Shared fog, Spectators); host page: always open, no Done */
     #define PX(x) ((x) - pw / 2)
     #define PY(y) (ph / 2 - (y))
     #define RCOL(i) (wide && (i) >= MPM_RULE_POP ? 1 : 0)
@@ -673,7 +673,7 @@ static void rp_update(rpanel *p, const mpm_settings *st, int show) {
 }
 
 static void fe_build(fepanel *p, Obj parent, Obj src, Obj tpl_img, Obj tpl_txt, float cx, float cy) {
-    const float pw = 430, rh = 48, step = 74, end = 68 + step * MPM_FE_ROWS, ph = end + 92;
+    const float pw = 430, rh = 48, step = 74, end = 68 + step * MPM_FE_ROWS, ph = end + 40;   /* host page: always open, no Done */
     #define PX(x) ((x) - pw / 2)
     #define PY(y) (ph / 2 - (y))
     Obj root = mk_img(tpl_img, parent, S_BOX, C_WHITE, cx, cy, pw, ph);
@@ -739,7 +739,7 @@ static void title_build(Obj v) {
         if (id == MPB_INFO) { row_height(b, 262, 40); txt_style(l, 0, 14, 514, 1); }
         if (id == MPB_DIVIDER) { row_height(b, 262, 17); mk_img(tpl_img, u_tr(b), -1, C_LINE, 0, 0, 262, 1); }
         if (id == MPB_BACK) {                                               /* text-only look, but its frame stays the click target */
-            row_height(b, 262, 44); txt_body(l); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB);
+            txt_body(l);                                                    /* stock row height: the stock gap to the row above (owner v12 item 4) */ txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB);
             Obj bg = first_image(u_tr(b), 0);
             if (bg && mm_is(bg, K_GR)) { F(0x52602F8, void (*)(Obj, Col, void *))(bg, (Col){ 1, 1, 1, 0 }, NULL); F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL); }
         }
@@ -749,7 +749,9 @@ static void title_build(Obj v) {
             txt_color(l, C_START);
         }
         if (id == MPB_HOST) { row_height(b, 262, 30); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB); }   /* "Host a game": the line over its 3 choices */
-        if (id == MPB_HOST_SAVE || id == MPB_HOST_NEW || id == MPB_HOST_FE) { row_height(b, 262, 40); txt_style(l, 0, 19, 514, 0); }
+        /* owner v12 item 4: the stock row height (the clone keeps the stock button's size), so the column's spacing gives the
+           stock gap. A smaller row (40 before) left the stock frame image at full size: the frames touched. */
+        if (id == MPB_HOST_SAVE || id == MPB_HOST_NEW || id == MPB_HOST_FE) txt_style(l, 0, 19, 514, 0);
         if (id == MPB_SETTINGS) {                                           /* [cog] Rules  ›  + summary under it */
             row_height(b, 262, 104);
             Obj bg = first_image(u_tr(b), 0); if (bg) { stretch(bg); u_gc_free(h_title_box); h_title_box = u_gc_new(bg); }
@@ -819,8 +821,9 @@ static void title_build(Obj v) {
         }
     }
     /* the Rules panel opens to the right of the column (mockup: left 470, top 312 at 1512 x 982 -> canvas centre offset) */
-    rp_build(&rp_title, u_tr(v), src, 0, tpl_img, tpl_txt, -78, -89, "Saved with this world. New worlds start with your last rules.", h_tb, 0);
-    fe_build(&rp_fe, u_tr(v), src, tpl_img, tpl_txt, -78, -89);
+    /* owner v12 item 5: always open on the host page, no Done; the top stays where it was (the panels lost their Done row) */
+    rp_build(&rp_title, u_tr(v), src, 0, tpl_img, tpl_txt, -78, -89 + 26, "Saved with this world. New worlds start with your last rules.", h_tb, 0);
+    fe_build(&rp_fe, u_tr(v), src, tpl_img, tpl_txt, -78, -89 + 26);
     u_gc_free(h_field); h_field = 0; u_gc_free(h_namefield); h_namefield = 0; primed = 0; fields_seen = 0;
     u_gc_free(h_title_built); h_title_built = u_gc_new(v);
     stock_hidden = 0;
@@ -851,8 +854,10 @@ static void title_sync(const mpm_obs *o) {
         Obj bx = u_gc_get(h_title_box); if (u_alive(bx) && mm_is(bx, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(bx, open ? (Col){ 1.25f, 1.2f, 1.2f, 1 } : C_WHITE, NULL);   /* open: lighter */
         if (bx && mm_is(bx, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bx, true, NULL);
     }
-    rp_update(&rp_title, &M.set, M.state == MPM_TITLE_HOST && M.settings_open && !M.set.fe);
-    fe_update(&rp_fe, &M.set, M.state == MPM_TITLE_HOST && M.settings_open && M.set.fe);
+    /* owner v12 item 5: the Rules rows in their own panel beside the host page, always open (no cog click, no Done) */
+    rp_update(&rp_title, &M.set, M.state == MPM_TITLE_HOST && !M.set.fe);
+    fe_update(&rp_fe, &M.set, M.state == MPM_TITLE_HOST && M.set.fe);
+    u_active(tb(MPB_RULES_DONE), false); u_active(tb(MPB_FE_DONE), false);
     /* Recent worlds (Multiplayer page) */
     Obj rw = u_gc_get(h_rw_root);
     int rwon = M.state == MPM_TITLE_MENU && M.nhist > 0;
@@ -3005,7 +3010,7 @@ void mpmenu_install(void) {
         bad |= rig_hook(0x518AFE0, (void *)h_clip_set, (void **)&o_clip_set, "mpmenu GUIUtility.set_systemCopyBuffer (test: file)");
     }
     /* until the split (M4) the Foreign Expedition code is in this dylib: it takes the third host choice itself */
-    mpmenu_register_host_choice("foreign-expedition", "Foreign Expedition", "Everyone brings units from their own saves into a copy of your world. Nobody's save changes until they bring the results home.", NULL, NULL);
+    mpmenu_register_host_choice("foreign-expedition", "Foreign Expedition", "Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home.", NULL, NULL);
     rig_log("mpmenu: installed (%s)%s", bad ? "HOOK FAILED" : "ok", test_mode() ? ", clipboard -> clipboard.txt" : "");
 }
 
@@ -3208,7 +3213,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     }
     if (!strcmp(cmd, "mpm_tree")) {                                         /* hierarchy of the Esc menu (layout debugging) */
         char wh[16] = ""; jstr(line, "what", wh, sizeof wh);                /* "load": the load list (SaveLoadView) */
-        Obj v = !strcmp(wh, "load") ? find_view_x(&h_slv, &k_slv, "Refactor", "SaveLoadView", true) : esc_view(); if (!v) return strdup("{\"ok\":false,\"error\":\"no view\"}");
+        Obj v = !strcmp(wh, "load") ? find_view_x(&h_slv, &k_slv, "Refactor", "SaveLoadView", true) : !strcmp(wh, "title") ? title_view() : esc_view(); if (!v) return strdup("{\"ok\":false,\"error\":\"no view\"}");
         Buf b = {0}; int n = 0; bput(&b, "{\"ok\":true,\"screen\":[%d,%d],\"tree\":[", F(0x5092C94, int (*)(void *))(NULL), F(0x5092CD4, int (*)(void *))(NULL));
         tree(&b, u_tr(v), 0, &n); bput(&b, "]}"); return b.p;
     }
@@ -3493,7 +3498,17 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           float wr[4] = {0}; if (u_on(root)) rect_of(root, wr);
           bput(&b, "},\"rect\":[%.0f,%.0f,%.0f,%.0f]}", wr[0], wr[1], wr[2], wr[3]); }
         bput(&b, ",\"teams_modal\":%d", teams_modal());
-        bput(&b, ",\"rules_panel\":{\"title\":%d,\"lobby\":%d}", u_on(u_gc_get(rp_title.root)), u_on(u_gc_get(rp_lobby.root)));
+        bput(&b, ",\"rules_panel\":{\"title\":%d,\"lobby\":%d,\"fe\":%d", u_on(u_gc_get(rp_title.root)), u_on(u_gc_get(rp_lobby.root)), u_on(u_gc_get(rp_fe.root)));
+        { int rows = 0; for (int i = 0; i < MPM_RULE_ROWS; i++) rows += u_on_tree(u_gc_get(rp_title.row[i]));   /* owner v12 item 5: open, no Done */
+          bput(&b, ",\"title_rows\":%d,\"done\":%d,\"fe_done\":%d}", rows, u_on_tree(tb(MPB_RULES_DONE)), u_on_tree(tb(MPB_FE_DONE))); }
+        { Obj tv = title_view(); float r[4]; int k = 0;                    /* owner v12 item 4: the drawn frames of the column, screen px */
+          bput(&b, ",\"frames\":{");
+          for (int i = 0; i < NT; i++) { Obj x = tb(title_ids[i]), im = x ? first_image(u_tr(x), 0) : NULL;
+              if (u_on(x) && rect_of(im ? im : x, r)) bput(&b, "%s\"%d\":[%.1f,%.1f,%.1f,%.1f]", k++ ? "," : "", title_ids[i], r[0], r[1], r[2], r[3]); }
+          bput(&b, "},\"stock_frames\":["); k = 0;
+          for (int off = 0x30; tv && off <= 0x60; off += 8) { Obj x = AT(tv, off, Obj), im = u_alive(x) ? first_image(u_tr(x), 0) : NULL;
+              if (u_on(x) && rect_of(im ? im : x, r)) bput(&b, "%s[%.1f,%.1f,%.1f,%.1f]", k++ ? "," : "", r[0], r[1], r[2], r[3]); }
+          bput(&b, "]"); }
         { Obj bk = tb(MPB_BACK), bg = bk ? first_image(u_tr(bk), 0) : NULL;
           static void *mr; if (!mr) mr = mth("UnityEngine.UI", "Graphic", "get_raycastTarget", 0);
           bput(&b, ",\"back_click_target\":%d", bg && mr && mm_is(bg, K_GR) ? (int)MCALL(mr, bool, Obj, const void *)(bg, mr) : -1); }
