@@ -57,7 +57,7 @@ def main():
             try: rig.stop(i)
             except Exception as e: log('stop', i, e)
         rig.release(pair)
-        log('RESULT', 'PASS' if results and all(results.values()) else 'FAIL', json.dumps(results))
+        log('RESULT', 'PASS' if results and all(results.values()) and sys.exc_info()[0] is None else 'FAIL', json.dumps(results))
 
 
 if __name__ == '__main__':

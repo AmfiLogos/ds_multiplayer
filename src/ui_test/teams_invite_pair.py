@@ -22,6 +22,9 @@ OUT = os.path.expanduser('~/ds_multiplayer/research/ux_shots')
 def shot(x, n): c(x, cmd='mpm_shot', how='backbuffer', path=f'{OUT}/v10_invite_{n}.png')
 def ms(x): return c(x, cmd='mpm_status')
 def press(x, b, t=1.5): c(x, cmd='mpm_press', button=B[b]); time.sleep(t)
+def mark(x): return os.path.getsize(os.path.join(rig.idir(x), 'rig.log'))
+def log_since(x, off):                                        # rig.log is append-mode: read only what this run wrote after off
+    with open(os.path.join(rig.idir(x), 'rig.log'), errors='replace') as f: f.seek(off); return f.read().splitlines()
 
 
 def aside(p):
@@ -73,12 +76,12 @@ def main():
         check('Cancel: no join, the world stays', w.get('invite_pending') == 0 and not w.get('session') and not ms(Y)['box']['on'], str(w))
         # a failed save: the Saves folder of this test copy is made read-only for a moment (restored right after)
         sdir = os.path.join(rig.idir(Y), 'data', 'Saves'); mode0 = os.stat(sdir).st_mode & 0o777
-        inv(); time.sleep(2); os.chmod(sdir, 0o555)
+        inv(); time.sleep(2); off = mark(Y); os.chmod(sdir, 0o555)
         try:
             c(Y, cmd='mpm_box', action='confirm'); time.sleep(3); m = ms(Y); w = c(Y, cmd='mp_world')
         finally:
             os.chmod(sdir, mode0)
-        saved = [l.strip() for l in open(os.path.join(rig.idir(Y), 'rig.log'), errors='replace') if 'save before joining' in l][-1:]
+        saved = [l.strip() for l in log_since(Y, off) if 'save before joining' in l][-1:]
         if saved and 'FAILED' in saved[0]:
             check('failed save: a second box "Your game could not be saved. Join the owner\'s game anyway?" [Cancel] [Join anyway]; the invite stays open',
                   m['box']['on'] and 'could not be saved' in m['box']['text'] and m['box']['confirm'] == 'Join anyway' and w.get('invite_pending') == 1, f"{json.dumps(m['box'])} {w}")
@@ -86,19 +89,20 @@ def main():
             c(Y, cmd='mpm_box', action='cancel'); time.sleep(2); w = c(Y, cmd='mp_world')
             check('... Cancel there: no join, the world stays', w.get('invite_pending') == 0 and not w.get('session') and not ms(Y)['box']['on'], str(w))
         else:
-            log('NOTE: the read-only folder did not make the autosave fail', saved, json.dumps(m['box']))
+            check('failed save: the read-only Saves folder made the autosave fail (else the failed-save box is not tested)', False, f"{saved} {json.dumps(m['box'])} {w}")
             if w.get('session') or w.get('invite_pending') == 0:
-                raise SystemExit('the save worked and the join started: cannot test the failed save this way')
-        inv(); time.sleep(2); c(Y, cmd='mpm_box', action='confirm'); time.sleep(0.5)
+                return                                        # the join started: the Save and join step below cannot run
+        inv(); time.sleep(2); off = mark(Y); c(Y, cmd='mpm_box', action='confirm'); time.sleep(0.5)
         seen = None
         for _ in range(40):
             m = ms(Y)
             if m['box']['on'] and 'Joining the owner' in m['box']['text']: seen = m['box']; shot(Y, 'joining_guest'); break
             time.sleep(0.25)
         wait('Y in the owner\'s world', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('loads', 0) >= 1)(st(Y)), timeout=900)
-        log('Y rig.log save line', [l.strip() for l in open(os.path.join(rig.idir(Y), 'rig.log'), errors='replace') if 'save before joining' in l][-1:])
+        new = log_since(Y, off)
+        log('Y rig.log save line', [l.strip() for l in new if 'save before joining' in l][-1:])
         check('Save and join: autosave, "Joining the owner\'s game..." with Cancel while it connects / loads, then Y is in the owner\'s world',
-              seen is not None and seen['confirm'] == 'Cancel' and any('autosave written' in l for l in open(os.path.join(rig.idir(Y), 'rig.log'), errors='replace')),
+              seen is not None and seen['confirm'] == 'Cancel' and any('autosave written' in l for l in new),
               json.dumps(seen))
         time.sleep(3); m = ms(Y)
         check('after the join: no box left', not m['box']['on'], json.dumps(m['box']))
@@ -107,7 +111,7 @@ def main():
             try: rig.stop(i)
             except Exception as e: log('stop', i, e)
         rig.release(pair)
-        log('RESULT', 'PASS' if results and all(results.values()) else 'FAIL', json.dumps(results))
+        log('RESULT', 'PASS' if results and all(results.values()) and sys.exc_info()[0] is None else 'FAIL', json.dumps(results))
 
 
 if __name__ == '__main__':

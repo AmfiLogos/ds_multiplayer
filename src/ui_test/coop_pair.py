@@ -76,7 +76,7 @@ def main():
             except Exception as e: log('stop', x, e)
         rig.release(pair)
         log('prefs', 'same' if rig.check_prefs() else 'DIFFER (restored)')
-        ok = results and all(results.values())
+        ok = results and all(results.values()) and sys.exc_info()[0] is None
         log('RESULT', 'PASS' if ok else 'FAIL', json.dumps(results))
 
 
@@ -350,6 +350,8 @@ def run(X, Y, PORT):
             U.move_order(X, g2['guid'], tgt); time.sleep(8)
             g3 = [u for u in units(X) if u['guid'] == mine[0]['guid']][0]
             check('map change flag: orders work again after it cleared', g3['cell'] != g2['cell'], f"{g2['cell']} -> {g3['cell']}")
+        else:
+            check('map change flag: a host unit to test the order hold', False, 'the host owns no unit here')
     step('mapflag', mapflag)
 
     def slide():                                               # lead: an arrow that would sit behind the portrait bar slides off it

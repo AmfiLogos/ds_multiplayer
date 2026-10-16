@@ -11,7 +11,7 @@ stops (copies kept with --keep) and copies fp.log / trace.bin / detail of both t
 import json, os, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import teams_pair as T
-rig, log, c, st, wait, check, tm, col_of, settle = T.rig, T.log, T.c, T.st, T.wait, T.check, T.tm, T.col_of, T.settle
+rig, log, c, st, wait, check, tm, col_of, settle, fp_equal_from = T.rig, T.log, T.c, T.st, T.wait, T.check, T.tm, T.col_of, T.settle, T.fp_equal_from
 results = T.results
 ROUNDS = T.arg('--rounds', 10)
 
@@ -82,6 +82,7 @@ def main():
         settle(X, Y, lambda a, b: all(col_of(a, g) == 0 for g in (f[0], f[3])) and all(col_of(b, g) == 1 for g in (f[1], f[2])), 'takes', timeout=60)
         tm(X, action='close'); tm(Y, action='close'); time.sleep(1)
         party = [f[0], f[3], f[1], f[2]]
+        t0 = max(st(X)['tick'], st(Y)['tick'])
         for r in range(ROUNDS):
             if desynced(X, Y): break
             if '--hold' in sys.argv:                                  # uxgame map_change: the guest holds a popup time lock (reason 4)
@@ -109,7 +110,9 @@ def main():
             wait('unpaused', lambda: desynced(X, Y) or (not mpst(X).get('paused') and not mpst(Y).get('paused')), timeout=180)
             steps_after(X, Y, 90, 'return')
             if desynced(X, Y): keep_evidence(X, Y, f'round {r + 1}: after return'); break
-        check(f'{ROUNDS} expedition entries in a row, no desync', entries == ROUNDS and not desynced(X, Y), f'entries {entries}')
+        n, first = fp_equal_from(X, Y, t0)                          # the flag alone is not a comparison: 90+ steps per round
+        check(f'{ROUNDS} expedition entries in a row, no desync', entries == ROUNDS and not desynced(X, Y) and first is None and n >= 90 * max(entries, 1),
+              f'entries {entries}, common ticks {n}, first diff {first}')
     finally:
         if '--keep' not in sys.argv:
             for i in pair:
@@ -118,7 +121,7 @@ def main():
                 except Exception as e:
                     log('stop', i, e)
             rig.release(pair)
-        log('RESULT', 'PASS' if results and all(results.values()) else 'FAIL', json.dumps(results))
+        log('RESULT', 'PASS' if results and all(results.values()) and sys.exc_info()[0] is None else 'FAIL', json.dumps(results))
 
 
 if __name__ == '__main__':

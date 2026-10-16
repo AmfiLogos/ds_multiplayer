@@ -177,7 +177,8 @@ def main():
         gx, gy = [u['guid'] for u in mine[X]], [u['guid'] for u in mine[Y]]
         check('local order: own units first (A)', [g.lower() for g in va['local_order'][:2]] == [g.lower() for g in gx])
         check('local order: own units first (B)', [g.lower() for g in vb['local_order'][:2]] == [g.lower() for g in gy])
-        check('bar: own units at places 1-2 on both', all(e['sibling'] < 2 for e in va['bar'] if e['owner'] == 0) and all(e['sibling'] < 2 for e in vb['bar'] if e['owner'] == 1), f"{va['bar']} {vb['bar']}")
+        check('bar: own units at places 1-2 on both', sum(e['owner'] == 0 for e in va['bar']) == len(gx) > 0 and sum(e['owner'] == 1 for e in vb['bar']) == len(gy) > 0
+              and all(e['sibling'] < 2 for e in va['bar'] if e['owner'] == 0) and all(e['sibling'] < 2 for e in vb['bar'] if e['owner'] == 1), f"{va['bar']} {vb['bar']}")
         check('world: no see-through by default (both)', va['world_dimmed'] == 0 and vb['world_dimmed'] == 0, f"A {va['world_dimmed']}/{va['world_full']} B {vb['world_dimmed']}/{vb['world_full']}")
         check('player panel collapsed by default (header only)', va['panel'][0]['active'] == 1 and va['panel'][1]['active'] == 0 and 'Players (2)' in va['panel'][0]['text'], str(va['panel']))
         log(X, 'A opens the panel', c(X, cmd='ui_click', row=0)); log(X, 'A sets see-through', c(X, cmd='ui_click', row=2))
