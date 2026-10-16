@@ -54,7 +54,7 @@ def one(n, mods, expect_entries):
 
 
 if 1 in runs:
-    one(1, ['custom-modes', 'units-driver'], [])
+    one(1, ['custom-modes', 'units-driver'], ['My Units'])
 if 2 in runs:
-    one(2, ['multiplayer', 'custom-modes', 'units-driver'], [])
+    one(2, ['multiplayer', 'custom-modes', 'units-driver'], ['My Units'])
 sys.exit(1 if ck.save() else 0)

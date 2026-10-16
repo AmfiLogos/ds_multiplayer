@@ -4,3 +4,4 @@ test/old/
 test/fixtures/
 *_bin
 *.dSYM/
+test/save/tmp/

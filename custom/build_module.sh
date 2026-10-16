@@ -28,7 +28,7 @@ for f in $SOLO $MPS; do [[ -f $f ]] || { echo "custom-modes: listed source $f no
 CF=(-arch arm64 -mmacosx-version-min=12.0 -O2 -Wall -Wno-unused-function -D_DARWIN_C_SOURCE -I$SDK -I$MP_SRC -I. $INC)
 # solo: AppKit / CoreFoundation for the clipboard (units/mu_clip.c), CFNetwork + zlib for wiki short links
 nice -n 19 clang $CF -dynamiclib -install_name @rpath/custom-modes.dylib -o $OUT/custom-modes.dylib.tmp cm_module.c $SOLO \
-  -framework CoreFoundation -framework CFNetwork -lobjc -lz
+  -framework CoreFoundation -framework CFNetwork -lobjc -lz -Wl,-U,_cm_builder_open
 codesign -f -s - $OUT/custom-modes.dylib.tmp 2>/dev/null; mv -f $OUT/custom-modes.dylib.tmp $OUT/custom-modes.dylib
 nice -n 19 clang $CF -dynamiclib -install_name @rpath/custom-modes-mp.dylib -Wl,-rpath,@loader_path -o $OUT/custom-modes-mp.dylib.tmp \
   cm_mp.c $MPS $MP_DYLIB $OUT/custom-modes.dylib -lz
