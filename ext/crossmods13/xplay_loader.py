@@ -6,7 +6,7 @@ running rig/mp2_test.py (the 19 checks). Same idea as win/xplay_run.py, but:
   guest = the Windows loader kit in the CrossOver bottle DSMP (win/wloader.py), same profile.
   xplay_loader.py <loader dir> [--no-install] [mp2 options]   (<loader dir>/build/mods_all + build/win/kit + build/dsload.dylib)
 Takes one rig lease (the Mac copy) and the wine lock. Never the owner's game, saves or prefs."""
-import json, os, subprocess, sys, time
+import json, os, re, subprocess, sys, time
 H = os.path.expanduser("~")
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))                       # this ds_multiplayer checkout
@@ -18,6 +18,26 @@ import wloader as w
 X, WIN = "Z", "W"
 MODS = ["multiplayer", "custom-modes", "gcd-cdr"]
 OUT = os.path.join(HERE, "out", "xplay-" + time.strftime("%Y%m%d-%H%M%S")); os.makedirs(OUT, exist_ok=True)
+
+def wine_busy():
+    """a real wine / .exe process younger than a day (the owner's own CrossOver bottles run for days: ignored)"""
+    out = subprocess.run(["ps", "-axo", "etime=,comm="], capture_output=True, text=True).stdout
+    return [l for l in out.splitlines() if re.search(r"wine|\.exe$", l, re.I) and not re.match(r"\s*\d+-", l)]
+
+
+MINE = set()                                   # wine processes this run started (only these are ever stopped)
+def note_started(before):
+    MINE.update(p for p, _ in w.dsmp_pids() if p not in before)
+def stop_mine():
+    if not MINE: return
+    try: w.cmd({"cmd": "quit"}, timeout=5)
+    except Exception: pass
+    time.sleep(2)
+    for pid in list(MINE):
+        try: os.kill(pid, 9)
+        except Exception: pass
+    MINE.clear()
+
 LOCK = f"{H}/ds_multiplayer/rig/wine.lock"
 def log(*a): print("[xm-xplay]", *a, flush=True)
 
@@ -29,7 +49,7 @@ while not PAIR and time.time() - t_l < 1800:                       # the Mac cop
 log("lease", PAIR)
 HAVE_LOCK = False; t_w = time.time()
 while PAIR and not HAVE_LOCK and time.time() - t_w < 1800:
-    if not subprocess.run(["pgrep", "-l", "wine"], capture_output=True, text=True).stdout.strip():
+    if not wine_busy():
         try: os.mkdir(LOCK); HAVE_LOCK = True; open(os.path.join(LOCK, "owner"), "w").write("crossmods\n")
         except FileExistsError: pass
     if not HAVE_LOCK: time.sleep(20)
@@ -47,12 +67,14 @@ try:
 
     def send(x, obj, timeout=90): return wrig.cmd(obj, timeout=timeout) if x == WIN else lrig.send(X, obj, timeout)
     def start(x, window=False, fps=30):
-        if x == WIN: os.environ["DSRIG_FPS"] = str(fps); wrig.start(); return 1
+        if x == WIN:
+            os.environ["DSRIG_FPS"] = str(fps); before = {p for p, _ in w.dsmp_pids()}
+            wrig.start(); time.sleep(5); note_started(before); return 1
         os.environ.update(host_env)
         try: return lrig.start(X, window=window, fps=fps)
         finally:
             for k in host_env: os.environ.pop(k, None)
-    def stop(x): return wrig.stop() if x == WIN else lrig.stop(X)
+    def stop(x): return stop_mine() if x == WIN else lrig.stop(X)
     def idir(x): return wrig.INST if x == WIN else lrig.idir(X)
     def read_pid(x): return (wrig.dsmp_pids() or [(0,)])[0][0] if x == WIN else lrig.read_pid(X)
     def alive(pid): return True if pid and pid in [p for p, _ in wrig.dsmp_pids()] else lrig.alive(pid)
@@ -81,7 +103,7 @@ try:
             if os.path.exists(src): open(os.path.join(OUT, f), "w").write(open(src, errors="replace").read())
         log("logs in", OUT)
 finally:
-    for f in (lambda: wrig.stop(), lambda: lrig.stop(X)):
+    for f in (lambda: HAVE_LOCK and stop_mine(), lambda: lrig.stop(X)):
         try: f()
         except Exception as e: log("stop:", e)
     if PAIR: subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "release", PAIR, "crossmods"], capture_output=True)

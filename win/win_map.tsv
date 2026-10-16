@@ -1,11 +1,88 @@
 kind	name	mac	win	status	note	used_in
-other		0x10000		not-an-address	no caller in the Mac binary (a constant)	src/mpmenu.c:2111,src/mpmenu.c:2113,src/ord_game.c:184,src/ord_game.c:187,src/rig_cmd.c:44,src/rig_cmd.c:47,+2
+other		0x10000		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/cutils.c:226,custom/fights/quickjs/cutils.c:252,custom/fights/quickjs/cutils.h:352,custom/fights/quickjs/cutils.h:362,custom/fights/quickjs/quickjs.c:4145,custom/fights/quickjs/quickjs.c:4159,+15
+other		0x1312d		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:223
+other		0x1f000		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:1999
+other		0x1f1e6		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:1972,custom/fights/quickjs/libunicode.c:1973
+other		0x1f3f4		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:2074
+other		0x1f3fb		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:1958,custom/fights/quickjs/libunicode.c:2044,custom/fights/quickjs/libunicode.c:2053,custom/fights/quickjs/libunicode.c:2054
+other		0x1f9b0		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:2001,custom/fights/quickjs/libunicode.c:2040
+other		0x5f5e1		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:223
 other		0x7ffff		not-an-address	no caller in the Mac binary (a constant)	src/rig_hook.c:76
+other		0xe0000		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:2079
+other		0xe007f		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:2081
 other		0x100000		not-an-address	no caller in the Mac binary (a constant)	src/rig_hook.c:22
+other		0x10ffff		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libregexp.c:1660,custom/fights/quickjs/libregexp.c:787,custom/fights/quickjs/libunicode.c:1643,custom/fights/quickjs/quickjs.c:22319,custom/fights/quickjs/quickjs.c:22426,custom/fights/quickjs/quickjs.c:22453,+10
+other		0x1dcd65		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:224
+other		0x1f8000		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/cutils.h:407
+other		0x200000		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/cutils.c:229,custom/fights/quickjs/cutils.c:252
+other		0x209a30		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:7
+other		0x280081		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:792
+other		0x2a0097		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:792
+other		0x2a8081		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:792
+other		0x2bc097		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:792
+other		0x2c8115		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:793
+other		0x2d0097		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:793
+other		0x2d4081		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:793
+other		0x2e0097		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:793
+other		0x2e4115		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:794
+other		0x2f0199		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:794
+other		0x302016		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:794
+other		0x309a00		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:7
+other		0x318465		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:470
+other		0x31e8d6		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:470
+other		0x3251dd		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:470
+other		0x32bfd9		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:469
+other		0x33ac62		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:469
+other		0x342bea		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:469
+other		0x34b261		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:468
+other		0x354072		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:468
+other		0x35d6df		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:468
+other		0x367686		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:468
+other		0x372069		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:467
+other		0x37d5af		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:467
+other		0x3897b3		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:467
+other		0x39680b		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:467
+other		0x3a4899		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:466
+other		0x3b3b9a		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:466
+other		0x3c43c2		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:466
+other		0x3d645a		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:466
+other		0x3ea16b		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:465
+other		0x400842		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:794
+other		0x418677		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:465
+other		0x433d00		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:465
 other		0x443af0		not-an-address	no caller in the Mac binary (a constant)	research/PLAN_V13.md:42
+other		0x448a42		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:795
+other		0x452e54		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:464
+other		0x4768ce		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:464
+other		0x4a0027		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:464
+other		0x4a0442		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:795
+other		0x4c0096		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:795
+other		0x4c8117		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:795
+other		0x4d0242		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:796
+other		0x4d104d		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:464
+other		0x4e4342		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:796
+other		0x4fc12f		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:796
+other		0x50c24e		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:463
+other		0x50c342		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:796
+other		0x5240bf		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:797
+other		0x530342		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:797
+other		0x550942		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:797
+other		0x5a0842		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:797
+other		0x5a8173		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:7
+other		0x5b3065		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:463
 other		0x5d84b0		not-an-address	no caller in the Mac binary (a constant)	research/plan_modloader.md:77
 other		0x5d8650		not-an-address	no caller in the Mac binary (a constant)	research/plan_modloader.md:77
+other		0x5e0096		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:798
+other		0x5e4342		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:798
 other		0x5eb860		not-an-address	no caller in the Mac binary (a constant)	src/MPMENU_NOTES.md:150
+other		0x5fc081		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:798
+other		0x601730		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:7
+other		0x6308c9		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:463
+other		0x680142		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:798
+other		0x6bc142		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:799
+other		0x6c0730		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:8
+other		0x6e40d2		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:462
+other		0x6f81b3		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:8
 export	il2cpp_resolve_icall	0x6f8b90	0x49ded0	ok		research/rig_access_spec.md:238,src/mpmenu.c:2308,src/mpmenu.c:3177,src/mpmenu.c:483,src/rig_cmd.c:33,src/ui_game.c:4168,+2
 export	il2cpp_array_new	0x6f8ba8	0x49d2e0	ok		src/mpmenu.c:222,src/mpmenu.c:3031,src/ord_game.c:76,src/ord_test/OFFSETS.md:142,src/ord_test/ord_smoke.c:140,src/ord_test/ord_smoke.c:300,+1
 export	il2cpp_assembly_get_image	0x6f8bbc	0x48a740	ok		src/mpmenu.c:102,src/ord_game.c:73,src/ord_test/OFFSETS.md:139
@@ -30,10 +107,24 @@ export	il2cpp_string_new	0x6f9738	0x49e320	ok		custom/pvp/pvp_game.c:520,src/UI_
 export	il2cpp_type_get_object	0x6f97ac	0x49e560	ok		custom/pvp/pvp_ui.c:182,custom/pvp/pvp_ui.c:502,src/mp_game.c:852,src/mpmenu.c:1035,src/mpmenu.c:113,src/mpmenu.c:156,+11
 internal	il2cpp internal	0x6fb6fc	0x443af0	ok-vote	149/150 caller twins agree	research/PLAN_V13.md:42,src/rig_cmd.c:27
 internal	il2cpp internal	0x6fb9c4	0x443d40	ok-vote	150/150 caller twins agree	src/rig_cmd.c:30
+other		0x701700		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:8
+other		0x710185		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:799
+other		0x71c317		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:799
+other		0x734844		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:799
+other		0x778344		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:800
+code-inside	AllIn1SpriteShader.All1CreateUnifiedOutline$$GetAllChildren+0x11a	0x798342		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:800
+code-inside	DG.Tweening.DOTweenTMPAnimator$$SkewCharX+0x2e	0x7b02be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:800
 method	GridTargetSelector$$ToGrid	0x7b54e0	0x53e570	ok		research/orders_catalog.md:125,src/ord_game.c:40,src/ord_test/OFFSETS.md:108
 method	GridTargetSelector$$SpecificGrid	0x7b56c0	0x53e450	ok		research/orders_catalog.md:124,research/orders_catalog.md:271,src/ord_game.c:39,src/ord_test/OFFSETS.md:107
+code-inside	FastNoiseLite$$SingleValueCubic+0xc48	0x7c0700		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:8
+code-inside	Reporter$$Initialize+0x233	0x7c4197		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:800
+code-inside	Reporter$$.ctor+0x232	0x7d0142		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:801
+code-inside	Clipper2Lib.Clipper$$SimplifyPath+0xaf0	0x7e0444		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:801
 method	Refactor.CombatDataManager$$get_Instance	0x7f4404	0x571ae0	ok		src/ord_game.c:49,src/ord_test/OFFSETS.md:117
 method	Refactor.CombatDataManager$$GetActiveSkillData	0x7f44a8	0x571520	ok		research/orders_catalog.md:77,src/ord_game.c:50,src/ord_test/OFFSETS.md:118
+code-inside	Refactor.MapWeatherHandler$$ResetWeather+0x24	0x7f8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:9
+code-inside	Refactor.SubUI_ResearchProgressBar$$SetProgressGage+0x42	0x800e42		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:801
+code-inside	Refactor.Tooltip_Choice$$SetActionTooltip+0x10	0x803040		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:9
 method	Refactor.VectorExtensions$$ToWorldPosition	0x80c458	0x5a6a00	ok		research/rig_access_spec.md:116
 method	Refactor.VectorExtensions$$ToLogicalPosition	0x80c474	0x5a67f0	ok		research/rig_access_spec.md:116
 method	Refactor.TextKeyExtensions$$GetText	0x80ebac	0x5a3490	ok		custom/fe/fe_menu.c:34,custom/pvp/pvp_ui.c:212,custom/pvp/pvp_ui.c:364
@@ -71,15 +162,25 @@ method	Refactor.SaveLoadHelper$$GetAllSavePaths	0x87262c	0x5debb0	ok		research/p
 method	Refactor.SaveLoadHelper$$ExtractSaveData	0x8753cc	0x5de270	ok		research/plan_foreign_expedition_spectator.md:124
 method	Refactor.SaveLoadHelper$$SaveFile	0x87573c	0x5e1ba0	ok		research/plan_foreign_expedition_spectator.md:123,src/MP_NOTES.md:63
 method	Refactor.SaveLoadHelper$$GetSaveDirectory	0x877010	0x5df6e0	ok		research/rig_access_spec.md:159
+code-inside	Refactor.SaveLoadHelper$$GetCorruptSavePaths+0x29e	0x878142		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:801
 method	Refactor.Sound.BackgroundAudioMute$$OnApplicationFocus	0x8805a4	0x5f6440	ok		research/rig_access_spec.md:237
 method	Refactor.Sound.OneTimeSFXSoundHandler$$PlayUISFX	0x8877b0	0x602490	ok		src/UI_NOTES.md:265,src/UI_NOTES.md:285,src/ui_game.c:3784
+code-inside	Refactor.Setting.LanguageSetting$$SetCurrentLanguageType+0x44	0x898744		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:802
 method	Refactor.Combat.CooldownCondition.<OnSuccessCondition>d__2$$MoveNext	0x8a4fe4	0x623e30	ok		research/bugreport_gcd_cdr.md:42
 method	Refactor.Combat.SkillCooldownCalculator$$GetAdjustedCooldown	0x8a5408	0x620520	ok		research/bugreport_gcd_cdr.md:42
 method	Refactor.Combat.SkillCooldownCalculator$$GetAdjustedGlobalCooldown	0x8a54b8	0x620640	ok		research/bugreport_gcd_cdr.md:46
 method	Refactor.Combat.ExecutionContext$$Convert	0x8a7b9c	0x619f90	ok		src/rig_det.c:489
 method	Refactor.Combat.ExecutionContext$$SetTarget	0x8a7d6c	0x61a320	ok		src/rig_det.c:490
 method	Refactor.Combat.CombatUtility$$GetClosestSingleEnemy	0x8af164	0x6120d0	ok		src/rig_det.c:487
+code-inside	Refactor.Combat.PatternRelated.Pattern_GiantStoneGolem$$Pattern+0x591	0x9502f9		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/dtoa.c:224
 method	Refactor.Combat.AffecterRelated.AFFECTER_PerfectionInscription.Passive_PerfectionInscription$$AddSkillTreeRoutine	0x963e64	0x6be020	ok		custom/units/pvp_build.c:15
+code-inside	Refactor.Combat.AffecterRelated.AFFECTER_SymbioticInsectPlayer.Passive_SymbioticInsect$$CheckHealthRoutine+0x7f	0x9801c3		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:9
+code-inside	Refactor.Combat.AffecterRelated.AFFECTER_BurnImmuneTrait.Passive_BurnImmuneTrait$$AddAffecterRoutine+0x38	0x988190		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:9
+code-inside	Refactor.Combat.AffecterRelated.AFFECTER_SelfRepair.Passive_SelfRepair.<NonAttackCommentRoutine>d__11$$MoveNext+0x18	0x990640		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:10
+code-inside	Refactor.FX.SkillFX_EatBase$$OnStart+0x18	0x9c9040		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:10
+code-inside	Refactor.FX.SkillFX_WhirlwindSlash$$OnDamageFX+0x59	0xa1849d		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/dtoa.c:462
+code-inside	Refactor.FX.FXPresenter$$ChangeAreaAmbientBGM+0x64	0xa481b4		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:10
+code-inside	Refactor.FX.System.SkillFXRouitne$$HandleFX+0x78	0xa52e40		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:10
 method	Refactor.Tick.PassiveActionContainer$$Register	0xa782c8	0x7beeb0	ok		custom/pvp/pvp_game.c:301,custom/pvp/pvp_game.c:939
 method	Refactor.Tick.MoveFirstRunner$$Tick	0xa810f8	0x7bc220	ok		research/determinism_audit.md:98
 method	Refactor.Tick.MoveFirstRunner$$OnDone	0xa81abc	0x7bb590	ok		research/determinism_audit.md:98
@@ -95,6 +196,7 @@ method	Refactor.Tick.DataApply.MainEventApplier$$Apply	0xab7628	0x7f41e0	ok		cus
 method	Refactor.Tick.DataApply.MainEventApplier$$Apply	0xab838c	0x7f5520	ok		custom/pvp/pvp_game.c:263,custom/pvp/pvp_game.c:268
 method	Refactor.Tick.DataApply.MainEventApplier$$Apply	0xaba618	0x7f33f0	ok		research/transitions_design.md:31
 method	Refactor.Tick.DataApply.SkillTreeInscriptionDefinition$$get_Points	0xabf170	0x5c8850	ok		custom/units/pvp_build.c:11
+code-inside	Refactor.Tick.DataApply.StatusApplier$$CalculateSideEffect+0x8d3	0xac0483		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:802
 method	Refactor.Tick.DataApply.TickEventApplier$$Apply	0xac7154	0x82cbf0	ok		research/bugreport_gcd_cdr.md:47
 code-inside	Refactor.Tick.DataApply.TickEventApplier$$Apply+0x5c	0xac71b0		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	research/bugreport_gcd_cdr.md:52
 code-inside	Refactor.Tick.DataApply.TickEventApplier$$Apply+0x78	0xac71cc		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	research/bugreport_gcd_cdr.md:54
@@ -107,13 +209,17 @@ method	Refactor.Task.DecidePlayerCombatBehaviour$$DecideSkill	0xb24de8	0x851600	
 method	Refactor.Task.DecidePlayerCombatBehaviour$$DecideTarget	0xb251e4	0x851a60	ok		src/rig_det.c:484
 method	Refactor.Task.DecidePlayerCombatBehaviour$$GetSpecificTarget	0xb260a8	0x852160	ok		src/rig_det.c:486
 method	Refactor.Task.DecidePlayerCombatBehaviour$$FindNewTarget	0xb2616c	0x852040	ok		src/rig_det.c:485
+code-inside	Refactor.Task.UntilArrive$$CanSkipRange+0xcf	0xb60317		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:802
 method	Refactor.ObserverDriven.InGameRecordContainer$$Deserialize	0xb67c54	0x8b52b0	ok		research/plan_foreign_expedition_spectator.md:128
+code-inside	Refactor.ObserverDriven.BehaviorOptionOffProvider$$GetValue+0x383	0xb80283		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:802
 method	Refactor.ObserverDriven.ObserverAggregator$$Record	0xbbf998	0x8eda90	ok		research/orders_catalog.md:231,research/orders_catalog.md:274,research/orders_catalog.md:36,src/ord_game.c:43,src/ord_test/OFFSETS.md:111
+code-inside	Refactor.ObserverDriven.ObserverAggregator.<>c$$<.ctor>b__4_0+0x14	0xbc0130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:11
 method	Refactor.ObserverDriven.ObserverDriven$$Update	0xbc0f04	0x8eea50	ok		src/DETERMINISM_NOTES.md:57,src/rig_det.c:30
 method	Refactor.Runtime.DungeonBehaviorSimulator$$Tick	0xbc4d80	0x8e3740	ok		custom/pvp/pvp_game.c:215,research/plan_pvp.md:228,research/plan_pvp.md:93
 method	Refactor.Runtime.DungeonBehaviorSimulator$$OnEnterDungeon	0xbc4f6c	0x8e31c0	ok		research/plan_pvp.md:95
 method	Refactor.Runtime.DungeonBehaviorSimulator$$CheckDungeonPenalty	0xbc652c	0x8e2030	ok		research/plan_pvp.md:94
 method	Refactor.Runtime.DungeonBehaviorSimulator$$CheckRoomRespawn	0xbc6c60	0x8e2800	ok		research/plan_pvp.md:95
+code-inside	Refactor.Runtime.DungeonRoomAnalyzeUtiliy$$GetNearbyRooms+0x3c	0xbc8640		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:11
 method	Refactor.Runtime.CombatDataHandler$$Init	0xbcde24	0x8de2a0	ok		custom/pvp/pvp_game.c:42
 method	Refactor.Runtime.CombatDataHandler$$CheckAggroTrigger	0xbce72c	0x8ddb30	ok		custom/pvp/pvp_game.c:15,custom/pvp/pvp_game.c:47,research/PLAN_V13.md:34
 method	Refactor.Runtime.CombatDataHandler$$HasHostileInCombatableArea	0xbceab4	0x8de130	ok		research/plan_pvp.md:59
@@ -140,11 +246,13 @@ method	Refactor.Runtime.Combat.HostileEntityData$$AddInRoomHostile	0xbf3d20	0x93
 method	Refactor.Runtime.Combat.HostileEntityData$$RemoveInRoomHostile	0xbf3e24	0x932640	ok		research/plan_pvp.md:61
 method	Refactor.Runtime.Combat.HostileEntityData$$GetClosestCombatableHostiles	0xbf4a90	0x931e40	ok		src/rig_det.c:482
 method	Refactor.Runtime.Combat.HostileEntityData$$IsHostileTo	0xbf4e44	0x932480	ok		research/plan_pvp.md:61
+code-inside	Refactor.Control.CancelMode$$.ctor+0x14	0xbf8170		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:11
 method	Refactor.Control.CancelMode$$LeftClickInteraction	0xbf8254	0x91c0d0	ok		research/orders_catalog.md:161,src/ord_game.c:56,src/ord_test/OFFSETS.md:123
 method	Refactor.Control.CancelMode$$DragSelection	0xbf890c	0x91b910	ok		research/orders_catalog.md:161,src/ord_game.c:57,src/ord_test/OFFSETS.md:124
 method	Refactor.Control.ConstructionBackUp$$LeftClickInteraction	0xbf9a84	0x91f0c0	ok		research/orders_catalog.md:165
 method	Refactor.Control.ConstructionBackUp$$DragSelection	0xbfa7f8	0x91e150	ok		research/orders_catalog.md:165
 method	Refactor.Control.ConstructionMode$$LeftClickInteraction	0xbfbf88	0x923400	ok		research/orders_catalog.md:159,src/ord_game.c:62,src/ord_test/OFFSETS.md:129
+code-inside	Refactor.Control.ConstructionMode$$TryReplaceDoorForImmediateWall+0xe4	0xc00100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:11
 method	Refactor.Control.ConstructionMode$$DragSelection	0xc013f4	0x9202e0	ok		research/orders_catalog.md:159,src/ord_game.c:63,src/ord_test/OFFSETS.md:130
 method	Refactor.Control.ActionOrder$$Execute	0xc04a38	0x9190b0	ok		research/orders_catalog.md:269,research/orders_catalog.md:97,src/ord_game.c:32,src/ord_test/OFFSETS.md:100
 method	Refactor.Control.SkillOrder$$Use	0xc04d64	0x9376a0	ok		research/orders_catalog.md:98
@@ -157,6 +265,7 @@ method	Refactor.Control.WaypointOrder$$ClearWayPoint	0xc06f5c	0x939b30	ok		resea
 method	Refactor.Control.MoveOrder$$All	0xc07164	0x935980	ok		research/orders_catalog.md:265,research/orders_catalog.md:96,research/rig_access_spec.md:194,src/ord_game.c:26,src/ord_test/OFFSETS.md:94
 method	Refactor.Control.WaypointOrder$$Reserve	0xc072d4	0x939d90	ok		research/orders_catalog.md:103,research/orders_catalog.md:268,src/ord_game.c:29,src/ord_test/OFFSETS.md:97
 method	Refactor.Control.MoveOrder$$TryMove	0xc07440	0x935e40	ok		research/orders_catalog.md:103,research/orders_catalog.md:266,src/ord_game.c:27,src/ord_test/OFFSETS.md:95
+code-inside	Refactor.Control.DefaultSelect$$DoubleClick+0x134	0xc08130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:12
 method	Refactor.Control.FormationMoveOrder$$TryOrder	0xc0a0ec	0x92f890	ok		research/orders_catalog.md:115
 method	Refactor.Control.FormationMoveOrder$$SendOrders	0xc0a530	0x92f050	ok		research/rig_access_spec.md:195
 method	Refactor.Control.MoveOrder$$Near	0xc0d30c	0x935b60	ok		research/orders_catalog.md:267,research/orders_catalog.md:97,research/rig_access_spec.md:212,src/ord_game.c:28,src/ord_test/OFFSETS.md:96
@@ -166,6 +275,7 @@ method	Refactor.Control.DemolitionMode$$LeftClickInteraction	0xc0efc8	0x92b110	o
 method	Refactor.Control.DemolitionMode$$DragSelection	0xc0f770	0x92a8b0	ok		research/orders_catalog.md:160,src/ord_game.c:61,src/ord_test/OFFSETS.md:128
 method	Refactor.Control.GatheringMode$$LeftClickInteraction	0xc0fe88	0x930d70	ok		research/orders_catalog.md:162,src/ord_game.c:54,src/ord_test/OFFSETS.md:121
 method	Refactor.Control.GatheringMode$$DragSelection	0xc1029c	0x9309a0	ok		research/orders_catalog.md:162,src/ord_game.c:55,src/ord_test/OFFSETS.md:122
+code-inside	Refactor.Control.GatheringMode$$DragSelection+0x1a4	0xc10440		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:12
 method	Refactor.Control.PickUpMode$$LeftClickInteraction	0xc10818	0x9369a0	ok		research/orders_catalog.md:163,src/ord_game.c:58,src/ord_test/OFFSETS.md:125
 method	Refactor.Control.PickUpMode$$DragSelection	0xc10bec	0x936680	ok		research/orders_catalog.md:163,src/ord_game.c:59,src/ord_test/OFFSETS.md:126
 method	Refactor.Control.UseSkillMode$$LeftClickInteraction	0xc110b4	0x938c40	ok		research/orders_catalog.md:107
@@ -178,8 +288,12 @@ method	Refactor.Map.FogOfWarPresenter$$RefreshVision	0xc2b9d4	0x93e730	ok		src/m
 method	Refactor.Map.FogOfWarView$$SetNotVisited	0xc2beb8	0x941e90	ok		src/mp_fog.c:39
 method	Refactor.Map.FogOfWarView$$SetHalfVisible	0xc2c054	0x941af0	ok		src/mp_fog.c:34
 method	Refactor.Map.FogOfWarPresenter$$RefreshImplementedArea	0xc2c3dc	0x93e340	ok		src/mp_fog.c:32
+code-inside	Refactor.Map.HousingRoomFeedbackPresenter$$UpdateFeedback+0x30	0xc30130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:12
+code-inside	Refactor.Map.WorldTilemapViewPresenter$$RefreshSingleFloorDecoTile+0x2d0	0xc38240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:12
+code-inside	Refactor.Map.BaseAreaRoomsDictionary$$.ctor+0x14	0xc48230		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:13
 method	Refactor.Map.AStarMapSetting$$SetBlock	0xc53e5c	0x977c40	ok		research/transitions_design.md:83
 method	Refactor.Map.AStarMapSetting$$ApplyToAStarAsync	0xc54094	0x9779c0	ok		research/transitions_design.md:59
+code-inside	Refactor.Map.GridHelper$$.cctor+0x49c	0xc58240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:13
 method	Refactor.Map.DungeonGenerator.DSDungeonPreDataGenerator$$GetRandomNumbersGenerator	0xc5abdc	0x97ae10	ok		research/plan_pvp.md:87,research/transitions_design.md:154,research/transitions_design.md:69,src/TRN_NOTES.md:8,src/trn_game.c:17
 method	Refactor.Map.DungeonGenerator.DSDungeonPreDataGenerator$$Generate	0xc5acf8	0x97ac00	ok		research/transitions_design.md:52
 method	Refactor.Map.DungeonGenerator.DSDungeonPreDataGenerator$$SetGenerationResult	0xc5b1e4	0x97bb20	ok		src/TRN_NOTES.md:14,src/trn_game.c:18
@@ -189,9 +303,12 @@ method	Refactor.Map.DungeonGenerator.DSDungeonPreDataGenerator.<BuildCandidateSe
 method	Refactor.Map.DungeonGenerator.DSDungeonPreDataGenerator.<Generate>d__24$$MoveNext	0xc5fe18	0x990760	ok		research/transitions_design.md:69
 method	Refactor.Map.DungeonGenerator.DSDungeonPreDataGenerator.<GenerateAndExtractOnce>d__27$$MoveNext	0xc605b8	0x98f540	ok		research/transitions_design.md:72
 method	Refactor.Map.DungeonGenerator.DSDungeonPreDataGenerator.<GenerateInternal>d__26$$MoveNext	0xc60f0c	0x98fec0	ok		research/transitions_design.md:72
+code-inside	Refactor.Main.CampaignDataContainer$$.ctor+0x628	0xc70130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:13
 method	Refactor.Main.CampaignDataContainer$$Serialize	0xc724ec	0x997f30	ok		research/plan_foreign_expedition_spectator.md:127
 method	Refactor.Main.EntityDataContainer$$Serialize	0xc72e80	0x9a5bc0	ok		research/determinism_audit.md:201
 method	Refactor.Main.CampaignDataContainer$$Deserialize	0xc74c40	0x9960f0	ok		research/plan_foreign_expedition_spectator.md:127
+code-inside	Refactor.Main.EventContainer$$Deserialize+0x274	0xc78130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:13
+code-inside	Refactor.Main.ItemDataContainer$$Add+0x80	0xc80130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:14
 method	Refactor.Main.EntityDataContainer$$SwapPlayerUnitOrder	0xc808b4	0x9a6dc0	ok		research/orders_catalog.md:182
 method	Refactor.Main.EntityDataContainer$$ChangeUnitFactionToEnemy	0xc8122c	0x99ee00	ok		research/plan_pvp.md:69
 method	Refactor.Main.EntityDataContainer$$OnSpawnUnit	0xc812c4	0x9a39e0	ok		research/rig_access_spec.md:101
@@ -200,6 +317,7 @@ method	Refactor.Main.EntityDataContainer$$MoveUnit	0xc83ac0	0x9a2470	ok		researc
 method	Refactor.Main.EntityDataContainer$$MoveThing	0xc83bc4	0x9a23d0	ok		src/rig_det.c:471
 method	Refactor.Main.EntityDataContainer$$GetWorldPosition	0xc83c6c	0x9a1ad0	ok		research/plan_pvp.md:255,research/rig_access_spec.md:116
 method	Refactor.Main.UnitDataContainer$$Deserialize	0xc85ad0	0x9b4030	ok		research/plan_foreign_expedition_spectator.md:127
+code-inside	Refactor.Main.EntityDataContainer$$ReloadAllEntity+0x16d8	0xc88240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:14
 method	Refactor.Main.ItemDataContainer$$GetEntity	0xc88f08	0x9b1220	ok		research/orders_catalog.md:75,src/ord_game.c:48,src/ord_test/OFFSETS.md:116
 method	Refactor.Main.UnitDataContainer$$GetEntity	0xc897ec	0x9b4e80	ok		research/orders_catalog.md:75
 method	Refactor.Main.EventContainer$$IsEventStartable	0xc8d6fc	0x9aad60	ok		custom/pvp/pvp_game.c:333,custom/pvp/pvp_game.c:940
@@ -210,6 +328,7 @@ method	Refactor.Main.EntityLifecycleHelper$$SpawnUnitFromCandidateData	0xc95c38	
 method	Refactor.Main.EntityLifecycleHelper$$SpawnUnit	0xc96020	0x9c5ea0	ok		research/plan_pvp.md:99
 method	Refactor.Main.EntityLifecycleHelper$$RespawnUnit	0xc96eec	0x9c5570	ok		research/plan_pvp.md:101
 method	Refactor.Main.EntityLifecycleHelper$$SpawnBlueprint	0xc976c0	0x9c5890	ok		research/orders_catalog.md:159
+code-inside	Refactor.Main.EntityLifecycleHelper$$MarkTransferredUnitVisionVisited+0x270	0xc98130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:14
 method	Refactor.Main.EntityLifecycleHelper$$RemoveTileFloor	0xc9842c	0x9c5510	ok		research/orders_catalog.md:159
 method	Refactor.Main.EntityLifecycleHelper$$RemoveTileFloorDeco	0xc98694	0x9c53b0	ok		research/orders_catalog.md:159
 method	Refactor.Main.MapLoadingChecker$$get_IsLoading	0xc98a8c	0x9cccd0	ok		research/rig_access_spec.md:131,research/transitions_design.md:102,src/rig_cmd.c:112,src/rig_cmd.c:188
@@ -219,13 +338,17 @@ method	Refactor.Main.EntityLifecycleHelper$$DespawnUnit	0xc9998c	0x9c2140	ok		re
 method	Refactor.Main.EntityLifecycleHelper$$DespawnBuilding	0xc9a84c	0x9c1ab0	ok		research/plan_pvp.md:100
 method	Refactor.Main.EntityLifecycleHelper$$ChangeUnitFaction	0xc9c7b4	0x9bf8b0	ok		research/plan_pvp.md:69
 method	Refactor.Main.LevelUpHelper$$SetLevelUpTargetUnit	0xc9f8b8	0x9cbb50	ok		research/orders_catalog.md:179,src/UI_NOTES.md:98,src/ui_game.c:5262
+code-inside	Refactor.Main.LevelUpHelper$$GetAvailableRequiredItemAmount+0xe8	0xca0130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:14
 method	Refactor.Main.LevelUpHelper$$GetOfferedMajorStat	0xca1808	0x9c9ab0	ok		custom/units/pvp_build.c:8
 method	Refactor.Main.MapLoadingChecker$$StartLoading	0xca3b50	0x9cd290	ok		research/transitions_design.md:50
+code-inside	Refactor.Main.BuildingSpawner$$IsInteractable+0x3c	0xca8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:15
 method	Refactor.Main.UnitSpawner$$SetUnitStatus	0xcae714	0x9d7fb0	ok		custom/units/pvp_build.c:10
+code-inside	Refactor.Main.UnitSpawner$$GetPlayerManagementDifficultyAffecterKey+0xdc	0xcb0130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:15
 method	Refactor.Main.TradeHelper$$BeginSession	0xcb2178	0x9cda30	ok		research/orders_catalog.md:183
 method	Refactor.Main.TradeHelper$$TryCommit	0xcb2d14	0x9cfa40	ok		PLAN.md:23,research/orders_catalog.md:183,research/orders_catalog.md:275,src/ord_game.c:44,src/ord_test/OFFSETS.md:112
 method	Refactor.Main.TradeHelper$$TryResolveOwner	0xcb38a8	0x9d14c0	ok		PLAN.md:23
 method	Refactor.Main.TradeStartHelper$$TryPrepareTrade	0xcb3d7c	0x9d4200	ok		research/orders_catalog.md:183
+code-inside	Refactor.Main.BaseGeneratorStrategy.<GenerateBaseMap>d__29$$MoveNext+0xb1c	0xcb8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:15
 method	Refactor.Main.DungeonGeneratorStrategy$$Generate	0xcb96bc	0x9ddb30	ok		research/plan_pvp.md:88
 method	Refactor.Main.DungeonGeneratorStrategy$$ProcessRoomSpawn	0xcb9a9c	0x9df4c0	ok		research/plan_pvp.md:88
 method	Refactor.Main.DungeonGeneratorStrategy$$HandleSpawnCategory	0xcba210	0x9de1a0	ok		custom/pvp/pvp_game.c:213,research/plan_pvp.md:89
@@ -233,6 +356,7 @@ method	Refactor.Main.DungeonGeneratorStrategy$$HandleRandomMonsterSpawn	0xcba6bc
 method	Refactor.Main.DungeonGeneratorStrategy$$HandleStaticMonsterSpawn	0xcbac94	0x9deeb0	ok		research/plan_pvp.md:224,research/plan_pvp.md:89,research/transitions_design.md:57
 method	Refactor.Main.DungeonGeneratorStrategy$$HandleStaticBuildingSpawn	0xcbb234	0x9de640	ok		research/plan_pvp.md:90
 method	Refactor.Main.DungeonGeneratorStrategy$$HandleStaticItemSpawn	0xcbb6d4	0x9deb00	ok		research/plan_pvp.md:226,research/plan_pvp.md:90
+code-inside	Refactor.Main.UnitQuickSlotContainer$$.ctor+0x74	0xcc0240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:15
 method	Refactor.Main.PlayerUnitDataContainer$$Deserialize	0xcc26dc	0x9e3910	ok		research/plan_foreign_expedition_spectator.md:128
 method	Refactor.Main.SkillPointCostCalculator$$GetRequiredSkillPointCost	0xcc76e8	0x9e6c20	ok		custom/units/pvp_build.c:13
 method	Refactor.Main.UnitSkillContainer$$LearnSkill	0xcc8b10	0x9f3900	ok		research/plan_pvp.md:306
@@ -242,13 +366,22 @@ method	Refactor.Main.EventQueue$$AddEvent	0xccfad4	0x9dffa0	ok		custom/pvp/pvp_g
 method	Refactor.Main.EventQueue.<>c__DisplayClass8_0$$<.ctor>b__2	0xccff30	0x9f05b0	ok		research/orders_catalog.md:10,research/orders_catalog.md:264,research/orders_catalog.md:39,src/ord_game.c:23,src/ord_test/OFFSETS.md:91
 method	Refactor.Main.EventQueue.<>c__DisplayClass8_1$$<.ctor>b__3	0xccffec	0x9f0670	ok		research/orders_catalog.md:10,research/orders_catalog.md:264,src/ord_game.c:24,src/ord_test/OFFSETS.md:92
 method	Refactor.Main.EventQueue.<ProcessAsyncEvent>d__14$$MoveNext	0xcd00fc	0x9ef8e0	ok		research/transitions_design.md:138,research/transitions_design.md:23,src/trn_game.c:41
+code-inside	Refactor.Main.EventQueue.<ProcessAsyncEvent>d__14$$MoveNext+0x4	0xcd0100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:16
 method	Refactor.Main.EventQueue.<ProcessAsyncEvent>d__14$$<>m__Finally1	0xcd0300	0x9efb50	ok		research/transitions_design.md:23
 method	Refactor.Main.MapTransitionRequestGate$$TryAcquire	0xcd0420	0x9e1410	ok		research/orders_catalog.md:38,research/transitions_design.md:21
 method	Refactor.Main.AutoSaveAction$$Execute	0xcd56b8	0x9f7770	ok		research/transitions_design.md:95
 method	Refactor.Main.GameSpeedAction$$Execute	0xcd7b94	0xa04350	ok		research/orders_catalog.md:218
+code-inside	Refactor.Main.HideAlertAction$$RecordTutorial+0x16d	0xcd8101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:16
+code-inside	Refactor.Main.SpawnItemMapAction$$get_ActionText+0x94	0xce0130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:16
+code-inside	Refactor.Main.ActionPerformer$$get__isCurrentComplete+0xfc	0xce8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:16
 method	Refactor.Main.EventFlowProcessor$$StartEvent	0xcea620	0xa02340	ok		custom/pvp/pvp_game.c:333,custom/pvp/pvp_game.c:942,src/ui_game.c:1460,src/ui_game.c:1539
 method	Refactor.Main.EventProcessor$$Update	0xcec070	0xa03820	ok		research/determinism_audit.md:212,src/DETERMINISM_NOTES.md:57,src/rig_det.c:28
+code-inside	Refactor.Main.EntityObjectFactory$$InstantiateHUD+0x64	0xcf0100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:17
 method	Refactor.Main.TradeCommitRequest$$.ctor	0xcf4694	0xa0ff30	ok		src/ord_game.c:45,src/ord_test/OFFSETS.md:113
+code-inside	BehaviorDesigner.Runtime.Tasks.Unity.UnityCapsuleCollider.SetHeight$$OnUpdate+0xa0	0xcf8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:17
+code-inside	BehaviorDesigner.Runtime.Tasks.Unity.UnityAnimator.GetDeltaRotation$$OnUpdate+0x74	0xd00214		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:803
+code-inside	BehaviorDesigner.Runtime.Tasks.Unity.UnityAnimator.GetFloatParameter$$OnReset+0x48	0xd00640		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:17
+code-inside	BehaviorDesigner.Runtime.Tasks.Movement.Pursue$$OnReset+0xa6	0xd10096		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:803
 method	Refactor.Main.MainFlow$$get_IsCampaignStarted	0xd19408	0xa3b080	ok		research/rig_access_spec.md:100,research/rig_access_spec.md:128
 method	Refactor.Main.MainFlow$$get_CurrentMap	0xd19434	0xa3b740	ok		research/rig_access_spec.md:100,research/rig_access_spec.md:129
 method	Refactor.Main.MainFlow$$InitCore	0xd19728	0xa37490	ok		research/orders_catalog.md:279,research/orders_catalog.md:78
@@ -270,6 +403,7 @@ method	Refactor.Main.TickFlowHandler$$Update	0xd28120	0xa45010	ok		research/dete
 method	Refactor.Main.TickFlowHandler$$HandleEvent	0xd28214	0xa43150	ok		research/determinism_audit.md:159,research/rig_access_spec.md:209
 method	Refactor.Main.TickFlowHandler$$CompleteEntityInitializationForTransition	0xd28dbc	0xa41fc0	ok		research/transitions_design.md:61
 method	Refactor.Main.RuntimeDataContainer$$GetDataReader	0xd2bd44	0xa3c3a0	ok		src/ui_game.c:5191,src/ui_game.c:5196
+code-inside	Refactor.Main.TaskGeneratorContainer$$InitializeTaskGenerator+0x3ac	0xd30130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:17
 method	Refactor.Main.TaskGeneratorContainer$$CancelPublishedTasks	0xd306d8	0xa65c40	ok		research/orders_catalog.md:161
 method	Refactor.Main.TaskGeneratorContainer$$RemoveTaskByTargets	0xd30b44	0xa670c0	ok		research/orders_catalog.md:163
 method	Refactor.Main.TaskGeneratorContainer$$GenerateTask	0xd312ac	0xa65db0	ok		research/orders_catalog.md:159
@@ -279,6 +413,7 @@ method	Refactor.Main.InputModule.InputBinding$$ConvertInputStreamToEventData	0xd
 method	Refactor.Main.InputModule.InputEventFactory$$ConvertKeyInputToEventData	0xd357fc	0xa4ce10	ok		research/orders_catalog.md:35
 method	Refactor.Main.InputModule.InputEventFactory$$ConvertMouseInputToEventData	0xd362dc	0xa4d690	ok		research/orders_catalog.md:35
 method	Refactor.Main.InputModule.InputEventFactory$$ConvertUIEventToEventData	0xd37008	0xa4dc70	ok		research/orders_catalog.md:35,research/transitions_design.md:31
+code-inside	Refactor.Main.InputModule.InputEventFactory$$ConvertUIEventToEventData+0x1238	0xd38240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:18
 method	Refactor.Main.InputModule.InputDispatcher$$Update	0xd3b550	0xa4c970	ok		research/orders_catalog.md:34,research/orders_catalog.md:8
 method	Refactor.Main.InputModule.InputDispatcher$$<Update>b__8_0	0xd3baa4	0xa4c8b0	ok		research/orders_catalog.md:263,research/orders_catalog.md:37,research/orders_catalog.md:9,src/ord_game.c:22,src/ord_test/OFFSETS.md:90,src/ord_test/ord_smoke.c:102,+2
 method	Refactor.Main.InputModule.InputStream$$AddUIInput	0xd3f514	0xa53ea0	ok		research/orders_catalog.md:33
@@ -290,9 +425,11 @@ method	Refactor.Main.Processor.ControlModeProcessor$$LeftClick	0xd4548c	0xa495c0
 method	Refactor.Main.Processor.ControlModeProcessor$$RightClick	0xd45628	0xa49910	ok		research/orders_catalog.md:96
 method	Refactor.Main.Processor.ControlModeProcessor$$Drag	0xd457dc	0xa493b0	ok		research/orders_catalog.md:167,research/orders_catalog.md:287
 method	Refactor.Main.Processor.ControlModeProcessor$$GetProcessor	0xd45b2c	0xa49510	ok		research/orders_catalog.md:80,src/ord_game.c:46,src/ord_test/OFFSETS.md:114
+code-inside	Refactor.Main.Processor.ItemControlProcessor$$RouteDungeonReturnInventoryItem+0xcc	0xd48130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:18
 method	Refactor.Main.Processor.ItemControlProcessor$$EquipItem	0xd4d574	0xa58250	ok		research/plan_pvp.md:308
 method	Refactor.Main.Processor.SelectProcessor$$Toggle	0xd54574	0xa82840	ok		src/ui_game.c:3027,src/ui_game.c:5275
 method	Refactor.Main.Processor.SelectProcessor$$Select	0xd54b7c	0xa82740	ok		src/ui_game.c:3027,src/ui_game.c:5274
+code-inside	Refactor.Main.Event.RecruitHelper$$ParseItems+0x18	0xd60240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:18
 method	Refactor.Main.Event.RecruitHelper$$ApplyModifiers	0xd60c08	0xa79cd0	ok		PLAN.md:182,custom/units/pvp_build.c:136
 method	Refactor.Main.Event.TickRequested$$.ctor	0xd61e0c	0x8e1990	ok		src/rig_det.c:32
 method	Refactor.Main.Event.QuitToTitleSceneRequested$$.ctor	0xd61e50	0x8e1990	ok		src/MP_NOTES.md:179,src/MP_NOTES.md:182,src/mp_game.c:29
@@ -326,6 +463,7 @@ method	Refactor.Main.Event.CampaignLoadingEventHandler$$TryGetSaveHeader	0xd6ca4
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6f114	0xa71a60	ok		research/orders_catalog.md:207,research/transitions_design.md:31
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6f2c8	0xa71790	ok		research/orders_catalog.md:209
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$LogLoadCheckpoint	0xd6f9fc	0xa71610	ok		src/mp_game.c:268
+code-inside	Refactor.Main.Event.CampaignLoadingEventHandler$$RepairReplacementBlueprintTask+0x204	0xd70130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:18
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd70e28	0xa719a0	ok		research/transitions_design.md:37
 method	Refactor.Main.Event.CampaignLoadingEventHandler.<LoadCampaign>d__73$$MoveNext	0xd7209c	0xa9a530	ok		research/rig_access_spec.md:178,src/mp_game.c:257
 method	Refactor.Main.Event.CampaignLoadingEventHandler.<LoadDungeonMapFromSaveData>d__94$$MoveNext	0xd74488	0xa9bd30	ok		research/transitions_design.md:79
@@ -339,6 +477,7 @@ method	Refactor.Main.Event.CampaignMapTransitionPhaseRunner$$EnterVisualGuard	0x
 method	Refactor.Main.Event.CampaignMapTransitionPhaseRunner$$PrepareTargetMap	0xd77b84	0xa87f90	ok		research/transitions_design.md:52
 method	Refactor.Main.Event.CampaignMapTransitionPhaseRunner$$ClearTargetMoveCache	0xd77e28	0xa86980	ok		research/transitions_design.md:53
 method	Refactor.Main.Event.CampaignMapTransitionPhaseRunner$$CollectSourceUnits	0xd7804c	0xa86a70	ok		research/transitions_design.md:53
+code-inside	Refactor.Main.Event.CampaignMapTransitionPhaseRunner$$KillSummonedUnits+0x44	0xd78240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:19
 method	Refactor.Main.Event.CampaignMapTransitionPhaseRunner$$DismissPendingEvent	0xd786ac	0xa87250	ok		research/transitions_design.md:53
 method	Refactor.Main.Event.CampaignMapTransitionPhaseRunner$$CheckAndApplyUnitRelations	0xd78828	0xa86280	ok		research/transitions_design.md:53
 method	Refactor.Main.Event.CampaignMapTransitionPhaseRunner$$PrepareSource	0xd78f68	0xa87f00	ok		research/transitions_design.md:54
@@ -370,6 +509,7 @@ method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd86980	0xa8f760	ok		res
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd86d64	0xa93250	ok		research/orders_catalog.md:148
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd86ef4	0xa92850	ok		research/orders_catalog.md:178
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd872c4	0xa915e0	ok		research/orders_catalog.md:179
+code-inside	Refactor.Main.Event.EntityEventHandler$$RollIronModeLevelUp+0x42c	0xd88230		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:19
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd88cf4	0xa8d690	ok		research/orders_catalog.md:179
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd895c4	0xa8d340	ok		src/UI_NOTES.md:99,src/ui_game.c:5263
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd89fc8	0xa933a0	ok		research/orders_catalog.md:180
@@ -391,6 +531,7 @@ method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd9789c	0xaa9d70	ok		rese
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd97eb0	0xab12e0	ok		research/orders_catalog.md:147
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd980e8	0xaac090	ok		research/orders_catalog.md:113
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd983e4	0xaaf2b0	ok		research/orders_catalog.md:187
+code-inside	Refactor.Main.Event.InputEventHandler$$OnEvent+0x5c	0xd98440		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:19
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd984e4	0xaa97c0	ok		research/orders_catalog.md:192
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd986e4	0xab0200	ok		research/orders_catalog.md:192
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd988e0	0xaabba0	ok		research/orders_catalog.md:192
@@ -455,6 +596,7 @@ method	Refactor.Main.Event.MapTransitionState$$Begin	0xdb6640	0xac4f50	ok		resea
 method	Refactor.Main.Event.MapTransitionCoordinator.<RunGuarded>d__3$$MoveNext	0xdb6794	0xad6880	ok		research/transitions_design.md:141,research/transitions_design.md:148,research/transitions_design.md:44,research/transitions_design.md:5,src/trn_game.c:44
 method	Refactor.Main.Event.MapTransitionCoordinator.<RunTransition>d__2$$MoveNext	0xdb6ff0	0xad6e00	ok		research/transitions_design.md:46
 method	Refactor.Main.Event.MapTransitionState$$RecordGenerationResult	0xdb8090	0xac57f0	ok		research/transitions_design.md:52
+code-inside	Refactor.Main.Event.MapTransitionState$$RecordGenerationResult+0xa0	0xdb8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:19
 method	Refactor.Main.Event.MapTransitionFinalizationService$$FinalizeSuccess	0xdb8824	0xac3620	ok		research/transitions_design.md:62
 method	Refactor.Main.Event.MapTransitionFinalizationService$$EnqueueFinalMapEvents	0xdb8ffc	0xac3470	ok		research/transitions_design.md:62
 method	Refactor.Main.Event.MapTransitionFinalizationService$$UnlockAndResumeGameSpeed	0xdb92d8	0xac3d00	ok		research/transitions_design.md:62
@@ -481,6 +623,7 @@ method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbf040	0xaca500	
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbf2d4	0xac93a0	ok		research/orders_catalog.md:108
 method	Refactor.Main.Event.PlayerControlEventHandler$$TryUseItem	0xdbf888	0xacb970	ok		research/orders_catalog.md:108
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbfb78	0xac87d0	ok		research/orders_catalog.md:108
+code-inside	Refactor.Main.Event.PlayerControlEventHandler$$TryGetItemQuickSlotIndex+0x228	0xdc0240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:20
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdc03e0	0xac8030	ok		research/orders_catalog.md:111
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdc0af4	0xac85c0	ok		research/orders_catalog.md:188
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdc17d4	0xac9e10	ok		research/orders_catalog.md:188
@@ -508,6 +651,7 @@ method	Refactor.Main.Event.ChangeGameSpeedRequested$$.ctor	0xdcf088	0x8f15f0	ok	
 method	Refactor.Main.Event.CompleteNarrativeIntroRequested$$.ctor	0xdcf898	0x5146c0	ok		src/mpmenu.c:3250
 method	Refactor.Main.Event.LoadCampaignRequested$$.ctor	0xdcfd78	0x5a7340	ok		research/rig_access_spec.md:182,src/rig_cmd.c:317,src/rig_cmd.c:347
 method	Refactor.Main.Event.PreSaveStabilizer$$TryStabilize	0xdcfe2c	0xae36d0	ok		research/transitions_design.md:199
+code-inside	Refactor.Main.Event.PreSaveStabilizer$$TryStabilize+0x254	0xdd0080		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:803
 method	Refactor.Main.Event.DirectTaskHelper$$OrderSharedTask	0xdd0274	0xadfa70	ok		research/orders_catalog.md:102
 method	Refactor.Main.Event.DirectTaskHelper$$OrderPersonal	0xdd05d8	0xade990	ok		research/orders_catalog.md:102
 method	Refactor.Main.Event.DirectTaskHelper$$OrderRecreation	0xdd0be0	0xadf270	ok		research/orders_catalog.md:100
@@ -523,17 +667,29 @@ method	Refactor.Component.StatusComponent$$SetValue	0xddd3ec	0xaeb840	ok		src/ri
 method	Refactor.Component.StatusComponent$$AddPermanentValue	0xdddae0	0xae5c90	ok		custom/units/pvp_build.c:16
 method	Refactor.Component.StatusComponent$$Deserialize	0xddeaac	0xae94a0	ok		custom/units/pvp_build.c:2
 method	Refactor.Component.StatusComponent$$ApplyStructuredUnitStatus	0xddedac	0xae7700	ok		custom/units/pvp_build.c:2
+code-inside	Refactor.Component.StatusComponent$$BuildLegacyProgressionStats+0x188	0xde0240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:20
+code-inside	Refactor.Component.UnitStatusRegressionAudit$$ComputeSnapshotFingerprint+0x257	0xde8097		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:803
+code-inside	Refactor.Component.Status.Status_Mood$$get_Value+0x4	0xdf8080		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:804
+code-inside	Refactor.Component.Status.MoodAffecterResolver$$CalculateMoodValue+0x6c	0xdf8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:20
+code-inside	Refactor.View.BuildingObject$$CacheBedOwnerNameText+0x10b	0xe10097		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:804
 method	Refactor.View.EntityGraphic$$ApplyMaterialProperties	0xe139c8	0xb17430	ok		src/UI_NOTES.md:276,src/UI_NOTES.md:285,src/ui_game.c:2843,src/ui_game.c:5289
+code-inside	Refactor.View.EntityGraphic$$ChangeGameSpeed+0x9a	0xe1413e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:804
 method	Refactor.View.UnitEntityHUD$$Init	0xe16944	0xb23e90	ok		src/UI_NOTES.md:91,src/ui_game.c:5252
 method	Refactor.View.UnitEntityHUD$$SetName	0xe17ad0	0xb26970	ok		src/UI_NOTES.md:92
+code-inside	Refactor.View.EntityInteractOutlinerView$$ClearCurrentOutline+0x8c	0xe1c080		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:804
 method	Refactor.View.EntityObjectPresenter$$OnRefreshHideVision	0xe1fd90	0xb1e970	ok		src/mp_fog.c:37
+code-inside	Refactor.View.EntityObjectPresenter$$OnRefreshHideVision+0x5c0	0xe20350		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:20
+code-inside	Refactor.View.EntityObjectPresenter$$OnRefreshHideVision+0x72e	0xe204be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:805
 method	Refactor.View.EntityObjectView$$SetVisible	0xe24640	0xb2f080	ok		src/mp_fog.c:36
 method	Refactor.View.UnitObject$$SetHUD	0xe26cfc	0x5c3fe0	ok		src/ui_game.c:2823,src/ui_game.c:5272
 method	Refactor.View.ViewIntData$$.ctor	0xe33aa8	0x8f15f0	ok		src/mp_game.c:379
+code-inside	Refactor.View.ViewGuidDeltaData$$PrintMembers+0x184	0xe38350		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:21
+code-inside	Util.UnitVisualDatabase$$RefreshSearchTypesFromEnums+0x93c	0xe50350		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:21
 method	Util.UnitVisualDatabase$$GetPortraitSprite	0xe51a58	0xb55690	ok		src/mpmenu.c:407,src/mpmenu.c:410
 method	Util.UnityUtil$$IsPointerOverUIByRaycast	0xe548c8	0xb58820	ok		src/ui_teams.c:2364
 method	Util.UnityUtil$$IsPointerOverUI	0xe54ba4	0xb58b40	ok		src/UI_NOTES.md:284,src/ui_game.c:3777,src/ui_teams.c:1899,src/ui_teams.c:1919,src/ui_teams.c:2364
 method	Refactor.View.ViewUpdateDispatcher$$AddViewUpdateCall	0xe5ac14	0xb77bc0	ok		src/mp_game.c:380
+code-inside	Refactor.UI.SubUI_CampaignSetting$$SetDifficultyDecreaseButtonInteractable+0x30	0xe69040		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:21
 method	Refactor.UI.SubUI_TitleMenuButton$$OnPointerClick	0xe6ff20	0xb6f690	ok		src/MPMENU_NOTES.md:19,src/UI_NOTES.md:87,src/mpmenu.c:2996
 method	Refactor.UI.TitleMenuView$$InitOnActivate	0xe70708	0xb70420	ok		src/UI_NOTES.md:86
 method	Refactor.UI.TitleMenuView$$OnNewGamePressed	0xe71020	0xb70e80	ok		src/MPMENU_NOTES.md:23,src/mpmenu.c:2451
@@ -548,6 +704,7 @@ method	Refactor.UI.SubUI_CampaignOverviewUI$$SetPlayerCount	0xe871fc	0xb8dc60	ok
 method	Refactor.UI.SubUI_PolicyPortrait$$Refresh	0xe95ee8	0xbb55a0	ok		src/ui_teams.c:1145,src/ui_teams.c:1661,src/ui_teams.c:374,src/ui_teams.c:647
 method	Refactor.UI.DungeonResultView$$OnClick_Return	0xea2460	0xba25c0	ok		src/ui_game.c:1348,src/ui_game.c:5269
 method	Refactor.UI.DungeonResultView$$OnClick_GoDown	0xea2c1c	0xba24e0	ok		src/ui_game.c:1348,src/ui_game.c:5270
+code-inside	Refactor.UI.SubUI_EntityInspectionTrait$$.ctor+0x3a	0xea83ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:805
 method	Refactor.UI.EventNodeUIView$$SetChoices	0xedd9d0	0xbe01b0	ok		src/UI_NOTES.md:101,src/ui_game.c:5265
 method	Refactor.UI.EventNodeUIView$$SetEventUI	0xeddbe0	0xbe04e0	ok		src/UI_NOTES.md:100,src/ui_game.c:5264
 method	Refactor.UI.EventNodeUIView$$OnClickChoice	0xedf334	0xbdfea0	ok		src/UI_NOTES.md:102,src/ui_game.c:5278
@@ -565,7 +722,9 @@ method	Refactor.UI.ExpeditionPlanView$$Close	0xee3384	0xb627f0	ok		src/ui_teams.
 method	Refactor.UI.ExpeditionPlanPresenter$$OnClickNext	0xee3428	0xbe69c0	ok		src/ui_teams.c:1702,src/ui_teams.c:1916,src/ui_teams.c:2566
 method	Refactor.UI.ExpeditionPlanView$$InputOnAccept	0xee3a50	0xbebc90	ok		src/ui_teams.c:1585,src/ui_teams.c:1913,src/ui_teams.c:1955,src/ui_teams.c:2561
 method	Refactor.UI.ExpeditionPlanView$$QuickActInventorySlot	0xee4748	0xbec3d0	ok		src/ui_teams.c:2624
+code-inside	Refactor.UI.ExpeditionInventorySessionState$$FindLatestMatchBySource+0x88	0xee8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:21
 method	Refactor.UI.SubUI_CheckInventoryPanelUI$$GetPanelOwner	0xeecf18	0xbfc160	ok		src/ui_teams.c:2390,src/ui_teams.c:2392
+code-inside	Refactor.UI.SubUI_ExpeditionInventorySlot$$OnDrop+0x8	0xef1240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:22
 method	Refactor.UI.SubUI_SelectRegionUI$$InitOnActivate	0xef3a80	0xc06fc0	ok		src/ui_game.c:3058,src/ui_game.c:5276
 method	Refactor.UI.SubUI_SelectRegionUI$$SetUnit	0xef42e0	0xc082a0	ok		src/ui_game.c:3059,src/ui_game.c:5277
 method	Refactor.UI.FactionManagementView$$InitOnCreate	0xef4e08	0xbf3340	ok		src/ui_game.c:5255
@@ -583,6 +742,7 @@ method	Refactor.UI.QuickSlotUI$$OnClick_AmmoSlot	0xf21a88	0xc248a0	ok		src/UI_NO
 method	Refactor.UI.QuickSlotUI$$OnClick_ItemQuickSlot	0xf21b30	0xc24a80	ok		src/UI_NOTES.md:235,src/ui_game.c:5285
 method	Refactor.UI.RecruitPresenter$$GetRemainingRecruitTimeText	0xf26334	0xc2e8e0	ok		src/ui_game.c:4776,src/ui_game.c:4910
 method	Refactor.UI.RecruitView$$OnRecruitCandidate	0xf27e18	0xc2f9c0	ok		src/ui_game.c:4879,src/ui_game.c:5281
+code-inside	Refactor.UI.SubUI_CandidateCard$$SetCard+0xda	0xf282ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:805
 method	Refactor.UI.SubUI_SystemMenuButton$$Init	0xf2db60	0xc36990	ok		custom/pvp/pvp_ui.c:662,src/MPMENU_NOTES.md:20,src/mpmenu.c:1001,src/mpmenu.c:2913,src/mpmenu.c:582
 method	Refactor.UI.SubUI_SystemMenuButton$$SetInteractable	0xf2dc14	0xb6f870	ok		src/mpmenu.c:1510,src/mpmenu.c:1511,src/ui_game.c:3209,src/ui_game.c:3231,src/ui_game.c:3234
 method	Refactor.UI.SubUI_SystemMenuButton$$OnPressButton	0xf2dc30	0xc36a40	ok		custom/pvp/pvp_ui.c:684,src/MPMENU_NOTES.md:20,src/mpmenu.c:2995,src/mpmenu.c:3223,src/mpmenu.c:3225,src/mpmenu.c:3228
@@ -594,9 +754,12 @@ method	Refactor.UI.Tooltip_Base$$StopAlignmentRoutine	0xf38364	0xc40530	ok		src/
 method	Refactor.UI.Tooltip_Base$$DisableHoldLayout	0xf38a00	0xc40120	ok		src/ui_tip.c:98
 method	Refactor.UI.Tooltip_Base$$CanAlignTooltip	0xf38a24	0xc3ff30	ok		src/ui_tip.c:206
 method	Refactor.UI.Tooltip_ETC$$Show	0xf3d8b8	0xc45b00	ok		research/tooltips_v9.md:15,research/tooltips_v9.md:37,src/ui_tip.c:106,src/ui_tip.c:117,src/ui_tip.c:9
+code-inside	Refactor.UI.Tooltip_Item$$SetActive+0x89	0xf401ad		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:805
 method	Refactor.UI.TooltipUI$$ShowTooltip	0xf4a244	0xc5ff10	ok		research/tooltips_v9.md:10,research/tooltips_v9.md:38,src/ui_tip.c:106,src/ui_tip.c:8
 method	Refactor.UI.TooltipUI$$ShowTooltipAtScreenPosition	0xf4a648	0xc5fcf0	ok		research/tooltips_v9.md:11,research/tooltips_v9.md:37,src/ui_tip.c:107,src/ui_tip.c:191,src/ui_tip.c:255,src/ui_tip.c:7
 method	Refactor.UI.TooltipUI$$HideToolTip	0xf4aa04	0xc5efc0	ok		research/tooltips_v9.md:12,src/ui_tip.c:107,src/ui_tip.c:202
+code-inside	Refactor.UI.TooltipUIPresenter$$ShowTooltipAtScreenPosition+0xd2	0xf4c12e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:806
+code-inside	Refactor.UI.TradeUIView$$ActivateUI+0x15b	0xf54103		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:806
 method	Refactor.UI.EssentialPopUpUI_Base$$SetTimeLock	0xf59e20	0xc4d550	ok		src/UI_NOTES.md:71
 method	Refactor.UI.PopUpUI_Base$$SetTimeLock	0xf5a538	0xc535b0	ok		src/UI_NOTES.md:70,src/UI_NOTES.md:97,src/ui_game.c:5260
 method	Refactor.UI.PopUpUI_Base$$UnsetTimeLock	0xf5a6f0	0xc537a0	ok		src/UI_NOTES.md:97,src/ui_game.c:5261
@@ -613,8 +776,11 @@ method	Refactor.UI.Util.InteractableButton$$OnPointerClick	0xf66024	0xc7b980	ok	
 method	Refactor.UI.SubUI_SaveFileButton$$SetData	0xf70150	0xc84420	ok		src/MPMENU_NOTES.md:60,src/mpmenu.c:2999
 method	Refactor.UI.Util.TooltipFeedback$$SetSimpleText	0xf7b154	0xc85f30	ok		src/ui_game.c:3223,src/ui_game.c:3232
 method	Refactor.UI.Util.TooltipFeedback$$ClearTooltip	0xf7b3d4	0xc852e0	ok		src/ui_game.c:3236
+code-inside	Util.Sheet.DataSheetValidationRuleRegistry$$CreateTextRules+0x228	0xf801b4		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:22
+code-inside	Util.BuildingAreaConstructor.BuildingAreaDatabase$$CanDemolishDecoration+0x50	0xf88350		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:22
 method	Refactor.DungeonPortalHandler$$Process	0xf9e298	0xcb83a0	ok		PLAN.md:33,custom/pvp/pvp_game.c:216,research/plan_pvp.md:103,research/plan_pvp.md:229
 method	Refactor.LevelUpHandler$$Process	0xf9e860	0xcbf950	ok		research/orders_catalog.md:179,src/UI_NOTES.md:98,src/ui_game.c:1440
+code-inside	Refactor.CombatInfoReader$$HasCombatBehaviour+0x3c	0xfa0240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:22
 method	Refactor.StatusReader$$GetValue	0xfa0ee4	0xcc3e90	ok		research/rig_access_spec.md:117,src/rig_cmd.c:120,src/rig_det.c:1176
 method	Refactor.TaskReader$$GetTaskType	0xfa3c54	0xcc4360	ok		research/rig_access_spec.md:119
 method	Refactor.BlueprintEntity$$get_Guid	0xfa3eac	0x52e1a0	ok		research/orders_catalog.md:72
@@ -638,9 +804,13 @@ method	Refactor.IsHostileUnitExposer$$.ctor	0xfa96e0	0x52f250	ok		research/plan_
 method	Refactor.ClanDataContainer$$get_CurrentPopulation	0xfab3f4	0x5773f0	ok		src/ui_game.c:4853,src/ui_game.c:5279
 method	Refactor.ClanDataContainer$$get_MaxPopulation	0xfab404	0x50e3a0	ok		src/ui_game.c:4854,src/ui_game.c:5280
 method	Refactor.ClanDataContainer$$GetAvailableExpeditionRegions	0xfabc40	0xcb3160	ok		src/ui_teams.c:226
+code-inside	Refactor.BuildingDataInterface$$Has+0xb4	0xfb0130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:23
 method	Refactor.BuildingRemoveHelper$$RemoveBuildingProcess	0xfb4e70	0xcaf250	ok		research/orders_catalog.md:159
 method	Refactor.BuildingRemoveHelper$$DemolishFarm	0xfb5130	0xcadf40	ok		research/orders_catalog.md:160
+code-inside	Refactor.CampaignStartingSpawnHelper$$SpawnStartingBuildings+0x178	0xfb8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:23
+code-inside	Refactor.TagHelper$$MakeItemTag+0xe3	0xfc0303		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:806
 method	Refactor.InMapDataInterface$$TryGetEntity	0xfc16fc	0xcd2550	ok		research/orders_catalog.md:74,src/ord_game.c:47,src/ord_test/OFFSETS.md:115
+code-inside	Refactor.InMapDataInterface$$GetTradeRefreshTargetsOnMap+0xe8	0xfc2840		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:23
 method	Refactor.InMapDataInterface$$GetWorldPosition	0xfc4da0	0xcd0160	ok		src/rig_det.c:473
 method	Refactor.InMapDataInterface$$GetCenterOfWorldOccupies	0xfc9a18	0xccd860	ok		src/rig_det.c:474
 method	Refactor.CampaignSaveHelper$$RequestAutoSave	0xfca3c0	0xcc87d0	ok		research/transitions_design.md:174,research/transitions_design.md:175,research/transitions_design.md:95,src/TRN_NOTES.md:32,src/trn_game.c:34
@@ -658,26 +828,195 @@ method	Refactor.HelpNoticeView$$Show	0xfdc9fc	0xccc780	ok		src/UI_NOTES.md:95,sr
 method	AstarPath$$FlushGraphUpdates	0xfdf880	0xceff30	ok		src/DETERMINISM_NOTES.md:61,src/rig_det.c:47
 method	AstarPath$$BlockUntilCalculated	0xfe138c	0xcef090	ok		src/DETERMINISM_NOTES.md:60,src/rig_det.c:46
 method	AstarPath$$StartPath	0xfe19c0	0xcf24a0	ok		src/DETERMINISM_NOTES.md:60,src/rig_det.c:45
+code-inside	AstarPath.<ScanGraph>d__141$$MoveNext+0x255	0xfe4081		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:806
+code-inside	Pathfinding.RichAI$$FinalMovement+0x308	0xff0000		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/cutils.h:234
 code-inside	Pathfinding.Polygon$$CompressMesh+0x473	0xffffff		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	src/net/steam/dsnet_steam.c:825,src/ui_game.c:2888
 code-inside	Pathfinding.Polygon$$CompressMesh+0x480	0x100000c		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	rig/make_instance.sh:20,rig/make_instance.sh:33
+code-inside	Pathfinding.Polygon$$TraceContours+0x166	0x100023e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:807
+code-inside	Pathfinding.NodeLink3$$Apply+0x77e	0x101c0be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:807
+code-inside	Pathfinding.GridGraph$$CalculateConnections+0x46	0x10301be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:807
+code-inside	Pathfinding.AdvancedSmooth$$EvaluatePaths+0x2a	0x10640be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:807
+code-inside	BehaviorDesigner.Runtime.JSONDeserialization$$DeserializeTask+0x3c6	0x10e40be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:808
+method	Steamworks.SteamGameServerHTTP$$SetHTTPRequestCookieContainer	0x1100130	0xe0d920	ok		custom/fights/quickjs/libunicode-table.h:23
+code-inside	Steamworks.SteamHTTP$$SetHTTPRequestRawPostBody+0x174	0x1111240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:24
+code-inside	Steamworks.SteamUtils$$DismissFloatingGamepadTextInput+0x7a	0x114023e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:808
 method	Steamworks.NativeMethods$$SteamAPI_ManualDispatch_GetNextCallback	0x1141aac	0xe5f7a0	ok		src/MP_NOTES.md:126,src/mp_game.c:32
+code-inside	Steamworks.NativeMethods$$ISteamNetworkingSockets_GetAuthenticationStatus+0x2	0x115c0be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:808
 method	Steamworks.CallbackDispatcher$$RunFrame	0x1167898	0xe314e0	ok		src/mp_game.c:31
+code-inside	Steamworks.gameserveritem_t$$SetGameDescription+0x62	0x11701be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:808
 method	Edgar.Unity.DungeonGeneratorTaskGrid2D.<Process>d__2$$MoveNext	0x11caa60	0xed2660	ok		research/transitions_design.md:73
+code-inside	Edgar.Unity.RoomTemplateLoaderGrid3D$$GetPolygonFromTiles+0x581	0x11d0131		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:24
+code-inside	Edgar.Unity.DungeonGeneratorTaskGrid3D.<Process>d__2$$MoveNext+0x670	0x11d8144		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:809
+code-inside	Edgar.Unity.DungeonGeneratorTaskGrid3D.<Process>d__2$$MoveNext+0x76c	0x11d8240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:24
+code-inside	Edgar.Legacy.Utils.PerformanceAnalysis.PerformanceAnalyzer$$PrintRow+0x68	0x11e8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:24
+code-inside	Edgar.Legacy.GeneralAlgorithms.Algorithms.Polygons.GridPolygonPartitioning$$FindSplitters+0x5e9	0x11f0131		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:25
+code-inside	Edgar.Legacy.Core.Doors.DoorUtils$$TransformDoorLine+0xd	0x11f8201		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:25
+code-inside	Edgar.GraphBasedGenerator.Grid2D.Internal.DirectedConfigurationSpacesGenerator$$GetConfigurationSpaceOverCorridor+0xeac	0x1208240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:25
+code-inside	Newtonsoft.Json.JsonConvert$$ToString+0x1c	0x1218130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:25
+code-inside	Newtonsoft.Json.Converters.XDocumentWrapper$$get_HasChildNodes+0x24	0x1220130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:26
 code-inside	Newtonsoft.Json.Converters.XObjectWrapper$$AppendChild+0x20	0x1221d80		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	research/PLAN_V13.md:41
+code-inside	Newtonsoft.Json.Converters.XmlNodeConverter$$DeserializeNode+0x3b4	0x1228130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:26
+code-inside	Newtonsoft.Json.Bson.BsonWriter$$WriteValue+0x44	0x1230a40		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:26
+code-inside	System.Buffers.Text.Utf8Formatter$$TryFormatDateTimeG+0x7a5	0x1280101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:26
+code-inside	System.Buffers.Text.Utf8Formatter$$TryFormatUInt32MultipleDigits+0x1c9	0x1288101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:27
+code-inside	System.Buffers.Text.Utf8Parser$$TryParseInt32D+0x269	0x1290101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:27
+code-inside	System.Numerics.Vector$$Widen+0x120	0x1298100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:27
+code-inside	System.Numerics.Plane$$Transform+0x34	0x12a0100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:27
+code-inside	System.Numerics.Vector4$$get_One+0x4	0x12b0200		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:28
 method	System.Numerics.Hashing.HashHelpers$$.cctor	0x12b11bc	0xfa3a00	ok		src/rig_det.c:464
+code-inside	YamlDotNet.Serialization.NodeDeserializers.ArrayNodeDeserializer.ArrayList$$System.Collections.IList.RemoveAt+0x3c	0x12c8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:28
+code-inside	YamlDotNet.RepresentationModel.YamlSequenceNode.<SafeAllNodes>d__19$$MoveNext+0x14	0x12d8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:28
+code-inside	YamlDotNet.Core.Emitter$$WritePlainScalar+0x31	0x12e0101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:28
+code-inside	Newtonsoft.Json.JsonSerializer$$GetMatchingConverter+0x30	0x1300100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:29
+code-inside	Newtonsoft.Json.JsonTextReader$$ReadNumberValueAsync+0x128	0x1304144		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:809
+code-inside	Newtonsoft.Json.JsonTextReader$$ReadStringValue+0x61d	0x1308101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:29
+code-inside	Newtonsoft.Json.JsonTextReader.<ReadNumberValueAsync>d__38$$MoveNext+0x4b0	0x1318100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:29
+code-inside	Newtonsoft.Json.JsonTextWriter$$WriteValueAsync+0x9	0x1320101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:29
+code-inside	Newtonsoft.Json.JsonTextWriter.<DoWriteValueAsync>d__77$$MoveNext+0xf5	0x1328101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:30
+code-inside	Newtonsoft.Json.JsonValidatingReader$$ValidateEndArray+0x111	0x1330101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:30
+code-inside	Newtonsoft.Json.Utilities.Base64Encoder$$ValidateEncode+0x9c	0x1340100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:30
+code-inside	Newtonsoft.Json.Utilities.Base64Encoder$$Encode+0xfc	0x1340244		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:809
+code-inside	Newtonsoft.Json.Utilities.DateTimeUtils$$EnsureDateTime+0x1b0	0x1348100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:30
+code-inside	Newtonsoft.Json.Utilities.FSharpUtils$$get_GetUnionCaseInfoFields+0x59	0x1350101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:31
+code-inside	Newtonsoft.Json.Utilities.ReflectionObject$$GetType+0xa9	0x1358101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:31
+code-inside	Newtonsoft.Json.Utilities.ReflectionObject$$Create+0x10	0x1358144		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:809
+code-inside	Newtonsoft.Json.Utilities.TypeExtensions$$ImplementInterface+0x3bd	0x1360101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:31
+code-inside	Newtonsoft.Json.Serialization.JsonDictionaryContract$$.ctor+0xa44	0x1368344		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:810
+code-inside	Newtonsoft.Json.Serialization.JsonSerializerInternalReader$$EnsureType+0x2d0	0x1378100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:31
+code-inside	Newtonsoft.Json.Serialization.JsonTypeReflector$$CreateNamingStrategyInstance+0xd	0x1388101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:32
+code-inside	Newtonsoft.Json.Serialization.JsonTypeReflector$$GetCreator+0x60	0x1388344		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:810
+code-inside	Newtonsoft.Json.Schema.JsonSchemaBuilder$$ResolveReferences+0x88c	0x1390100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:32
+code-inside	Newtonsoft.Json.Linq.JObject$$GetValue+0x218	0x13a8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:32
+code-inside	Newtonsoft.Json.Linq.JObject$$System.Collections.Generic.ICollection<System.Collections.Generic.KeyValuePair<System.String,Newtonsoft.Json.Linq.JToken>>.Add+0x30	0x13a8644		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:810
+code-inside	Febucci.UI.Effects.CompositeWithEmission$$.ctor+0x98	0x13e0144		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:810
+code-inside	Febucci.UI.Core.TypewriterCore.<HideTextRoutine>d__40$$MoveNext+0x199	0x13e8101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:32
+code-inside	System.Runtime.CompilerServices.AsyncTaskMethodBuilder<int>$$AwaitUnsafeOnCompleted<ConfiguredTaskAwaitable.ConfiguredTaskAwaiter<object>, WebResponseStream.<ReadAsync>d__40>+0x174	0x1400100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:33
+code-inside	System.Runtime.CompilerServices.AsyncTaskMethodBuilder<object>$$AwaitUnsafeOnCompleted<ConfiguredTaskAwaitable.ConfiguredTaskAwaiter<object>, LocalServerCodeReceiver.<GetResponseFromListener>d__16>+0x245	0x1410101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:33
+method	System.Runtime.CompilerServices.AsyncTaskMethodBuilder<object>$$AwaitUnsafeOnCompleted<ConfiguredTaskAwaitable.ConfiguredTaskAwaiter, HttpContent.<ReadAsStringAsync>d__20>	0x1418100	0x10df680	ok		custom/fights/quickjs/libunicode-table.h:33
+code-inside	System.Array$$InternalArray__ICollection_Contains<Dictionary.Entry<int, long>>+0x69	0x1438101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:33
+code-inside	System.Array$$InternalArray__ICollection_Contains<Dictionary.Entry<ShadowEdge, int>>+0xb4	0x1440100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:34
+code-inside	System.Array$$InternalArray__ICollection_Contains<KeyValuePair<Guid, Int32Enum>>+0x11c	0x1448100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:34
+code-inside	System.Array$$InternalArray__ICollection_Contains<KeyValuePair<object, DungeonRoomSaveData>>+0xe0	0x1450200		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:34
+code-inside	System.Array$$InternalArray__ICollection_Contains<StylePropertyAnimationSystem.Values.TimingData<BackgroundSize>>+0x14	0x1460100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:34
+code-inside	System.Array$$InternalArray__ICollection_Contains<AstarDebugger.PathTypeDebug>+0xd4	0x1490100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:35
+code-inside	System.Array$$InternalArray__IEnumerable_GetEnumerator<KVPair<int, TransformAccessJob.TransformData>>+0x81	0x14e8101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:35
+code-inside	System.Array$$InternalArray__IEnumerable_GetEnumerator<KeyValuePair<object, double>>+0x89	0x14f0101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:35
+code-inside	System.Array$$InternalArray__get_Item<Dictionary.Entry<ValueTuple<Int32Enum, Int32Enum>, Int32Enum>>+0x21	0x161c085		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:811
 method	Refactor.Main.EntityComponent$$GetComponentOf<object>	0x185f284	0x1221020	ok		research/orders_catalog.md:109,src/ord_game.c:51,src/ord_test/OFFSETS.md:119,src/ui_teams.c:2409
 method	Refactor.EntityExtensions$$GetComponent<object>	0x185fedc	0x1221d80	ok		custom/pvp/pvp_game.c:309,research/PLAN_V13.md:41,research/rig_access_spec.md:117,research/rig_access_spec.md:119,research/rig_access_spec.md:120,src/rig_cmd.c:119,+7
+code-inside	System.Linq.Enumerable$$CombineSelectors<Vector2, Vector2, float>+0x2e	0x18882ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:811
 method	Refactor.IsHostileUnitExposer$$CanVerify<object, object>	0x1990548	0x12d3280	ok		research/plan_pvp.md:63
+code-inside	System.MemoryExtensions$$IndexOfAny<__Il2CppFullySharedGenericType>+0x4b	0x19d422f		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:811
+code-inside	Unity.Collections.NativeSortExtension$$IntroSortStruct<__Il2CppFullySharedGenericStructType, __Il2CppFullySharedGenericType>+0xbb	0x1a28173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:35
+code-inside	System.Runtime.CompilerServices.RuntimeHelpers$$IsReferenceOrContainsReferences<Name>+0xc4	0x1b00184		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:811
+code-inside	System.String$$JoinCore<Int32Enum>+0xc4	0x1b4c084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:812
+code-inside	System.Array$$BinarySearch<AsyncGPUReadbackRequest>+0x1dc	0x1b80440		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:36
+code-inside	Unity.Properties.TypeConversion$$TryConvertToUnityEngineObject<double, bool>+0x364	0x1bb0240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:36
+code-inside	UnityEngine.UIElements.Internal.TypePathVisitor$$Unity.Properties.IPropertyVisitor.Visit<Rotate, Angle>+0x1f4	0x1bd8300		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:36
+code-inside	Unity.Properties.TypeUtility$$CreateTypeConstructor<StyleInt>+0xac	0x1bf8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:36
+code-inside	System.Xml.Schema.XmlListConverter$$ToArray<float>+0x20	0x1c30130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:37
+code-inside	Unity.VisualScripting.FullSerializer.fsBaseConverter$$DeserializeMember<bool>+0x18	0x1c40330		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:37
+code-inside	System.Array$$BinarySearch<TaskPriorityDTO>+0x1d4	0x1c60130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:37
+code-inside	System.Array$$BinarySearch<fsAotCompilationManager.AotCompilation>+0x168	0x1c70230		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:37
+code-inside	System.Array$$IndexOf<NativeSlice<Vertex>>+0xc	0x1c801d0		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:38
+code-inside	System.Array$$IndexOf<KeyInput>+0x18	0x1c89130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:38
 method	Edgar.GraphBasedGenerator.Grid2D.GraphBasedGeneratorGrid2D.<>c__DisplayClass16_0<object>$$<GetEarlyStoppingHandler>b__0	0x1d0f1f0	0x14daed0	ok		research/transitions_design.md:74,src/TRN_NOTES.md:13,src/trn_game.c:20
+code-inside	Sirenix.Serialization.Utilities.EmitUtilities.<>c__DisplayClass31_0<__Il2CppFullySharedGenericType>$$<CreateInstanceRefMethodCaller>b__0+0x124	0x1d18930		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:38
+code-inside	System.Collections.Generic.ArraySortHelper<ValueTuple<object, object>>$$get_Default+0xcc	0x1d60100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:38
+code-inside	System.Collections.Generic.EqualityComparer<TextureRegistry.TextureInfo>$$CreateComparer+0x6e0	0x1d68300		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:39
+code-inside	System.Collections.Generic.EqualityComparer<RenderGraph.DebugData.PassData.NRPInfo.NativeRenderPassInfo.PassCompatibilityInfo>$$LastIndexOf+0x2f	0x1d801d3		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:39
+code-inside	Unity.Jobs.IJobParallelForBatchExtensions.JobParallelForBatchProducer.ExecuteJobFunction<InstanceDataSystem.QueryRendererGroupInstancesJob>$$BeginInvoke+0x34	0x1d89100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:39
+code-inside	Unity.Jobs.IJobForExtensions.ForJobStruct<LightMinMaxZJob>$$Initialize+0xcf	0x1e10173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:39
+code-inside	System.Data.Listeners.Func<object, object, bool>$$.ctor+0x6c	0x1e18900		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:40
+code-inside	System.Collections.Generic.GenericEqualityComparer<LigatureSubstitutionRecord>$$GetHashCode+0x1c	0x1e60100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:40
+code-inside	System.Collections.Generic.GenericEqualityComparer<TypeNameKey>$$IndexOf+0x24	0x1e68200		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:40
 method	Edgar.GraphBasedGenerator.Grid2D.GraphBasedGeneratorGrid2D<object>$$.ctor	0x1e71d84	0x15b5e50	ok		research/transitions_design.md:159,src/TRN_NOTES.md:12,src/trn_game.c:19
+code-inside	Unity.VisualScripting.GraphConnectionCollection<__Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType>$$.ctor+0x5c	0x1e78130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:40
+code-inside	System.Linq.Lookup.Grouping<Int32Enum, DoorLineGrid2D>$$Add+0x5f	0x1e80173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:41
+code-inside	System.Collections.Immutable.ImmutableHashSet.HashBucketByValueEqualityComparer<__Il2CppFullySharedGenericType>$$Equals+0x8f	0x1e88173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:41
+code-inside	System.Collections.Generic.ArraySortHelper<ValueTuple<int, int, int>>$$IntroSort+0x1ef	0x1ea8173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:41
+code-inside	System.Collections.Generic.ArraySortHelper<ValueTuple<Rect, Rect, object>>$$Sort+0x1d3	0x1eb0173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:41
+code-inside	System.Collections.Generic.ArraySortHelper<AngleRangeInfo>$$IntroSort+0x3bc	0x1eb8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:42
+code-inside	System.Collections.Generic.ArraySortHelper<bool>$$Sort+0x140	0x1ec1840		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:42
+code-inside	System.Collections.Immutable.ImmutableList<__Il2CppFullySharedGenericType>$$Reverse+0xb	0x1f80173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:42
+code-inside	System.Collections.Immutable.ImmutableSortedDictionary<__Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType>$$Contains+0x17	0x1f88173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:42
+code-inside	System.Collections.Immutable.ImmutableStack<__Il2CppFullySharedGenericType>$$Pop+0x9c	0x1f90100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:43
+code-inside	Unity.Properties.IndexedCollectionPropertyBagEnumerator<int>$$.ctor+0xe8	0x1f98100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:43
+code-inside	Unity.Properties.IndexedCollectionPropertyBagEnumerator<StyleTextShadow>$$MoveNext+0xc	0x1fa01a0		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:43
+code-inside	UnityEngine.UI.Collections.IndexedSet<__Il2CppFullySharedGenericType>$$AddUnique+0xaf	0x1fa8173		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:43
+code-inside	YamlDotNet.Core.InsertionQueue<object>$$Enqueue+0xac	0x1fb8240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:44
+code-inside	Edgar.Graphs.IntGraph<int>$$GetVertexAlias+0x20	0x1fc8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:44
+code-inside	System.Array.InternalEnumerator<Dictionary.Entry<Guid, Nullable<Guid>>>$$get_Current+0xc8	0x1fd0240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:44
+code-inside	System.Array.InternalEnumerator<KeyValuePair<ConfigurationSpacesGrid2D.CacheKey<object, object>, object>>$$MoveNext+0x24	0x1fe8330		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:44
+code-inside	System.Array.InternalEnumerator<KeyValuePair<FlowFieldCache.CacheKey, object>>$$System.Collections.IEnumerator.get_Current+0x14	0x2001030		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:45
+code-inside	System.Array.InternalEnumerator<UILineInfo>$$System.Collections.IEnumerator.get_Current+0x70	0x2082030		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:45
+code-inside	System.Collections.Generic.ArraySortHelper<MarkToBaseAdjustmentRecord>$$InternalBinarySearch+0x50	0x2182000		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:45
+code-inside	System.Collections.Generic.List<ValueTuple<Vector2Int, int>>$$.ctor+0x14	0x2281000		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:45
+code-inside	System.Collections.Generic.ArraySortHelper<PointD>$$Sort+0x128	0x2302240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:46
 method	System.Collections.Generic.List<object>$$.ctor	0x240aedc	0x17905c0	ok		custom/pvp/pvp_game.c:218
 method	System.Collections.Generic.List<object>$$Add	0x240b904	0x50d050	ok		custom/pvp/pvp_game.c:201,custom/pvp/pvp_game.c:53
+code-inside	System.Collections.Generic.List<RecipeLockState>$$.ctor+0x18	0x2453640		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:46
+code-inside	System.Collections.Generic.List<ResourceHandle>$$System.Collections.Generic.IEnumerable<T>.GetEnumerator+0x40	0x24a4084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:812
+code-inside	System.Collections.Generic.List<float>$$InsertRange+0x50c	0x24c4084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:812
+code-inside	System.Collections.Generic.List<StyleSyntaxToken>$$System.Collections.IList.get_Item+0x5c	0x24d0084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:812
+code-inside	System.Collections.Generic.List<AdditionalLightsShadowAtlasLayout.ShadowResolutionRequest>$$FindAll+0xae	0x256042e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:813
+code-inside	System.Collections.Generic.List<MeshGenerator.TessellationJobParameters>$$FindAll+0x10c	0x2600130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:46
+code-inside	System.Collections.Generic.List<PackedPlayModeBuildLogs.RuntimeBuildLog>$$AddEnumerable+0x8	0x2608e40		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:46
+code-inside	System.Collections.Generic.List<VisualTreeAsset.SlotDefinition>$$System.Collections.Generic.IEnumerable<T>.GetEnumerator+0x30	0x2678100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:47
+code-inside	System.Collections.Generic.List<VisualTreeDataBindingsUpdater.VersionInfo>$$System.Collections.IList.IndexOf+0xa4	0x2686040		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:47
+code-inside	Unity.Collections.NativeArray<IntPtr>$$GetHashCode+0x2	0x272c12e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:813
+code-inside	System.Collections.Generic.ArraySortHelper<FoodHungerCalculator.FoodStackData>$$BinarySearch+0xd4	0x2770120		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:813
+code-inside	System.Collections.Generic.ArraySortHelper<MeshGenerator.TessellationJobParameters>$$Sort+0x150	0x277c084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:813
+code-inside	System.Collections.Generic.ArraySortHelper<PlayerOwnedPanelView.PlayerOwnedItemData>$$PickPivotAndPartition+0x388	0x28cc084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:814
+code-inside	System.Collections.Generic.ArraySortHelper<RepairTask.ItemRepairInfo>$$DownHeap+0x228	0x28d8084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:814
+code-inside	Unity.Jobs.IJobParallelForExtensions.ParallelForJobStruct<SortJob.SegmentSort<int, NativeSortExtension.DefaultComparer<int>>>$$Initialize+0xae	0x29641ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:814
+code-inside	Unity.Collections.NativeList.ParallelWriter<OcclusionCullingCommon.OccluderContextSlot>$$AddRangeNoResize+0x28	0x2978084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:814
+code-inside	UnityEngine.UIElements.PointerEventBase<object>$$PreDispatch+0xf0	0x298a630		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:47
+code-inside	System.Collections.ObjectModel.ReadOnlyCollection<Connection>$$IndexOf+0xc	0x2b0a600		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:47
+code-inside	System.Collections.ObjectModel.ReadOnlyCollection<RetainedGizmos.MeshWithHash>$$Contains+0xb9	0x2c381b5		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:48
+code-inside	System.Linq.Set<OrthogonalLineGrid2D>$$Find+0x12c	0x2d20084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:815
+code-inside	BehaviorDesigner.Runtime.SharedVariable<float>$$InitializePropertyMapping+0x416	0x2d2c12e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:815
+code-inside	System.Collections.Generic.SortedList<int, ValueTuple<object, int>>$$System.Collections.ICollection.CopyTo+0x450	0x2d70120		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:815
+code-inside	UnityEngine.UIElements.StyleDataRef<TransitionData>$$op_Equality+0x38	0x2e50084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:815
+code-inside	UnityEngine.UIElements.TextInputBaseField.TextInputBase<int>$$.ctor+0xc89	0x2e90edd		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/dtoa.c:224
+code-inside	DG.Tweening.Core.TweenerCore<Color2, Color2, ColorOptions>$$SetFrom+0x1e	0x2f281ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:816
+code-inside	System.Collections.Generic.Dictionary.ValueCollection<__Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType>$$System.Collections.ICollection.CopyTo+0x480	0x3120084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:816
+code-inside	Edgar.GraphBasedGenerator.Common.ChainDecomposition.Legacy.BreadthFirstChainDecomposition<__Il2CppFullySharedGenericType>$$GetFirstComponent+0xd4	0x3300084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:816
+code-inside	System.Collections.Immutable.ImmutableArray.Builder<object>$$IndexOf+0x24a	0x331c122		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:816
+code-inside	System.Collections.Immutable.ImmutableSortedSet.Builder<__Il2CppFullySharedGenericType>$$UnionWith+0x1da	0x332812e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:817
+code-inside	System.Numerics.Vector<__Il2CppFullySharedGenericStructType>$$GreaterThan+0x2fde	0x35281ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:817
 method	Refactor.UI.ViewObjectLoader<Int32Enum>$$EnqueueActivatePool	0x355e84c	0x21e5880	ok		src/ui_game.c:5268
+code-inside	System.Collections.Concurrent.ConcurrentQueue.<Enumerate>d__28<__Il2CppFullySharedGenericType>$$MoveNext+0x244	0x3768084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:817
+code-inside	Edgar.Legacy.Core.LayoutEvolvers.SimulatedAnnealing.SimulatedAnnealingEvolver.<Evolve>d__18<__Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType>$$MoveNext+0xbc2	0x37701ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:817
+code-inside	System.Linq.OrderedEnumerable.<GetEnumerator>d__1<KeyValuePair<Int32Enum, object>>$$System.Collections.IEnumerator.Reset+0x25	0x38cc085		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:818
 method	System.Collections.Generic.Dictionary<Int32Enum, object>$$get_Item	0x3a1aed8	0x24f7b70	ok		research/rig_access_spec.md:48
+code-inside	System.Collections.Generic.Dictionary<object, Style>$$CopyTo+0x41	0x3acc085		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:818
+code-inside	System.Collections.Generic.Dictionary<Vector2Int, Int32Enum>$$GetObjectData+0x19b	0x3b7012f		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:818
+code-inside	System.Linq.EmptyEnumerable<__Il2CppFullySharedGenericType>$$.cctor+0x109	0x3c30081		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:818
+code-inside	Unity.Properties.PropertyCollection.Enumerator<Cursor>$$Reset+0x19c	0x3d0c084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:819
+code-inside	System.Collections.Generic.List.Enumerator<ResourceHandle>$$System.Collections.IEnumerator.get_Current+0x64	0x3d34084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:819
+code-inside	System.Collections.Generic.List.Enumerator<TradePlacement>$$MoveNextRare+0x8	0x3d48084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:819
+code-inside	System.Collections.Immutable.ImmutableList.Enumerator<__Il2CppFullySharedGenericType>$$get_Current+0x140	0x3d5c084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:819
+code-inside	UnityEngine.UIElements.StylePropertyAnimationSystem.AnimationDataSet<StylePropertyAnimationSystem.Values.TimingData<float>, StylePropertyAnimationSystem.Values.StyleData<float>>$$Add+0xa8	0x3d70084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:820
+code-inside	System.Collections.Generic.Dictionary.KeyCollection.Enumerator<ValueTuple<Guid, Guid>, Guid>$$System.Collections.IEnumerator.get_Current+0x64	0x3da4084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:820
 method	System.Collections.Generic.Dictionary.Enumerator<Guid, object>$$MoveNext	0x3dbc204	0x26ccb90	ok		research/rig_access_spec.md:35
 method	System.Collections.Generic.Dictionary.Enumerator<Guid, Vector2>$$MoveNext	0x3dc42e8	0x26cce50	ok		research/rig_access_spec.md:36
+code-inside	System.Collections.Generic.Dictionary.ValueCollection.Enumerator<int, ValueTuple<Vector4, Vector2Int>>$$MoveNext+0xc8	0x3dcc084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:820
+code-inside	System.Collections.Generic.SortedDictionary.Enumerator<int, object>$$System.Collections.IDictionaryEnumerator.get_Value+0x126	0x3dd412e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:820
+code-inside	System.Collections.Generic.Dictionary.KeyCollection.Enumerator<int, TextResourceManager.FontAssetRef>$$System.Collections.IEnumerator.Reset+0x39	0x3ddc085		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:821
+code-inside	System.Collections.Generic.Dictionary.ValueCollection.Enumerator<Int32Enum, BuildingContainerSaveData>$$System.Collections.IEnumerator.Reset+0x18	0x3de0084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:821
 method	System.Collections.Generic.Dictionary.Enumerator<Int32Enum, object>$$MoveNext	0x3de3330	0x26d4610	ok		research/rig_access_spec.md:36
+code-inside	System.Collections.Generic.SortedDictionary.Enumerator<Int32Enum, object>$$System.Collections.IEnumerator.get_Current+0x319	0x3de4085		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:821
+code-inside	System.Collections.Generic.Dictionary.Enumerator<object, Vector2Int>$$System.Collections.IEnumerator.Reset+0x10	0x3e04084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:821
+code-inside	System.Collections.Generic.ArraySortHelper<KeyValuePair<Int32Enum, int>>$$InternalBinarySearch+0x8c	0x3e4c084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:822
+code-inside	System.Collections.Generic.EqualityComparer<KeyValuePair<int, object>>$$CreateComparer+0x4d4	0x3e74084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:822
+code-inside	System.Collections.Generic.EqualityComparer<Nullable<CampaignSaveHeader>>$$CreateComparer+0x22c	0x3e88084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:822
+code-inside	System.Collections.Generic.EqualityComparer<ValueTuple<Int32Enum, Int32Enum>>$$LastIndexOf+0xc	0x3e9c084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:822
+code-inside	System.Collections.Generic.EqualityComparer<ValueTuple<Vector2, Color32, Vector2>>$$CreateComparer+0x188	0x3eb0084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:823
+code-inside	System.Collections.Generic.EqualityComparer<EstablishUnitSelectionToken>$$CreateComparer+0x5f8	0x3ee4084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:823
 code-inside	Google.Apis.Auth.OAuth2.TokenRefreshManager.<RefreshTokenAsync>d__12$$MoveNext+0x44b	0x3ffffff		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	src/rig_hook.c:61
+code-inside	Google.Apis.Auth.OAuth2.TokenRefreshManager.<RefreshTokenAsync>d__12$$MoveNext+0x44c	0x4000000		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/cutils.c:232,custom/fights/quickjs/cutils.c:252
+code-inside	Mono.Math.Prime.PrimalityTests$$RabinMillerTest+0x4bc	0x4098084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:823
 method	System.Numerics.Hashing.HashHelpers$$.cctor	0x4187188	0x29fb000	ok		src/rig_det.c:463
 method	System.IO.File$$WriteAllBytes	0x421ae98	0x2aa4ba0	ok		research/rig_access_spec.md:268
 method	System.Guid$$NewGuid	0x425803c	0x2ad1340	ok		research/determinism_audit.md:216,src/DETERMINISM_NOTES.md:69,src/rig_det.c:42
@@ -689,6 +1028,7 @@ method	System.Random$$Next	0x42767d0	0x2af4c00	ok		src/rig_det.c:478
 method	System.Random$$Next	0x427696c	0x2af4a00	ok		src/rig_det.c:480
 method	System.Random$$Next	0x4276aa0	0x2af4b40	ok		src/rig_det.c:479
 method	System.Object$$GetType	0x42b1e58	0x2b35990	ok		src/ord_game.c:52,src/ord_test/OFFSETS.md:120
+code-inside	Newtonsoft.Json.Converters.XmlNodeWrapper$$get_ChildNodes+0x149	0x43f0081		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:823
 method	System.Numerics.Hashing.HashHelpers$$.cctor	0x46e0ba8	0x2f1b1e0	ok		src/rig_det.c:465
 method	TMPro.TMP_FontAsset$$HasCharacter	0x4eee580	0x3767d30	ok		src/ui_game.c:1021,src/ui_game.c:2301,src/ui_game.c:625,src/ui_teams.c:440
 method	TMPro.TMP_InputField$$get_text	0x4efae84	0x28bead0	ok		src/mpmenu.c:1601,src/mpmenu.c:2328,src/mpmenu.c:2330,src/mpmenu.c:3450,src/mpmenu.c:3523,src/mpmenu.c:563
@@ -867,6 +1207,7 @@ method	UnityEngine.UI.Selectable$$get_interactable	0x549c6ac	0xb289e0	ok		src/mp
 method	UnityEngine.UI.Selectable$$set_interactable	0x549c6b4	0x3d038d0	ok		src/ui_game.c:253,src/ui_game.c:297,src/ui_game.c:305,src/ui_game.c:3164,src/ui_game.c:3170
 other		0x57041b0		not-an-address	constant / bounds / data	src/mp_game.c:259
 other		0x604b000		not-an-address	constant / bounds / data	rig/NOTES.md:48
+other		0x624dd2f		not-an-address	constant / bounds / data	custom/fights/quickjs/dtoa.c:234
 metadata	System.Collections.Generic.List<Guid>_TypeInfo	0x66457d8	0x4f00340	ok		src/ord_game.c:86,src/ord_test/OFFSETS.md:151,src/ord_test/ord_smoke.c:300,src/trn_game.c:26
 metadata	System.Collections.Generic.List<IEntity>_TypeInfo	0x66458c0	0x4f02208	ok		custom/pvp/pvp_game.c:219,src/ord_game.c:84,src/ord_test/OFFSETS.md:149
 metadata	System.Collections.Generic.List<Interaction>_TypeInfo	0x6645a50	0x4f05718	ok		src/ord_test/ord_smoke.c:139
@@ -1004,7 +1345,84 @@ metadata	Method$Refactor.EntityExtensions.GetComponent<TaskReader>()	0x6691b48	0
 metadata	Method$Refactor.EntityExtensions.GetComponent<UnitProfileReader>()	0x6691b58	0x4f360b0	ok		research/rig_access_spec.md:120
 metadata	string:Saves	0x66d54b0	0x4f1cf50	ok		research/rig_access_spec.md:160
 other		0x6b9b800		not-an-address	constant / bounds / data	rig/NOTES.md:48
+other		0x6c18484		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:824
+other		0x6c48084		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:824
+other		0x6cec184		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:824
+other		0x6d00120		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:824
+other		0x6d0c084		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:825
 other		0x7000000		not-an-address	constant / bounds / data	src/rig_det.c:134
+other		0x74b0383		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:825
+other		0x74cc41f		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:825
+other		0x74f1783		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:825
+other		0x75e0081		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:826
+other		0x766d283		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:826
+other		0x7801d44		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:826
+other		0x78e8942		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:826
+other		0x7931844		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:827
+other		0x79f0d42		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:827
+other		0x7a58216		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:827
+other		0x7a68085		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:827
+other		0x7a6c0be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:828
+other		0x7a80d44		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:828
+other		0x7aea044		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:828
+other		0x7c00122		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:828
+other		0x7c08344		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:829
+other		0x7c20122		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:829
+other		0x7c28344		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:829
+other		0x7c40122		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:829
+other		0x7c48244		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:830
+other		0x7c60122		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:830
+other		0x7c68244		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:830
+other		0x7c8113e		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:830
+other		0x7d08244		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:831
+other		0x7d20122		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:831
+other		0x7d28244		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:831
+other		0x7d40122		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:831
+other		0x7d48344		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:832
+other		0x7d64c3e		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:832
+other		0x7dc4080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:832
+other		0x7dc80be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:832
+other		0x7dcc080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:833
+other		0x7dd00be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:833
+other		0x7dd4080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:833
+other		0x7dd80be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:833
+other		0x7ddc080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:834
+other		0x7de00be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:834
+other		0x7de4080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:834
+other		0x7de80be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:834
+other		0x7dec080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:835
+other		0x7df00be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:835
+other		0x7df4080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:835
+other		0x7e00820		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:835
+other		0x7e40820		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:836
+other		0x7e80820		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:836
+other		0x7ec05be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:836
+other		0x7eec080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:836
+other		0x7ef00be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:837
+other		0x7ef4097		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:837
+other		0x7ef8080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:837
+other		0x7efc117		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:837
+other		0x7f0443e		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:838
+other		0x7f24080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:838
+other		0x7f280be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:838
+other		0x7f2c080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:838
+other		0x7f303be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:839
+other		0x7f4c080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:839
+other		0x7f582ae		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:839
+other		0x7f6c080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:839
+other		0x7f7433e		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:840
+other		0x7f8c080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:840
+other		0x7f903ae		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:840
+other		0x7fac080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:840
+other		0x7fb013e		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:841
+other		0x7fb8102		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:841
+other		0x7fc83be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:841
+other		0x7fe4080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:841
+other		0x7fe80be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:842
+other		0x7fec080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:842
+other		0x7ff00be		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:842
+other		0x7ff4080		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:842
+other		0x7ff8097		not-an-address	constant / bounds / data	custom/fights/quickjs/libunicode-table.h:843
 field	AFFECTER_SelfRepair.Passive_SelfRepair._attackTime	0x54	0x5c	DIFF		
 field	AFFECTER_SelfRepair.Passive_SelfRepair._isAttacking	0x53	0x59	DIFF		
 field	AFFECTER_SelfRepair.Passive_SelfRepair._isTalking	0x52	0x58	DIFF		
@@ -1339,6 +1757,10 @@ field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody2D.GetPosition.targetGa
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.CompareTo.firstString	0x50	0x50	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.CompareTo.secondString	0x58	0x58	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.CompareTo.storeResult	0x60	0x60	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.Format.format	0x50	0x50	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.Format.storeResult	0x60	0x60	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.Format.variableValues	0x68	0x68	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.Format.variables	0x58	0x58	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.Replace.newString	0x60	0x60	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.Replace.oldString	0x58	0x58	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.Replace.storeResult	0x68	0x68	ok		
@@ -1348,6 +1770,11 @@ field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.Find.storeValue	0x60	0
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.Find.targetGameObject	0x50	0x50	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.Find.targetTransform	0x68	0x68	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.Find.transformName	0x58	0x58	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.GetChild.index	0x58	0x58	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.GetChild.prevGameObject	0x70	0x70	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.GetChild.storeValue	0x60	0x60	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.GetChild.targetGameObject	0x50	0x50	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.GetChild.targetTransform	0x68	0x68	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.GetPosition.prevGameObject	0x68	0x68	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.GetPosition.storeValue	0x58	0x58	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityTransform.GetPosition.targetGameObject	0x50	0x50	ok		
@@ -1389,8 +1816,19 @@ field	BestFitAllocator.Block.nextAvailable	0x38	0x38	ok
 field	BestFitAllocator.Block.prev	0x20	0x20	ok		
 field	BestFitAllocator.Block.prevAvailable	0x30	0x30	ok		
 field	BestFitAllocator.Block.start	0x18	0x18	ok		
+field	BinaryStorageBuffer.Reader.m_Adapters	0x18	0x18	ok		
+field	BinaryStorageBuffer.Reader.m_Buffer	0x10	0x10	ok		
+field	BinaryStorageBuffer.Reader.m_Cache	0x20	0x20	ok		
+field	BinaryStorageBuffer.Reader.m_MinCachedObjectSize	0x40	0x40	ok		
+field	BinaryStorageBuffer.Reader.static:stringCreationState	0x0	0x0	ok		
+field	BinaryStorageBuffer.Reader.stringBuilder	0x48	0x48	ok		
 field	BinaryStorageBuffer.TypeSerializer.Data.assemblyId	0x0	0x0	ok		
 field	BinaryStorageBuffer.TypeSerializer.Data.classId	0x4	0x4	ok		
+field	BinaryStorageBuffer.Writer.chunks	0x18	0x18	ok		
+field	BinaryStorageBuffer.Writer.defaulChunkSize	0x14	0x14	ok		
+field	BinaryStorageBuffer.Writer.existingValues	0x20	0x20	ok		
+field	BinaryStorageBuffer.Writer.serializationAdapters	0x28	0x28	ok		
+field	BinaryStorageBuffer.Writer.totalBytes	0x10	0x10	ok		
 field	BitmapAllocator32.Page.freeSlots	0x4	0x4	ok		
 field	BitmapAllocator32.Page.x	0x0	0x0	ok		
 field	BitmapAllocator32.Page.y	0x2	0x2	ok		
@@ -1667,6 +2105,8 @@ field	DifferentLengthsOfDoors.Result.<IsPotentialProblem>k__BackingField	0x18	0x
 field	DifferentLengthsOfDoors.Result.<Summary>k__BackingField	0x10	0x10	ok		
 field	Dimension.Unit.value__	0x0	0x0	ok		
 field	DropdownMenuAction.Status.value__	0x0	0x0	ok		
+field	DynamicArray.Iterator<T>.index	0x0	0x0	ok		
+field	DynamicArray.Iterator<T>.owner	0x0	0x0	ok		
 field	Edgar.GraphBasedGenerator.Common.ChainDecomposition.Chain<TNode>.<IsFromFace>k__BackingField	0x0	0x0	ok		
 field	Edgar.GraphBasedGenerator.Common.ChainDecomposition.Chain<TNode>.<Nodes>k__BackingField	0x0	0x0	ok		
 field	Edgar.GraphBasedGenerator.Common.ChainDecomposition.Chain<TNode>.<Number>k__BackingField	0x0	0x0	ok		
@@ -1717,6 +2157,9 @@ field	Edgar.Unity.Room.Name	0x20	0x20	ok
 field	Edgar.Unity.Room.RoomTemplateSets	0x30	0x30	ok		
 field	Edgar.Unity.TimeoutException.<DiagnosticResults>k__BackingField	0x90	0x90	ok		
 field	EntityUtility.SelectGroup.value__	0x0	0x0	ok		
+field	Enumerable.Iterator<TSource>.current	0x0	0x0	ok		
+field	Enumerable.Iterator<TSource>.state	0x0	0x0	ok		
+field	Enumerable.Iterator<TSource>.threadId	0x0	0x0	ok		
 field	Event.Type.value__	0x0	0x0	ok		
 field	EventProvider.Registration._types	0x18	0x18	ok		
 field	EventProvider.Registration.handler	0x0	0x0	ok		
@@ -1725,7 +2168,10 @@ field	EventProvider.Registration.priority	0x8	0x8	ok
 field	EventTrigger.Entry.callback	0x18	0x18	ok		
 field	EventTrigger.Entry.eventID	0x10	0x10	ok		
 field	ExecutionContext.Flags.value__	0x0	0x0	ok		
+field	ExecutionContext.Reader.m_ec	0x0	0x0	ok		
 field	ExpeditionPlanPresenter.PopUpState.value__	0x0	0x0	ok		
+field	ExpressionEvaluator.Expression.hasVariables	0x18	0x18	ok		
+field	ExpressionEvaluator.Expression.rpnTokens	0x10	0x10	ok		
 field	FactionManagementView.ActionType.value__	0x0	0x0	ok		
 field	Febucci.UI.Styles.Style.closingTag	0x10	0x10	ok		
 field	Febucci.UI.Styles.Style.openingTag	0x8	0x8	ok		
@@ -1757,6 +2203,12 @@ field	FixedString512Bytes.Enumerator.target	0x0	0x0	ok
 field	FixedString64Bytes.Enumerator.current	0x44	0x44	ok		
 field	FixedString64Bytes.Enumerator.offset	0x40	0x40	ok		
 field	FixedString64Bytes.Enumerator.target	0x0	0x0	ok		
+field	FormatProvider.Number.static:s_negCurrencyFormats	0x8	0x8	ok		
+field	FormatProvider.Number.static:s_negNumberFormats	0x20	0x20	ok		
+field	FormatProvider.Number.static:s_negPercentFormats	0x18	0x18	ok		
+field	FormatProvider.Number.static:s_posCurrencyFormats	0x0	0x0	ok		
+field	FormatProvider.Number.static:s_posNumberFormat	0x28	0x28	ok		
+field	FormatProvider.Number.static:s_posPercentFormats	0x10	0x10	ok		
 field	FrameData.Flags.value__	0x0	0x0	ok		
 field	FullScreenPassRendererFeature.Version.value__	0x0	0x0	ok		
 field	GPUResidentDrawer.Strings.static:allowInEditModeDisabled	0x8	0x8	ok		
@@ -2043,6 +2495,7 @@ field	InstanceOcclusionEventDebugArray.Info.viewInstanceID	0x0	0x0	ok
 field	InstanceOcclusionEventDebugArray.Request.info	0x0	0x0	ok		
 field	InstanceOcclusionEventDebugArray.Request.readback	0x18	0x18	ok		
 field	Interop.Error.value__	0x0		MISSING		
+field	InvalidKeyException.Format.value__	0x0	0x0	ok		
 field	JsonReader.State.value__	0x0	0x0	ok		
 field	JsonWebSignature.Header.<Algorithm>k__BackingField	0x20	0x20	ok		
 field	JsonWebSignature.Header.<Jwk>k__BackingField	0x30	0x30	ok		
@@ -2098,6 +2551,7 @@ field	List.Enumerator<T>._current	0x0	0x0	ok
 field	List.Enumerator<T>._index	0x0	0x0	ok		
 field	List.Enumerator<T>._list	0x0	0x0	ok		
 field	List.Enumerator<T>._version	0x0	0x0	ok		
+field	LogicalCallContext.Reader.m_ctx	0x0	0x0	ok		
 field	LowLevelDictionary.Entry<TKey,._key	0x0	0x0	ok		
 field	LowLevelDictionary.Entry<TKey,._next	0x0	0x0	ok		
 field	LowLevelDictionary.Entry<TKey,._value	0x0	0x0	ok		
@@ -2172,6 +2626,8 @@ field	NativeParallelMultiHashMap.Enumerator<TKey,.value	0x0	0x0	ok
 field	NativeQueue.Enumerator<T>.m_Enumerator	0x0	0x0	ok		
 field	NativeSlice.Enumerator<T>.m_Array	0x0	0x0	ok		
 field	NativeSlice.Enumerator<T>.m_Index	0x0	0x0	ok		
+field	NativeStream.Reader.m_Reader	0x0	0x0	ok		
+field	NativeStream.Writer.m_Writer	0x0	0x0	ok		
 field	NativeText.Enumerator.current	0xc	0xc	ok		
 field	NativeText.Enumerator.offset	0x8	0x8	ok		
 field	NativeText.Enumerator.target	0x0	0x0	ok		
@@ -2189,6 +2645,8 @@ field	Newtonsoft.Json.JsonConvert.static:True	0x8	0x8	ok
 field	Newtonsoft.Json.JsonConvert.static:Undefined	0x20	0x20	ok		
 field	Newtonsoft.Json.Required.value__	0x0	0x0	ok		
 field	Newtonsoft.Json.TypeNameHandling.value__	0x0	0x0	ok		
+field	Newtonsoft.Json.Utilities.StringBuffer._buffer	0x0	0x0	ok		
+field	Newtonsoft.Json.Utilities.StringBuffer._position	0x8	0x8	ok		
 field	NumberOfCycles.Result.<IsPotentialProblem>k__BackingField	0x18	0x18	ok		
 field	NumberOfCycles.Result.<NumberOfCycles>k__BackingField	0x1c	0x1c	ok		
 field	NumberOfCycles.Result.<Summary>k__BackingField	0x10	0x10	ok		
@@ -2241,7 +2699,15 @@ field	Pathfinding.ClipperLib.Join.OutPt2	0x18	0x18	ok
 field	Pathfinding.Connection.cost	0x8	0x8	ok		
 field	Pathfinding.Connection.node	0x0	0x0	ok		
 field	Pathfinding.Connection.shapeEdge	0xc	0xc	ok		
+field	Pathfinding.Heuristic.value__	0x0	0x0	ok		
 field	Pathfinding.Ionic.BZip2.Rand.static:RNUMS	0x0	0x0	ok		
+field	Pathfinding.Ionic.Crc.CRC32._TotalBytesRead	0x18	0x18	ok		
+field	Pathfinding.Ionic.Crc.CRC32._register	0x30	0x30	ok		
+field	Pathfinding.Ionic.Crc.CRC32.crc32Table	0x28	0x28	ok		
+field	Pathfinding.Ionic.Crc.CRC32.dwPolynomial	0x10	0x10	ok		
+field	Pathfinding.Ionic.Crc.CRC32.reverseBits	0x20	0x20	ok		
+field	Pathfinding.Ionic.Zlib.Adler.static:BASE	0x0	0x0	ok		
+field	Pathfinding.Ionic.Zlib.Adler.static:NMAX	0x4	0x4	ok		
 field	Pathfinding.Path.<Pathfinding.IPathInternals.Pooled>k__BackingField	0x70	0x70	ok		
 field	Pathfinding.Path.<PipelineState>k__BackingField	0x28	0x28	ok		
 field	Pathfinding.Path.<errorLog>k__BackingField	0x48	0x48	ok		
@@ -5998,7 +6464,21 @@ field	SimpleCollator.Escape.Index	0x8	0x8	ok
 field	SimpleCollator.Escape.Optional	0x14	0x14	ok		
 field	SimpleCollator.Escape.Source	0x0	0x0	ok		
 field	SimpleCollator.Escape.Start	0xc	0xc	ok		
+field	Simulator.Worker.context	0x38	0x38	ok		
+field	Simulator.Worker.end	0x14	0x14	ok		
+field	Simulator.Worker.runFlag	0x18	0x18	ok		
+field	Simulator.Worker.simulator	0x28	0x28	ok		
+field	Simulator.Worker.start	0x10	0x10	ok		
+field	Simulator.Worker.task	0x30	0x30	ok		
+field	Simulator.Worker.terminate	0x34	0x34	ok		
+field	Simulator.Worker.waitFlag	0x20	0x20	ok		
 field	Sirenix.OdinInspector.Units.value__	0x0	0x0	ok		
+field	Sirenix.Serialization.Utilities.Cache<T>.Value	0x0	0x0	ok		
+field	Sirenix.Serialization.Utilities.Cache<T>.isFree	0x0	0x0	ok		
+field	Sirenix.Serialization.Utilities.Cache<T>.static:FreeValues	0x0	0x0	ok		
+field	Sirenix.Serialization.Utilities.Cache<T>.static:IsNotificationReceiver	0x0	0x0	ok		
+field	Sirenix.Serialization.Utilities.Cache<T>.static:THREAD_LOCK_TOKEN	0x0	0x0	ok		
+field	Sirenix.Serialization.Utilities.Cache<T>.static:maxCacheSize	0x0	0x0	ok		
 field	Sirenix.Utilities.Direction.value__	0x0	0x0	ok		
 field	Slider.Direction.value__	0x0	0x0	ok		
 field	SoapServices.TypeInfo.Attributes	0x10	0x10	ok		
@@ -6186,6 +6666,34 @@ field	System.Convert.static:DBNull	0x20	0x20	ok
 field	System.Convert.static:EnumType	0x10	0x10	ok		
 field	System.Convert.static:base64Table	0x18	0x18	ok		
 field	System.Convert.static:s_decodingMap	0x0	0x0	ok		
+field	System.Data.DataView._addNewMoved	0x78	0x78	ok		
+field	System.Data.DataView._addNewRow	0x70	0x70	ok		
+field	System.Data.DataView._allowDelete	0x68	0x68	ok		
+field	System.Data.DataView._allowEdit	0x67	0x67	ok		
+field	System.Data.DataView._allowNew	0x66	0x66	ok		
+field	System.Data.DataView._applyDefaultSort	0x69	0x69	ok		
+field	System.Data.DataView._comparison	0x50	0x50	ok		
+field	System.Data.DataView._dataViewManager	0x20	0x20	ok		
+field	System.Data.DataView._delayedRecordStates	0x90	0x90	ok		
+field	System.Data.DataView._delayedSort	0x88	0x88	ok		
+field	System.Data.DataView._dvListener	0xa8	0xa8	ok		
+field	System.Data.DataView._fEndInitInProgress	0x95	0x95	ok		
+field	System.Data.DataView._fInitInProgress	0x94	0x94	ok		
+field	System.Data.DataView._findIndexes	0x40	0x40	ok		
+field	System.Data.DataView._index	0x38	0x38	ok		
+field	System.Data.DataView._locked	0x30	0x30	ok		
+field	System.Data.DataView._objectID	0xb0	0xb0	ok		
+field	System.Data.DataView._onListChanged	0x80	0x80	ok		
+field	System.Data.DataView._open	0x65	0x65	ok		
+field	System.Data.DataView._recordStates	0x60	0x60	ok		
+field	System.Data.DataView._rowFilter	0x58	0x58	ok		
+field	System.Data.DataView._rowViewBuffer	0xa0	0xa0	ok		
+field	System.Data.DataView._rowViewCache	0x98	0x98	ok		
+field	System.Data.DataView._shouldOpen	0x64	0x64	ok		
+field	System.Data.DataView._sort	0x48	0x48	ok		
+field	System.Data.DataView._table	0x28	0x28	ok		
+field	System.Data.DataView.static:s_objectTypeCount	0x8	0x8	ok		
+field	System.Data.DataView.static:s_resetEventArgs	0x0	0x0	ok		
 field	System.Data.Function._argumentCount	0x2c	0x2c	ok		
 field	System.Data.Function._id	0x18	0x18	ok		
 field	System.Data.Function._isValidateArguments	0x28	0x28	ok		
@@ -6335,12 +6843,18 @@ field	System.Int32.m_value	0x0	0x0	ok
 field	System.Int32Enum.value__	0x0	0x0	ok		
 field	System.IntPtr.m_value	0x0	0x0	ok		
 field	System.IntPtr.static:Zero	0x0	0x0	ok		
+field	System.Linq.Expressions.Expression.static:s_lambdaDelegateCache	0x0	0x0	ok		
+field	System.Linq.Expressions.Expression.static:s_lambdaFactories	0x8	0x8	ok		
+field	System.Linq.Expressions.Expression.static:s_legacyCtorSupportTable	0x10	0x10	ok		
 field	System.Linq.Lookup<TKey,.comparer	0x0	0x0	ok		
 field	System.Linq.Lookup<TKey,.count	0x0	0x0	ok		
 field	System.Linq.Lookup<TKey,.groupings	0x0	0x0	ok		
 field	System.Linq.Lookup<TKey,.lastGrouping	0x0	0x0	ok		
 field	System.Math.static:doubleRoundLimit	0x0	0x0	ok		
 field	System.Math.static:roundPower10Double	0x8	0x8	ok		
+field	System.Memory<T>._index	0x0	0x0	ok		
+field	System.Memory<T>._length	0x0	0x0	ok		
+field	System.Memory<T>._object	0x0	0x0	ok		
 field	System.Net.Sockets.Socket.ReadSem	0x40	0x40	ok		
 field	System.Net.Sockets.Socket.WriteSem	0x48	0x48	ok		
 field	System.Net.Sockets.Socket._cachedTaskEventArgs	0x10	0x10	ok		
@@ -6386,6 +6900,16 @@ field	System.Net.Sockets.Socket.static:s_rentedSocketSentinel	0x18	0x18	ok
 field	System.Net.Sockets.Socket.static:s_zeroTask	0x28	0x28	ok		
 field	System.Nullable<T>.hasValue	0x0	0x0	ok		
 field	System.Nullable<T>.value	0x0	0x0	ok		
+field	System.Number.static:s_charToHexLookup	0x28	0x28	ok		
+field	System.Number.static:s_negCurrencyFormats	0x8	0x8	ok		
+field	System.Number.static:s_negNumberFormats	0x20	0x20	ok		
+field	System.Number.static:s_negPercentFormats	0x18	0x18	ok		
+field	System.Number.static:s_posCurrencyFormats	0x0	0x0	ok		
+field	System.Number.static:s_posPercentFormats	0x10	0x10	ok		
+field	System.Number.static:s_rgexp64Power10	0x8	0x8	ok		
+field	System.Number.static:s_rgexp64Power10By16	0x18	0x18	ok		
+field	System.Number.static:s_rgval64Power10	0x0	0x0	ok		
+field	System.Number.static:s_rgval64Power10By16	0x10	0x10	ok		
 field	System.Numerics.Hashing.HashHelpers.static:RandomSeed	0x0	0x0	ok		
 field	System.Numerics.Register.byte_0	0x0	0x0	ok		
 field	System.Numerics.Register.byte_1	0x1	0x1	ok		
@@ -6466,6 +6990,8 @@ field	System.Random.static:t_threadRandom	0x80000000	0x80000000	ok
 field	System.Range.<End>k__BackingField	0x4	0x4	ok		
 field	System.Range.<Start>k__BackingField	0x0	0x0	ok		
 field	System.Reflection.Missing.static:Value	0x0	0x0	ok		
+field	System.Reflection.Module.static:FilterTypeName	0x0	0x0	ok		
+field	System.Reflection.Module.static:FilterTypeNameIgnoreCase	0x8	0x8	ok		
 field	System.Runtime.InteropServices.Architecture.value__	0x0	0x0	ok		
 field	System.Runtime.Remoting.Contexts.Context._localDataStore	0x40	0x40	ok		
 field	System.Runtime.Remoting.Contexts.Context.callback_object	0x50	0x50	ok		
@@ -7264,6 +7790,7 @@ field	TypeIdentifiers.Display.internal_name	0x18	0x18	ok
 field	TypeLimiter.Scope.m_allowedTypes	0x10	0x10	ok		
 field	TypeLimiter.Scope.m_previousScope	0x18	0x18	ok		
 field	TypeLimiter.Scope.static:s_allowedTypes	0x0	0x0	ok		
+field	TypeUtility.Cache<T>.static:TypeConstructor	0x0	0x0	ok		
 field	UISquircle.Type.value__	0x0	0x0	ok		
 field	UI_Knob.Direction.value__	0x0	0x0	ok		
 field	UQueryState.Enumerator<T>.currentIndex	0x0	0x0	ok		
@@ -7340,6 +7867,7 @@ field	UnityEngine.Application.static:wantsToQuit	0x30	0x30	ok
 field	UnityEngine.Assertions.Assert.static:raiseExceptions	0x0	0x0	ok		
 field	UnityEngine.Bindings.ManagedSpanWrapper.begin	0x0	0x0	ok		
 field	UnityEngine.Bindings.ManagedSpanWrapper.length	0x8	0x8	ok		
+field	UnityEngine.Cache.m_Handle	0x0	0x0	ok		
 field	UnityEngine.Camera.m_NonSerializedVersion	0x18	0x18	ok		
 field	UnityEngine.Camera.static:onPostRender	0x10	0x10	ok		
 field	UnityEngine.Camera.static:onPreCull	0x0	0x0	ok		
@@ -7805,6 +8333,12 @@ field	UnityEngine.UIElements.Panel.static:beforeAnyRepaint	0x18	0x18	ok
 field	UnityEngine.UIElements.Panel.static:s_MarkerPickAll	0x0	0x0	ok		
 field	UnityEngine.UIElements.Position.value__	0x0	0x0	ok		
 field	UnityEngine.UIElements.Repeat.value__	0x0	0x0	ok		
+field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.combinator	0x24	0x24	ok		
+field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.dataType	0x20	0x20	ok		
+field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.keyword	0x30	0x30	ok		
+field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.multiplier	0x14	0x14	ok		
+field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.subExpressions	0x28	0x28	ok		
+field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.type	0x10	0x10	ok		
 field	UnityEngine.UIElements.Toggle.static:checkmarkUssClassName	0x20	0x20	ok		
 field	UnityEngine.UIElements.Toggle.static:inputUssClassName	0x10	0x10	ok		
 field	UnityEngine.UIElements.Toggle.static:labelUssClassName	0x8	0x8	ok		
@@ -7836,6 +8370,10 @@ field	UnityEngine.UIElements.UIR.State.sdfScale	0x10	0x10	ok
 field	UnityEngine.UIElements.UIR.State.sharpness	0x14	0x14	ok		
 field	UnityEngine.UIElements.UIR.State.stencilRef	0xc	0xc	ok		
 field	UnityEngine.UIElements.UIR.State.texture	0x8	0x8	ok		
+field	UnityEngine.UIElements.UIR.Utility.static:EngineUpdate	0x8	0x8	ok		
+field	UnityEngine.UIElements.UIR.Utility.static:FlushPendingResources	0x10	0x10	ok		
+field	UnityEngine.UIElements.UIR.Utility.static:GraphicsResourcesRecreate	0x0	0x0	ok		
+field	UnityEngine.UIElements.UIR.Utility.static:s_MarkerRaiseEngineUpdate	0x18	0x18	ok		
 field	UnityEngine.UIElements.Wrap.value__	0x0	0x0	ok		
 field	UnityEngine.Vector2.static:downVector	0x18	0x18	ok		
 field	UnityEngine.Vector2.static:leftVector	0x20	0x20	ok		
@@ -7883,6 +8421,9 @@ field	UniversalCameraHistory.Item.writeVersion	0xc	0xc	ok
 field	UniversalRenderPipeline.Profiling.Pipeline.Context.static:submit	0x0	0x0	ok		
 field	UniversalRenderPipelineAsset.Strings.static:forwardPlusMissing	0x8	0x8	ok		
 field	UniversalRenderPipelineAsset.Strings.static:notURPRenderer	0x0	0x0	ok		
+field	UnsafeAppendBuffer.Reader.Offset	0xc	0xc	ok		
+field	UnsafeAppendBuffer.Reader.Ptr	0x0	0x0	ok		
+field	UnsafeAppendBuffer.Reader.Size	0x8	0x8	ok		
 field	UnsafeHashMap.Enumerator<TKey,.m_Enumerator	0x0	0x0	ok		
 field	UnsafeHashSet.Enumerator<T>.m_Enumerator	0x0	0x0	ok		
 field	UnsafeList.Enumerator<T>.m_Index	0x0	0x0	ok		
@@ -7899,6 +8440,22 @@ field	UnsafeQueue.Enumerator<T>.m_Block	0x0	0x0	ok
 field	UnsafeQueue.Enumerator<T>.m_FirstBlock	0x0	0x0	ok		
 field	UnsafeQueue.Enumerator<T>.m_Index	0x0	0x0	ok		
 field	UnsafeQueue.Enumerator<T>.value	0x0	0x0	ok		
+field	UnsafeStream.Reader.m_BlockData	0x0	0x0	ok		
+field	UnsafeStream.Reader.m_CurrentBlock	0x20	0x20	ok		
+field	UnsafeStream.Reader.m_CurrentBlockEnd	0x30	0x30	ok		
+field	UnsafeStream.Reader.m_CurrentPtr	0x28	0x28	ok		
+field	UnsafeStream.Reader.m_LastBlockSize	0x3c	0x3c	ok		
+field	UnsafeStream.Reader.m_RemainingItemCount	0x38	0x38	ok		
+field	UnsafeStream.Writer.m_BlockData	0x0	0x0	ok		
+field	UnsafeStream.Writer.m_CurrentBlock	0x20	0x20	ok		
+field	UnsafeStream.Writer.m_CurrentBlockEnd	0x30	0x30	ok		
+field	UnsafeStream.Writer.m_CurrentPtr	0x28	0x28	ok		
+field	UnsafeStream.Writer.m_ElementCount	0x3c	0x3c	ok		
+field	UnsafeStream.Writer.m_FirstBlock	0x40	0x40	ok		
+field	UnsafeStream.Writer.m_FirstOffset	0x48	0x48	ok		
+field	UnsafeStream.Writer.m_ForeachIndex	0x38	0x38	ok		
+field	UnsafeStream.Writer.m_NumberOfBlocks	0x4c	0x4c	ok		
+field	UnsafeStream.Writer.m_ThreadIndex	0x50	0x50	ok		
 field	Uri.Check.value__	0x0	0x0	ok		
 field	Uri.Flags.value__	0x0	0x0	ok		
 field	Uri.Offset.End	0xe	0xe	ok		

@@ -12,6 +12,26 @@ sys.path.insert(0, f"{H}/ds_multiplayer/win")
 import wloader as w
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "out", time.strftime("%Y%m%d-%H%M%S")); os.makedirs(OUT, exist_ok=True)
+
+def wine_busy():
+    """a real wine / .exe process younger than a day (the owner's own CrossOver bottles run for days: ignored)"""
+    out = subprocess.run(["ps", "-axo", "etime=,comm="], capture_output=True, text=True).stdout
+    return [l for l in out.splitlines() if re.search(r"wine|\.exe$", l, re.I) and not re.match(r"\s*\d+-", l)]
+
+
+MINE = set()                                   # wine processes this run started (only these are ever stopped)
+def note_started(before):
+    MINE.update(p for p, _ in w.dsmp_pids() if p not in before)
+def stop_mine():
+    if not MINE: return
+    try: w.cmd({"cmd": "quit"}, timeout=5)
+    except Exception: pass
+    time.sleep(2)
+    for pid in list(MINE):
+        try: os.kill(pid, 9)
+        except Exception: pass
+    MINE.clear()
+
 LOCK = f"{H}/ds_multiplayer/rig/wine.lock"
 SAVE = f"{H}/DungeonSettlers_SaveBackups/2026-10-11-1827/Saves/ElvenExpedition__AutoSave_f816ebc6195c432c9fff754b75ee3738_0.json"
 args = sys.argv[1:]
@@ -29,7 +49,7 @@ while not PAIR and time.time() - t_l < float(os.environ.get("XM_LEASE_WAIT", "12
     if not PAIR: time.sleep(20)
 log("lease", PAIR or lease.stderr.strip(), f"after {time.time() - t_l:.0f} s")
 # one wine copy machine-wide (taken after the lease, so a wait for a pair never holds the wine lock)
-def wine_free(): return not subprocess.run(["pgrep", "-l", "wine"], capture_output=True, text=True).stdout.strip()
+def wine_free(): return not wine_busy()
 HAVE_LOCK = False
 if PAIR:
     t_w = time.time()
@@ -60,7 +80,8 @@ try:
         if os.path.exists(p): os.replace(p, os.path.join(OUT, "prev_" + f))
     ui = os.path.join(OUT, "ui"); os.makedirs(ui, exist_ok=True)
     os.environ["DSL_UI_TEST"] = w.winpath(ui); os.environ["DSL_GCDPROBE_FORCE"] = "8"
-    w.start([])
+    before = {p for p, _ in w.dsmp_pids()}
+    w.start([]); time.sleep(5); note_started(before)
     t0 = time.time(); st = {}
     while time.time() - t0 < 400:
         try: st = w.cmd({"cmd": "status"}, timeout=5)
@@ -127,8 +148,7 @@ try:
     check("gcd-cdr effect lines in a world", g, f"{len(g)} lines, {len(withcdr)} with cooldown reduction; e.g. {(withcdr or g or [''])[0][-110:]}")
     check("a unit with cooldown reduction gets a shorter global cooldown", withcdr)
 finally:
-    try: w.stop()
-    except Exception as e: log("stop:", e)
+    if HAVE_LOCK: stop_mine()
     for f in ("dsload.log", "rig.log", "starter.log", "player.log"):
         p = os.path.join(w.PROF, f)
         if os.path.exists(p): shutil.copy2(p, os.path.join(OUT, f))

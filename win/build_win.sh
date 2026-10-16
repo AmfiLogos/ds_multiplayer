@@ -24,7 +24,8 @@ export DSMP_SRC=$S
 MH=third_party/minhook
 ZL=third_party/zlib    # inflate only (pvp_wiki.c builder links): zlib 1.3.1 from the local Unity il2cpp sources
 C=${DSMP_CUSTOM:-${S:h}/custom}; export DSMP_CUSTOM=$C   # Custom Modes sources (one DLL here: -DCM_SAME_IMAGE)
-CINC=(-I$C); for d in $C/*(/N); do CINC+=(-I$d); done             # every custom/ folder (fe, pvp, units, home, ...)
+CINC=(-I$C); CEMB=(--embed-dir=$C)                               # every custom/ folder (fe, pvp, units, home, fights/tinf ...)
+for d in $C/**/*(/N); do [[ ${d:t} == test || $d == */test/* ]] || { CINC+=(-I$d); CEMB+=(--embed-dir=$d); }; done
 INC=(-Ibuild/gen_inc -Iport/posix -Iport -Imath -I$S/ord_test -I$S/net/steam -I$S $CINC -I$S/net -I$DSMP_ROOT/sdk -I$MH/include -I$ZL)
 CF=(-O2 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_STDIO=1 -fno-strict-aliasing -DCM_SAME_IMAGE)
 TARGET=${DSMP_TARGET:-baselib}
@@ -46,13 +47,14 @@ echo built build/multiplayer.dll
 # Custom Modes, its own module. mp part: -DCM_SAME_IMAGE here means "multiplayer's rig_hook" (imported from
 # multiplayer.dll: its Windows rules for folded / arm64-only hooks apply to Custom Modes' hooks too).
 OC=build/obj_cm; mkdir -p $OC/solo $OC/mp; for o in $OC/solo/*.o(N) $OC/mp/*.o(N); do mv -f $o build/old_obj/; done
-for f in $CM_MP; do nice -n 5 $TC $CF $INC -include dswin.h -c $f -o $OC/mp/${f:t:r}.o; done
-nice -n 5 $TC -shared -o build/custom-modes-mp.dll.tmp $OC/mp/*.o build/libmultiplayer.dll.a -Wl,--export-all-symbols -static -static-libgcc -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
+# solo part: no multiplayer link; dlopen / dlsym / dladdr = LoadLibrary / GetProcAddress (port/cm/dlfcn.h); WinHTTP for
+# fights/cm_http.c; zlib inflate objects of this build. Its import library: the mp part calls My Units etc. in it.
+for f in $CM_SOLO; do nice -n 5 $TC ${CF:#-DCM_SAME_IMAGE} -fwrapv $CEMB -Iport/cm ${INC:#-Iport/posix} -include cm_win.h -c $f -o $OC/solo/${f:t:r}.o; done
+nice -n 5 $TC -shared -o build/link/custom-modes.dll $OC/solo/*.o $O/zl_*.o -Wl,--export-all-symbols -Wl,--out-implib,build/libcustom-modes.dll.a -static -static-libgcc -lwinhttp -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
+mv -f build/link/custom-modes.dll build/custom-modes.dll
+for f in $CM_MP; do nice -n 5 $TC $CF -fwrapv $CEMB $INC -include dswin.h -c $f -o $OC/mp/${f:t:r}.o; done
+nice -n 5 $TC -shared -o build/custom-modes-mp.dll.tmp $OC/mp/*.o build/libmultiplayer.dll.a build/libcustom-modes.dll.a -Wl,--export-all-symbols -static -static-libgcc -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/custom-modes-mp.dll.tmp build/custom-modes-mp.dll
-# solo part: no multiplayer link; dlopen / dlsym / dladdr = LoadLibrary / GetProcAddress (port/cm/dlfcn.h)
-for f in $CM_SOLO; do nice -n 5 $TC ${CF:#-DCM_SAME_IMAGE} -Iport/cm ${INC:#-Iport/posix} -include cm_win.h -c $f -o $OC/solo/${f:t:r}.o; done
-nice -n 5 $TC -shared -o build/custom-modes.dll.tmp $OC/solo/*.o -Wl,--export-all-symbols -static -static-libgcc -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
-mv -f build/custom-modes.dll.tmp build/custom-modes.dll
 echo "built build/custom-modes.dll (${#CM_SOLO} files) + build/custom-modes-mp.dll (${#CM_MP} files)"
 # module folder for the loader: build/mods/multiplayer/ = the dll, its ranges and mod.json (the loader's Mac mod.json
 # from DSL_MODJSON, default ~/ds_launcher/loader/modules/multiplayer/mod.json, + platforms.win-x64 with file sha256s)
