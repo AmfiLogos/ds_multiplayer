@@ -435,3 +435,6 @@ multiplayer tag next to the name of the save and then just put the players that 
   so it was built by hand). An untracked old copy of ext/bepinex_bridge in the main checkout blocked the merge: moved to
   old/bepinex_bridge_untracked_20261016-0353 (its untracked build/inst/lib/... folders moved back). Note: tools/gen_*_lane.py
   hold /Users/<name> paths (main already has 7 such files).
+- builder13 0adb5cd (+ main = 7caf232) -> 4fdc619 (build/merge_builder13, my build replaced the lane's own folder of that name):
+  run_eq 300/300 equal to node (0 save/link failures); unit ALL PASS; smoke 3/3; mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL;
+  builder_test 32/32 (copy R); tf_check 25 saves, 0 errors, 0 problems, QuickJS == node 51/51; prefs identical.
