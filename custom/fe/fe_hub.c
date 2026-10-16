@@ -10,7 +10,7 @@
 #include "rig.h"
 #include "fe_json.h"
 #include "fe_save.h"
-#include <dlfcn.h>
+#include "sg_cache.h"
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,37 +40,17 @@ int pvp_v1_world(void) {
     return !strncmp(gs, PVP_V1_PREFIX, 5);
 }
 
-/* Test Fights' wiki cache (custom/fights/sg_cache.h, lane fights): downloads the template when it is not cached yet.
-   Found at run time (dlsym): without it only an already cached template is used. Same layout as sgc in sg_cache.h. */
-typedef struct fe_sgc { char root[1024]; int timeout_ms; } fe_sgc;
-
-static void wiki_root(char *o, size_t n) { snprintf(o, n, "%s/data/Mods/custom-modes/wiki", rig_dir); }
-static void template_name(char *o, size_t n) { snprintf(o, n, "base_%s.json", RIG_BUILD); }
-
-static int read_all(const char *p, char **text, size_t *len) {
-    FILE *f = fopen(p, "rb"); if (!f) return -1;
-    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
-    char *d = n > 0 ? malloc((size_t)n + 1) : NULL;
-    if (!d || fread(d, 1, (size_t)n, f) != (size_t)n) { free(d); fclose(f); return -1; }
-    fclose(f); d[n] = 0; *text = d; *len = (size_t)n;
-    return 0;
-}
-
-/* the template text: Test Fights' cache (download on first use), else the cached file itself */
+/* the template comes through Test Fights' wiki cache (custom/fights/sg_cache.h, in custom-modes.dylib): downloaded from
+   dungeonsettlers.wiki once, kept in <data>/Mods/custom-modes/wiki/saves/ (the same file Test Fights uses) */
 static int fe_world_template(char **text, size_t *len, char *err, size_t errn) {
-    char root[1100], file[64], p[1300];
-    wiki_root(root, sizeof root); template_name(file, sizeof file);
-    void (*sgc_init)(fe_sgc *, const char *) = (void (*)(fe_sgc *, const char *))dlsym(RTLD_DEFAULT, "sgc_init");
-    int (*sgc_template)(void *, const char *, char **, size_t *, char *, size_t) =
-        (int (*)(void *, const char *, char **, size_t *, char *, size_t))dlsym(RTLD_DEFAULT, "sgc_template");
-    if (sgc_init && sgc_template) {
-        fe_sgc c; memset(&c, 0, sizeof c); sgc_init(&c, root);
-        if (!sgc_template(&c, file, text, len, err, errn)) return 0;
-        rig_log("fe hub: wiki cache: %s", err);
-    }
-    snprintf(p, sizeof p, "%s/saves/%s", root, file);
-    if (!read_all(p, text, len)) return 0;
-    snprintf(err, errn, "The hub map is not downloaded yet: the game needs dungeonsettlers.wiki once (%s).", file);
+    char pdp[1100], root[1200], file[64];
+    snprintf(pdp, sizeof pdp, "%s/data", rig_dir);                       /* the game's persistentDataPath (rig_main.c) */
+    sgc_default_root(pdp, root, sizeof root);
+    snprintf(file, sizeof file, "base_%s.json", RIG_BUILD);
+    sgc c; sgc_init(&c, root);
+    if (!sgc_template(&c, file, text, len, err, errn)) return 0;
+    rig_log("fe hub: wiki cache: %s", err);
+    snprintf(err, errn, "The hub map could not be downloaded from dungeonsettlers.wiki (needed once). Check the internet connection and try again.");
     return -1;
 }
 
