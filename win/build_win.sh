@@ -27,7 +27,8 @@ C=${DSMP_CUSTOM:-${S:h}/custom}; export DSMP_CUSTOM=$C   # Custom Modes sources 
 CINC=(-I$C); CEMB=(--embed-dir=$C)                               # every custom/ folder (fe, pvp, units, home, fights/tinf ...)
 for d in $C/**/*(/N); do [[ ${d:t} == test || $d == */test/* ]] || { CINC+=(-I$d); CEMB+=(--embed-dir=$d); }; done
 INC=(-Ibuild/gen_inc -Iport/posix -Iport -Imath -I$S/ord_test -I$S/net/steam -I$S $CINC -I$S/net -I$DSMP_ROOT/sdk -I$MH/include -I$ZL)
-CF=(-O2 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_STDIO=1 -fno-strict-aliasing -DCM_SAME_IMAGE)
+PM=(-ffile-prefix-map=$HOME=/src)                               # no build path (user name) in the DLLs (release gate G12)
+CF=($PM -O2 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_STDIO=1 -fno-strict-aliasing -DCM_SAME_IMAGE)
 TARGET=${DSMP_TARGET:-baselib}
 if [[ $TARGET == module ]]; then CF+=(-DDSMP_MODULE); INC+=(-I${DSL_SDK:-~/ds_launcher/loader/sdk}); fi
 GEN=(build/gen/*.c build/gen/net/dsnet_link.c build/gen/net/dsnet_server.c build/gen/net/dsnet_client.c)
@@ -39,7 +40,7 @@ NET=()
 O=build/obj; [[ $TARGET == module ]] && O=build/obj_module
 mkdir -p $O build/old_obj; olds=($O/*.o(N)); (( ${#olds} )) && mv -f $olds build/old_obj/
 for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do nice -n 5 $TC $CF -fwrapv $CEMB $INC -include dswin.h -include port/cm/xm_bsd_win.h -c $f -o $O/${f:t:r}.o; done
-for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $ZL/zutil.c; do nice -n 5 $TC -O2 -w -c $f -o $O/zl_${f:t:r}.o; done
+for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $ZL/zutil.c; do nice -n 5 $TC $PM -O2 -w -c $f -o $O/zl_${f:t:r}.o; done
 if [[ $TARGET == module ]]; then
 nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o
 mkdir -p build/link                                              # the import library names the DLL by its output file name
