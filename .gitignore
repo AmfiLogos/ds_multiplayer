@@ -71,3 +71,5 @@ fixtures/
 # own test binaries
 *_bin
 *.dSYM/
+src/ui_test/test_ui
+src/ui_test/teams_test
