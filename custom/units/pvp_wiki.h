@@ -29,6 +29,7 @@ typedef struct wk_build {
     int npstk; struct { int skill, st; } pstk[WK_MAX_LIST];
     int nsouls, souls[WK_MAX_LIST];
     int nsaved_inds, saved_inds[WK_MAX_LIST];
+    int has_saved_inds;                /* the link carried a saved trait list (it may be empty once retired traits drop) */
     int nsaved_insc, saved_insc[WK_MAX_LIST];
     int nacq, acq[WK_MAX_LIST];
     int has_elix, elix[6];
@@ -45,3 +46,12 @@ const char *wk_race_key(int i);
 const char *wk_item_key(int i);
 const char *wk_slot_name(int i);
 uint64_t wk_hash(const wk_build *b, int n);   /* FNV over the decoded fields (every copy must get the same value) */
+/* a builder JSON build (keys: My Units library, #b=<JSON> links) -> wk_build, the way builder.js dsbEncBuild packs it
+ * (tag values to the link's 1/255 steps, manual stats to 1/100), so a library unit and the team link of the same build
+ * give the SAME unit. A key this game data does not have = an error (the unit was made with other wiki data). */
+/* the data fingerprint written in a team code (header bytes 1-2), or -1 when it is not a readable code */
+int wk_code_fp(const char *code);
+/* the fingerprint of this build's tables (WK_FP) */
+int wk_fp(void);
+struct jv;
+int wk_from_json(const struct jv *build, wk_build *out, char *err, size_t errn);

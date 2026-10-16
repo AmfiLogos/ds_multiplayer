@@ -1,0 +1,6 @@
+# test binaries, scratch and fixtures (fixtures come from the launcher tool; never committed)
+test/tmp/
+test/old/
+test/fixtures/
+*_bin
+*.dSYM/
