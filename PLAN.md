@@ -409,3 +409,22 @@ multiplayer tag next to the name of the save and then just put the players that 
   gate.sh's own mp2 failed twice on pair CD: orphan copies C/D (pids 91396 / 93050, started 22:00, no lease) hold port 7811.
 - Owner's Mac: "Dungeon Settlers MP.app" and "DS Mod Launcher.app" -> ~/Applications/old_versions/*-2026-10-15-2316.app;
   "Dungeon Settlers Modded.app" in ~/Applications (not launched).
+
+## v13 merges (merger13, 2026-10-16)
+- Method: branch checked out in ~/ds_mp_merge13, `git merge main`, src/build.sh OUT=build/merge_<x>/ (dsrig + custom-modes*),
+  unit suites (ext/merger13/tools/unit.sh: net, mp_test, mpmenu, trn, ui, teams, pvp, FE guard) and rig gate steps
+  (ext/merger13/tools/gate.sh: smoke, mp2 3000 ticks, left_prompt --start) on THAT build, then the lane's own tests.
+- units13-skel 33140a4 -> 7346b15 (build/merge_units13): unit ALL PASS (ui 530, teams 437097, pvp 585, guard 18); smoke 3/3;
+  mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; home_test 22 PASS 0 FAIL (ext/merger13/out/home_units13skel); prefs identical.
+- fights13-step1 80355ae (+ main = d685e66) -> 03ff838 (build/merge_fights13s1): only custom/fights, custom/gallery, ext notes.
+  run_eq 64/64 identical (local wiki), sg_cache_test 24/24, gal_test 28/28, gal_names identical; unit ALL PASS; smoke 3/3;
+  mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; home_test 22 PASS 0 FAIL; prefs identical. Logs: ext/merger13/out/, rig/det_out/gate_*.
+  Open: main's custom/build_module.sh has no -fwrapv yet (QuickJS needs it). It comes with units13 4e2e262 (units full).
+  Until then QuickJS is in custom-modes.dylib but not called by the game (step 1 has no game wiring).
+- build/dsrig.dylib + custom-modes*.dylib = build/merge_fights13s1 (old ones in build/old_versions/*-before-*).
+- units13 4e2e262 (+ its main merge 602f3d6 + 18cb58d) -> 4a0347e (build/merge_units13full). 18cb58d = one line in
+  custom/build_module.sh (team-lead ok "dedupe ok"): `SOLO=(${(u)SOLO}); MPS=(${(u)MPS})`, because fe/fe_json.c is in both
+  custom/fe/sources.txt and custom/fights/sources.txt (link failed with duplicate symbols). -fwrapv for QuickJS now on main.
+  Tests: mu_test 148 PASS (fixtures from the units worktree); unit ALL PASS; run_eq 64/64; smoke 3/3; mp2 19 PASS 0 FAIL;
+  left_prompt 16 PASS 0 FAIL; home 22/22, My Units 26/26, Bring Units 32/32, Bring from rig command 5/5 (ext/merger13/out/*units13full*);
+  prefs identical. build/dsrig + custom-modes*.dylib = this build.
