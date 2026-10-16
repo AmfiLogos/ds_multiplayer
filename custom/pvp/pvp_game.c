@@ -39,6 +39,7 @@ static int last_rc = 1;
 /* ---------------------------------------------------------------- game access */
 #define VA_GETRELATION   0x82BBA0    /* static RelationType FactionRelationInfo.GetRelation(IEntity, IEntity) */
 #define VA_ISHOSTILE     0xFA4CE8    /* static bool EntityExtensions.IsHostile(IEntity, IEntity) */
+#define VA_ISRELATION    0x82C5DC    /* static bool FactionRelationInfo.IsRelation(IEntity, IEntity, RelationType) = GetRelation(a, b) == r */
 #define VA_CDH_INIT      0xBCDE24    /* CombatDataHandler.Init(RuntimeMapData) */
 #define VA_CDH_SPAWN     0xBCF690    /* .OnSpawnUnit(UnitEntity, Vector2Int) */
 #define VA_CDH_MOVE      0xBD1930    /* .OnMoveUnit(UnitEntity, Vector2Int last, Vector2Int current) */
@@ -127,6 +128,19 @@ static int h_getrel(Obj a, Obj b, void *mi) {
         if (pvp_hostile(&g, (const uint8_t *)&ga, (const uint8_t *)&gb) == 1) { n_rel_hostile++; return 1; }   /* RelationType.Hostile */
     }
     return o_getrel(a, b, mi);
+}
+/* Windows: MSVC inlined GetRelation into FactionRelationInfo.IsRelation (the Mac build calls it), and IsAffectTarget
+   (DecidePlayerCombatBehaviour.DecideTarget / FindNewTarget) goes through IsRelation there. So on a Windows peer the
+   GetRelation hook never ran for target choice: a unit picked another target than on the Mac host -> units section
+   desync in Mac + Windows PvP (gate13 known issue, 2026-10-16). Same answer as GetRelation's hook, on both platforms. */
+static uint32_t n_isrel;
+static bool (*o_isrel)(Obj, Obj, int, void *);
+static bool h_isrel(Obj a, Obj b, int rel, void *mi) {
+    if (hostile_now() && a && b) {
+        G16 ga = gget(a), gb = gget(b);
+        if (pvp_hostile(&g, (const uint8_t *)&ga, (const uint8_t *)&gb) == 1) { n_isrel++; return rel == 1; }   /* RelationType.Hostile */
+    }
+    return o_isrel(a, b, rel, mi);
 }
 static bool (*o_ishostile)(Obj, Obj, void *);
 static bool h_ishostile(Obj a, Obj b, void *mi) {
@@ -985,6 +999,7 @@ void pvp_install(void) {
     int bad = 0;
     bad |= rig_hook(VA_GETRELATION, (void *)h_getrel, (void **)&o_getrel, "pvp FactionRelationInfo.GetRelation");
     bad |= rig_hook(VA_ISHOSTILE, (void *)h_ishostile, (void **)&o_ishostile, "pvp EntityExtensions.IsHostile");
+    bad |= rig_hook(VA_ISRELATION, (void *)h_isrel, (void **)&o_isrel, "pvp FactionRelationInfo.IsRelation");
     bad |= rig_hook(VA_CDH_INIT, (void *)h_init, (void **)&o_init, "pvp CombatDataHandler.Init");
     bad |= rig_hook(VA_CDH_SPAWN, (void *)h_spawn, (void **)&o_spawn, "pvp CombatDataHandler.OnSpawnUnit");
     bad |= rig_hook(VA_CDH_MOVE, (void *)h_move, (void **)&o_move, "pvp CombatDataHandler.OnMoveUnit");
@@ -1140,12 +1155,12 @@ char *pvp_exec(const char *cmd, const char *line) {
         int map = cur_map(); Obj h = combat_of(map);
         Buf r = {0};
         bput(&r, "{\"ok\":true,\"round\":%d,\"score\":[%d,%d],\"draws\":%d,\"resetting\":%d,\"last_winner\":%d,\"match_winner\":%d,\"planning\":%d,\"plans\":%u,\"rules\":[%d,%d,%d,%d,%d],\"vanilla\":%d,\"snaps\":[%d,%d],\"resyncs\":%d,\"overrides\":%d,\"arena\":%d,\"placing\":%d,\"fight_start\":%u,\"ends\":[[%d,%d],[%d,%d]],\"frozen\":%d,\"freeze_at\":%lld,\"world_tick\":%lld,\"phase\":%d,\"mode\":%d,\"active\":%d,\"ticks\":%u,\"matches\":%u,\"hash\":\"%016llx\",\"last_rc\":%d,"
-                 "\"counts\":{\"rel\":%u,\"ishostile\":%u,\"add\":%u,\"refresh\":%u,\"remove\":%u,\"aggro\":%u,\"rejected\":%u},\"handler\":%d,\"teams\":[",
+                 "\"counts\":{\"rel\":%u,\"ishostile\":%u,\"add\":%u,\"refresh\":%u,\"remove\":%u,\"aggro\":%u,\"rejected\":%u,\"isrel\":%u},\"handler\":%d,\"teams\":[",
              g.round, g.score[1], g.score[2], g.draws, g.resetting, g.last_winner, g.match_winner, g.planning, g.plans,
              g.rules.best_of, g.rules.round_secs, g.rules.pause_rule, g.rules.plan_every_s, g.rules.plan_len_s, g.rules.vanilla, snap_world.tick_at, snap_arena.tick_at, n_resync, n_override,
              g.arena, g.placing, g.fight_start, g.end_cell[1][0], g.end_cell[1][1], g.end_cell[2][0], g.end_cell[2][1],
              pvp_freeze_now(), (long long)freeze_at, (long long)tick(), g.phase, g.mode, pvp_active(&g), g.ticks, g.matches, (unsigned long long)pvp_hash(&g), last_rc,
-             n_rel_hostile, n_ishostile, n_add, n_refresh, n_remove, n_aggro, n_rejected, h != NULL);
+             n_rel_hostile, n_ishostile, n_add, n_refresh, n_remove, n_aggro, n_rejected, n_isrel, h != NULL);
         for (int i = 0; i < 8; i++) bput(&r, "%s%d", i ? "," : "", g.team_of[i]);
         bput(&r, "],\"ctf\":{\"homes\":[[%d,%d],[%d,%d]],\"captures\":%u,\"banners\":%d,\"events\":[%u,%u,%u,%u],\"flags\":[", g.home[1][0], g.home[1][1], g.home[2][0], g.home[2][1],
              g.captures, n_banner, n_ctf_ev[0], n_ctf_ev[1], n_ctf_ev[2], n_ctf_ev[3]);
