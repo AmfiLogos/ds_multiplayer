@@ -364,11 +364,11 @@ def main():
         guids = ','.join(u['guid'] for u in players)
         region = st('A').get('region', 1)
         if st('A').get('map') != 1:
-            check('floor vote: skipped (the party left through the portal, now on base)', True, '')
+            check('floor vote: NOT TESTED (the party left through the portal, now on base)', False, '')
         else:
           map_change('floor vote', 'GoDownDungeonRequested', dict(lguid_16=guids), lambda s_: s_.get('map') == 1 and s_.get('floor', 0) >= 1)
         if st('A').get('map') != 1:
-            check('return-to-base vote: skipped (already on base)', True, '')
+            check('return-to-base vote: NOT TESTED (already on base)', False, '')
         else:
           map_change('return-to-base vote', 'ChangeMapRequested',
                    dict(i32_16=1, i32_20=0, i32_24=region, lguid_32=guids, i32_40=0), lambda s_: s_.get('map') == 0)
