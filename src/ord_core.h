@@ -11,7 +11,9 @@
 #include <stddef.h>
 
 #define ORD_MAGIC    'O'
-#define ORD_VERSION  2     /* 2: Set 2 (base) events, build-mode clicks, expedition party */
+#define ORD_VERSION  2     /* 2: Set 2 (base) events, build-mode clicks, expedition party. The quick-slot skill keys
+                               (ORD_EF_QSLOT) did not bump it (ui_teams.c builds a v2 ChangeMapRequested by hand); an
+                               older peer rejects only those 4 orders (trailing bytes, -9) */
 #define ORD_MAX_SEL  32     /* selection guids carried per order */
 #define ORD_MAX_LIST 64     /* guid lists (IndexList, selector target lists, run near list) */
 #define ORD_MAX_ACTS 64     /* candidate actions recorded in one InteractionRunner.Run */
@@ -45,6 +47,7 @@ enum { ORD_F_I32 = 1, ORD_F_U8, ORD_F_GUID, ORD_F_NGUID, ORD_F_NI32, ORD_F_NU8, 
 #define ORD_EF_RECRUIT 16u  /* the replay reports the new unit(s) to the recruit hook (owner = issuer) */
 #define ORD_EF_PARTY   32u  /* carries the issuer's ExpeditionPlanPartyContext (active + member Guids) */
 #define ORD_EF_EQUIP   64u  /* gear-mode check before sending (host lobby option) */
+#define ORD_EF_QSLOT  128u  /* quick-slot index event: carries the issuer's skill key(s), resolved by key on apply */
 typedef struct { uint8_t kind; uint16_t off; } ord_field;
 typedef struct {
     uint16_t id; const char *ns, *name; uint8_t nf; const ord_field *f; uint32_t flags;
@@ -146,6 +149,12 @@ typedef struct ord_msg {
     /* MODE_CLICK / MODE_DRAG: mode (ControlMode 1..5), pos x,y (+ x2,y2 for drag), shift;
        ConstructionTargetControl state: key (in `key`), rotation, drag start */
     int32_t mode, x2, y2, rotation, dsx, dsy; uint8_t shift, has_ckey;
+    /* EVENT with ORD_EF_QSLOT: the issuer's skill key at the event's Index (qkey) and, for MoveQuickSlot, at its
+       TargetIndex (qkey2); "" = empty slot or no such slot */
+    char qkey[ORD_STR], qkey2[ORD_STR];
+    /* Set: 1 = the skill sat in an issuer slot (its handler does not learn it again). Unset: 1 = the key sits in another
+       issuer slot too (its handler does not forget the skill). Each copy makes its handler take the same branch. */
+    uint8_t qreg;
 } ord_msg;
 
 /* Serialize m (EVENT: reads m->evobj through env). 0 ok. */
@@ -164,3 +173,36 @@ int ord_map_change_kind(const ord_msg *m);
 /* EVENT helpers (used by the two functions above, exposed for tests) */
 int     ord_ev_write(const ord_env *env, ord_wbuf *w, const ord_evdef *d, ord_obj ev);
 ord_obj ord_ev_read(const ord_env *env, ord_rbuf *r, const ord_evdef *d, int map);
+
+/* ---------------------------------------------------------------- quick slots by skill key (ORD_EF_QSLOT)
+ * ToggleAutoSkill / SetQuickSlot / UnsetQuickSlot / MoveQuickSlot name a quick-slot INDEX. Copies with a different
+ * slot layout (weapon-slot mod: 5 slots on its host, 4 on a stock guest) would act on different skills. So the order
+ * carries the issuer's skill key at that index, and each copy finds the key in its OWN slots on apply.
+ * A copy without a slot for the key applies only the skill part of the handler (auto-use flag, learn / forget). */
+#define ORD_QS_MAX 16
+typedef struct { int n; char k[ORD_QS_MAX][ORD_STR]; } ord_qslots;   /* one unit's quick slots; "" = empty */
+enum { ORD_QS_TOGGLE = 1, ORD_QS_SET, ORD_QS_UNSET, ORD_QS_MOVE };
+/* 0 = not a quick-slot index event; else ORD_QS_*. Index offsets: ord_qs_fields. */
+int ord_qs_kind(const ord_evdef *d);
+/* the event's Index / TargetIndex (-1 none) / Skill string field offsets (-1 none), from the event table */
+void ord_qs_fields(const ord_evdef *d, int *idx_off, int *tgt_off, int *skill_off);
+/* capture: fill m->qkey / m->qkey2 / m->qreg from the issuer's slots s of the event's unit (NULL = none) */
+void ord_qs_capture(const ord_env *env, ord_msg *m, const ord_qslots *s);
+/* the local slot for key: hint if it holds key, else the first slot holding it, else -1 ("" key: -1) */
+int ord_qs_resolve(const ord_qslots *s, const char *key, int hint);
+enum {
+    ORD_QP_NONE = 0,   /* nothing to do here (empty slot on the issuer, or a layout-only change with no slot here) */
+    ORD_QP_RUN,        /* slot writes pre[], run the handler with Index = idx (TargetIndex = idx2 for Move), writes post[] */
+    ORD_QP_AUTO,       /* no slot here: SkillComponent.ChangeAutoSkillData(key) (what the handler does on the issuer) */
+    ORD_QP_WRITE       /* layout only (Move with one side missing here): writes post[], no handler */
+};
+#define ORD_QP_W (ORD_QS_MAX + 2)
+typedef struct { int32_t slot; char key[ORD_STR]; } ord_qwrite;     /* slot <- key ("" = empty) */
+typedef struct {
+    int act;
+    int32_t idx, idx2;
+    char key[ORD_STR];                                               /* AUTO */
+    int npre, npost; ord_qwrite pre[ORD_QP_W], post[ORD_QP_W];
+} ord_qplan;
+/* what to do on this copy (s = its slots of the event's unit) for a received message m (ORD_EF_QSLOT) */
+void ord_qs_plan(const ord_env *env, const ord_msg *m, const ord_qslots *s, ord_qplan *p);

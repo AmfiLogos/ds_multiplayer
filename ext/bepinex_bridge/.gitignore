@@ -1,0 +1,9 @@
+# lane-local: src copies, reference DLLs, game instance (saves), C# build dirs
+src/
+src_base/
+lib/
+inst/
+bin/
+obj/
+*.patch
+l1/
