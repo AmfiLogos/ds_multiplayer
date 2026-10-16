@@ -2,7 +2,7 @@
 
 Source of truth: research/owner_feedback_v12.md items 1-17 (owner's words rule), AFTER_MVP_LIST.md, research/MASTER_PLAN.md
 (3 pieces: mod loader / multiplayer mod / custom modes mod), research/owner_feedback_2026-10-15.md. Start state: ds_multiplayer
-main 1b33dfa (M4 split merged: src/mp_api.h, custom/), ds_launcher main 9095385 (l1-core, l2-modswin, l3-win, m4-busy merged).
+main c773649 (M4 split merged: src/mp_api.h, custom/), ds_launcher main c50b661 (l1-core, l2-modswin, l3-win, m4-busy merged).
 Released: v12-mvp (GitHub, Latest). Rules for every lane: LANE_RULES.md. Lane briefs: research/briefs_v13/.
 Marks: **[V]** = checked in files or by a test on 2026-10-16. **[U]** = not proven yet; the lane proves it first.
 
@@ -102,7 +102,7 @@ CPU). Default ON; logged in MORNING_QUESTIONS.
 | AM-3 | FE neutral hub; rules on host page; Death Off; PvP from the hub. Later: a real player's world with OK | FEP | candidates listed only (MORNING_QUESTIONS) |
 | AM-4 | Unit Builder in the game's menus | BLD | wiki builder.js core in QuickJS (FIG engine) + game-style UI |
 | AM-5 | Weapon slot host-only | MPF | = v12-15 |
-| AM-6 | M4 split (merged), busy flag (merged 9095385), BepInEx bridge (branch, pre-split) | MPF (bridge port + merge) | |
+| AM-6 | M4 split (merged), busy flag (merged c50b661), BepInEx bridge (branch, pre-split) | MPF (bridge port + merge) | |
 | AM-7 | Not testable: real Windows PC, Steam on Windows, a friend over the internet | none (release note says so) | |
 | AM-8 | Owner questions: upstream / Hotbar / extra checks / Teams | answered by v12-16; extra checks in gate G10-G11; Teams questions stay in MORNING_QUESTIONS | |
 

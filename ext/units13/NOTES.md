@@ -1,6 +1,6 @@
 # Lane units13 (v13 WP UNI) notes
 
-Worktree ~/ds_mp_units13, branch units13 (from main a138cb2). Brief: research/briefs_v13/units.md. Interfaces: API.md.
+Worktree ~/ds_mp_units13, branch units13 (from main a1b7852). Brief: research/briefs_v13/units.md. Interfaces: API.md.
 
 ## Step 1 skeleton (2026-10-16)
 - custom/build_module.sh builds from folder lists (sources.txt -> custom-modes.dylib solo; sources_mp.txt ->
@@ -133,8 +133,8 @@ Worktree ~/ds_mp_units13, branch units13 (from main a138cb2). Brief: research/br
   Bring Units 32/32 at 1.0 / 0.75 / 1.4; Bring from a rig command 5/5.
 
 ## Re-merge 03:10 (main with fights step 1)
-- build_module.sh: a file in two lists is built once; a solo file is not rebuilt into the mp dylib. f036c9b: smoke 3/3, mp2 19/0, prefs identical, mu_test 148.
+- build_module.sh: a file in two lists is built once; a solo file is not rebuilt into the mp dylib. 73352af: smoke 3/3, mp2 19/0, prefs identical, mu_test 148.
 
 ## Gate13 fixes (08:00)
 - Player fix: mu_save_files (Bring Units "From a save") skips MPPvP_* and MPHub_* worlds like pvp_ui.c (a PvP match world was offered as a save).
-- Tests: home_test accepts the entries other lanes register (My Units first, known order, Back last); bring_test / bring_rig_test use their own save folder (list_saves through mu_test_bring_open "max,sources,dir" / rig "dir"). Results on main 23bf35b + this: home 22/22, bring 32/32 (1.0 and 0.75), bring rig 5/5, my units 26/26, mu_test 148.
+- Tests: home_test accepts the entries other lanes register (My Units first, known order, Back last); bring_test / bring_rig_test use their own save folder (list_saves through mu_test_bring_open "max,sources,dir" / rig "dir"). Results on main 870c5ec + this: home 22/22, bring 32/32 (1.0 and 0.75), bring rig 5/5, my units 26/26, mu_test 148.

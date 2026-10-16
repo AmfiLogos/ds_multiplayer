@@ -43,13 +43,13 @@ ext/m4split/tools/kit_unstatic.py does the mpmenu.c part (re-run it if mpmenu.c 
   go into custom-modes.dylib.
 - The rig hosts it like the loader does: rig_main.c dlopens custom-modes.dylib (RTLD_LOCAL) from next to the running dsrig.dylib
   (DSRIG_CUSTOM=<path>, DSRIG_CUSTOM=0 = none) and calls dsl_module_load + dsl_module_early with a small DSLHost (hook_rva -> rig_hook,
-  module_loaded("multiplayer") = 1). sdk/dsl_sdk.h = copy of ds_launcher b7ebb86 loader/sdk/dsl_sdk.h.
+  module_loaded("multiplayer") = 1). sdk/dsl_sdk.h = copy of ds_launcher 9884bda loader/sdk/dsl_sdk.h.
 - pvp_units fe_reads_mail used dlsym(RTLD_DEFAULT, "fe_poll"). That fails for an RTLD_LOCAL image and would give 2 mailbox readers,
   so it is now a weak reference in the same image. pvp_game's dlsym(RTLD_DEFAULT, "ui_center_message") is unchanged: it works in the
   rig (dsrig inserted = global) and did not work in loader mode before either.
 - custom/mod.json: id custom-modes, scope gameplay, api 3, no "requires" on multiplayer (works alone).
 
-## Loader (ds_launcher branch m4-busy d473870, pushed, NOT merged: L1 owns loader/)
+## Loader (ds_launcher branch m4-busy 7a43fa6, pushed, NOT merged: L1 owns loader/)
 - The SDK already had `set_session_busy`. modules/multiplayer/mp_module.c polls mp_session_busy_reason() each frame, finds it with
   dlsym(RTLD_SELF) so older pins still link, and calls dsl_set_session_busy when it changes. Busy = a session exists, or the menu is in
   HOST_LOADING / LOBBY / PLAYING / GUEST_JOINING / GUEST_LOADING / GUEST_LOBBY.
@@ -73,7 +73,7 @@ rig/release_gate.sh, release_all.sh and make_mp_app.sh freeze and ship dsrig.dyl
 as they are has NO Foreign Expedition / PvP: custom-modes.dylib + custom-modes-mp.dylib must sit next to dsrig.dylib (Frameworks/).
 The release gate (MASTER_PLAN 5.4) must add them, or ship through the loader's mods/ folders.
 
-## Gates (build/merge_m4split/: dsrig.dylib + custom-modes.dylib + custom-modes-mp.dylib, after merging main 4a5cda6)
+## Gates (build/merge_m4split/: dsrig.dylib + custom-modes.dylib + custom-modes-mp.dylib, after merging main e048453)
 - Unit: net ALL PASS, mp_test ALL PASS, ui_test 530, teams_test 437097, mpmenu_test, trn_test, pvp_test 585, test_custom_guard ALL PASS.
 - Pairs (lease m4split, ext/m4split/tools/run_with_dylib.py): smoke 3/3 (rig.log: "Foreign Expedition + PvP registered"),
   mp2 3000 ticks 19 PASS 0 FAIL, left_prompt --start 16 PASS 0 FAIL, PvP m4_van 7/7, m4_bring 8/8, m4_ui 9/9 (ext/pvp/out/m4_*),

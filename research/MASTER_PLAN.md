@@ -193,7 +193,7 @@ Fail or 90 s: old mods stay, reason shown. Not inside a running multiplayer sess
 
 | Branch / worktree | State | Goes to |
 |---|---|---|
-| sockpath, steamstart, winkit | merged into main (54e5a2a) **[V]** | MP (steamstart's stub code also feeds the loader's Mac stub, already copied in modsmenu **[V]**) |
+| sockpath, steamstart, winkit | merged into main (01d933e) **[V]** | MP (steamstart's stub code also feeds the loader's Mac stub, already copied in modsmenu **[V]**) |
 | seethrough, latejoin, viewui, myunits FE guard | merger lane is merging them now (P0) | MP; the guard moves to custom/fe in the split |
 | weaponslot (../ds_mp_weaponslot) | running: skip QuickSlots in the full-state check + free-slot-4 auto-use test (owner approved host-only) | MP (mp_game.c); merges before the split |
 | wp-menu (../ds_mp_wpmenu) = uifix11 + mptag | host choices + World row removed + tag **[V]**; save-list filter not built yet | MP; the filter moves to the LOAD-ROW API once the loader has it (until then its own hook, as mptag does) |
@@ -316,4 +316,4 @@ it" list checked against the build. Nothing ships until all is green.
 - Mac: not possible today (no arm64 BepInEx/MelonLoader for IL2CPP, research/bepinex_compat.md). Told the owner.
 
 ## Open for M4 SPLIT (lead 2026-10-15 19:45)
-- The multiplayer mod must report "busy" to the loader while a session runs (Apply / soft restart disabled in MP). Put it in mp_api.h / the loader SDK busy flag (loader/src/dsl_menu.h, l1-core 0e1711a).
+- The multiplayer mod must report "busy" to the loader while a session runs (Apply / soft restart disabled in MP). Put it in mp_api.h / the loader SDK busy flag (loader/src/dsl_menu.h, l1-core 1986795).

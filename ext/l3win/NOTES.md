@@ -5,7 +5,7 @@ wrig loader mode, tools). Pushed, not merged.
 
 ## What was built
 - Loader core made OS-neutral (ds_launcher `loader/src/dsl_os.h`, `dsl_soft_os.h`): Mac start part moved unchanged to
-  `loader/start/mac/` (host test 31/31); l1-core 7800778 merged on top (API 3 services, dsl_ui/reg/rows).
+  `loader/start/mac/` (host test 31/31); l1-core 280843d merged on top (API 3 services, dsl_ui/reg/rows).
 - `loader/start/win/`: baselib.dll proxy (`dsl_start_win.c`: PE build check, save folder -> DSRIG_DIR/data, Steam check
   off only when no signed-in Steam), MinHook engine behind the same dsl_hook API (`dsl_engine_win.c`), OS calls
   (`dsl_os_win.c`), soft restart OS part (`dsl_soft_win.c`), BepInEx host (`bie_win.c`), starter
@@ -37,8 +37,8 @@ wrig loader mode, tools). Pushed, not merged.
   (Doorstop under wine; a copy without winhttp.dll falls back to builtin).
 - Unity "force single instance": A closes its own SingleInstanceMutex handle before it starts B (else B never starts).
 
-## Update 21:40 (after l1-core 5988e29 merge, main merged into ds_multiplayer l3-win)
-- Mod set across platforms (ds_launcher 1ead659 + 7e..): modset_lines = id@version:<sorted sha256s of every platform's
+## Update 21:40 (after l1-core 6f57dd1 merge, main merged into ds_multiplayer l3-win)
+- Mod set across platforms (ds_launcher 7abc9cc + 7e..): modset_lines = id@version:<sorted sha256s of every platform's
   listed files> (BepInEx: platforms.any), multiplayer left out; HELLO modset = sha256 of the lines, "" = none; old world
   keys with "multiplayer" migrated. dsload_modset.json: same rule + "bepinex" list.
 - BepInEx off reason -> DSL_BIE_REASON -> DSLModInfo.reason ("Not running: ..." in L2's row).
