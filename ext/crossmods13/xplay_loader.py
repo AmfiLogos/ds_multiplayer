@@ -19,12 +19,6 @@ X, WIN = "Z", "W"
 MODS = ["multiplayer", "custom-modes", "gcd-cdr"]
 OUT = os.path.join(HERE, "out", "xplay-" + time.strftime("%Y%m%d-%H%M%S")); os.makedirs(OUT, exist_ok=True)
 
-def wine_busy():
-    """a real wine / .exe process younger than a day (the owner's own CrossOver bottles run for days: ignored)"""
-    out = subprocess.run(["ps", "-axo", "etime=,comm="], capture_output=True, text=True).stdout
-    return [l for l in out.splitlines() if re.search(r"wine|\.exe$", l, re.I) and not re.match(r"\s*\d+-", l)]
-
-
 MINE = set()                                   # wine processes this run started (only these are ever stopped)
 def note_started(before):
     MINE.update(p for p, _ in w.dsmp_pids() if p not in before)
@@ -38,7 +32,7 @@ def stop_mine():
         except Exception: pass
     MINE.clear()
 
-LOCK = f"{H}/ds_multiplayer/rig/wine.lock"
+WL = f"{H}/ds_multiplayer/rig/wine_lease.py"
 def log(*a): print("[xm-xplay]", *a, flush=True)
 
 PAIR = None; t_l = time.time()
@@ -47,12 +41,7 @@ while not PAIR and time.time() - t_l < 1800:                       # the Mac cop
     PAIR = r.stdout.strip() if r.returncode == 0 else None
     if not PAIR: time.sleep(20)
 log("lease", PAIR)
-HAVE_LOCK = False; t_w = time.time()
-while PAIR and not HAVE_LOCK and time.time() - t_w < 1800:
-    if not wine_busy():
-        try: os.mkdir(LOCK); HAVE_LOCK = True; open(os.path.join(LOCK, "owner"), "w").write("crossmods\n")
-        except FileExistsError: pass
-    if not HAVE_LOCK: time.sleep(20)
+HAVE_LOCK = bool(PAIR) and subprocess.run([sys.executable, WL, "take", "crossmods", "--pid", str(os.getpid()), "--wait", "1800"]).returncode == 0
 try:
     if not PAIR or not HAVE_LOCK: raise SystemExit("no lease / wine lock")
     if not os.path.exists(os.path.join(lrig.idir(X), lrig.EXE_REL)):
@@ -110,7 +99,4 @@ finally:
         try: f()
         except Exception as e: log("stop:", e)
     if PAIR: subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "release", PAIR, "crossmods"], capture_output=True)
-    if HAVE_LOCK:
-        os.makedirs(f"{H}/ds_multiplayer/rig/old", exist_ok=True)
-        if os.path.exists(os.path.join(LOCK, "owner")): os.replace(os.path.join(LOCK, "owner"), f"{H}/ds_multiplayer/rig/old/wine.lock.owner.crossmods.{int(time.time())}")
-        os.rmdir(LOCK)
+    if HAVE_LOCK: subprocess.run([sys.executable, WL, "release", "crossmods"])
