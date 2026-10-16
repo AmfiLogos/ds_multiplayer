@@ -194,6 +194,9 @@ def run(H, G):
          and st(H).get('det', {}).get('locked') and st(G).get('det', {}).get('locked'), timeout=600, every=2)
     fh = c(H, cmd='fe_status'); hub_units = fh['hub_units']; run_id = fh['run']
     check('F4: Start in the Foreign Expedition lobby built the hub with the host page rules', bool(run_id) and len(hub_units) == 3, fh.get('msg'))
+    its = {x: c(x, cmd='ui_items', map=0).get('items', []) for x in (H, G)}
+    ht = {x: sum(i.get('amount', 1) for i in its[x] if i.get('key') == 'ITEM_Hardtack') for x in (H, G)}
+    check('hub: the storage stock is in the hub on both peers (Hardtack 100+ on the ground)', all(v >= 100 for v in ht.values()) and len(its[H]) == len(its[G]), f'{ht}, items {len(its[H])}/{len(its[G])}')
     gu = c(G, cmd='fe_status')['uid']
     mine = {H: [h['hub'] for h in hub_units if h['player'] != gu], G: [h['hub'] for h in hub_units if h['player'] == gu]}
     own = {h['hub'][:8]: (c(H, cmd='mp_owner', guid=h['hub']).get('owner'), c(G, cmd='mp_owner', guid=h['hub']).get('owner'), 'guest' if h['player'] == gu else 'host') for h in hub_units}

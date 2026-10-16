@@ -33,7 +33,6 @@ static int world_prefix(const char *pre) {
     char gs[40]; guid_str(AT(clan, 0x10, Guid), gs);
     return !strncmp(gs, pre, 5);
 }
-int fe_hub_template_world(void) { return world_prefix(FE_HUB_TPL_PREFIX); }
 int pvp_v1_world(void) {
     Obj c = cdc(); Obj clan = c ? AT(c, 0x50, Obj) : NULL;
     if (!clan) return 0;
@@ -209,60 +208,70 @@ int pvp_v1_keep_prefix(const char *path) {
     return rc;
 }
 
-/* the hub's storage stock (brief "storage stocked"; owner earlier: no food in the hub). Inside the DSNET_FE_START sim
-   command (fe_game.c fe_on_start), every peer at the same step: the stock SpawnItemRequested event per stack (the game
-   puts the items on the ground; the settlers carry them to storage), on walkable cells next to the clan's units.
-   Keys and stack sizes checked in the game's ItemTable (build 25846389, DS_B.0.4.29: MaxStack 20 each). */
+/* the hub's stock (brief "storage stocked"; owner earlier: no food in the hub), put into the hub save by the host while it
+   builds the hub (fe_join_point_save; every peer loads that file). Each stack is a copy of one of the template's own ground
+   items of the same key (its component record shape), fresh durability, new guid, on a free explored cell (the template's
+   discovered field area, no entity there) nearest to the clan's units; settlers carry them to storage. Keys = those the
+   template has on the ground (MaxStack 20 each in the ItemTable of 0.4.29). An in-sim SpawnItemRequested at the start did
+   not work: the join point was written before the events ran (hub dive 2026-10-16: none of the 380 items in the hub). */
 static const struct { const char *key; int amount; } HUB_STOCK[] = {
-    { "ITEM_Hardtack", 100 }, { "ITEM_WildHerb", 40 }, { "ITEM_Ointment", 20 }, { "ITEM_AidKit", 20 },
-    { "ITEM_WoodPlank", 60 }, { "ITEM_StoneBrick", 60 }, { "ITEM_Textile", 40 }, { "ITEM_Leather", 40 } };
+    { "ITEM_Hardtack", 100 }, { "ITEM_BlueBerry", 40 }, { "ITEM_Ointment", 40 }, { "ITEM_AidKit", 20 }, { "ITEM_LumaLog", 100 } };
 #define HUB_STACK 20
-Obj pvp_runtime_map(int map);                                               /* pvp/pvp_game.c */
-typedef struct { int32_t x, y; } HV2I;
-static int hub_cell(Obj pd, const uint8_t g[16], int32_t c[2]) {           /* Dictionary<Guid, Vector2>: entry 0x20 */
-    Obj ent = AT(pd, 0x18, Obj); int n = AT(pd, 0x20, int32_t);
-    for (int i = 0; ent && i < n; i++) {
-        char *e = (char *)ent + 0x20 + i * 0x20;
-        if (*(int32_t *)e >= 0 && !memcmp(e + 8, g, 16)) { c[0] = (int32_t)floorf(*(float *)(e + 0x18)); c[1] = (int32_t)floorf(*(float *)(e + 0x1C)); return 1; }
-    }
+int fe_hub_template_save(const jv *save) {                                 /* this save is a neutral hub not started yet */
+    jv *g = jpath(save, "ClanSaveData.CampaignGuid");
+    return g && g->t == JN_STR && g->n >= 5 && !memcmp(g->s, FE_HUB_TPL_PREFIX, 5);
+}
+static int cell_taken(const jv *pm, int x, int y) {
+    for (size_t j = 0; pm && j < pm->cnt; j++) if ((int)floor(jnumv(jget(pm->v[j], "x"))) == x && (int)floor(jnumv(jget(pm->v[j], "y"))) == y) return 1;
     return 0;
 }
-int fe_hub_stock(void) {
-    Obj ud = units_dict(0), pd = pos_dict(0), rd = pvp_runtime_map(0), eq = mf ? AT(mf, 0x48, Obj) : NULL;
-    if (!ud || !pd || !rd || !eq) { rig_log("fe hub: stock skipped (map data %p %p %p)", ud, pd, rd); return -1; }
-    int64_t sx = 0, sy = 0; int nu = 0;
-    Obj ent = AT(ud, 0x18, Obj); int n = AT(ud, 0x20, int32_t);
-    for (int i = 0; ent && i < n; i++) {                                   /* the clan's units on the settlement */
-        char *e = (char *)ent + 0x20 + i * 0x20; if (*(int32_t *)e < 0) continue;
-        Obj u = *(Obj *)(e + 0x18); Obj r = u ? AT(u, 0x40, Obj) : NULL; Obj ci = r ? AT(r, 0x10, Obj) : NULL;
-        int32_t c[2]; if (!ci || AT(ci, 0x18, int32_t) != 1 || !hub_cell(pd, (const uint8_t *)(e + 8), c)) continue;
-        sx += c[0]; sy += c[1]; nu++;
+int fe_hub_stock_json(jv *hub) {
+    jv *ecd = jget(hub, "EntityContainerSaveData"), *ic = jpath(hub, "EntityContainerSaveData.ItemContainerSaveData.Base");
+    jv *om = ic ? jget(ic, "OnMapItems") : NULL, *reg = ic ? jget(ic, "ItemSaveData") : NULL, *af = ic ? jget(ic, "ItemAutoFixable") : NULL;
+    jv *pm = jpath(hub, "EntityContainerSaveData.EntityPositions.Base"), *ec = jpath(hub, "EntityComponentSaveData.EntityComponents");
+    jv *fa = jpath(hub, "RawBaseSaveData.BaseFieldAreas"), *pl = jpath(hub, "EntityContainerSaveData.UnitContainerSaveData.Base.PlayerGuidList");
+    if (!ecd || !om || !reg || !af || !pm || !ec || !jis(fa, JN_ARR)) { rig_log("fe hub: stock skipped (save layout)"); return -1; }
+    double sx = 0, sy = 0; int nu = 0;                                     /* centre: the clan's units, else the ground items */
+    for (size_t i = 0; pl && i < pl->cnt; i++) { jv *u = pl->v[i]; char k[40]; if (!jis(u, JN_STR)) continue; snprintf(k, sizeof k, "%.*s", (int)u->n, u->s);
+        jv *p = jget(pm, k); if (p) { sx += jnumv(jget(p, "x")); sy += jnumv(jget(p, "y")); nu++; } }
+    for (size_t i = 0; !nu && i < om->cnt; i++) { jv *p = jget(pm, om->k[i]); if (p) { sx += jnumv(jget(p, "x")); sy += jnumv(jget(p, "y")); } if (i + 1 == om->cnt) nu = (int)om->cnt; }
+    if (!nu) { rig_log("fe hub: stock skipped (no centre)"); return -1; }
+    int cx = (int)floor(sx / nu), cy = (int)floor(sy / nu);
+    /* free cells: discovered field area, no entity, nearest first (ties: y then x) */
+    int cand[2048][2], nc = 0;
+    for (size_t a = 0; a < fa->cnt && nc < 2048; a++) {
+        jv *ar = fa->v[a]; if (!jtruthy(jget(ar, "IsDiscovered"))) continue;
+        jv *ps = jget(ar, "Positions");
+        for (size_t i = 0; jis(ps, JN_ARR) && i + 1 < ps->cnt && nc < 2048; i += 2) {
+            int x = (int)jnumv(ps->v[i]), y = (int)jnumv(ps->v[i + 1]);
+            if (abs(x - cx) > 12 || abs(y - cy) > 12 || cell_taken(pm, x, y)) continue;
+            cand[nc][0] = x; cand[nc][1] = y; nc++;
+        }
     }
-    if (!nu) { rig_log("fe hub: stock skipped (no clan unit on the settlement)"); return -1; }
-    int cx = (int)(sx / nu), cy = (int)(sy / nu), mx = AT(rd, 0x28, int32_t), my = AT(rd, 0x2C, int32_t);
-    int ring = 2, stacks = 0, items = 0, side = 0, step = 0;
-    for (size_t s = 0; s < sizeof HUB_STOCK / sizeof HUB_STOCK[0]; s++)
-        for (int left = HUB_STOCK[s].amount; left > 0; left -= HUB_STACK) {
-            HV2I v = { 0, 0 }; int found = 0;
-            while (!found && ring <= 12) {                                 /* square rings around the centre, fixed order */
-                int len = 2 * ring;
-                int x = side == 0 ? cx - ring + step : side == 1 ? cx + ring : side == 2 ? cx + ring - step : cx - ring;
-                int y = side == 0 ? cy - ring : side == 1 ? cy - ring + step : side == 2 ? cy + ring : cy + ring - step;
-                if (++step >= len) { step = 0; if (++side == 4) { side = 0; ring += 2; } }
-                if (x < 0 || y < 0 || x >= mx || y >= my) continue;
-                v.x = x; v.y = y;
-                found = F(0xBEF2F0, bool (*)(Obj, HV2I, void *))(rd, v, NULL)    /* RuntimeMapData.IsMovable */
-                     && F(0xBEF354, bool (*)(Obj, HV2I, void *))(rd, v, NULL);  /* + IsVisited: the lit settlement */
-            }
-            if (!found) { rig_log("fe hub: stock: no free cell left after %d stacks", stacks); goto done; }
+    for (int i = 1; i < nc; i++) for (int j = i; j > 0; j--) {             /* insertion sort by distance */
+        int *p = cand[j - 1], *q = cand[j];
+        long dp = (long)(p[0] - cx) * (p[0] - cx) + (long)(p[1] - cy) * (p[1] - cy), dq = (long)(q[0] - cx) * (q[0] - cx) + (long)(q[1] - cy) * (q[1] - cy);
+        if (dp < dq || (dp == dq && (p[1] < q[1] || (p[1] == q[1] && p[0] <= q[0])))) break;
+        int t0 = p[0], t1 = p[1]; p[0] = q[0]; p[1] = q[1]; q[0] = t0; q[1] = t1;
+    }
+    int used = 0, stacks = 0, items = 0, missing = 0;
+    for (size_t s = 0; s < sizeof HUB_STOCK / sizeof HUB_STOCK[0]; s++) {
+        const char *donor = NULL;
+        for (size_t i = 0; i < om->cnt && !donor; i++) if (jstreq(jget(om->v[i], "Key"), HUB_STOCK[s].key) && jget(ec, om->k[i])) donor = om->k[i];
+        if (!donor) { missing++; rig_log("fe hub: stock: no %s in the template to copy", HUB_STOCK[s].key); continue; }
+        for (int left = HUB_STOCK[s].amount; left > 0 && used < nc; left -= HUB_STACK, used++) {
             int cnt = left < HUB_STACK ? left : HUB_STACK;
-            Obj ev = obj_new(0x66549B0);                                       /* SpawnItemRequested */
-            uint64_t pos = (uint32_t)v.x | ((uint64_t)(uint32_t)v.y << 32);
-            F(0xD62DDC, void (*)(Obj, int32_t, Obj, uint64_t, int32_t, void *))(ev, 0, F(0x6F9738, Obj (*)(const char *))(HUB_STOCK[s].key), pos, cnt, NULL);
-            F(0xCCFAD4, void (*)(Obj, Obj, void *))(eq, ev, NULL);            /* EventQueue.AddEvent */
+            char g[37]; fe_new_guid(g);
+            jv *comps = jcopy(jget(ec, donor)), *st = fe_comp(comps, 0), *stats = st ? jget(st, "Stats") : NULL;
+            if (jis(stats, JN_OBJ) && jget(stats, "MaxDurability")) jset(stats, "Durability", jcopy(jget(stats, "MaxDurability")));
+            jset(ec, g, comps);
+            jv *r = jobj(); jset(r, "Guid", jstrv(g)); jset(r, "Key", jstrv(HUB_STOCK[s].key)); jset(reg, g, r);
+            jset(af, g, jbool(0));
+            jv *o = jobj(); jset(o, "Guid", jstrv(g)); jset(o, "Key", jstrv(HUB_STOCK[s].key)); jset(o, "Amount", jnum_i(cnt)); jset(o, "AutoFixed", jbool(0)); jset(om, g, o);
+            jv *p = jobj(); jset(p, "x", jnum_d(cand[used][0] + 0.5)); jset(p, "y", jnum_d(cand[used][1] + 0.5)); jset(pm, g, p);
             stacks++; items += cnt;
         }
-done:
-    rig_log("fe hub: storage stock: %d stack(s), %d item(s) put down around (%d,%d)", stacks, items, cx, cy);
+    }
+    rig_log("fe hub: storage stock: %d stack(s), %d item(s) on free cells around (%d,%d)%s", stacks, items, cx, cy, missing ? " (some keys had no template copy)" : "");
     return stacks;
 }

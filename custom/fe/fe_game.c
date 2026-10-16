@@ -254,11 +254,8 @@ int fe_menu_start(int death, int xp, int loot, int recruit, char *err, size_t er
 }
 /* mp_core: DSNET_FE_START executed (every peer, same step). The host arms the hub build for the next join point. */
 static int armed;
-int fe_hub_template_world(void);
-int fe_hub_stock(void);
 void fe_on_start(const uint8_t *payload, size_t len) {
     char rid[33] = ""; if (len >= 16) hex_of(payload, rid);
-    if (fe_hub_template_world()) fe_hub_stock();                        /* every peer, same step: the neutral hub's stock */
     dsnet_client *c = cli();
     if (c && dsnet_is_host(c) && pending_start && jstreq(jget(pending_start, "run_id"), rid)) armed = 1;
     say("FE_START executed (run %.8s)%s", rid, armed ? ": the next join point builds the hub" : "");
@@ -276,6 +273,8 @@ static void snapshot_alive(const jv *save) {                  /* death not perma
     char p[1300], sub[200]; snprintf(sub, sizeof sub, "runs/%s/last_alive.json", jget(run_m, "run_id")->s);
     fe_path(p, sizeof p, sub); write_json(p, last_alive);
 }
+int fe_hub_template_save(const jv *save);
+int fe_hub_stock_json(jv *hub);
 /* mp_game g_save, host, right after the join-point save was written to `path` (Saves/mp_sync.json). Armed: that file
    becomes the hub (same SaveName, so the reload and every guest load it). A running hub: keep the last-alive states. */
 int fe_join_point_save(const char *path, const char *save_name) {
@@ -288,6 +287,7 @@ int fe_join_point_save(const char *path, const char *save_name) {
     jv *live = jload(path, err, sizeof err);
     if (!live) { say("hub build: cannot read the join-point save: %s", err); return -1; }
     jv *run = NULL;
+    if (fe_hub_template_save(live)) fe_hub_stock_json(live);              /* a neutral hub: its stock, before the build counts the start items */
     jv *hub = fe_build_hub(live, jget(pending_start, "entries"), jget(pending_start, "run_id")->s, jget(pending_start, "maps"), &run, err, sizeof err);
     jfree(live);
     if (!hub) { say("hub build REFUSED: %s", err); return -1; }
