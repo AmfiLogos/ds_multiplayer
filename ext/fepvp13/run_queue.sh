@@ -10,6 +10,7 @@ for t in "$@"; do
     m4_bring) python3 $P/pvp_bring_ui.py --tag fepvp_m4_bring > $O/$t.out 2>&1 ;;
     m4_ui) python3 $P/pvp_ui.py --tag fepvp_m4_ui > $O/$t.out 2>&1 ;;
     hubdive) python3 ext/fepvp13/tests/hub_dive_test.py --death 0 --feed > $O/$t.out 2>&1 ;;
+    hubpvp) python3 ext/fepvp13/tests/hub_pvp_test.py --death 0 --feed > $O/$t.out 2>&1 ;;
   esac
   echo "$(date +%H:%M:%S) END $t rc $? | $(grep -E 'RESULT|PASS, |[0-9]+/[0-9]+ PASS' $O/$t.out | tail -1)"
 done
