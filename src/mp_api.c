@@ -179,6 +179,13 @@ static int a_register_host_choice(const char *id, const char *label, const char 
     return mpmenu_register_host_choice(id, label, tip, draw_page, on_start) ? 0 : -1;
 }
 
+int mpmenu_register_host_choice2(const char *id, const char *label, const char *tip, void (*draw_page)(void *),
+                                 int (*page_start)(char *, size_t), int (*lobby_start)(char *, size_t));
+const char *mpmenu_host_choice_now(void);
+static int a_register_host_choice2(const mp_host_choice *c) {
+    return c ? mpmenu_register_host_choice2(c->id, c->label, c->tip, c->draw_page, c->page_start, c->lobby_start) : -1;
+}
+
 /* ---------------------------------------------------------------- the table */
 static const mp_api_table api = {
     .version = MP_API_VERSION, .size = sizeof(mp_api_table),
@@ -192,6 +199,7 @@ static const mp_api_table api = {
     .ui_set_flag = a_ui_set_flag, .register_unit_tag = a_register_unit_tag, .register_teams_portal = a_register_portal,
     .modset_lines = a_modset_lines, .register_rig_cmd = a_register_rig_cmd,
     .register_frame = a_register_frame, .register_save_keep = a_register_save_keep, .register_menu = mpmenu_register_hooks,
+    .register_host_choice2 = a_register_host_choice2, .host_choice_now = mpmenu_host_choice_now,
 };
 const mp_api_table *mp_api_get(uint32_t version) {
     if (version > MP_API_VERSION) { rig_log("mp_api: version %u asked, this multiplayer has %d", version, MP_API_VERSION); return NULL; }
