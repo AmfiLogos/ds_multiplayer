@@ -11,24 +11,25 @@ Lockstep multiplayer mod for **Dungeon Settlers** (Steam). All players run the s
 
 ## The three repositories
 
-- ds_multiplayer (this repo): the Multiplayer mod. Its releases page has the installers.
+- ds_multiplayer (this repo): the Multiplayer mod. Its releases page has `multiplayer-<version>.zip`.
 - [ds_modloader](https://github.com/AmfiLogos/ds_modloader): the mod loader that starts the game with mods,
-  the Mac app and the Windows installer. Read its README for install steps, save folders and bug reports.
+  the Mac app and the Windows installer. Its releases page has the installers. Read its README for install steps,
+  save folders and bug reports.
 - [ds_custommodes](https://github.com/AmfiLogos/ds_custommodes): the Custom Modes mod. Foreign Expedition and
   PvP in it need this Multiplayer mod.
 
 ## Download
 
-Releases: https://github.com/AmfiLogos/ds_multiplayer/releases
-
-Take the files of the latest release:
+The installers are on the [ds_modloader releases page](https://github.com/AmfiLogos/ds_modloader/releases). Take the files of the latest release:
 
 - Mac (Apple chip): `Dungeon-Settlers-Modded-Mac.dmg`
 - Windows (64-bit): `Dungeon-Settlers-Modded-Setup.exe`
 
 Both hold the mod loader and all four mods (Multiplayer, Custom Modes, Global cooldown, Hell difficulty).
 The install steps are in the release notes and in the [ds_modloader README](https://github.com/AmfiLogos/ds_modloader#download-and-install).
-`multiplayer-<version>.zip` is the Multiplayer mod alone, to add or update it by hand.
+This repo's [releases page](https://github.com/AmfiLogos/ds_multiplayer/releases) has `multiplayer-<version>.zip`
+(tag `multiplayer-v<version>`): the Multiplayer mod alone, to add or update it by hand. The releases named
+`bundle-v0.1.x` there are old installer releases, kept as history.
 
 Your normal game, saves and settings do not change: the modded game plays on its own copy of your saves.
 The ds_modloader README says where that copy is.
