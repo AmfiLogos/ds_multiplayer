@@ -1,0 +1,345 @@
+[
+ {
+  "id": "dps_normal",
+  "builds": "owner",
+  "opts": {
+   "mode": "dps",
+   "combat": "Normal",
+   "kits": {
+    "basic": true
+   },
+   "team": "Team 1"
+  }
+ },
+ {
+  "id": "boss_golem_Easy",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "Easy",
+   "kits": {
+    "basic": true
+   },
+   "team": "Team 1"
+  }
+ },
+ {
+  "id": "boss_golem_Normal",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "Normal",
+   "kits": {
+    "basic": true
+   },
+   "team": "Team 1"
+  }
+ },
+ {
+  "id": "boss_golem_Hard",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "Hard",
+   "kits": {
+    "basic": true
+   },
+   "team": "Team 1"
+  }
+ },
+ {
+  "id": "boss_golem_VeryHard",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "VeryHard",
+   "kits": {
+    "basic": true
+   },
+   "team": "Team 1"
+  }
+ },
+ {
+  "id": "boss_golem_Downfall",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "Downfall",
+   "kits": {
+    "basic": true
+   },
+   "team": "Team 1"
+  }
+ },
+ {
+  "id": "boss_sentinel",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "sentinel",
+   "combat": "VeryHard",
+   "kits": {
+    "basic": true
+   },
+   "team": "Sentinel run"
+  }
+ },
+ {
+  "id": "boss_abyss_default_msat",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "abyss",
+   "combat": "Downfall",
+   "kits": {
+    "basic": true
+   },
+   "team": "Abyss"
+  }
+ },
+ {
+  "id": "boss_abyss_msat0",
+  "builds": "owner:0,1",
+  "opts": {
+   "mode": "boss",
+   "boss": "abyss",
+   "combat": "Hard",
+   "msat": 0,
+   "kits": {
+    "basic": true
+   }
+  }
+ },
+ {
+  "id": "boss_abyss_msat60",
+  "builds": "owner:2",
+  "opts": {
+   "mode": "boss",
+   "boss": "abyss",
+   "combat": "Normal",
+   "msat": 60,
+   "kits": {
+    "basic": true
+   }
+  }
+ },
+ {
+  "id": "arena_golem_room",
+  "builds": "owner",
+  "opts": {
+   "mode": "arena",
+   "boss": "golem",
+   "combat": "Hard",
+   "kits": {
+    "basic": true
+   },
+   "monsters": [
+    {
+     "k": "UNIT_ElderGloth",
+     "n": 1
+    },
+    {
+     "k": "UNIT_GoblinShaman",
+     "n": 2
+    },
+    {
+     "k": "UNIT_BlueGoblin",
+     "n": 3
+    }
+   ],
+   "team": "Arena"
+  }
+ },
+ {
+  "id": "arena_sentinel_room",
+  "builds": "owner:1,3",
+  "opts": {
+   "mode": "arena",
+   "boss": "sentinel",
+   "combat": "Normal",
+   "kits": {
+    "basic": true
+   },
+   "monsters": [
+    {
+     "k": "UNIT_GreyRat",
+     "n": 4
+    }
+   ]
+  }
+ },
+ {
+  "id": "arena_abyss_room",
+  "builds": "owner:0",
+  "opts": {
+   "mode": "arena",
+   "boss": "abyss",
+   "combat": "VeryHard",
+   "msat": 40,
+   "kits": {
+    "basic": true
+   },
+   "monsters": [
+    {
+     "k": "UNIT_ElderGloth",
+     "n": 2
+    }
+   ]
+  }
+ },
+ {
+  "id": "finished_base",
+  "builds": "owner",
+  "opts": {
+   "mode": "base",
+   "combat": "Normal",
+   "kits": {
+    "basic": true
+   },
+   "team": "Base"
+  }
+ },
+ {
+  "id": "supplies",
+  "builds": "owner",
+  "opts": {
+   "mode": "dps",
+   "combat": "Normal",
+   "kits": {
+    "basic": true
+   },
+   "supplies": {
+    "ITEM_Mandrake": 20,
+    "ITEM_Ointment": 5,
+    "ITEM_WildHerb": 12
+   }
+  }
+ },
+ {
+  "id": "kits_all",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "Normal",
+   "kits": {
+    "potion": true,
+    "basic": true
+   }
+  }
+ },
+ {
+  "id": "kits_all_noinsc",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "Normal",
+   "kits": {
+    "potion": true,
+    "basic": true
+   },
+   "kitInsc": false
+  }
+ },
+ {
+  "id": "kits_none",
+  "builds": "owner",
+  "opts": {
+   "mode": "dps",
+   "combat": "Normal",
+   "kits": {}
+  }
+ },
+ {
+  "id": "mgmt_separate",
+  "builds": "owner",
+  "opts": {
+   "mode": "boss",
+   "boss": "sentinel",
+   "combat": "Downfall",
+   "mgmt": "Easy",
+   "kits": {
+    "basic": true
+   }
+  }
+ },
+ {
+  "id": "one_unit_accents",
+  "builds": "owner:3",
+  "opts": {
+   "mode": "dps",
+   "combat": "Easy",
+   "kits": {
+    "basic": true
+   },
+   "team": "Équipe d'été ✓"
+  }
+ },
+ {
+  "id": "no_team_name",
+  "builds": "owner:1",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "Normal",
+   "kits": {
+    "basic": true
+   }
+  }
+ },
+ {
+  "id": "defaults_only",
+  "builds": "owner:0",
+  "opts": {
+   "mode": "dps"
+  }
+ },
+ {
+  "id": "gallery_team",
+  "builds": "gal:0,1,2,3",
+  "opts": {
+   "mode": "boss",
+   "boss": "golem",
+   "combat": "Normal",
+   "kits": {
+    "basic": true
+   },
+   "team": "Gallery"
+  }
+ },
+ {
+  "id": "gallery_solos",
+  "builds": "gal_solo",
+  "opts": {
+   "mode": "dps",
+   "combat": "Hard",
+   "kits": {
+    "basic": true
+   },
+   "team": "Solos"
+  }
+ },
+ {
+  "id": "arena_empty",
+  "builds": "owner:0",
+  "opts": {
+   "mode": "arena",
+   "boss": "golem",
+   "combat": "Normal",
+   "monsters": []
+  }
+ },
+ {
+  "id": "error_no_builds",
+  "builds": "owner:9",
+  "opts": {
+   "mode": "dps"
+  }
+ }
+]
