@@ -1,6 +1,7 @@
 // mp_game: real game binding of mp_core (build 25846389, arm64). Dylib only; see mp_game.h for the
 // functions the determinism lane must expose, MP_NOTES.md for the design.
 #include "mp_api.h"
+#include "mp_dlsym.h"
 #include "mp_game.h"
 #include "mp_bridge.h"
 #include "mp.h"

@@ -1,6 +1,7 @@
 /* mp core: session, tick gate, command dispatch, fingerprint, resync, speed/pause votes.
  * Game access only through mp_game_api. See mp.h and MP_NOTES.md. */
 #include "mp_api.h"
+#include "mp_dlsym.h"
 #include "mp.h"
 #include <stdarg.h>
 #include <stdio.h>
