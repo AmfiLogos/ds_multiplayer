@@ -422,3 +422,9 @@ multiplayer tag next to the name of the save and then just put the players that 
   Open: main's custom/build_module.sh has no -fwrapv yet (QuickJS needs it). It comes with units13 4e2e262 (units full).
   Until then QuickJS is in custom-modes.dylib but not called by the game (step 1 has no game wiring).
 - build/dsrig.dylib + custom-modes*.dylib = build/merge_fights13s1 (old ones in build/old_versions/*-before-*).
+- units13 4e2e262 (+ its main merge 602f3d6 + 18cb58d) -> 4a0347e (build/merge_units13full). 18cb58d = one line in
+  custom/build_module.sh (team-lead ok "dedupe ok"): `SOLO=(${(u)SOLO}); MPS=(${(u)MPS})`, because fe/fe_json.c is in both
+  custom/fe/sources.txt and custom/fights/sources.txt (link failed with duplicate symbols). -fwrapv for QuickJS now on main.
+  Tests: mu_test 148 PASS (fixtures from the units worktree); unit ALL PASS; run_eq 64/64; smoke 3/3; mp2 19 PASS 0 FAIL;
+  left_prompt 16 PASS 0 FAIL; home 22/22, My Units 26/26, Bring Units 32/32, Bring from rig command 5/5 (ext/merger13/out/*units13full*);
+  prefs identical. build/dsrig + custom-modes*.dylib = this build.

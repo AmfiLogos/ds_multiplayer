@@ -117,6 +117,22 @@ static char *cmd_bring(const char *line) {
     jfree(entries);
     return b.p;
 }
+/* the Bring Units window's picks (lane fepvp builds the entries: fe_export_entry per save pick, mu_entries per My Units
+   id): same path as pvp_units_bring (host: kept; guest: mailed to the host). Takes ownership of entries; a new send
+   replaces this player's old one. 0 ok, -1 + err. */
+int pvp_units_send_entries(jv *entries, char *err, size_t errn) {
+    if (!entries || !jis(entries, JN_ARR)) { snprintf(err, errn, "no units to send"); jfree(entries); return -1; }
+    dsnet_client *c = cli(); uint8_t u[16]; char me[33];
+    if (!c || dsnet_my_uid(c, u)) { snprintf(err, errn, "not in a multiplayer session"); jfree(entries); return -1; }
+    hex_of(u, me);
+    int rc = 0; size_t sz = 0;
+    if (dsnet_is_host(c)) host_take(me, entries);
+    else { jv *m = jobj(); jset(m, "entries", jcopy(entries)); char *s = jdump(m, 0, &sz); jfree(m); rc = dsnet_mail_send(c, NULL, PVP_M_UNITS, s, sz); free(s); }
+    say("Bring Units: %zu unit(s) (%s, %zu bytes)", entries->cnt, dsnet_is_host(c) ? "kept on the host" : rc ? "MAIL FAILED" : "mailed to the host", sz);
+    if (rc) snprintf(err, errn, "could not send the units to the host");
+    jfree(entries);
+    return rc ? -1 : 0;
+}
 /* pvp_units_wiki {link, max}: the units of a DS wiki builder team link (M3b), rebuilt here as save closures by
    pvp_build.c (never the wiki's own save writer), then sent like brought units. At most `max` units (the player's share). */
 static char *cmd_wiki(const char *line) {

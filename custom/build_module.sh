@@ -24,11 +24,14 @@ for d in */(N/); do
   [[ -f $d/sources.txt ]] && SOLO+=(${(f)"$(grep -v '^[[:space:]]*\(#\|$\)' $d/sources.txt || true)"})
   [[ -f $d/sources_mp.txt ]] && MPS+=(${(f)"$(grep -v '^[[:space:]]*\(#\|$\)' $d/sources_mp.txt || true)"})
 done
+# a file listed by two folders is built once; a file in the solo dylib is never built again into the mp one (it links it)
+SOLO=(${(u)SOLO}); MPS=(${(u)MPS}); MPS=(${MPS:|SOLO})
 for f in $SOLO $MPS; do [[ -f $f ]] || { echo "custom-modes: listed source $f not found" >&2; exit 1; }; done
-CF=(-arch arm64 -mmacosx-version-min=12.0 -O2 -Wall -Wno-unused-function -D_DARWIN_C_SOURCE -I$SDK -I$MP_SRC -I. $INC)
+CF=(-arch arm64 -mmacosx-version-min=12.0 -O2 -fwrapv -Wall -Wno-unused-function -D_DARWIN_C_SOURCE -I$SDK -I$MP_SRC -I. $INC)
+# -fwrapv: QuickJS (custom/fights) needs wrapping signed overflow; harmless for the rest
 # solo: AppKit / CoreFoundation for the clipboard (units/mu_clip.c), CFNetwork + zlib for wiki short links
 nice -n 19 clang $CF -dynamiclib -install_name @rpath/custom-modes.dylib -o $OUT/custom-modes.dylib.tmp cm_module.c $SOLO \
-  -framework CoreFoundation -framework CFNetwork -lobjc -lz
+  -framework CoreFoundation -framework CFNetwork -lobjc -lz -Wl,-U,_cm_builder_open
 codesign -f -s - $OUT/custom-modes.dylib.tmp 2>/dev/null; mv -f $OUT/custom-modes.dylib.tmp $OUT/custom-modes.dylib
 nice -n 19 clang $CF -dynamiclib -install_name @rpath/custom-modes-mp.dylib -Wl,-rpath,@loader_path -o $OUT/custom-modes-mp.dylib.tmp \
   cm_mp.c $MPS $MP_DYLIB $OUT/custom-modes.dylib -lz

@@ -13,7 +13,7 @@ import json, os, shutil, signal, subprocess, sys, threading, time
 sys.path.insert(0, os.path.expanduser('~/ds_launcher/loader/test'))
 import lrig as r
 
-X = 'U'
+X = os.environ.get('CMRIG_INST', 'U')            # another lane helper: its own copy (make_instance.sh V)
 I = r.idir(X)
 APP = os.path.join(I, 'DungeonSettlers.app')
 WT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))   # the worktree
@@ -42,16 +42,36 @@ def game_pids():
     return [int(p) for p in out.split()]
 
 
+def build_mp_module():
+    """the multiplayer MODULE (loader layout) from this worktree's src, as ~/ds_launcher/loader/build.sh makes it:
+    src/build.sh's list minus rig_main.c + rig_hook.c, plus the loader's modules/multiplayer/mp_module.c (read only).
+    (dsrig.dylib is the rig's build: the loader refuses it, no DSL_PLUGIN.)"""
+    import re
+    t = open(os.path.join(WT, 'src/build.sh')).read(); t = t[t.index('clang'):t.index('codesign')].replace('\\\n', ' ')
+    srcs = [w for w in t.split() if w.endswith('.c') and w not in ('rig_main.c', 'rig_hook.c') and not w.startswith('-')]
+    srcs = ' '.join(os.path.join(WT, 'src', w) for w in srcs)
+    o = os.path.join(B, 'mp_module'); os.makedirs(o, exist_ok=True)
+    L = os.path.expanduser('~/ds_launcher/loader')
+    sh(f'cd "{WT}/src" && nice -n 19 clang -arch arm64 -O2 -Wall -Wno-unused-function -mmacosx-version-min=12.0 -D_DARWIN_C_SOURCE '
+       f'-dynamiclib -framework AppKit -framework CoreGraphics -framework CoreFoundation -install_name @rpath/multiplayer.dylib '
+       f'-I"{L}/sdk" -I. -I../win/math -DDSMATH_DEFAULT_ON=1 -o "{o}/multiplayer.dylib.tmp" "{L}/modules/multiplayer/mp_module.c" {srcs} '
+       f'../win/math/build/libdsmath_arm64.a -lz && codesign -f -s - "{o}/multiplayer.dylib.tmp" 2>/dev/null; mv -f "{o}/multiplayer.dylib.tmp" "{o}/multiplayer.dylib"')
+    return os.path.join(o, 'multiplayer.dylib')
+
+
 def install():
     """dsload + multiplayer (our dsrig.dylib, the loader's mod.json) + custom-modes + units-driver into copy U"""
     if game_pids():
-        raise SystemExit('copy U is running: not installing over it')
+        raise SystemExit(f'copy {X} is running: not installing over it')
     put(DSLOAD, os.path.join(APP, 'Contents/Frameworks/dsload.dylib'))
     md = os.path.join(APP, 'Contents/Resources/mods')
     for f in os.listdir(MP_MOD):
         if f not in ('multiplayer.dylib', 'PINNED_COMMIT'):
             put(os.path.join(MP_MOD, f), os.path.join(md, 'multiplayer', f))
-    put(os.path.join(B, 'dsrig.dylib'), os.path.join(md, 'multiplayer', 'multiplayer.dylib'))
+    mpd = os.path.join(B, 'mp_module', 'multiplayer.dylib')
+    if not os.path.exists(mpd) or os.path.getmtime(mpd) < os.path.getmtime(os.path.join(B, 'dsrig.dylib')):
+        mpd = build_mp_module()
+    put(mpd, os.path.join(md, 'multiplayer', 'multiplayer.dylib'))
     for f in ('custom-modes.dylib', 'custom-modes-mp.dylib'):
         put(os.path.join(B, f), os.path.join(md, 'custom-modes', f))
     put(os.path.join(WT, 'custom', 'mod.json'), os.path.join(md, 'custom-modes', 'mod.json'))
@@ -68,6 +88,10 @@ def build_driver():
        f'mv -f build/units-driver.dylib.tmp build/units-driver.dylib')
 
 
+def out_lib_dir(out):
+    d = os.path.join(out, 'lib'); os.makedirs(d, exist_ok=True); return d
+
+
 class Copy:
     def __init__(self, mods, out, extra=None, lane='units13', ui_scale=None):
         self.mods, self.out, self.extra, self.lane, self.ui_scale = mods, out, extra or {}, lane, ui_scale
@@ -77,9 +101,15 @@ class Copy:
 
     # ---- lease
     def lease(self):
-        p = subprocess.run([sys.executable, RIG, 'lease', self.lane, '--pid', str(os.getpid())], capture_output=True, text=True)
-        if p.returncode:
-            raise SystemExit(f'no pair lease: {p.stderr.strip() or p.stdout.strip()}')
+        t0 = time.time()
+        while True:                                         # max 4 pairs machine-wide: wait for one (20 min at most)
+            p = subprocess.run([sys.executable, RIG, 'lease', self.lane, '--pid', str(os.getpid())], capture_output=True, text=True)
+            if not p.returncode:
+                break
+            if time.time() - t0 > 1200:
+                raise SystemExit(f'no pair lease: {p.stderr.strip() or p.stdout.strip()}')
+            log('waiting for a pair:', (p.stderr.strip() or p.stdout.strip())[-80:])
+            time.sleep(20)
         self.pair = p.stdout.strip().split()[-1]
         log('lease', self.pair)
 
@@ -111,20 +141,17 @@ class Copy:
                 if os.path.exists(os.path.join(I, 'data', f)):
                     shutil.copy2(os.path.join(I, 'data', f), os.path.join(pd, f))
             dirs.append(pd)
-        if self.ui_scale is not None:
+        if self.ui_scale is not None:                      # Settings > UI scale (UIScaleManager: 0.75 .. 1.4)
             for d in dirs:
                 p = os.path.join(d, 'UserSetting.json'); s = json.load(open(p))
-                g = s.get('GeneralSettingData', {})
-                keys = [k for k in g if 'scale' in k.lower()]
-                for k in keys:
-                    g[k] = self.ui_scale
+                s['GraphicSettingData']['UIScale'] = self.ui_scale
                 json.dump(s, open(p, 'w'), indent=1)
-                log('UI scale', self.ui_scale, 'keys', keys, 'in', p)
+                log('UI scale', self.ui_scale, 'in', p)
         return dirs
 
     def start(self):
         if game_pids():
-            raise SystemExit('copy U already running')
+            raise SystemExit(f'copy {X} already running')
         self.lease()
         self.data_dirs = self.settings()
         prof = os.path.join(I, 'units_profile.json')
@@ -136,7 +163,9 @@ class Copy:
                'LOGNAME': os.environ.get('LOGNAME', ''), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'TMPDIR': os.environ.get('TMPDIR', '/tmp'),
                'DSRIG_DIR': I, 'DSRIG_FPS': '60', 'DYLD_INSERT_LIBRARIES': os.path.join(APP, 'Contents/Frameworks/dsload.dylib'),
                'DSL_PROFILE': prof, 'DSL_SOFT_STAGE': STAGE, 'DSL_SOFT_NOACTIVATE': '1', 'DSL_NO_ALERT': '1',
-               'DSL_UNITS_TEST': self.drv, 'DSMP_TEST': '1', 'DSL_LOG_DIR': I}
+               'DSL_UNITS_TEST': self.drv, 'DSMP_TEST': '1', 'DSL_LOG_DIR': I,
+               # never the owner's My Units library or clipboard: a test library file and a private test pasteboard
+               'DSMP_UNITS_LIB': os.path.join(out_lib_dir(self.out), 'library.json'), 'DSMP_CLIP_PB': f'dsmp-units13-test-{X}'}
         env.update(self.extra)
         for f in ('player.log', 'dsload.log'):
             p = os.path.join(I, f)
