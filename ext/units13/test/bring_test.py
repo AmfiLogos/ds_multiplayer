@@ -22,7 +22,7 @@ os.makedirs(OUT, exist_ok=True)
 BACKUP = os.path.expanduser('~/DungeonSettlers_SaveBackups/2026-10-11-1827/Saves')
 SAVES = ['MoonlightBrigade__AutoSave_41e9c1bb8790492cbdc10f4dcad22179_0.json',
          'ElvenExpedition__AutoSave_f816ebc6195c432c9fff754b75ee3738_0.json']
-FIXTURE = os.path.join(C.WT, 'custom/units/test/data/launcher_library.json')
+FIXTURE = os.path.join(C.CM, 'units/test/data/launcher_library.json')
 MODS = ['multiplayer', 'custom-modes', 'units-driver']
 ck = C.Checks(OUT)
 
@@ -67,7 +67,7 @@ def picks(res):
 
 def main():
     if '--no-build' not in sys.argv:
-        C.sh(f'cd "{C.WT}" && OUT="{C.B}" nice -n 19 zsh custom/build_module.sh')
+        C.sh(f'MP_DYLIB="{C.B}/dsrig.dylib" OUT="{C.B}" SDK="{C.WT}/sdk" MP_SRC="{C.WT}/src" nice -n 19 zsh "{C.CM}/build_module.sh"')
         C.build_driver()
     C.install()
     sd = prepare(); SD = sd

@@ -1,5 +1,0 @@
-pvp/pvp_core.c
-pvp/pvp_modcheck.c
-pvp/pvp_mods.c
-pvp/pvp_game.c
-pvp/pvp_ui.c

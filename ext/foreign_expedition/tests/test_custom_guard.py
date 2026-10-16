@@ -17,7 +17,10 @@ if not os.path.exists(os.path.join(FIX, 'home_Elven.json')):
     FIX = os.path.expanduser('~/ds_multiplayer/ext/foreign_expedition/fixtures')
 HOME_P, NORM_P = os.path.join(FIX, 'home_Elven.json'), os.path.join(FIX, 'hub_Moonlight_normal.json')
 def fe_dir(repo):                                     # M4 split: FE moved from src/fe to custom/fe
-    return os.path.join(repo, 'custom', 'fe') if os.path.isdir(os.path.join(repo, 'custom', 'fe')) else os.path.join(repo, 'src', 'fe')
+    if os.path.isdir(os.path.join(repo, 'custom', 'fe')):
+        return os.path.join(repo, 'custom', 'fe')
+    cm = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')   # post-v13: Custom Modes' own repo
+    return os.path.join(cm, 'fe') if os.path.isdir(os.path.join(cm, 'fe')) else os.path.join(repo, 'src', 'fe')
 BASE_SRC = os.environ.get('FE_BASE_SRC', fe_dir(os.path.expanduser('~/ds_multiplayer')))   # main: before the guard
 BUILD = os.path.join(ROOT, 'build'); os.makedirs(BUILD, exist_ok=True)
 CLI, BASE = os.path.join(BUILD, 'fe_cli'), os.path.join(BUILD, 'fe_cli_base')

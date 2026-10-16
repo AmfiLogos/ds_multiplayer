@@ -26,7 +26,8 @@ KIT = os.path.abspath(os.path.expanduser(A[A.index('--kit') + 1])) if '--kit' in
 WT = M.WT; LANE = 'gate13_mu'
 OUT = os.path.join(WT, 'ext', 'gate13', 'out', 'mudive', 'win_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
 TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')
-LIBFIX = os.path.join(WT, 'custom/units/test/data/launcher_library.json')
+CM = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')   # Custom Modes' own repo (post-v13)
+LIBFIX = os.path.join(CM, 'units/test/data/launcher_library.json')
 BTN = json.loads(os.popen(f'python3 {WT}/ext/fepvp13/tools/mpm_ids.py {WT}').read())
 LOCK = f'{H}/ds_multiplayer/rig/wine.lock'
 LOGF = open(os.path.join(OUT, 'test.log'), 'a'); results = []

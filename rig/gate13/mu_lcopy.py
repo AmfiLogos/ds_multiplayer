@@ -75,7 +75,7 @@ def modules(out):
         c = os.path.join(out, 'mods', 'custom-modes'); os.makedirs(c, exist_ok=True)
         for f in ('custom-modes.dylib', 'custom-modes-mp.dylib'):
             shutil.copyfile(os.path.join(B, f), os.path.join(c, f)); shutil.copymode(os.path.join(B, f), os.path.join(c, f))
-        shutil.copyfile(os.path.join(WT, 'custom/mod.json'), os.path.join(c, 'mod.json'))
+        shutil.copyfile(os.path.join(os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes'), 'mod.json'), os.path.join(c, 'mod.json'))
         res['mp'], res['cm'] = o, c
         res['how'] = (f'loader build pinned {pin[:7] or "none"} != HEAD {head[:7]}: multiplayer module built from the worktree src '
                       f'(loader recipe) into {o}; custom-modes = {B} (frozen)')
