@@ -57,7 +57,7 @@ int main(void) {
     mpm_label(&m, MPB_LABEL_NAME, l, sizeof l); CHECK(!strcmp(l, "Your name"));
     /* layout v2 §2a: header, settings row + summary; the selectors replace the summary when open */
     { uint64_t v = mpm_visible(&m, &o);
-      CHECK((v & B(MPB_HEADER)) && (v & B(MPB_SETTINGS)) && (v & B(MPB_DIVIDER)) && !(v & B(MPB_SUMMARY)) && !(v & B(MPB_SEL_PAUSE)) && !(v & B(MPB_PAUSE_MODE)));
+      CHECK((v & B(MPB_HEADER)) && !(v & B(MPB_SETTINGS)) && (v & B(MPB_DIVIDER)) && !(v & B(MPB_SUMMARY)) && !(v & B(MPB_SEL_PAUSE)) && !(v & B(MPB_PAUSE_MODE)));
       mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host your save"));
       mpm_label(&m, MPB_SETTINGS, l, sizeof l); CHECK(!strcmp(l, "Rules"));
       mpm_settings_summary(&m.set, l, sizeof l); CHECK(!strcmp(l, "Pause: anyone \xC2\xB7 Speed-up: on \xC2\xB7 Gear: own units \xC2\xB7 Units: 3 \xC2\xB7 Population: shared \xC2\xB7 Events: owner \xC2\xB7 Admin: off \xC2\xB7 Shared fog: off \xC2\xB7 Spectators: on"));
@@ -72,9 +72,9 @@ int main(void) {
       { char rv[64]; mpm_rule_value(&m.set, 5, rv, sizeof rv); CHECK(!strcmp(rv, "Host only")); }
       mpm_step(&m, &o, MPB_EVENTS_PREV); mpm_step(&m, &o, MPB_EVENTS_PREV); CHECK(m.set.events == 3);
       mpm_step(&m, &o, MPB_EVENTS_NEXT); CHECK(m.set.events == 0);
-      o.escape = 1; mpm_step(&m, &o, MPB_NONE); o.escape = 0; CHECK(!m.settings_open && m.state == MPM_TITLE_HOST);   /* Escape closes the Rules panel first */
-      mpm_step(&m, &o, MPB_SETTINGS); v = mpm_visible(&m, &o);
-      CHECK(m.settings_open);
+      o.escape = 1; mpm_step(&m, &o, MPB_NONE); o.escape = 0; CHECK(m.state == MPM_TITLE_MENU);   /* owner v12 item 5: Rules always open, Escape = Back */
+      mpm_step(&m, &o, MPB_HOST_SAVE); v = mpm_visible(&m, &o);
+      CHECK(m.state == MPM_TITLE_HOST && !(v & B(MPB_SETTINGS)) && m.set.events == 0);   /* the rules kept */
       mpm_step(&m, &o, MPB_ADMIN_NEXT); CHECK(m.set.admin == 1); mpm_step(&m, &o, MPB_ADMIN_PREV); CHECK(m.set.admin == 0);
       mpm_step(&m, &o, MPB_PAUSE_PREV); CHECK(m.set.pause_mode == MPM_PAUSE_NONE && !strcmp(mpm_sel_value(&m, MPB_SEL_PAUSE), "off"));
       mpm_step(&m, &o, MPB_PAUSE_NEXT); CHECK(m.set.pause_mode == MPM_PAUSE_ANYONE);

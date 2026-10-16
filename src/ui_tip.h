@@ -7,7 +7,8 @@
    0.2 s after the last call (game_tip_frame), or at once with game_tip_hide. Same title + body as the last call =
    no work. Honours the player's "Show tooltips on hover" (panel cog): off = nothing shows.
    game_tip_show:      next to the mouse (stock screen-position placement).
-   game_tip_show_rect: next to a RectTransform (stock caller-rect placement, as the game's own buttons do). */
+   game_tip_show_rect: for a RectTransform: outside the panel that holds it, right edge (else left edge), top aligned with
+                       the element (owner v12 item 3; ui_tip.c panel_of / place_card). */
 /* 1 = the game functions match this build (checked once) and the scene has its TooltipUI: safe to call the rest */
 int game_tip_ready(void);
 void game_tip_show(const char *title, const char *body);

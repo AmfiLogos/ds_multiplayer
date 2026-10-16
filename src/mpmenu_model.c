@@ -187,11 +187,10 @@ static int rule_arrow(mpm_model *m, int c) {
 int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
     int a = 0; cur = o;
     m->steam = o->steam; m->spect = o->spectator;
-    /* Escape = Back on every title page (the Rules panel closes first) */
+    /* Escape = Back on every title page. Host page: the Rules are always open (owner v12 item 5), nothing to close first */
     if (o->escape && c == MPB_NONE && o->scene == 1) {
-        if (m->state == MPM_TITLE_HOST && m->settings_open) c = MPB_RULES_DONE;
         /* one rule (ux_flow F16): Escape = the visible Cancel if there is one, else Back */
-        else if (m->state == MPM_TITLE_MENU || m->state == MPM_TITLE_JOIN) c = m->connecting[0] ? MPB_CANCEL_JOIN : MPB_BACK;
+        if (m->state == MPM_TITLE_MENU || m->state == MPM_TITLE_JOIN) c = m->connecting[0] ? MPB_CANCEL_JOIN : MPB_BACK;
         else if (m->state == MPM_TITLE_HOST || m->state == MPM_TITLE_FRIENDS) c = MPB_BACK;
         else if (m->state == MPM_GUEST_JOINING || m->state == MPM_GUEST_LOADING) c = MPB_CANCEL_JOIN;
     }
@@ -348,8 +347,8 @@ uint64_t mpm_visible(const mpm_model *m, const mpm_obs *o) {
         return B(MPB_HEADER) | B(MPB_LABEL_ADDR) | B(MPB_LABEL_NAME) | B(MPB_DIVIDER) | (m->connecting[0] ? B(MPB_CANCEL_JOIN) : B(MPB_CONNECT)) | B(MPB_BACK)
              | (m->connecting[0] || m->msg[0] || m->no_field ? B(MPB_INFO) : 0);
     case MPM_TITLE_HOST:                                                     /* layout v2 §2a */
-        return B(MPB_HEADER) | B(MPB_LABEL_NAME) | (m->msg[0] ? B(MPB_INFO) : 0) | B(MPB_SETTINGS)
-             /* the Rules panel (settings_open) is drawn by the game side next to the column (approved mockup B) */
+        return B(MPB_HEADER) | B(MPB_LABEL_NAME) | (m->msg[0] ? B(MPB_INFO) : 0)
+             /* the Rules panel is drawn by the game side next to the column, always open (owner v12 item 5: no cog button) */
              | B(MPB_DIVIDER) | (m->host_new ? B(MPB_NEW_CAMPAIGN) : B(MPB_LOAD_SAVE)) | B(MPB_BACK);   /* the choice made on the Multiplayer page */
     case MPM_LOBBY: return B(MPB_INVITE) | B(MPB_COPY_ADDR) | B(MPB_START) | B(MPB_LEAVE);
     case MPM_GUEST_LOBBY: return B(MPB_LEAVE);
