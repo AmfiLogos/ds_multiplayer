@@ -62,8 +62,11 @@ try:
     prof = os.path.join(OUT, "profile_mac.json"); json.dump({"enabled": MODS, "order": MODS}, open(prof, "w"))
     md = os.path.join(w.PROF, "data", "Mods"); os.makedirs(md, exist_ok=True)
     json.dump({"enabled": MODS, "order": MODS}, open(os.path.join(md, "active.json"), "w"))
-    for k in ("DSL_MODS_DIR", "DSL_PROFILE", "LRIG_DYLIB", "DSL_LOG_DIR"): os.environ.pop(k, None)
-    host_env = {"LRIG_DYLIB": f"{LD}/build/dsload.dylib", "DSL_MODS_DIR": f"{LD}/build/mods_all/mac", "DSL_PROFILE": prof}
+    for k in ("DSL_MODS_DIR", "DSL_PROFILE", "LRIG_DYLIB", "DSL_LOG_DIR", "DSML_DATA", "DSML_SESSION"): os.environ.pop(k, None)
+    hd = os.path.join(lrig.idir(X), "data"); os.makedirs(os.path.join(hd, "Mods"), exist_ok=True)
+    # the loader's mods-per-world file = the session file multiplayer's HELLO reads its mod-set lines from (as the app stub sets it)
+    host_env = {"LRIG_DYLIB": f"{LD}/build/dsload.dylib", "DSL_MODS_DIR": f"{LD}/build/mods_all/mac", "DSL_PROFILE": prof,
+                "DSML_DATA": hd, "DSML_SESSION": os.path.join(hd, "Mods", "worlds.json")}
 
     def send(x, obj, timeout=90): return wrig.cmd(obj, timeout=timeout) if x == WIN else lrig.send(X, obj, timeout)
     def start(x, window=False, fps=30):
