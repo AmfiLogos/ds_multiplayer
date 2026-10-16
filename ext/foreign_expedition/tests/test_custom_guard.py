@@ -4,7 +4,7 @@ Builds two fe_cli binaries with ASan + UBSan (this branch, and main's src/fe as 
 then: (a) a result of custom units only is refused, home bytes unchanged, no new file; (b) mixed custom + normal: the
 normal unit applied, the custom one reported and absent from the new save; (c) normal only: same output as main.
 Run: python3 ext/foreign_expedition/tests/test_custom_guard.py   (from the worktree root or anywhere)
-Baseline: FE_BASE_SRC = a folder holding fe sources; else tag FE_BASE_REF (default bundle-v0.1.16) of CM_REPO (default
+Baseline: FE_BASE_SRC = a folder holding fe sources; else tag FE_BASE_REF (default: the newest bundle-v* release tag) of CM_REPO (default
 ~/ds_custommodes), extracted with git archive into the run's out folder. FAIL when baseline and tree under test are one folder.
 Fixtures: ext/foreign_expedition/fixtures, else ~/ds_multiplayer/ext/foreign_expedition/fixtures (not in git)."""
 import copy, glob, hashlib, json, os, subprocess, sys, time, uuid
@@ -29,7 +29,11 @@ OUT = os.path.join(ROOT, 'out', 'test_custom_guard_' + time.strftime('%Y%m%d-%H%
 NEW_SRC = fe_dir(REPO)
 def base_src():                                       # pinned release, never the tree under test
     if os.environ.get('FE_BASE_SRC'): return os.environ['FE_BASE_SRC']
-    cm, ref = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes'), os.environ.get('FE_BASE_REF', 'bundle-v0.1.16')
+    cm = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')
+    tags = subprocess.run(['git', '-C', cm, 'tag', '-l', 'bundle-v*', '--sort=-v:refname'], capture_output=True, text=True).stdout.split()
+    ref = os.environ.get('FE_BASE_REF') or (tags[0] if tags else '')
+    if not ref: print('FAIL baseline: no bundle-v* release tag in', cm, '(git fetch --tags there, or set FE_BASE_REF)'); sys.exit(1)
+    print('baseline: Custom Modes', ref)
     d = os.path.join(OUT, 'base_' + ref); os.makedirs(d)
     a = subprocess.run(['git', '-C', cm, 'archive', ref, 'fe'], capture_output=True)
     x = subprocess.run(['tar', '-x', '-C', d], input=a.stdout, capture_output=True)
