@@ -17,7 +17,9 @@ def check(n, ok, d=''):
     checks.append({'name': n, 'ok': bool(ok), 'detail': str(d)[:300]}); log('PASS' if ok else 'FAIL', n, '' if ok else d)
 
 def lock():
-    if subprocess.run(['pgrep', '-fl', 'wine'], capture_output=True, text=True).stdout.strip(): sys.exit('wine busy (pgrep -fl wine)')
+    # wine / .exe processes younger than 1 day (the owner's own CrossOver bottles run for days: never ours, never touched)
+    busy = subprocess.run(['/bin/sh', '-c', "ps -axo etime=,comm= | grep -iE 'wine|\\.exe$' | grep -ve '-[0-9][0-9]:'"], capture_output=True, text=True).stdout.strip()
+    if busy: sys.exit('wine busy: ' + busy[:300])
     os.mkdir(LOCK); open(f'{LOCK}/owner', 'w').write('melon\n'); log('wine lock taken')
 def unlock():
     os.makedirs(f'{H}/ds_multiplayer/rig/old', exist_ok=True)
