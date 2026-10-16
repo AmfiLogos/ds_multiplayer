@@ -248,7 +248,29 @@ static void few_sync(void) {
 }
 static int few_open_now;                                                    /* frames since opened (tests) */
 /* clicks (pending_click); returns 1 if consumed */
+/* ---- the Foreign Expedition host page (owner 2026-10-15: no "host from a save / new campaign" question; the hub is a
+   neutral map). Until the menu has page Start buttons (mp_api register_host_choice2, lane mpfix), the page's
+   "Host from a save" button is this page's Start: it builds the neutral hub (fe_hub.c) and loads it; the menu then
+   waits for the campaign as after a pick in the load list and opens the lobby. The Expedition Rules panel stays open. */
+int fe_world_start(int kind, char *err, size_t errn);
+int fe_choice_v2(void);                                                     /* cm_mp.c: the menu has page Start buttons */
+static int fe_page(void) { return !fe_choice_v2() && M.state == MPM_TITLE_HOST && M.set.fe; }
+static int fe_page_click(int c) {
+    if (!fe_page() || c != MPB_LOAD_SAVE) return 0;
+    char err[300] = "";
+    if (fe_world_start(0, err, sizeof err)) { snprintf(M.msg, sizeof M.msg, "%s", err); return 1; }
+    M.msg[0] = 0; M.picker_seen = 0; M.closed_frames = 0; M.state = MPM_PICK_SAVE;   /* = a pick in the load list: loading -> lobby */
+    rig_log("fe: host page Start: the neutral hub loads");
+    return 1;
+}
+static void fe_page_frame(void) {
+    if (!fe_page()) return;
+    M.settings_open = 1;                                                    /* owner v12 5: the rules open, no extra click */
+    Obj b = u_gc_get(h_tb[MPB_LOAD_SAVE]); if (u_alive(b)) tmp_set(btn_label(b, 0), "Start");
+    Obj d = u_gc_get(h_tb[MPB_FE_DONE]); if (u_alive(d)) u_active(d, false);
+}
 static int few_click(int c) {
+    if (fe_page_click(c)) return 1;
     if (c < MPB_FE_SAVE0 || c > MPB_FE_RES5 || W.mode == FEW_NONE) return 0;
     fe_mode_info m; fe_mode_get(&m); int cap = m.units > 0 ? m.units : 3;
     if (c == MPB_FE_CANCEL) {
@@ -331,6 +353,7 @@ static void few_frame(const mpm_obs *o) {
         mp_steam_info in; mp_steam_state(&in);
         fe_host_mode(M.set.fe, M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.units, M.set.fe_recruit, my_name);
     }
+    fe_page_frame();
     few_sync();
     Obj lw = u_gc_get(h_lw_root);                                           /* the lobby steps aside while ours is open */
     if (W.mode != FEW_NONE && W.esc && u_alive(lw)) u_active(lw, false);

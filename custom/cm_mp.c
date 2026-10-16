@@ -53,6 +53,9 @@ void pvp_install(void);
 const mp_menu_hooks *pvp_menu_hooks(void);
 
 static const mp_api_table *A;
+/* the menu has per-choice page Start buttons (mp_api register_host_choice2, requested from lane mpfix 2026-10-16).
+   0 until it exists: fe_menu.c then takes the FE page's "Host from a save" button as Start. */
+int fe_choice_v2(void) { return 0; }
 static void fe_ui_flags(void) {                          /* hub with Recruiting Off: Guild Contact hidden, popup 8 not offered */
     int off = !fe_recruit_allowed();
     A->ui_set_flag(MPUI_HIDE_GUILD_CONTACT, off);
@@ -73,7 +76,7 @@ __attribute__((visibility("default"))) int cm_mp_start(const DSLHost *host, DSLP
     bad |= api->register_order_filter(fe_recruit_allowed, fe_note_loot);
     bad |= api->register_rig_cmd("fe_", fe_exec);
     bad |= api->register_host_choice("foreign-expedition", "Foreign Expedition",
-                                     "Everyone brings units from their own saves into a copy of your world. Nobody's save changes until they bring the results home.",
+                                     "Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home.",
                                      NULL, fe_menu_start);
     bad |= api->register_menu(fe_menu_hooks());
     /* PvP */
