@@ -25,7 +25,8 @@ for d in */(N/); do
   [[ -f $d/sources_mp.txt ]] && MPS+=(${(f)"$(grep -v '^[[:space:]]*\(#\|$\)' $d/sources_mp.txt || true)"})
 done
 for f in $SOLO $MPS; do [[ -f $f ]] || { echo "custom-modes: listed source $f not found" >&2; exit 1; }; done
-CF=(-arch arm64 -mmacosx-version-min=12.0 -O2 -Wall -Wno-unused-function -D_DARWIN_C_SOURCE -I$SDK -I$MP_SRC -I. $INC)
+CF=(-arch arm64 -mmacosx-version-min=12.0 -O2 -fwrapv -Wall -Wno-unused-function -D_DARWIN_C_SOURCE -I$SDK -I$MP_SRC -I. $INC)
+# -fwrapv: QuickJS (custom/fights) needs wrapping signed overflow; harmless for the rest
 # solo: AppKit / CoreFoundation for the clipboard (units/mu_clip.c), CFNetwork + zlib for wiki short links
 nice -n 19 clang $CF -dynamiclib -install_name @rpath/custom-modes.dylib -o $OUT/custom-modes.dylib.tmp cm_module.c $SOLO \
   -framework CoreFoundation -framework CFNetwork -lobjc -lz -Wl,-U,_cm_builder_open
