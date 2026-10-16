@@ -35,6 +35,9 @@ CINC=(-I$C); CEMB=(--embed-dir=$C)                               # every custom/
 for d in $C/**/*(/N); do [[ ${d:t} == test || $d == */test/* ]] || { CINC+=(-I$d); CEMB+=(--embed-dir=$d); }; done
 INC=(-Ibuild/gen_inc -Iport/posix -Iport -Imath -I$S/ord_test -I$S/net/steam -I$S $CINC -I$S/net -I$DSMP_ROOT/sdk -I$MH/include -I$ZL)
 PM=(-ffile-prefix-map=$HOME=/src)                               # no build path (user name) in the DLLs (release gate G12)
+# reproducible DLLs: the same bytes from any build folder (Custom Modes' quickjs __FILE__ paths; the more specific map wins)
+PM+=(-ffile-prefix-map=$C=/custom -ffile-prefix-map=$DSMP_ROOT=/mp)
+RL=(-Wl,--no-insert-timestamp)                                   # and no build time in the PE headers
 CF=($PM -O2 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_STDIO=1 -fno-strict-aliasing -DCM_SAME_IMAGE)
 TARGET=${DSMP_TARGET:-baselib}
 if [[ $TARGET == module ]]; then CF+=(-DDSMP_MODULE); INC+=(-I${DSL_SDK:-~/ds_launcher/loader/sdk}); fi
@@ -51,7 +54,7 @@ for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $Z
 if [[ $TARGET == module ]]; then
 nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o
 mkdir -p build/link                                              # the import library names the DLL by its output file name
-nice -n 5 $TC -shared -o build/link/multiplayer.dll $O/*.o math/build/libdsmath_win64.a -Wl,--export-all-symbols -Wl,--out-implib,build/libmultiplayer.dll.a -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
+nice -n 5 $TC -shared $RL -o build/link/multiplayer.dll $O/*.o math/build/libdsmath_win64.a -Wl,--export-all-symbols -Wl,--out-implib,build/libmultiplayer.dll.a -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/link/multiplayer.dll build/multiplayer.dll
 echo built build/multiplayer.dll
 # Custom Modes, its own module. mp part: -DCM_SAME_IMAGE here means "multiplayer's rig_hook" (imported from
@@ -61,12 +64,12 @@ OC=build/obj_cm; mkdir -p $OC/solo $OC/mp; for o in $OC/solo/*.o(N) $OC/mp/*.o(N
 # fights/cm_http.c; zlib inflate objects of this build. Its import library: the mp part calls My Units etc. in it.
 for f in $CM_SOLO; do nice -n 5 $TC ${CF:#-DCM_SAME_IMAGE} -fwrapv $CEMB -Iport/cm $INC -include dswin.h -include xm_bsd_win.h -c $f -o $OC/solo/${f:t:r}.o; done
 nice -n 5 $TC $CF -c port/dswin.c -o $OC/solo/zz_dswin.o                 # its own copy of the POSIX shims (dsw_rename ...)
-nice -n 5 $TC -shared -o build/link/custom-modes.dll $OC/solo/*.o $O/zl_*.o -Wl,--export-all-symbols -Wl,--out-implib,build/libcustom-modes.dll.a -static -static-libgcc -lwinhttp -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
+nice -n 5 $TC -shared $RL -o build/link/custom-modes.dll $OC/solo/*.o $O/zl_*.o -Wl,--export-all-symbols -Wl,--out-implib,build/libcustom-modes.dll.a -static -static-libgcc -lwinhttp -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/link/custom-modes.dll build/custom-modes.dll
 # weak_import -> plain declaration: lld never pulls a WEAK undefined symbol from an import library, so a weak call into
 # multiplayer.dll / custom-modes.dll (e.g. mp_game_session, ui_mp.h) stayed 0 and crashed at the title (2026-10-16)
 for f in $CM_MP; do nice -n 5 $TC $CF -fwrapv -Dweak_import=unused $CEMB $INC -include dswin.h -c $f -o $OC/mp/${f:t:r}.o; done
-nice -n 5 $TC -shared -o build/custom-modes-mp.dll.tmp $OC/mp/*.o build/libmultiplayer.dll.a build/libcustom-modes.dll.a -Wl,--export-all-symbols -static -static-libgcc -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
+nice -n 5 $TC -shared $RL -o build/custom-modes-mp.dll.tmp $OC/mp/*.o build/libmultiplayer.dll.a build/libcustom-modes.dll.a -Wl,--export-all-symbols -static -static-libgcc -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/custom-modes-mp.dll.tmp build/custom-modes-mp.dll
 echo "built build/custom-modes.dll (${#CM_SOLO} files) + build/custom-modes-mp.dll (${#CM_MP} files)"
 # module folder for the loader: build/mods/multiplayer/ = the dll, its ranges and mod.json (the loader's Mac mod.json
@@ -94,7 +97,7 @@ print("module folder", d, files["custom-modes.dll"][:16], files["custom-modes-mp
 PY
 else
 for f in port/dswin.c $MH/src/hook.c $MH/src/buffer.c $MH/src/trampoline.c $MH/src/hde/hde64.c; do nice -n 5 $TC $CF -I$MH/include -c $f -o $O/${f:t:r}.o; done
-nice -n 5 $TC -shared -o build/baselib.dll.tmp $O/*.o math/build/libdsmath_win64.a build/baselib_exports.def -static -static-libgcc -lwinhttp -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
+nice -n 5 $TC -shared $RL -o build/baselib.dll.tmp $O/*.o math/build/libdsmath_win64.a build/baselib_exports.def -static -static-libgcc -lwinhttp -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/baselib.dll.tmp build/baselib.dll
 echo built build/baselib.dll
 fi
