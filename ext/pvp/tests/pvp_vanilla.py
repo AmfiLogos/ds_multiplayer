@@ -101,8 +101,8 @@ def sess(name, lines, rule='mods', client=()):
     return p
 
 
-HELL = ['hell-difficulty@2.0.0:1111aaaa', 'hell-difficulty-data@2.0.0:2222bbbb']
-HELL_OTHER = ['hell-difficulty@2.0.0:1111aaaa', 'hell-difficulty-data@2.0.0:9999ffff']
+HELL = ['hell-difficulty@2.0.0:1111aaaa', 'custom-modes@0.1.3:2222bbbb']
+HELL_OTHER = ['hell-difficulty@2.0.0:1111aaaa', 'custom-modes@0.1.3:9999ffff']
 GCD = ['gcd-cdr@1.0.0:3333cccc']
 CLIENT = [('notch-fix', '1.0.0'), ('weapon-skill-slot', '1.0.0')]
 
@@ -204,7 +204,7 @@ def main():
         for k, r in (('none', r4a), ('same', r4b), ('other files', r4c), ('extra', r4d)):
             log('V4', k, r['gate'], r['why'])
         check('V4 Off: host set required (none refused "Missing"; same allowed; other files refused; extra refused "Not allowed")',
-              r4a['gate'] == 1 and 'Missing: hell-difficulty 2.0.0, hell-difficulty-data 2.0.0' in r4a['why'] and r4b['gate'] == 0 and
+              r4a['gate'] == 1 and 'Missing: hell-difficulty 2.0.0, custom-modes 0.1.3' in r4a['why'] and r4b['gate'] == 0 and
               r4c['gate'] == 1 and 'other files' in r4c['why'] and r4d['gate'] == 1 and 'Not allowed: gcd-cdr 1.0.0' in r4d['why'],
               f"{r4a['gate']} {r4b['gate']} {r4c['gate']} {r4d['gate']}")
         # V5: On, guest with client mods only: the real Start runs the match
