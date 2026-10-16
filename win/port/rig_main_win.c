@@ -295,10 +295,12 @@ static void install(HMODULE ga) {
     ui_install();
     ui_teams_install();
     mpmenu_install();
-    { /* Custom Modes (custom/cm_mp.c, same DLL here: -DCM_SAME_IMAGE): FE + PvP register through mp_api, PvP hooks (src/rig_main.c
-         loads custom-modes.dylib at this place) */
+#ifndef DSMP_MODULE
+    { /* rig baselib.dll: Custom Modes (custom/cm_mp.c, same DLL here: -DCM_SAME_IMAGE): FE + PvP register through mp_api, PvP
+         hooks (src/rig_main.c loads custom-modes.dylib at this place). As a loader module: the custom-modes module starts it. */
       extern const void *mp_api_get(uint32_t version); extern int cm_mp_start(const void *host, void *self, const void *api);
       int r = cm_mp_start(NULL, NULL, mp_api_get(1)); rig_log("custom-modes: started in this DLL (rc %d)", r); }
+#endif
     { extern void ord_win_craft_install(void); ord_win_craft_install(); }
     { extern void ui_win_install(void), mpmenu_win_install(void); ui_win_install(); mpmenu_win_install(); }
     { extern void win_test_install(void); win_test_install(); }
