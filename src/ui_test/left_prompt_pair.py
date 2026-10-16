@@ -191,9 +191,15 @@ def main():
         join_guest(port)
         wait('running after the rejoin', lambda: not mp(H).get('paused') and not mp(G).get('paused'), timeout=180, every=1)
         check('D. guest rejoined after Wait: game resumed by itself, nobody waited for', not c(H, cmd='mp_left').get('players'), str(c(H, cmd='mp_left')))
-        time.sleep(2)
-        v = c(H, cmd='ui_view')
-        check('UI. after the rejoin: no prompt, no waiting row', v.get('left_prompt') == 0 and 'Waiting for' not in v.get('status', ''), f"{v.get('left_prompt')} '{v.get('status')}'")
+        # the rejoined guest still finishes its load for a few seconds after both copies run again (transitions barrier:
+        # "Waiting for <name> (loading)", gate13 2026-10-16: cleared ~3.5 s after the guest's load done). That row is
+        # right while it lasts; the check is that it goes away (20 s) and the prompt never comes back.
+        t0 = time.time(); v = c(H, cmd='ui_view'); seen = []
+        while time.time() - t0 < 20 and (v.get('left_prompt') or 'Waiting for' in v.get('status', '')):
+            if v.get('status') and v.get('status') not in seen: seen.append(v.get('status'))
+            time.sleep(0.5); v = c(H, cmd='ui_view')
+        check('UI. after the rejoin: no prompt, no waiting row', v.get('left_prompt') == 0 and 'Waiting for' not in v.get('status', ''),
+              f"{v.get('left_prompt')} '{v.get('status')}' after {time.time() - t0:.1f} s (rows seen before: {seen})")
 
     except Exception as e:
         check('flow completed', False, repr(e))
