@@ -12,6 +12,9 @@
  "platforms": {
   "mac-arm64": {
    "entry": "custom-modes.dylib"
+  },
+  "win-x64": {
+   "entry": "custom-modes.dll"
   }
  },
  "requires": [
