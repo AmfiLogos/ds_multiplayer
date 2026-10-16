@@ -154,7 +154,7 @@ def run(H, G):
     ms = c(H, cmd='mpm_status'); log('menu after World + Rules', {k: ms.get(k) for k in ('state', 'set', 'settings_open') if k in ms})
     press(H, 'FE_DONE'); time.sleep(1)
     c(H, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'host_page_fe_summary.png'))
-    press(H, 'LOAD_SAVE'); time.sleep(2)                       # the FE page's Start: the neutral hub is built and loads
+    press(H, 'HOST_START'); time.sleep(2)                      # the FE page's Start: the neutral hub is built and loads
     check('hub: no load list / new campaign screen (Start builds the neutral hub)', c(H, cmd='mpm_status').get('state') in ('pick_save', 'host_loading', 'lobby'), c(H, cmd='mpm_status').get('state'))
     wait('host session + lock', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('started'))(st(H)))
     port = c(H, cmd='mpm_status').get('port')

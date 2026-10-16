@@ -2,7 +2,7 @@
 """fepvp: PvP v1 pair test (owner v12 13: "a map (the starting map for now), players appear there, PvP is on").
 Extends ext/plan13/pvp_base.py to the full flow, through the code the menu calls (rig mpm_pvp actions = the host choice
 "PvP"'s page Start and lobby Start):
-  host: PvP world from the wiki base template (page Start) -> host session (mp.json) -> guest joins -> each player
+  host: PvP world from the wiki base template (page Start) -> host session + lobby (menu: Multiplayer > PvP > Start) -> guest joins by address -> each player
   brings 2 units from his own save (copies) -> lobby Start -> units come in -> SETUP + BASE -> START at the settlement:
   teams walk to the two ends of the map -> countdown -> fight -> a round ends -> the match ends (best of 1) -> the world
   comes back (no brought unit left) -> result window "Back to the Title" -> both copies at the title.
@@ -94,30 +94,32 @@ def run(H, G, port):
         if os.path.exists(p): os.replace(p, p + '.last')
         d = os.path.join(rig.idir(x), 'data', 'mp_owners')
         if os.path.exists(d): os.replace(d, d + '_' + time.strftime('%Y%m%d-%H%M%S'))
-    json.dump({'role': 'host', 'port': port, 'name': 'Blue', 'allow_speedup': False, 'allow_pause': True, 'min_players': 2},
-              open(os.path.join(rig.idir(H), 'mp.json'), 'w'))
-    json.dump({'role': 'client', 'host': '127.0.0.1', 'port': port, 'name': 'Red', 'need_save': True},
-              open(os.path.join(rig.idir(G), 'mp.json'), 'w'))
     cache = os.path.join(rig.idir(H), 'data', 'Mods', 'custom-modes', 'wiki', 'saves'); os.makedirs(cache, exist_ok=True)
     shutil.copy2(TPL, os.path.join(cache, os.path.basename(TPL)))
     work = {}
     for x in (H, G):
         work[x] = os.path.join(rig.idir(x), 'save_in'); os.makedirs(work[x], exist_ok=True)
         shutil.copy2(HOME, os.path.join(work[x], 'my_home.json'))
-    rig.start(H, fps=30, window=True)
+    B = json.loads(os.popen(f'python3 {W}/ext/fepvp13/tools/mpm_ids.py {W}').read())
+    press = lambda x, n: (c(x, cmd='mpm_press', button=B[n]), time.sleep(1.2))[0]
+    rig.start(H, fps=30, window=True); rig.start(G, fps=30, window=True)
     rig.wait_for(H, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title H', timeout=1500); time.sleep(3)
-    # the page Start's world (fe_world_write); loaded here with determinism on, as the rig host (mp.json) needs.
-    # The page Start's own load (fe_world_start) is the FE hub's path: hub_smoke.py / the hub dive.
-    r = c(H, cmd='mpm_pvp', action='v1_world_file'); log('H PvP world file', r)
-    check('0 the PvP world is built from the base template', r.get('ok') and os.path.exists(r.get('file', '')), json.dumps(r))
-    log('H load', c(H, cmd='load_save', file=r['file'], det=1))
+    # the host choice "PvP" (choice 2 under "Host a game"): its page with the PvP rules, Start -> the PvP world -> lobby
+    press(H, 'MULTIPLAYER'); press(H, 'HOST_C1'); time.sleep(1)
+    ms = c(H, cmd='mpm_status'); log('host page', ms.get('state'))
+    c(H, cmd='mpm_pvp', action='page_arrow', row=1, dir=-1)                  # host page rows: To win, Round time
+    c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1); c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1)
+    time.sleep(1); c(H, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'ui_host_page_pvp.png'))
+    q = c(H, cmd='mpm_pvp')
+    check('0 host page "PvP": rules panel values set (best of 1, 60 s)', ms.get('state') == 'title_host' and q.get('bo') == 1 and q.get('secs') == 60, f"{ms.get('state')} bo {q.get('bo')} secs {q.get('secs')}")
+    press(H, 'HOST_START')
     rig.wait_for(H, lambda s: s.get('scene') == 2 and s.get('tick', -1) > 0 and not s.get('busy') and s.get('det', {}).get('locked'), 'H loaded + hosting', timeout=900)
-    time.sleep(3)
-    rig.start(G, fps=30, window=True)
-    rig.wait_for(G, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title G', timeout=1500)
+    wait('host lobby', lambda: c(H, cmd='mpm_status').get('state') == 'lobby', timeout=120, every=1)
+    port = c(H, cmd='mpm_status').get('port')
+    rig.wait_for(G, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title G', timeout=1500); time.sleep(2)
+    press(G, 'MULTIPLAYER'); press(G, 'JOIN_ADDR'); c(G, cmd='mpm_type', text=f'127.0.0.1:{port}'); press(G, 'CONNECT')
     wait('G loaded the host save and locked', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('loads', 0) >= 1)(c(G, cmd='status')), timeout=900)
     time.sleep(3)
-    for x in (H, G): c(x, cmd='mp_pause', on=0)
     v1 = {x: c(x, cmd='mpm_pvp') for x in (H, G)}
     info = {x: c(x, cmd='pvp_arena_info') for x in (H, G)}
     log('v1 flags', {x: v1[x].get('v1') for x in (H, G)}, 'info', {x: (info[x].get('map'), info[x].get('monsters_alive'), info[x].get('units')) for x in (H, G)})
@@ -130,11 +132,10 @@ def run(H, G, port):
     wait('host has 4 units', lambda: c(H, cmd='pvp_units_status')['received'] == 4, timeout=90, every=1)
     log('mods ask', c(H, cmd='pvp_mods', ask=1))
     wait('guest mod report', lambda: len(c(H, cmd='pvp_mods').get('reports', [])) >= 1, timeout=60, every=1)
-    c(H, cmd='mpm_pvp', action='page_arrow', row=1, dir=-1)                  # host page rows: To win, Round time
-    c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1); c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1)
-    wait('host rules set', lambda: (lambda q: q.get('bo') == 1 and q.get('secs') == 60)(c(H, cmd='mpm_pvp')), timeout=20, every=1)
-    r = c(H, cmd='mpm_pvp', action='v1_lobby_start'); log('H lobby Start', r)
-    check('2a lobby Start accepted (brought units, Vanilla check)', r.get('ok'), json.dumps(r))
+    lb = {x: c(x, cmd='mpm_pvp') for x in (H, G)}
+    press(H, 'START'); log('H lobby Start (menu)')
+    time.sleep(3); r = c(H, cmd='mpm_status')
+    check('2a lobby Start: the match setup began (menu left the lobby)', r.get('state') == 'playing', r.get('state'))
     wait('match on both', lambda: all(c(x, cmd='pvp_status').get('active') for x in (H, G)), timeout=600, every=2)
     t_match = c(H, cmd='status')['tick']
     ps = {x: c(x, cmd='pvp_status') for x in (H, G)}

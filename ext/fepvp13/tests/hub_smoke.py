@@ -44,7 +44,7 @@ def main():
         ms = c(cmd='mpm_status'); log('host page', ms.get('state'), json.dumps(ms.get('settings')))
         check('host page: Foreign Expedition, death permanent Off by default', ms.get('state') == 'title_host' and ms['settings']['fe'] == 1 and ms['settings']['fe_death'] == 0, json.dumps(ms['settings']))
         c(cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'host_page.png'))
-        press('LOAD_SAVE')
+        press('HOST_START')
         t0 = time.time()
         if '--nocache' in A: log('template downloaded into the cache', os.path.exists(cf), os.path.getsize(cf) if os.path.exists(cf) else 0)
         rig.wait_for(H, lambda s: s.get('mp', {}).get('started') and s.get('det', {}).get('locked'), 'hub loaded + host session', timeout=900)
