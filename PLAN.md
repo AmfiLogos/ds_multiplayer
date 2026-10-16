@@ -428,3 +428,13 @@ multiplayer tag next to the name of the save and then just put the players that 
   Tests: mu_test 148 PASS (fixtures from the units worktree); unit ALL PASS; run_eq 64/64; smoke 3/3; mp2 19 PASS 0 FAIL;
   left_prompt 16 PASS 0 FAIL; home 22/22, My Units 26/26, Bring Units 32/32, Bring from rig command 5/5 (ext/merger13/out/*units13full*);
   prefs identical. build/dsrig + custom-modes*.dylib = this build.
+- units13 599c5c9 -> 3e03d9b: units' own dedupe line replaces mine (conflict resolved to units' version); dylibs byte-identical.
+- mpfix f3c5346 (+ main = 144a8d8) -> fa163ed (build/merge_mpfix13): unit ALL PASS + bridge run_unit all PASS; smoke 3/3;
+  mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; ctl_owner 6/6; choice2_pair 8/8; tip_pos 8/8; menu_pair 17/17 0 desync
+  (fake-mouse build build/merge_mpfix13_mouse; ext/wpmenu/build_mouse.sh no longer matches src/build.sh's `-o $OUT/...` line,
+  so it was built by hand). An untracked old copy of ext/bepinex_bridge in the main checkout blocked the merge: moved to
+  old/bepinex_bridge_untracked_20261016-0353 (its untracked build/inst/lib/... folders moved back). Note: tools/gen_*_lane.py
+  hold /Users/<name> paths (main already has 7 such files).
+- builder13 0adb5cd (+ main = 7caf232) -> 4fdc619 (build/merge_builder13, my build replaced the lane's own folder of that name):
+  run_eq 300/300 equal to node (0 save/link failures); unit ALL PASS; smoke 3/3; mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL;
+  builder_test 32/32 (copy R); tf_check 25 saves, 0 errors, 0 problems, QuickJS == node 51/51; prefs identical.
