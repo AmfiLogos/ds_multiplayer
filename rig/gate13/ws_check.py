@@ -8,7 +8,7 @@ if not lines: print('WS FAIL no RESULT line'); sys.exit(1)
 r = json.loads(lines[-1].split('RESULT ', 1)[1]); need = int(sys.argv[2]) if len(sys.argv) > 2 else 0
 fc = r.get('full_checks_ok_fail') or [None] * 4
 bad = [k for k, ok in (('error', 'error' not in r), ('fp_equal', r.get('fp_equal') is True),
-       ('desyncs', list(r.get('desyncs') or []) == [0, 0]), ('full_fails', fc[1] in (0, None) and fc[3] in (0, None)),
+       ('desyncs', list(r.get('desyncs') or []) == [0, 0]), ('full_fails', fc[1] in (0, None) and fc[3] in (0, None)), ('full_checks_ran', (fc[0] or 0) > 0 and (fc[2] or 0) > 0),
        ('units_equal', r.get('units_equal_at_paused_tick') is True), ('prefs', r.get('owner_prefs_unchanged') in (True, 'identical')),
        ('casts', need == 0 or (r.get('casts') or {}).get('sent', 0) >= need)) if not ok]
 info = f"ticks {r.get('ticks_run')} desyncs {r.get('desyncs')} full {fc} casts {(r.get('casts') or {}).get('sent')} prefs {r.get('owner_prefs_unchanged')}"

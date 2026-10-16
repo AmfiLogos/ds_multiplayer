@@ -5,7 +5,9 @@ source ${0:A:h}/lib.sh
 keys() {
   local bad=0
   for r in $HOME/ds_multiplayer $LD; do
-    local h=$(git -C $r diff v12-mvp..main | command grep -nE '^\+.*(PRIVATE KEY-----|ghp_[A-Za-z0-9]{20}|github_pat_|sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{16}|xox[bp]-)' | head -3)
+    local df; df=$(git -C $r diff v12-mvp..main) || { echo "git diff failed in $r"; bad=1; continue; }
+    [[ -n $df ]] || { echo "empty diff in $r"; bad=1; continue; }
+    local h=$(print -r -- "$df" | command grep -nE '^\+.*(PRIVATE KEY-----|ghp_[A-Za-z0-9]{20}|github_pat_|sk-[A-Za-z0-9]{20}|AKIA[0-9A-Z]{16}|xox[bp]-)' | head -3)
     [[ -n $h ]] && { echo "key-like lines in $r: $h"; bad=1; }
   done
   (( bad )) || echo "KEYS PASS 0 hits"
