@@ -108,4 +108,6 @@ extern int      dsnet_match_rule;
 extern char     dsnet_modset[65], dsnet_mod_lines[DSNET_MODLINES_MAX], dsnet_reject_detail[400];
 extern int      dsnet_reject_host_rule, dsnet_reject_has_host;
 extern char     dsnet_reject_host_lines[DSNET_MODLINES_MAX];
+extern char     dsnet_reject_host_rel[16];
+#define DSNET_RELEASE_MAX 15
 void   dsnet_logf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));

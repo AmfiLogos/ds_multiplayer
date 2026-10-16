@@ -29,6 +29,7 @@ typedef struct sconn {
     char name[32];
     int rule; char modset[65], mods[200];         /* from the HELLO (proto 2); mods = "id@version, ..." for the words */
     char lines[DSNET_MODLINES_MAX];               /* the launcher's modset_lines, '\n'-joined */
+    char release[16];                             /* loader release after the name's NUL ("" = older peer) */
     dsnet_blob_rx rx;
 } sconn;
 
@@ -232,6 +233,10 @@ static int modset_refused(dsnet_server *s, const sconn *c, char *why, size_t n) 
         return 0;
     }
     if (strcmp(eff_modset(c), eff_modset(h))) {
+        char rel[96]; size_t k = 0;
+        if (dsnet_release_text(h->release, c->release, rel, sizeof rel)) k = (size_t)snprintf(why, n, "%s ", rel);
+        if (k >= n) return 1;
+        why += k; n -= k;
         snprintf(why, n, "your gameplay mods are different from the host's (host: %s; you: %s). Join from the launcher to get the host's mods",
                  mods_or_none(h), mods_or_none(c));
         return 1;
@@ -250,16 +255,25 @@ static void on_hello(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
     else if ((int)get32(p + 8) != s->round_mode) rej = DSNET_REJ_ROUNDING;
     else for (int i = 0; i < MAX_CONNS; i++)
         if (s->conn[i] && s->conn[i]->id >= 0 && !memcmp(s->conn[i]->uid, p + 12, 16)) rej = DSNET_REJ_DUP_ID;
+    c->release[0] = 0;
+    if (!rej) {                                    /* name[] [NUL release] */
+        const uint8_t *z = memchr(p + name_at + 1, 0, n - name_at - 1);
+        if (z) {
+            uint32_t ro = (uint32_t)(z - p) + 1, rl = n - ro; if (rl > DSNET_RELEASE_MAX) rl = DSNET_RELEASE_MAX;
+            snprintf(c->release, sizeof c->release, "%.*s", (int)rl, (const char *)p + ro);
+        }
+    }
     int want_host = c->local && p[3] && !host_conn(s);
     if (!rej && !want_host && modset_refused(s, c, mwhy, sizeof mwhy)) rej = DSNET_REJ_MODSET;
     int spect = !rej && p[name_at] == DSNET_ROLE_SPECTATOR && !c->local;   /* the host's own client is always a player */
     if (spect && !s->cfg.allow_spectators) rej = DSNET_REJ_NO_SPECTATORS;
     else if (spect && spectator_count(s) >= s->cfg.max_spectators) rej = DSNET_REJ_SPECTATORS_FULL;
     if (rej) {                                     /* u8 reason, u16 words, words, [MODSET: u8 host rule, u16 len, host lines] */
-        static uint8_t r[8 + sizeof mwhy + DSNET_MODLINES_MAX]; size_t wl = strlen(mwhy), k = 0;
+        static uint8_t r[32 + sizeof mwhy + DSNET_MODLINES_MAX]; size_t wl = strlen(mwhy), k = 0;
         r[k++] = P_REJECT; r[k++] = (uint8_t)rej; put16(r + k, (uint16_t)wl); k += 2; memcpy(r + k, mwhy, wl); k += wl;
         const sconn *h = host_conn(s);
-        if (rej == DSNET_REJ_MODSET && h) { size_t hl = strlen(h->lines); r[k++] = (uint8_t)h->rule; put16(r + k, (uint16_t)hl); k += 2; memcpy(r + k, h->lines, hl); k += hl; }
+        if (rej == DSNET_REJ_MODSET && h) { size_t hl = strlen(h->lines); r[k++] = (uint8_t)h->rule; put16(r + k, (uint16_t)hl); k += 2; memcpy(r + k, h->lines, hl); k += hl;
+            size_t rl = strlen(h->release); r[k++] = (uint8_t)rl; memcpy(r + k, h->release, rl); k += rl; }
         dsnet_link_send(&c->link, r, (uint32_t)k);
         c->closing = 1;
         dsnet_logf("server: rejected a client, reason %d%s%s", rej, wl ? ": " : "", mwhy);
