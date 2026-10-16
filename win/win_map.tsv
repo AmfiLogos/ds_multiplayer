@@ -1,5 +1,5 @@
 kind	name	mac	win	status	note	used_in
-other		0x10000		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/cutils.c:226,custom/fights/quickjs/cutils.c:252,custom/fights/quickjs/cutils.h:352,custom/fights/quickjs/cutils.h:362,custom/fights/quickjs/quickjs.c:4145,custom/fights/quickjs/quickjs.c:4159,+15
+other		0x10000		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/cutils.c:226,custom/fights/quickjs/cutils.c:252,custom/fights/quickjs/cutils.h:352,custom/fights/quickjs/cutils.h:362,custom/fights/quickjs/quickjs.c:4145,custom/fights/quickjs/quickjs.c:4159,+19
 other		0x1312d		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:223
 other		0x1f000		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:1999
 other		0x1f1e6		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode.c:1972,custom/fights/quickjs/libunicode.c:1973
@@ -1750,10 +1750,16 @@ field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody.SetPosition.position	0
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody.SetPosition.prevGameObject	0x68	0x68	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody.SetPosition.rigidbody	0x60	0x60	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody.SetPosition.targetGameObject	0x50	0x50	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody.Sleep.prevGameObject	0x60	0x60	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody.Sleep.rigidbody	0x58	0x58	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody.Sleep.targetGameObject	0x50	0x50	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody2D.GetPosition.prevGameObject	0x68	0x68	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody2D.GetPosition.rigidbody2D	0x60	0x60	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody2D.GetPosition.storeValue	0x58	0x58	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody2D.GetPosition.targetGameObject	0x50	0x50	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody2D.Sleep.prevGameObject	0x60	0x60	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody2D.Sleep.rigidbody2D	0x58	0x58	ok		
+field	BehaviorDesigner.Runtime.Tasks.Unity.UnityRigidbody2D.Sleep.targetGameObject	0x50	0x50	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.CompareTo.firstString	0x50	0x50	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.CompareTo.secondString	0x58	0x58	ok		
 field	BehaviorDesigner.Runtime.Tasks.Unity.UnityString.CompareTo.storeResult	0x60	0x60	ok		
@@ -2744,6 +2750,50 @@ field	Pathfinding.Patrol.targets	0x28	0x28	ok
 field	Pathfinding.Patrol.updateDestinationEveryFrame	0x34	0x34	ok		
 field	Pathfinding.RVO.Line.dir	0x8	0x8	ok		
 field	Pathfinding.RVO.Line.point	0x0	0x0	ok		
+field	Pathfinding.RVO.Sampled.Agent.<AgentTimeHorizon>k__BackingField	0x9c	0x9c	ok		
+field	Pathfinding.RVO.Sampled.Agent.<CalculatedSpeed>k__BackingField	0x8c	0x8c	ok		
+field	Pathfinding.RVO.Sampled.Agent.<CalculatedTargetPoint>k__BackingField	0x84	0x84	ok		
+field	Pathfinding.RVO.Sampled.Agent.<CollidesWith>k__BackingField	0xb0	0xb0	ok		
+field	Pathfinding.RVO.Sampled.Agent.<ElevationCoordinate>k__BackingField	0x80	0x80	ok		
+field	Pathfinding.RVO.Sampled.Agent.<Height>k__BackingField	0x98	0x98	ok		
+field	Pathfinding.RVO.Sampled.Agent.<Layer>k__BackingField	0xac	0xac	ok		
+field	Pathfinding.RVO.Sampled.Agent.<Locked>k__BackingField	0x90	0x90	ok		
+field	Pathfinding.RVO.Sampled.Agent.<MaxNeighbours>k__BackingField	0xa4	0xa4	ok		
+field	Pathfinding.RVO.Sampled.Agent.<NeighbourCount>k__BackingField	0xa8	0xa8	ok		
+field	Pathfinding.RVO.Sampled.Agent.<ObstacleTimeHorizon>k__BackingField	0xa0	0xa0	ok		
+field	Pathfinding.RVO.Sampled.Agent.<Position>k__BackingField	0x78	0x78	ok		
+field	Pathfinding.RVO.Sampled.Agent.<PreCalculationCallback>k__BackingField	0xb8	0xb8	ok		
+field	Pathfinding.RVO.Sampled.Agent.<Priority>k__BackingField	0xb4	0xb4	ok		
+field	Pathfinding.RVO.Sampled.Agent.<Radius>k__BackingField	0x94	0x94	ok		
+field	Pathfinding.RVO.Sampled.Agent.agentTimeHorizon	0x20	0x20	ok		
+field	Pathfinding.RVO.Sampled.Agent.calculatedSpeed	0xc8	0xc8	ok		
+field	Pathfinding.RVO.Sampled.Agent.calculatedTargetPoint	0xcc	0xcc	ok		
+field	Pathfinding.RVO.Sampled.Agent.collidesWith	0x30	0x30	ok		
+field	Pathfinding.RVO.Sampled.Agent.collisionNormal	0x6c	0x6c	ok		
+field	Pathfinding.RVO.Sampled.Agent.currentVelocity	0x44	0x44	ok		
+field	Pathfinding.RVO.Sampled.Agent.debugDraw	0x75	0x75	ok		
+field	Pathfinding.RVO.Sampled.Agent.desiredSpeed	0x18	0x18	ok		
+field	Pathfinding.RVO.Sampled.Agent.desiredTargetPointInVelocitySpace	0x4c	0x4c	ok		
+field	Pathfinding.RVO.Sampled.Agent.desiredVelocity	0x54	0x54	ok		
+field	Pathfinding.RVO.Sampled.Agent.elevationCoordinate	0x40	0x40	ok		
+field	Pathfinding.RVO.Sampled.Agent.height	0x14	0x14	ok		
+field	Pathfinding.RVO.Sampled.Agent.layer	0x2c	0x2c	ok		
+field	Pathfinding.RVO.Sampled.Agent.locked	0x28	0x28	ok		
+field	Pathfinding.RVO.Sampled.Agent.manuallyControlled	0x74	0x74	ok		
+field	Pathfinding.RVO.Sampled.Agent.maxNeighbours	0x34	0x34	ok		
+field	Pathfinding.RVO.Sampled.Agent.maxSpeed	0x1c	0x1c	ok		
+field	Pathfinding.RVO.Sampled.Agent.neighbourDists	0xe8	0xe8	ok		
+field	Pathfinding.RVO.Sampled.Agent.neighbours	0xe0	0xe0	ok		
+field	Pathfinding.RVO.Sampled.Agent.next	0xc0	0xc0	ok		
+field	Pathfinding.RVO.Sampled.Agent.nextDesiredSpeed	0x64	0x64	ok		
+field	Pathfinding.RVO.Sampled.Agent.nextMaxSpeed	0x68	0x68	ok		
+field	Pathfinding.RVO.Sampled.Agent.nextTargetPoint	0x5c	0x5c	ok		
+field	Pathfinding.RVO.Sampled.Agent.obstacleTimeHorizon	0x24	0x24	ok		
+field	Pathfinding.RVO.Sampled.Agent.obstacles	0xf8	0xf8	ok		
+field	Pathfinding.RVO.Sampled.Agent.obstaclesBuffered	0xf0	0xf0	ok		
+field	Pathfinding.RVO.Sampled.Agent.position	0x38	0x38	ok		
+field	Pathfinding.RVO.Sampled.Agent.radius	0x10	0x10	ok		
+field	Pathfinding.RVO.Sampled.Agent.simulator	0xd8	0xd8	ok		
 field	Pathfinding.Side.value__	0x0	0x0	ok		
 field	Pathfinding.Util.Draw.gizmos	0x10	0x10	ok		
 field	Pathfinding.Util.Draw.matrix	0x14	0x14	ok		
@@ -6153,6 +6203,15 @@ field	Refactor.UI.Util.TooltipFeedback._tooltipType	0x40	0x40	ok
 field	Refactor.UI.ViewObjectLoader<T>._activatePool	0x0	0x0	ok		
 field	Refactor.UI.ViewObjectLoader<T>._deactivatePool	0x0	0x0	ok		
 field	Refactor.UI.ViewObjectLoader<T>._viewContainer	0x0	0x0	ok		
+field	Refactor.UIScaleManager.<Scale>k__BackingField	0x38	0x38	ok		
+field	Refactor.UIScaleManager.<TooltipAdditionalScale>k__BackingField	0x3c	0x3c	ok		
+field	Refactor.UIScaleManager.OnScaleChanged	0x30	0x30	ok		
+field	Refactor.UIScaleManager.defaultScale	0x20	0x20	ok		
+field	Refactor.UIScaleManager.maxScale	0x28	0x28	ok		
+field	Refactor.UIScaleManager.minScale	0x24	0x24	ok		
+field	Refactor.UIScaleManager.static:<Instance>k__BackingField	0x0	0x0	ok		
+field	Refactor.UIScaleManager.static:_scaleRoots	0x8	0x8	ok		
+field	Refactor.UIScaleManager.step	0x2c	0x2c	ok		
 field	Refactor.UIScaleRoot._rt	0x28	0x28	ok		
 field	Refactor.UIScaleRoot.additionalScale	0x20	0x20	ok		
 field	Refactor.UIScaleRoot.applyTooltipAdditionalScale	0x24	0x24	ok		
@@ -7741,6 +7800,8 @@ field	TMPro.TMP_Text.tag_Indent	0x444	0x44c	DIFF
 field	TMPro.TMP_Text.tag_LineIndent	0x440	0x448	DIFF		
 field	TMPro.TMP_Text.tag_NoParsing	0x468	0x470	DIFF		
 field	TMPro.TextAlignmentOptions.value__	0x0	0x0	ok		
+field	TMPro.TextOverflowModes.value__	0x0	0x0	ok		
+field	TMPro.TextWrappingModes.value__	0x0	0x0	ok		
 field	TableLayoutGroup.Corner.value__	0x0	0x0	ok		
 field	TempAllocator.Page<T>.array	0x0	0x0	ok		
 field	TempAllocator.Page<T>.used	0x0	0x0	ok		
@@ -7867,6 +7928,8 @@ field	UnityEngine.Application.static:wantsToQuit	0x30	0x30	ok
 field	UnityEngine.Assertions.Assert.static:raiseExceptions	0x0	0x0	ok		
 field	UnityEngine.Bindings.ManagedSpanWrapper.begin	0x0	0x0	ok		
 field	UnityEngine.Bindings.ManagedSpanWrapper.length	0x8	0x8	ok		
+field	UnityEngine.Bounds.m_Center	0x0	0x0	ok		
+field	UnityEngine.Bounds.m_Extents	0xc	0xc	ok		
 field	UnityEngine.Cache.m_Handle	0x0	0x0	ok		
 field	UnityEngine.Camera.m_NonSerializedVersion	0x18	0x18	ok		
 field	UnityEngine.Camera.static:onPostRender	0x10	0x10	ok		
@@ -8333,6 +8396,8 @@ field	UnityEngine.UIElements.Panel.static:beforeAnyRepaint	0x18	0x18	ok
 field	UnityEngine.UIElements.Panel.static:s_MarkerPickAll	0x0	0x0	ok		
 field	UnityEngine.UIElements.Position.value__	0x0	0x0	ok		
 field	UnityEngine.UIElements.Repeat.value__	0x0	0x0	ok		
+field	UnityEngine.UIElements.Scale.m_IsNone	0xc	0xc	ok		
+field	UnityEngine.UIElements.Scale.m_Scale	0x0	0x0	ok		
 field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.combinator	0x24	0x24	ok		
 field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.dataType	0x20	0x20	ok		
 field	UnityEngine.UIElements.StyleSheets.Syntax.Expression.keyword	0x30	0x30	ok		
