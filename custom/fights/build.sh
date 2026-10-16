@@ -4,7 +4,8 @@
 # Output in <repo>/build_c4/ (git-ignored). usage: custom/fights/build.sh [win]   (win = llvm-mingw cross compile check)
 set -e
 H=${0:A:h}; C=${H:h}; R=${C:h}; B=$R/build_c4; mkdir -p $B/obj $B/objwin
-SRCS=($(cat $C/fights/sources.txt $C/gallery/sources.txt))
+# the engine, cache and gallery client only (the game windows need custom/home + custom/units: custom/build_module.sh)
+SRCS=($(cat $C/fights/sources.txt $C/gallery/sources.txt | grep -v -E 'cm_win|cm_work|tf_|gal_ui') fe/fe_json.c)
 # same as custom/build_module.sh CF (+ -fwrapv, which QuickJS needs)
 CF=(-O2 -Wall -Wno-unused-function -fwrapv -I$R/sdk -I$R/src -I$C -I$C/fe -I$C/pvp -I$C/units)
 obj() { print -r -- ${1//\//_}; }
@@ -25,7 +26,7 @@ for s in $SRCS; do
 done
 wait
 for o in $OBJS; do [[ -f $o ]] || { echo "missing $o" >&2; exit 1; }; done
-# solo dylib of just these lists: proves they link with no multiplayer and no game symbols
+# solo dylib of these files: proves they link with no multiplayer and no game symbols
 nice -n 19 clang $CF -dynamiclib -o $B/fights_solo_check.dylib $OBJS -lm
 clang $CF -o $B/sg_cli $H/test/sg_cli.c $OBJS -lm
 clang $CF -o $B/sg_cache_test $H/test/sg_cache_test.c $OBJS -lm
