@@ -24,6 +24,7 @@ for d in */(N/); do
   [[ -f $d/sources.txt ]] && SOLO+=(${(f)"$(grep -v '^[[:space:]]*\(#\|$\)' $d/sources.txt || true)"})
   [[ -f $d/sources_mp.txt ]] && MPS+=(${(f)"$(grep -v '^[[:space:]]*\(#\|$\)' $d/sources_mp.txt || true)"})
 done
+SOLO=(${(u)SOLO}); MPS=(${(u)MPS})   # one path in two lists (fe/fe_json.c: fe + fights) is built once
 for f in $SOLO $MPS; do [[ -f $f ]] || { echo "custom-modes: listed source $f not found" >&2; exit 1; }; done
 CF=(-arch arm64 -mmacosx-version-min=12.0 -O2 -fwrapv -Wall -Wno-unused-function -D_DARWIN_C_SOURCE -I$SDK -I$MP_SRC -I. $INC)
 # -fwrapv: QuickJS (custom/fights) needs wrapping signed overflow; harmless for the rest
