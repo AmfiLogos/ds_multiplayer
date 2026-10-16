@@ -1,0 +1,3 @@
+{ "id": "hell-probe", "name": "Hell probe (test only)", "version": "1.0.0", "kind": "code", "api": 2, "scope": "client", "hidden": true,
+  "game_builds": ["25846389"], "platforms": { "win-x64": { "entry": "hell-probe.dll" }, "mac-arm64": { "entry": "hell-probe.dylib" } },
+  "requires": ["loader>=2.0.0"] }

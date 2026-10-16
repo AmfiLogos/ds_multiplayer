@@ -295,10 +295,12 @@ static void install(HMODULE ga) {
     ui_install();
     ui_teams_install();
     mpmenu_install();
-    { /* Custom Modes (custom/cm_mp.c, same DLL here: -DCM_SAME_IMAGE): FE + PvP register through mp_api, PvP hooks (src/rig_main.c
-         loads custom-modes.dylib at this place) */
+#ifndef DSMP_MODULE
+    { /* rig baselib.dll: Custom Modes (custom/cm_mp.c, same DLL here: -DCM_SAME_IMAGE): FE + PvP register through mp_api, PvP
+         hooks (src/rig_main.c loads custom-modes.dylib at this place). As a loader module: the custom-modes module starts it. */
       extern const void *mp_api_get(uint32_t version); extern int cm_mp_start(const void *host, void *self, const void *api);
       int r = cm_mp_start(NULL, NULL, mp_api_get(1)); rig_log("custom-modes: started in this DLL (rc %d)", r); }
+#endif
     { extern void ord_win_craft_install(void); ord_win_craft_install(); }
     { extern void ui_win_install(void), mpmenu_win_install(void); ui_win_install(); mpmenu_win_install(); }
     { extern void win_test_install(void); win_test_install(); }
@@ -313,7 +315,33 @@ static void install(HMODULE ga) {
 /* ---------------------------------------------------------------- loader module entry points */
 DSL_PLUGIN();
 
+/* crash note (Windows): the first access violation / illegal instruction of the process goes to rig.log with the faulting
+   address and every stack value that points into a module (name + offset), then the normal handling goes on. */
+static void crash_where(char *out, size_t n, uintptr_t a) {
+    HMODULE m = NULL; char nm[MAX_PATH] = "?";
+    if (a && GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)a, &m) && m) {
+        GetModuleFileNameA(m, nm, sizeof nm); const char *b = strrchr(nm, '\\');
+        snprintf(out, n, "%s+%#llx", b ? b + 1 : nm, (unsigned long long)(a - (uintptr_t)m));
+    } else out[0] = 0;
+}
+static LONG WINAPI crash_note(EXCEPTION_POINTERS *e) {
+    static volatile LONG once;
+    DWORD c = e->ExceptionRecord->ExceptionCode;
+    if ((c != EXCEPTION_ACCESS_VIOLATION && c != EXCEPTION_ILLEGAL_INSTRUCTION) || InterlockedExchange(&once, 1)) return EXCEPTION_CONTINUE_SEARCH;
+    char w[300]; crash_where(w, sizeof w, (uintptr_t)e->ContextRecord->Rip);
+    rig_log("CRASH %#lx at %p %s (access %llu to %p), thread %lu; stack:", (unsigned long)c, (void *)e->ContextRecord->Rip, w,
+            (unsigned long long)e->ExceptionRecord->ExceptionInformation[0], (void *)e->ExceptionRecord->ExceptionInformation[1], GetCurrentThreadId());
+    uintptr_t *sp = (uintptr_t *)e->ContextRecord->Rsp; int k = 0;
+    for (int i = 0; i < 256 && k < 24; i++) {
+        MEMORY_BASIC_INFORMATION mi; if (!VirtualQuery(sp + i, &mi, sizeof mi) || mi.State != MEM_COMMIT) break;
+        crash_where(w, sizeof w, sp[i]);
+        if (w[0]) { rig_log("  [rsp+%#x] %p %s", i * 8, (void *)sp[i], w); k++; }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+
 DSL_EXPORT int dsl_module_load(const DSLHost *host, DSLPlugin *self) {
+    AddVectoredExceptionHandler(0, crash_note);
     DH = host; DME = self;
     const char *d = getenv("DSRIG_DIR");
     if (!d || !*d) { host->log(self, "DSRIG_DIR not set: multiplayer inactive"); return 1; }

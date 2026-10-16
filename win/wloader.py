@@ -68,14 +68,19 @@ def bottle_silent():
 WATCH = r"""
 import os, sys, time, signal
 sys.path.insert(0, %r); import wloader as w
-t0 = time.time(); title = False
+t0 = time.time(); title = False; mine = None   # only the copy this start made is ever stopped (2026-10-16: never another lane's)
 while time.time() - t0 < %d:
     time.sleep(10)
-    if not [p for p, c in w.dsmp_pids() if "Dungeon Settlers Modded" in c]: sys.exit(0)
+    now = [p for p, c in w.dsmp_pids() if "Dungeon Settlers Modded" in c or "DungeonSettlers.exe" in c]
+    if mine is None: mine = set(now)
+    if not mine & set(now): sys.exit(0)
     try: title = title or w.cmd({"cmd": "status"}, timeout=5).get("boot_ready", False)
     except Exception: pass
     if not title and time.time() - t0 > 180: break
-w.stop(); print("wloader watchdog: stopped the copy (no title in 3 min or past the time limit)")
+for p in mine or ():
+    try: os.kill(p, signal.SIGKILL)
+    except Exception: pass
+print("wloader watchdog: stopped its own copy", sorted(mine or ()), "(no title in 3 min or past the time limit)")
 """
 
 def start(extra):
