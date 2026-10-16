@@ -120,7 +120,7 @@ def main():
         on = {n: tb.get(str(B[n]), {}) for n in ('HOST_SAVE', 'HOST_NEW', 'HOST_FE')}
         log('host choices', json.dumps(on))
         fr = c(H, cmd='mpm_status').get('frames', {})
-        ids = (B['HOST_SAVE'], B['HOST_NEW'], B['HOST_FE'], 14, 45, 28, B['BACK'])     # 14 Join by address, 45 Join a friend, 28 Expedition results
+        ids = (B['HOST_SAVE'], B['HOST_NEW'], B['HOST_FE'], 124, 125, 126, 14, 45, 28, B['BACK'])   # 123-126 host choices (FE, PvP, ... from Custom Modes), 14 Join by address, 45 Join a friend, 28 Expedition results
         col = sorted([fr[str(i)] for i in ids if str(i) in fr], key=lambda r: -r[3])
         gaps = [round(col[i][1] - col[i + 1][3], 1) for i in range(len(col) - 1)]   # Your save .. Join .. Back, top to bottom
         spaced = stock_gap is not None and stock_gap > 0 and len(col) >= 5 and all(abs(g - stock_gap) <= 1 for g in gaps)
