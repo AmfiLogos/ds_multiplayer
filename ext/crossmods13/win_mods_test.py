@@ -13,12 +13,6 @@ import wloader as w
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "out", time.strftime("%Y%m%d-%H%M%S")); os.makedirs(OUT, exist_ok=True)
 
-def wine_busy():
-    """a real wine / .exe process younger than a day (the owner's own CrossOver bottles run for days: ignored)"""
-    out = subprocess.run(["ps", "-axo", "etime=,comm="], capture_output=True, text=True).stdout
-    return [l for l in out.splitlines() if re.search(r"wine|\.exe$", l, re.I) and not re.match(r"\s*\d+-", l)]
-
-
 MINE = set()                                   # wine processes this run started (only these are ever stopped)
 def note_started(before):
     MINE.update(p for p, _ in w.dsmp_pids() if p not in before)
@@ -32,7 +26,7 @@ def stop_mine():
         except Exception: pass
     MINE.clear()
 
-LOCK = f"{H}/ds_multiplayer/rig/wine.lock"
+WL = f"{H}/ds_multiplayer/rig/wine_lease.py"
 SAVE = f"{H}/DungeonSettlers_SaveBackups/2026-10-11-1827/Saves/ElvenExpedition__AutoSave_f816ebc6195c432c9fff754b75ee3738_0.json"
 args = sys.argv[1:]
 KIT = args[0]; GAME_S = int(args[args.index("--game-s") + 1]) if "--game-s" in args else 120
@@ -49,15 +43,7 @@ while not PAIR and time.time() - t_l < float(os.environ.get("XM_LEASE_WAIT", "12
     if not PAIR: time.sleep(20)
 log("lease", PAIR or lease.stderr.strip(), f"after {time.time() - t_l:.0f} s")
 # one wine copy machine-wide (taken after the lease, so a wait for a pair never holds the wine lock)
-def wine_free(): return not wine_busy()
-HAVE_LOCK = False
-if PAIR:
-    t_w = time.time()
-    while time.time() - t_w < float(os.environ.get("XM_LOCK_WAIT", "3600")) and not HAVE_LOCK:
-        if wine_free():
-            try: os.mkdir(LOCK); HAVE_LOCK = True; open(os.path.join(LOCK, "owner"), "w").write("crossmods\n")
-            except FileExistsError: pass
-        if not HAVE_LOCK: time.sleep(20)
+HAVE_LOCK = bool(PAIR) and subprocess.run([sys.executable, WL, "take", "crossmods", "--pid", str(os.getpid()), "--wait", os.environ.get("XM_LOCK_WAIT", "3600")]).returncode == 0
 try:
     if not PAIR: raise RuntimeError("no lease")
     if not HAVE_LOCK: raise RuntimeError("wine busy / wine.lock held by another lane")
@@ -153,10 +139,7 @@ finally:
         p = os.path.join(w.PROF, f)
         if os.path.exists(p): shutil.copy2(p, os.path.join(OUT, f))
     if PAIR: subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "release", PAIR, "crossmods"], capture_output=True)
-    if HAVE_LOCK:
-        os.makedirs(f"{H}/ds_multiplayer/rig/old", exist_ok=True)
-        if os.path.exists(os.path.join(LOCK, "owner")): os.replace(os.path.join(LOCK, "owner"), f"{H}/ds_multiplayer/rig/old/wine.lock.owner.crossmods.{int(time.time())}")
-        os.rmdir(LOCK)
+    if HAVE_LOCK: subprocess.run([sys.executable, WL, "release", "crossmods"])
     log("left:", w.dsmp_pids())
 fails = [r for r in results if not r[1]]
 print(f"\n{len(results) - len(fails)} PASS {len(fails)} FAIL; logs in {OUT}")

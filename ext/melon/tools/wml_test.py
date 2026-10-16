@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """MelonLoader on Windows through the loader kit, DSMP bottle (graphics null, audio off), wine lock taken here.
-  wml_test.py lock | unlock          take / give back ~/ds_multiplayer/rig/wine.lock (pgrep -fl wine must be empty)
+  wml_test.py lock | unlock          take / give back ~/ds_multiplayer/rig/wine.lock (rig/wine_lease.py: the DSMP bottle must be idle)
   wml_test.py install                build the kit (MODS = Windows multiplayer + hello-melon) and run its install.bat
   wml_test.py run <out> [limit_s]    profile = multiplayer + hello-melon, start (-batchmode -nographics), wait for the title and
                                      the HELLOMELON lines in MelonLoader's Latest.log, stop, copy logs to <out>
@@ -9,7 +9,7 @@ The registry of the bottle gets version=native,builtin for DungeonSettlers.exe (
 import json, os, shutil, subprocess, sys, time
 H = os.path.expanduser('~'); M = f'{H}/ds_multiplayer/ext/melon'
 sys.path.insert(0, f'{H}/ds_multiplayer/win'); import wloader as w
-LOCK = f'{H}/ds_multiplayer/rig/wine.lock'
+LOCK, WL = f'{H}/ds_multiplayer/rig/wine.lock', f'{H}/ds_multiplayer/rig/wine_lease.py'
 GAME = f'{w.ROOT}/game'; MODS = f'{w.ROOT}/mods'; ACTIVE = f'{w.PROF}/data/Mods/active.json'
 log = lambda *a: print(time.strftime('%H:%M:%S'), *a, flush=True)
 checks = []
@@ -17,15 +17,11 @@ def check(n, ok, d=''):
     checks.append({'name': n, 'ok': bool(ok), 'detail': str(d)[:300]}); log('PASS' if ok else 'FAIL', n, '' if ok else d)
 
 def lock():
-    # wine / .exe processes younger than 1 day (the owner's own CrossOver bottles run for days: never ours, never touched)
-    busy = subprocess.run(['/bin/sh', '-c', "ps -axo etime=,comm= | grep -iE 'wine|\\.exe$' | grep -ve '-[0-9][0-9]:'"], capture_output=True, text=True).stdout.strip()
-    if busy: sys.exit('wine busy: ' + busy[:300])
-    os.mkdir(LOCK); open(f'{LOCK}/owner', 'w').write('melon\n'); log('wine lock taken')
+    # held for the calling shell (lock / unlock are steps of a script); the DSMP bottle must be idle
+    if subprocess.run([sys.executable, WL, 'take', 'melon', '--pid', str(os.getppid())]).returncode: sys.exit('wine busy / locked')
 def unlock():
-    os.makedirs(f'{H}/ds_multiplayer/rig/old', exist_ok=True)
-    if os.path.exists(f'{LOCK}/owner'): os.replace(f'{LOCK}/owner', f'{H}/ds_multiplayer/rig/old/wine.lock.owner.melon.{int(time.time())}')
-    os.rmdir(LOCK); log('wine lock released')
-def owned(): return open(f'{LOCK}/owner').read().strip() == 'melon'
+    subprocess.run([sys.executable, WL, 'release', 'melon'])
+def owned(): return open(f'{LOCK}/owner').read().split('\n')[0].strip() == 'melon'
 
 def install():
     assert owned()
