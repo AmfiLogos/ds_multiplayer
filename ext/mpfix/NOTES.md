@@ -4,7 +4,11 @@ Branch `mpfix`, worktree ~/ds_mp_mpfix. Brief: research/briefs_v13/mpfix.md. Wor
 - UI (sub-branch mpfix-ui, notes NOTES_ui.md): hover cards outside the panel (src/ui_tip.c), stock gap on the
   Multiplayer page, Rules panel always open on the host page, neutral-hub fallback text of Foreign Expedition.
 - Weapon slot (sub-branch mpfix-ws, notes NOTES_ws.md): quick-slot orders (ToggleAutoSkill / Set / Unset / Move) by
-  skill key, resolved against each copy's own slots; PlayerUnitsSaveData/QuickSlots skipped in the full-state check.
+  skill key, resolved against each copy's own slots. Verdict: the mod STAYS GAMEPLAY. tests/ws_equip_pair.py: a stock
+  guest with a full bar never learns the new weapon skill on a weapon swap (stock ProcessEquip needs a free slot) ->
+  desync. So the QuickSlots full-state skip was reverted again and no mod.json change (MORNING_QUESTIONS).
+- Host-choice API for fepvp (mpfix-ui, NOTES_ui.md section 5): mp_host_choice + register_host_choice2 + host_choice_now
+  appended to mp_api_table; up to 4 choices, Start-only host page, draw_page panel, lobby_start. tests/choice2_pair.py.
 - BepInEx bridge: branch bepinex-bridge ported onto main (src/mp_bridge.c/.h, 3 hooks in mp_game.c, 1 line in
   rig_cmd.c, build.sh). ext/bepinex_bridge scripts build from this checkout (build_mac.sh wraps src/build.sh,
   output build/mac/). Windows: gen_port takes every src/*.c, multiplayer.dll exports all 11 dsmp_bridge_*. No .def line.
@@ -15,7 +19,9 @@ Branch `mpfix`, worktree ~/ds_mp_mpfix. Brief: research/briefs_v13/mpfix.md. Wor
   menu_pair 17/17, tests/tip_pos.py 8/8 (title column x2, host page column + Rules row, lobby, Esc, HUD cog + box).
 - Bridge: tests/run_unit.sh all PASS; bridge_xplay (Mac host + Windows guest W_BRG, pair GH) RESULT PASS:
   plugin sees the session, AddGold(250) applied once on both, full-state checks equal, 0 desyncs, 1345 equal ticks.
-- Weapon slot: NOTES_ws.md (3 flip runs + 1 cast run, 0 desyncs, on the mpfix-ws build).
+- Weapon slot: flip run on build/merge_mpfix 0 desyncs; equip test desyncs (see above, expected for a gameplay mod).
+- Final merge (main 3475f5d merged in): all units pass again, smoke 3/3, mp2 19/0, left_prompt 16/0, menu_pair 17/17,
+  tip_pos 8/8, choice2_pair 8/8, Windows module build clean (with the gen_port patch applied locally, not committed).
 - Runner: tests/run_on.py <dylib> [--lease LANE] <script> runs a rig test on a given dylib.
 
 ## Windows crash found on main (fix for lane crossmods, not committed here)
