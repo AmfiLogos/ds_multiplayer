@@ -66,7 +66,8 @@ typedef struct dsnet_link {
     dsnet_transport tr;
     pthread_mutex_t mu;                /* guards out (any thread may send) */
     uint8_t *out; size_t out_off, out_len, out_cap;
-    uint8_t *in;  size_t in_off, in_len, in_cap;   /* net thread only */
+    uint8_t *in;  size_t in_off, in_len, in_cap;   /* net thread only; at most DSNET_IN_MAX unread */
+    double out_stall;                  /* when the queued output last stopped moving (0 = moving or empty) */
     int dead;
 } dsnet_link;
 void dsnet_link_init(dsnet_link *l, dsnet_transport tr);
@@ -76,7 +77,7 @@ int  dsnet_link_send_blob(dsnet_link *l, uint32_t id, uint8_t kind, uint32_t tic
                           const uint8_t *data, uint32_t len);
 int  dsnet_link_flush(dsnet_link *l);           /* -1 dead */
 int  dsnet_link_has_out(dsnet_link *l);
-int  dsnet_link_fill(dsnet_link *l);            /* read what is available; -1 dead */
+int  dsnet_link_fill(dsnet_link *l);            /* read up to DSNET_IN_MAX unread bytes; -1 dead (also a bad frame length) */
 int  dsnet_link_next(dsnet_link *l, const uint8_t **body, uint32_t *len);  /* 1 = got a frame */
 
 typedef struct dsnet_blob_rx {
@@ -100,6 +101,8 @@ double dsnet_now_ms(void);
 /* receive-silence limit (dsnet_set_rx_timeout_ms / env DSNET_RX_TIMEOUT_MS, default 5000, 0 = off). Peers send from
  * their network threads every <= 100 ms, so a frozen game thread never looks like a lost link. */
 int    dsnet_rx_timeout_ms(void);
+int    dsnet_hello_timeout_ms(void);
+int    dsnet_tx_stall_ms(void);
 extern char     dsnet_build_id[32];
 extern uint32_t dsnet_mod_version;
 extern uint8_t  dsnet_uid[16];
