@@ -131,3 +131,6 @@ Worktree ~/ds_mp_units13, branch units13 (from main a138cb2). Brief: research/br
 - mp2_test --ticks 3000: 19 PASS 0 FAIL 0 Traceback; prefs identical; rig log "Foreign Expedition + PvP on (rc 0)".
 - mu_test 148 / NET 160 PASS; FE custom guard 18 PASS; home 22/22; My Units 26/26 (+ 0.75: 26/26, 1.4: 21/21);
   Bring Units 32/32 at 1.0 / 0.75 / 1.4; Bring from a rig command 5/5.
+
+## Re-merge 03:10 (main with fights step 1)
+- build_module.sh: a file in two lists is built once; a solo file is not rebuilt into the mp dylib. f036c9b: smoke 3/3, mp2 19/0, prefs identical, mu_test 148.
