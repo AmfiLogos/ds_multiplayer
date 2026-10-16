@@ -51,7 +51,7 @@ def lease_two():
 def main():
     p1, p2 = lease_two()
     if not p1:
-        log('two free pairs needed: not now'); return
+        log('FAIL not run: no free pair (two needed)'); sys.exit(1)
     H, P, S = p1[0], p1[1], p2[0]
     c = lambda inst, **k: rig.send(inst, k, timeout=120)
     st = lambda x: c(x, cmd='status')

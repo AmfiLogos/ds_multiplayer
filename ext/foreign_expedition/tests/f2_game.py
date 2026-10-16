@@ -35,6 +35,14 @@ def log(*a):
     print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
 
 
+fails = []
+
+
+def check(name, ok, info=''):
+    log(('PASS ' if ok else 'FAIL ') + name, info)
+    if not ok: fails.append(name)
+
+
 def named(v):
     return {(STATS[i] if i < len(STATS) else f'stat{i + 1}'): x for i, x in enumerate(v)}
 
@@ -162,9 +170,10 @@ def run(x, window):
     new_path, rep = fe.apply_results(home, res, {m['export_id']: m for _, m in exports}, led, OUT)
     log('apply ->', os.path.basename(new_path), rep)
     try:
-        fe.apply_results(home, res, {m['export_id']: m for _, m in exports}, led, OUT); log('SECOND APPLY NOT REFUSED')
+        fe.apply_results(home, res, {m['export_id']: m for _, m in exports}, led, OUT); refused = ''
     except fe.Refused as e:
-        log('second apply refused:', e)
+        refused = str(e)
+    check('second apply refused', bool(refused), refused)
 
     # 4. new home save in the game
     load_and_wait(x, new_path)
@@ -187,3 +196,4 @@ def run(x, window):
 
 if __name__ == '__main__':
     main()
+    sys.exit(1 if fails else 0)

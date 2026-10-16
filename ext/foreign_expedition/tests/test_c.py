@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """C library (build/fe_cli, ASan) on the same fixtures and scenarios as test_fe.py; results checked with fe_save.py.
-Run: python3 tests/test_c.py   (build: src/fe/build_cli.sh)"""
+Run: python3 tests/test_c.py   (builds its own build/fe_cli_c first from the fe sources, as test_custom_guard.py)"""
 import copy, hashlib, json, os, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__)); ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
 import fe_save as fe
-CLI = os.path.join(ROOT, 'build', 'fe_cli')
+REPO = os.path.dirname(os.path.dirname(ROOT))
+CLI = os.path.join(ROOT, 'build', 'fe_cli_c')      # own path: test_custom_guard.py writes build/fe_cli
 FIX = os.path.join(ROOT, 'fixtures')
+if not os.path.exists(os.path.join(FIX, 'home_Elven.json')):
+    FIX = os.path.expanduser('~/ds_multiplayer/ext/foreign_expedition/fixtures')
 OUT = os.path.join(ROOT, 'out', 'test_c_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
 HOME_P, HUB_P, NORM_P = (os.path.join(FIX, f) for f in ('home_Elven.json', 'hub_Moonlight_mp.json', 'hub_Moonlight_normal.json'))
 sha = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()
@@ -21,6 +24,21 @@ def check(name, cond, detail=''):
     if not cond: fails.append(name)
 
 
+def fe_dir(repo):                                     # same lookup as test_custom_guard.py
+    if os.path.isdir(os.path.join(repo, 'custom', 'fe')):
+        return os.path.join(repo, 'custom', 'fe')
+    cm = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')
+    return os.path.join(cm, 'fe') if os.path.isdir(os.path.join(cm, 'fe')) else os.path.join(repo, 'src', 'fe')
+
+
+def build(src_dir, out):
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    cmd = ['clang', '-fsanitize=address,undefined', '-g', '-O1', '-Wall', '-D_DARWIN_C_SOURCE',
+           os.path.join(src_dir, 'test', 'fe_cli.c'), os.path.join(src_dir, 'fe_save.c'), os.path.join(src_dir, 'fe_json.c'), '-o', out]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    check('build ' + os.path.basename(out), r.returncode == 0, (r.stderr or '')[-600:])
+
+
 def cli(*a, ok=True):
     r = subprocess.run([CLI, *a], capture_output=True, text=True, env=dict(os.environ, ASAN_OPTIONS='detect_leaks=0'))
     if ok and r.returncode: print('CLI', a[0], 'rc', r.returncode, r.stdout[-400:], r.stderr[-1500:])
@@ -32,6 +50,8 @@ def dump(obj, name):
     json.dump(obj, open(o(name), 'w')); return o(name)
 
 
+build(fe_dir(REPO), CLI)
+if fails: sys.exit(1)
 home = fe.load(HOME_P)
 units = sorted(fe.clan_units(home), key=lambda u: -len(fe.item_guids_of(fe.ec_of(home)[u[0]])))
 pick = [units[0][0], units[1][0]]
@@ -122,7 +142,7 @@ n_files = len(os.listdir(hd))
 r2 = cli('apply', HOME_P, o('res.json'), mp, led, hd, ok=False)
 check('C second apply refused (ledger)', r2.returncode == 2 and 'Already' in r2.stdout, r2.stdout.strip())
 r3 = cli('apply', path, o('res.json'), mp, o('lost.json'), hd, ok=False)
-check('C second apply refused (marker, ledger lost)', r3.returncode == 2 and 'marker' in r3.stdout, r3.stdout.strip())
+check('C second apply refused (marker, ledger lost)', r3.returncode == 2 and 'already in this save' in r3.stdout, r3.stdout.strip())
 check('no file written by refusals', len(os.listdir(hd)) == n_files)
 bad = copy.deepcopy(res); bad['rules']['xp_counts'] = False
 r4 = cli('apply', HOME_P, dump(bad, 'bad.json'), mp, o('c4.json'), hd, ok=False)

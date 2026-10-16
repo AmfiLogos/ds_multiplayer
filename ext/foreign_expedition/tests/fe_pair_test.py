@@ -159,7 +159,7 @@ def run(H, G):
     for h in hub_units:
         oh, og = c(H, cmd='mp_owner', guid=h['hub']).get('owner'), c(G, cmd='mp_owner', guid=h['hub']).get('owner')
         want_guest = h['player'] == gu
-        own_ok &= oh == og and ((oh != 0) == want_guest)
+        own_ok &= oh == og == (1 if want_guest else 0)
         log('owner', h['hub'][:8], 'host view', oh, 'guest view', og, 'brought by guest' if want_guest else 'brought by host')
     check('F5: owners = the players who brought them, same on both peers', own_ok)
     # stats in the hub on both peers + the difficulty move

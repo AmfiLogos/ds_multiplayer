@@ -159,7 +159,8 @@ def run(H, G, port):
     log('PvP units at the fight', [(cells[u['guid']]['name'], u['guid'][:8], u['team'], cells[u['guid']].get('cell'), cells[u['guid']].get('task'), cells[u['guid']].get('downed')) for u in s['units'] if u['guid'] in cells])
     team_cells = {t: [cells[u['guid']]['cell'] for u in s['units'] if u['team'] == t and u['guid'] in cells and 'cell' in cells[u['guid']]] for t in (1, 2)}
     near = lambda cs, e: all(abs(a[0] - e[0]) + abs(a[1] - e[1]) <= 8 for a in cs)
-    check('3 teams walked to their ends; the fight began; now every unit lists its 2 enemies', near(team_cells[1], s['ends'][0]) and near(team_cells[2], s['ends'][1])
+    check('3 teams walked to their ends; the fight began; now every unit lists its 2 enemies', len(team_cells[1]) == len(team_cells[2]) == 2 and len(s['units']) == 4
+          and near(team_cells[1], s['ends'][0]) and near(team_cells[2], s['ends'][1])
           and all(u['enemies_listed'] == 2 for u in s['units']), json.dumps(team_cells))
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_placed.png'))
     hp0 = {u['guid']: u.get('hp', 0) for u in s['units']}

@@ -43,7 +43,7 @@ def main():
         pair = rig.lease(LANE, os.getpid())
         if pair: break
         time.sleep(10)
-    if not pair: log('no free pair'); return
+    if not pair: log('FAIL not run: no free pair'); sys.exit(1)
     X = pair[0]
     c = lambda **k: rig.send(X, k, timeout=120)
     ms = lambda: c(cmd='mpm_status')
@@ -163,7 +163,7 @@ def main():
         check('8. lobby Start: lobby_start called, the game runs', q.get('lobby_calls') == 2 and s.get('state') == 'playing' and q.get('choice_now') == 'test-arena',
               f'lobby_calls {q.get("lobby_calls")} state {s.get("state")} now {q.get("choice_now")}')
     except Exception as e:
-        log('ERROR', repr(e)); results['error'] = repr(e)
+        check('flow completed', False, repr(e))
     finally:
         try: rig.stop(X)
         except Exception as e: log('stop', X, e)
