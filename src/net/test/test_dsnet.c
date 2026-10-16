@@ -69,6 +69,7 @@ typedef struct peer {
     uint32_t busy_at; int busy_ms, busy_done; double busy_since;
     int want_run, vote_while_desynced, sent_desync_vote;   /* auto-pause policy of the toy game */
     size_t save_pad; int save_bad, upload_rc, oversize_rc;
+    int fe_on_jp, fe_sent; uint32_t jp_ticks[4]; int njp;   /* host: FE_START from inside the 1st join point (review #4) */
     int save_fail_mode;           /* host: 1 = the game's save fails (notice sent), 2 = it fails and nothing is sent */
     int lossy_save;               /* host: a save loses s[7] (like in-progress tasks) and the host reloads it itself */
     int partial, patch_fail, patch_tried, patch_rc_host, reports_sent; uint32_t patch_tick, patch_count;   /* lan_v10 */
@@ -120,6 +121,11 @@ static void on_cmd(const dsnet_cmd *cmd, void *user) {
         if (dsnet_is_host(p->c)) p->patch_rc_host = dsnet_upload_patch(p->c, (const uint8_t *)&p->st, sizeof p->st);
         break;
     case DSNET_JOIN_POINT:
+        if (dsnet_is_host(p->c) && p->njp < 4) p->jp_ticks[p->njp++] = cmd->tick;
+        if (dsnet_is_host(p->c) && p->fe_on_jp && !p->fe_sent) {   /* the server sees FE_START before this join point's save */
+            uint8_t pl[20]; memset(pl, 0x5A, 16); memset(pl + 16, 0, 4);
+            dsnet_submit(p->c, DSNET_FE_START, 0, pl, sizeof pl); p->fe_sent = 1;
+        }
         if (dsnet_is_host(p->c) && p->save_fail_mode) { if (p->save_fail_mode == 1) dsnet_upload_save_failed(p->c); break; }
         if (dsnet_is_host(p->c)) {
             p->oversize_rc = dsnet_upload_save(p->c, (const uint8_t *)p, DSNET_MAX_BLOB);   /* must refuse */
@@ -2332,6 +2338,32 @@ static void test_fe_mail(void) {
     printf("%s fe_mail: 300 KB guest -> host (sender stamped), host -> one guest by uid, absent uid dropped, sim unchanged (%.1fs)\n",
            ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
 }
+/* ---- code review #4: a join-point save made before FE_START (old world) arrives after it: dropped, the guests load
+ * only the save of the join point after FE_START ---- */
+static void test_fe_stale(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_server *srv; peer *ps[3]; uint8_t uids[3][16];
+    if (fe_setup(&srv, ps, 2, 600, uids)) { printf("  FAIL setup\n"); failures++; return; }
+    ps[0]->fe_on_jp = 1;
+    for (int i = 0; i < 2; i++) { ps[i]->orders_every = 7; peer_go(ps[i]); }
+    while (ps[0]->timer < 150) sleep_ms(2);
+    memset(uids[2], 0x32, 16); dsnet_set_player_uid(uids[2]);
+    ps[2] = peer_new("late", dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "late"), 600);
+    dsnet_set_player_uid(NULL);
+    CHECK(dsnet_wait_welcome(ps[2]->c, 2000) == 0, "no welcome");
+    peer_go(ps[2]);
+    CHECK(wait_done(ps, 3, 20000) == 0, "timeout");
+    CHECK(ps[0]->njp >= 2, "host saw %d join points", ps[0]->njp);
+    uint32_t jp1 = ps[0]->jp_ticks[0], jp2 = ps[0]->jp_ticks[1];
+    for (int i = 1; i < 3; i++)
+        CHECK(ps[i]->loads == 1 && ps[i]->load_tick == jp2 && !ps[i]->save_bad, "%s: loads %d at %u (join points %u, %u)",
+              ps[i]->name, ps[i]->loads, ps[i]->load_tick, ps[0]->jp_ticks[0], jp2);
+    all_equal(ps, 3, 200);
+    stop_all(ps, 3, srv);
+    printf("%s fe_stale: FE_START inside the join point at %u -> its save dropped, both guests loaded once at %u, equal (%.1fs)\n",
+           ok ? "PASS" : "FAIL", jp1, jp2, (now_ms() - t0) / 1000);
+}
+
 static void test_fe_start(void) {
     int ok = 1; double t0 = now_ms();
     dsnet_server *srv; peer *ps[3]; uint8_t uids[3][16];
@@ -2418,6 +2450,7 @@ int main(int argc, char **argv) {
     RUN("big_cmd", test_big_cmd());
     RUN("full_big", test_full_big());
     RUN("hello_max", test_hello_max());
+    RUN("fe_stale", test_fe_stale());
     RUN("save_fail", (test_save_fail(1), test_save_fail(2)));
     RUN("identity", test_identity());
     RUN("hold", test_hold());

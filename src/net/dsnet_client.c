@@ -631,8 +631,8 @@ static size_t sim_serialize(const simstate *s, uint8_t *out) {
                    + 2 * DSNET_MAX_PLAYERS + DSNET_MAX_PLAYERS * DSNET_PARTY_MAX * 16 + 2 + DSNET_MAX_UNITS * 17)   /* maximum */
 _Static_assert(SIM_BYTES == DSNET_SAVE_OVERHEAD, "update DSNET_SAVE_OVERHEAD");
 
-/* returns bytes consumed, or -1 */
-static long sim_deserialize(simstate *s, const uint8_t *p0, size_t n) {
+/* returns bytes consumed, or -1 (s is then half written: only sim_deserialize calls this) */
+static long sim_parse(simstate *s, const uint8_t *p0, size_t n) {
     const uint8_t *p = p0, *end = p0 + n;
     if (n < SIM_FIXED + 3 || get32(p) != SIM_MAGIC) return -1;
     s->present = get32(p + 4); p += 8;
@@ -660,10 +660,10 @@ static long sim_deserialize(simstate *s, const uint8_t *p0, size_t n) {
     for (int i = 0; i < s->nhold; i++) { s->hold[i].reason = p[0]; memcpy(s->hold[i].uid, p + 1, 16); p += 17; }
     s->nown = get16(p); p += 2;
     if (s->nown > DSNET_MAX_UNITS || end - p < s->nown * 17 + 2) return -1;
-    for (int i = 0; i < s->nown; i++) { memcpy(s->own[i].guid, p, 16); s->own[i].owner = p[16]; p += 17; }
+    for (int i = 0; i < s->nown; i++) { memcpy(s->own[i].guid, p, 16); s->own[i].owner = p[16]; p += 17; if (s->own[i].owner >= s->nknown) return -1; }
     s->nitem = get16(p); p += 2;
     if (s->nitem > DSNET_MAX_ITEMS || end - p < s->nitem * 17 + 2 * DSNET_MAX_PLAYERS) return -1;
-    for (int i = 0; i < s->nitem; i++) { memcpy(s->item[i].guid, p, 16); s->item[i].owner = p[16]; p += 17; }
+    for (int i = 0; i < s->nitem; i++) { memcpy(s->item[i].guid, p, 16); s->item[i].owner = p[16]; p += 17; if (s->item[i].owner >= s->nknown) return -1; }
     memcpy(s->ready, p, DSNET_MAX_PLAYERS); p += DSNET_MAX_PLAYERS;
     memcpy(s->party_n, p, DSNET_MAX_PLAYERS); p += DSNET_MAX_PLAYERS;
     for (int i = 0; i < DSNET_MAX_PLAYERS; i++) {
@@ -673,8 +673,18 @@ static long sim_deserialize(simstate *s, const uint8_t *p0, size_t n) {
     if (end - p < 2) return -1;
     s->nctrl = get16(p); p += 2;
     if (s->nctrl > DSNET_MAX_UNITS || end - p < s->nctrl * 17) return -1;
-    for (int i = 0; i < s->nctrl; i++) { memcpy(s->ctrl[i].guid, p, 16); s->ctrl[i].owner = p[16]; p += 17; }
+    for (int i = 0; i < s->nctrl; i++) { memcpy(s->ctrl[i].guid, p, 16); s->ctrl[i].owner = p[16]; p += 17; if (s->ctrl[i].owner >= s->nknown) return -1; }
     return (long)(p - p0);
+}
+/* all or nothing: parsed into a copy (owners checked against known[]), *s replaced only when the whole header is good */
+static long sim_deserialize(simstate *s, const uint8_t *p0, size_t n) {
+    simstate *t = malloc(sizeof *t);
+    if (!t) return -1;
+    *t = *s;                                       /* the local-only fields (lend log, refused counts) stay */
+    long used = sim_parse(t, p0, n);
+    if (used >= 0) *s = *t;
+    free(t);
+    return used;
 }
 
 int dsnet_can_run_tick(dsnet_client *c, uint32_t timer) {
