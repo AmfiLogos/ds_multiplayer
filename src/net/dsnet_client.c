@@ -57,6 +57,7 @@ struct dsnet_client {
     pthread_cond_t cv;
 
     int welcomed, player, is_host, needs_state, disconnected, rejected, host_left, bye_reason;
+    int save_fail; double save_wait;            /* waiting for a save: why it ended (DSNET_SAVE_FAIL_*), last progress */
     int role, spectator;                                        /* asked for / granted (WELCOME): watch only */
     int sp_allow, sp_max, sp_seen;                              /* spectator list from the server (outside the sim) */
     struct { uint8_t set, state; uint16_t ping; char name[32]; } sp[DSNET_MAX_PLAYERS];
@@ -281,7 +282,13 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
         fp_compare(c, tick);
         break;
     }
+    case P_SAVE_FAIL:                                        /* the host could not make the save we wait for */
+        if (!c->needs_state || c->is_host) break;
+        dsnet_logf("client %d: the host's save failed, leaving", c->player);
+        c->save_fail = DSNET_SAVE_FAIL_HOST; c->link.dead = 1;
+        break;
     case P_BLOB: {
+        if (c->needs_state) c->save_wait = dsnet_now_ms();   /* bytes are coming: the save wait starts again */
         int r = dsnet_blob_feed(&c->rx, p + 1, n - 1);
         if (r < 0) { dsnet_logf("client %d: bad blob fragment", c->player); return; }
         if (r == 0) return;
@@ -342,6 +349,15 @@ static void *client_main(void *arg) {
             dsnet_logf("client %d: nothing received for %d ms, link gone", c->player, (int)(now - c->last_rx));
             c->link.dead = 1;
         }
+        /* waiting for a save that never comes (host save failed with no notice, or a lost upload): leave, never hang */
+        int sw = dsnet_save_wait_ms();
+        if (c->welcomed && c->needs_state && !c->is_host && !c->has_pending && sw && !c->link.dead) {
+            if (!c->save_wait) c->save_wait = now;
+            else if (now - c->save_wait > sw) {
+                dsnet_logf("client %d: no save byte for %d ms, leaving", c->player, (int)(now - c->save_wait));
+                c->save_fail = DSNET_SAVE_FAIL_TIMEOUT; c->link.dead = 1;
+            }
+        } else c->save_wait = 0;
         if (c->welcomed && now - c->last_ka >= 100) {       /* keep-alive: how far behind tickUntil we are */
             uint8_t b[9], *p = b; p = put8(p, P_KEEPALIVE); p = put32(p, c->timer); p = put32(p, c->tick_until);
             dsnet_link_send(&c->link, b, p - b);
@@ -1707,6 +1723,8 @@ int dsnet_player_net(dsnet_client *c, int player, int *ping_ms, int *ticks_behin
 
 int dsnet_is_disconnected(dsnet_client *c) { pthread_mutex_lock(&c->mu); int r = c->disconnected; pthread_mutex_unlock(&c->mu); return r; }
 int dsnet_host_left(dsnet_client *c) { pthread_mutex_lock(&c->mu); int r = c->host_left; pthread_mutex_unlock(&c->mu); return r; }
+int dsnet_save_failed(dsnet_client *c) { pthread_mutex_lock(&c->mu); int r = c->save_fail; pthread_mutex_unlock(&c->mu); return r; }
+int dsnet_upload_save_failed(dsnet_client *c) { uint8_t b = P_SAVE_FAIL; return c->is_host ? dsnet_link_send(&c->link, &b, 1) : -1; }
 int dsnet_bye_reason(dsnet_client *c) { pthread_mutex_lock(&c->mu); int r = c->host_left ? c->bye_reason : 0; pthread_mutex_unlock(&c->mu); return r; }
 
 /* ---- spectators ---- */
