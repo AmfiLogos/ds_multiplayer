@@ -457,3 +457,6 @@ multiplayer tag next to the name of the save and then just put the players that 
   (419adda; status counts as the lane's). Mac dylibs byte-identical to 27c56a3. The main checkout's uncommitted
   win/inline_audit.tsv (a build output) saved to old/inline_audit_uncommitted_*.tsv before the merge.
 - ALL v13 lanes merged (MP 3fe0ffc, LD 30ef516). Next: gate13.
+- mpfix 79c2dee (gate13 fix, already on main 3dfac26) -> 4abd432: src/mpmenu.c world/save row table 64 -> 512. Merge build
+  build/merge_mpfix79 (+ _mouse): unit ALL PASS (pvp 597, FE guard). Game tests (smoke, mp2, menu_pair, choice2) left to
+  gate13's G2 rerun (release.lock held; orchestrator13's option). build/ dylibs = this build.
