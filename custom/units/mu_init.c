@@ -4,6 +4,7 @@
 #include "mu_bring.h"
 #include "cm_home.h"
 #include "cm_il.h"
+#include "mu_save.h"
 #ifndef _WIN32
 #include <dlfcn.h>
 #endif
@@ -82,11 +83,22 @@ static void bring_done(const mu_pick *p, int n, void *ud) {
                               p[i].source == MU_SRC_SAVE ? strrchr(p[i].save_file, '/') ? strrchr(p[i].save_file, '/') + 1 : p[i].save_file : "", p[i].level);
     mu_log("bring units (test): %s", bring_res);
 }
+/* "max,sources[,dir]": dir = the saves to offer (the caller's list_saves path, a test's own clean folder) */
+static char test_dir[1024];
+static int test_list_saves(mu_save_ref *out, int max, void *ud) {
+    (void)ud; static char f[64][1024]; int n = mu_save_files(test_dir, f, max < 64 ? max : 64);
+    for (int i = 0; i < n; i++) {
+        snprintf(out[i].path, sizeof out[i].path, "%s", f[i]);
+        out[i].name[0] = out[i].when[0] = 0;                               /* name from the file, as the default list */
+    }
+    return n;
+}
 TEST_API int mu_test_bring_open(const char *s, char *out, size_t cap) {
-    int mx = 4, src = MU_SRC_SAVE | MU_SRC_LIBRARY;
-    if (s && *s) sscanf(s, "%d,%d", &mx, &src);
+    int mx = 4, src = MU_SRC_SAVE | MU_SRC_LIBRARY; test_dir[0] = 0;
+    if (s && *s) { int k = 0; sscanf(s, "%d,%d%n", &mx, &src, &k); if (k > 0 && s[k] == ',') snprintf(test_dir, sizeof test_dir, "%s", s + k + 1); }
     bring_res[0] = 0;
-    mu_bring_req r = { .title = "Bring Units", .subtitle = "Test: pick your units", .max_units = mx, .sources = src, .done = bring_done };
+    mu_bring_req r = { .title = "Bring Units", .subtitle = "Test: pick your units", .max_units = mx, .sources = src, .done = bring_done,
+                       .list_saves = test_dir[0] ? test_list_saves : NULL };
     int rc = mu_bring_open(&r);
     snprintf(out, cap, "%d", rc);
     return rc;
@@ -104,7 +116,10 @@ static char *dupf(const char *fmt, const char *a) { size_t n = strlen(fmt) + (a 
 char *mu_rig_exec(const char *cmd, const char *line) {
     static char out[8192];
     if (!strcmp(cmd, "mu_bring_open")) {
-        char a[32]; snprintf(a, sizeof a, "%d,%d", jint(line, "max", 4), jint(line, "sources", MU_SRC_SAVE | MU_SRC_LIBRARY));
+        char a[1100], dir[1024] = ""; const char *d = line ? strstr(line, "\"dir\":") : NULL;
+        if (d) { d += 6; while (*d == ' ') d++; if (*d == '"') d++; else d = ""; }
+        if (d) { size_t k = 0; while (d[k] && d[k] != '"' && k + 1 < sizeof dir) { dir[k] = d[k]; k++; } dir[k] = 0; }
+        snprintf(a, sizeof a, "%d,%d%s%s", jint(line, "max", 4), jint(line, "sources", MU_SRC_SAVE | MU_SRC_LIBRARY), dir[0] ? "," : "", dir);
         int rc = mu_test_bring_open(a, out, sizeof out);
         return dupf(rc ? "{\"ok\":false,\"rc\":%s}" : "{\"ok\":true,\"rc\":%s}", out);
     }

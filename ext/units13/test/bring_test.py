@@ -42,7 +42,8 @@ class Copy(C.Copy):
 
 
 def prepare():
-    sd = os.path.join(C.I, 'data', 'Saves'); os.makedirs(sd, exist_ok=True)
+    # the test's OWN save folder (the copy's Saves holds other tests' worlds): offered through list_saves
+    sd = os.path.join(OUT, 'saves'); os.makedirs(sd, exist_ok=True)
     for f in SAVES:
         if not os.path.exists(os.path.join(sd, f)):
             shutil.copyfile(os.path.join(BACKUP, f), os.path.join(sd, f))          # copy, never move
@@ -69,10 +70,10 @@ def main():
         C.sh(f'cd "{C.WT}" && OUT="{C.B}" nice -n 19 zsh custom/build_module.sh')
         C.build_driver()
     C.install()
-    sd = prepare()
+    sd = prepare(); SD = sd
     with Copy(MODS, OUT, ui_scale=None) as c:
         c.wait_title()
-        rc, out = c.call('mu_test_bring_open', '3,3')
+        rc, out = c.call('mu_test_bring_open', '3,3,' + SD)
         time.sleep(1.0); st = bst(c); size1 = (st.get('w'), st.get('h'))
         ck('opens from mu_test_bring_open', rc == 0 and st.get('open') == 1, st)
         ck('both tabs shown', c.req('rect', target='bring:tab_save')['rc'] == 1 and c.req('rect', target='bring:tab_lib')['rc'] == 1)
@@ -120,14 +121,14 @@ def main():
            and all(len(p[1]) == 36 and p[3] in SAVES for p in ps if p[0] == '1')
            and all(len(p[1]) == 16 for p in ps if p[0] == '2'), ps)
         # reopen + Cancel
-        c.call('mu_test_bring_open', '3,3'); st = bst(c)
+        c.call('mu_test_bring_open', '3,3,' + SD); st = bst(c)
         ck('reopens', st.get('open') == 1 and st.get('picked') == 0, st)
         ck('first window had the screen size of later ones', size1 == (st.get('w'), st.get('h')), [size1, st.get('w'), st.get('h')])
         c.cap('08a_reopen')
         c.click('bring:cancel', wait=1.5); rc, res = c.call('mu_test_bring_result')
         ck('Cancel returns -1', res.startswith('-1:') and bst(c).get('open') == 0, res)
         # My Units only: one source = no tab strip; a team ticks its units up to the cap
-        c.call('mu_test_bring_open', '2,2'); st = bst(c)
+        c.call('mu_test_bring_open', '2,2,' + SD); st = bst(c)
         ck('one source: no tab strip', st.get('tab') == 2 and c.req('rect', target='bring:tab_save')['rc'] != 1
            and c.req('rect', target='bring:tab_lib')['rc'] != 1, st)
         c.click('bring:left2', wait=1.5); st = bst(c)
