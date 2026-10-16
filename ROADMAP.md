@@ -10,7 +10,7 @@ Dungeon Settlers Modded is made of three repos. Each item below is listed once, 
 
 ## Now
 
-- **v13.1.** PvP between a Mac host and a Windows player will stay in sync for the whole match. In v13 the Windows game could lose sync a few times per match. The fix is in Custom Modes, and the download comes from this repo's Releases page.
+- **v0.1.14.** PvP between a Mac host and a Windows player will stay in sync for the whole match. In v0.1.13 the Windows game could lose sync a few times per match. The fix is in Custom Modes, and the download comes from this repo's Releases page.
 - **Multiplayer page in two groups.** "Host a game" comes first, with Your save, New save and Foreign Expedition. Then a line, then "Join a game", with Join by address and Join a friend on Steam. You can tell what each button does at a glance.
 - **Plainer text.** We are rewriting the multiplayer menus and hover cards in plain words. Some of the current text reads like a programmer's notes.
 
