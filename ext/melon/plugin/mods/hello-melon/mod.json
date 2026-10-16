@@ -1,0 +1,10 @@
+{
+ "id": "hello-melon",
+ "name": "Hello Melon",
+ "version": "1.0.0",
+ "author": "ds_multiplayer test",
+ "kind": "melon",
+ "scope": "client",
+ "platforms": {"any": {"files": {"HelloMelon.dll": "460e43b66cbfbd37da82e6d54d8757bf8e708edb12e79e5fb54ecc0f9daae502"}}},
+ "description": "Test MelonLoader mod: logs, two Harmony postfixes and an injected MonoBehaviour. Changes nothing in the game."
+}

@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Lane test mod (MelonLoader, net6): Harmony postfixes on Assembly-CSharp + an injected MonoBehaviour.
+       References: our ML build (inst.noindex/ml) and the interop assemblies ML generated (MLGEN, default the inst copy). -->
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>IcallProbe</AssemblyName>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <MLDir Condition="'$(MLDir)' == ''">$(MSBuildThisFileDirectory)../../inst.noindex/ml/MelonLoader</MLDir>
+    <MLGen Condition="'$(MLGen)' == ''">$(MLDir)/Il2CppAssemblies</MLGen>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="$(MLDir)/net6/MelonLoader.dll" Private="false" />
+    <Reference Include="$(MLDir)/net6/0Harmony.dll" Private="false" />
+    <Reference Include="$(MLDir)/net6/Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(MLGen)/Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="$(MLGen)/UnityEngine.CoreModule.dll" Private="false" />
+  </ItemGroup>
+</Project>

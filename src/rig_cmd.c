@@ -457,6 +457,7 @@ static char *c_screenshot(const char *line) {
     return b.p;
 }
 
+char *mp_bridge_exec(const char *cmd, const char *line);  /* mp_bridge.c (BepInEx bridge) */
 char *rig_exec(const char *line) {
     char cmd[64] = "";
     if (!jstr(line, "cmd", cmd, sizeof cmd)) return err("no cmd");
@@ -464,6 +465,7 @@ char *rig_exec(const char *line) {
     char *dr = rig_det_exec(cmd, line); if (dr) return dr;
     if (!strncmp(cmd, "mpm_", 4)) { char *mm = mpmenu_exec(cmd, line); if (mm) return mm; }
     char *mr = mp_game_exec(cmd, line); if (mr) return mr;
+    if (!strncmp(cmd, "bridge_", 7)) { char *br = mp_bridge_exec(cmd, line); if (br) return br; }   /* BepInEx bridge (ext/bepinex_bridge) */
     if (!strncmp(cmd, "trn_", 4)) { char *tr = trn_exec(cmd, line); if (tr) return tr; }
     if (!strncmp(cmd, "ui_", 3)) { char *ur = ui_exec(cmd, line); if (ur) return ur; }
     if (!strcmp(cmd, "ui_map_vote")) { double a = 1; jnum(line, "accept", &a); Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", ui_debug_map_vote(a != 0)); return b.p; }

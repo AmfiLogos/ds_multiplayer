@@ -728,6 +728,80 @@ static bool h_try_craft(Obj self, int32_t map, Obj crafting, Obj recipe, void *m
     return r;
 }
 
+/* ---------------------------------------------------------------- quick slots by skill key (ORD_EF_QSLOT, ord_core.h)
+ * MainFlow._campaignData (+0xC8) .PlayerUnitDataContainer (+0x48) ._unitQuickSlot (+0x20, UnitQuickSlotContainer)
+ * ._unitQuickSlot (+0x10, Dictionary<Guid, QuickSlotData>); QuickSlotData._quickSlots (+0x10, string[]). Offsets:
+ * ord_test/offsets_manual.cpp. Read in place (the game's GetSkillAt throws for an index this copy does not have). */
+static Obj qslot_array(const ord_guid *unit) {
+    Obj c = cdc(), pu = c ? AT(c, 0x48, Obj) : NULL, qc = pu ? AT(pu, 0x20, Obj) : NULL, d = qc ? AT(qc, 0x10, Obj) : NULL;
+    if (!d) return NULL;
+    Obj ent = AT(d, 0x18, Obj); int n = AT(d, 0x20, int32_t);
+    for (int i = 0; ent && i < n; i++) {
+        char *e = (char *)ent + 0x20 + i * 0x20;              /* Entry<Guid, QuickSlotData>: hash, next, key, value */
+        if (*(int32_t *)e < 0 || memcmp(e + 8, unit, 16)) continue;
+        Obj q = *(Obj *)(e + 0x18);
+        return q ? AT(q, 0x10, Obj) : NULL;
+    }
+    return NULL;
+}
+static int qslots_read(const ord_guid *unit, ord_qslots *s) {
+    Obj a = qslot_array(unit);
+    s->n = 0;
+    if (!a) return 0;
+    int n = (int)AT(a, 0x18, uint64_t);
+    if (n > ORD_QS_MAX) n = ORD_QS_MAX;
+    for (int i = 0; i < n; i++) g_str_get(AT(a, 0x20 + i * 8, Obj), s->k[i], ORD_STR);
+    s->n = n;
+    return 1;
+}
+static void qslot_write(Obj a, int i, const char *key) {
+    if (a && i >= 0 && i < (int)AT(a, 0x18, uint64_t)) SETREF(a, (char *)a + 0x20 + i * 8, key[0] ? g_str_new(key) : NULL);
+}
+static const ord_guid *qs_unit(const ord_evdef *d, Obj ev) { return (const ord_guid *)((char *)ev + d->f[1].off); }   /* UnitGuid */
+static Obj skill_comp(int map, const ord_guid *unit) {
+    Obj p = pc_handler(); Obj ec = p ? AT(p, 0x18, Obj) : NULL;
+    Obj u = g_ent_find(map, unit);
+    return (ec && u) ? F(VA_GET_COMPONENT_OF, Obj (*)(Obj, Obj, void *))(ec, u, md(MI_GETCOMP_SKILL)) : NULL;
+}
+static int dispatch_event(Obj ev);
+static int qslot_apply(ord_msg *m, int map) {
+    const ord_guid *unit = qs_unit(m->ev, m->evobj);
+    ord_qslots *s = calloc(1, sizeof *s); ord_qplan *p = calloc(1, sizeof *p);
+    if (!s || !p) { free(s); free(p); return -1; }
+    int has = qslots_read(unit, s), io, to, so, rc = 0;
+    ord_qs_fields(m->ev, &io, &to, &so);
+    int32_t was_i = AT(m->evobj, io, int32_t), was_t = to >= 0 ? AT(m->evobj, to, int32_t) : -1;
+    ord_qs_plan(&genv, m, has ? s : NULL, p);
+    Obj a = qslot_array(unit);
+    switch (p->act) {
+    case ORD_QP_RUN:                                          /* pre writes, handler at the local slot(s), post writes */
+        if (!a && (p->npre || p->npost)) { rc = -12; break; }
+        for (int k = 0; k < p->npre; k++) qslot_write(a, p->pre[k].slot, p->pre[k].key);
+        AT(m->evobj, io, int32_t) = p->idx;
+        if (to >= 0) AT(m->evobj, to, int32_t) = p->idx2;
+        rc = dispatch_event(m->evobj);
+        for (int k = 0; k < p->npost; k++) qslot_write(a, p->post[k].slot, p->post[k].key);
+        break;
+    case ORD_QP_AUTO: {
+        Obj comp = skill_comp(map, unit);
+        if (!is_cls(comp, "SkillComponent")) { rc = -12; break; }
+        o_auto_skill(comp, g_str_new(p->key), NULL);
+        break;
+    }
+    case ORD_QP_WRITE:
+        if (!a) { rc = -12; break; }
+        for (int k = 0; k < p->npost; k++) qslot_write(a, p->post[k].slot, p->post[k].key);
+        break;
+    default: break;
+    }
+    if (p->act != ORD_QP_RUN || p->npre || p->npost || ord_trace())
+        rig_log("ord: %s by skill key '%s'%s%s (reg %d): issuer slot %d/%d, here %d slots -> plan %d at %d/%d, %d+%d slot writes, rc %d",
+                m->ev->name, m->qkey, m->qkey2[0] ? " / " : "", m->qkey2, m->qreg, was_i, was_t, s->n, p->act, p->idx, p->idx2,
+                p->npre, p->npost, rc);
+    free(s); free(p);
+    return rc;
+}
+
 int ui_map_change_blocks(void) __attribute__((weak_import));   /* ui_game.c: map change running -> notice, 1 */
 static void h_b8_0(Obj self, Obj data, void *mi) {
     recover();
@@ -746,6 +820,10 @@ static void h_b8_0(Obj self, Obj data, void *mi) {
     m->ev = d; m->evobj = data;
     if (d->flags & ORD_EF_RAYCAST) m->has_ray = (uint8_t)raycast_now(data, d, &m->ray);
     if (d->flags & ORD_EF_PARTY) party_capture(m);
+    if (d->flags & ORD_EF_QSLOT) {                           /* the issuer's skill key(s) at the event's index(es) */
+        ord_qslots *qs = calloc(1, sizeof *qs);
+        if (qs) { qslots_read(qs_unit(d, data), qs); ord_qs_capture(&genv, m, qs); free(qs); }
+    }
     if ((d->flags & ORD_EF_EQUIP) && !gear_ok(d, data)) { st.blocked++; free(m); return; }
     { ord_guid it;
       if (item_api.me && event_item(d, data, cur_map(), &it) && !item_allowed(item_api.me(), &it)) {
@@ -1080,7 +1158,7 @@ static int apply_msg(ord_msg *m, int player) {
         } else {
             int nb = 0; Guid *before = (m->ev->flags & ORD_EF_RECRUIT) ? unit_guids(map, &nb) : NULL;
             int ni = 0; Guid *ibefore = (m->ev->flags & ORD_EF_TRADE) ? item_guids(map, &ni) : NULL;
-            rc = dispatch_event(m->evobj);
+            rc = (m->ev->flags & ORD_EF_QSLOT) ? qslot_apply(m, map) : dispatch_event(m->evobj);
             if (before) { recruit_report(map, before, nb, player); free(before); }
             if (ibefore) { tag_new_items(map, ibefore, ni, player, 1); free(ibefore); }   /* bought items */
             if (!strcmp(m->ev->name, "CraftingTaskGenerateRequested"))
@@ -1174,9 +1252,7 @@ static int apply_msg(ord_msg *m, int player) {
         break;
     }
     case ORD_K_AUTO_SKILL: {
-        Obj p = pc_handler(); Obj ec = p ? AT(p, 0x18, Obj) : NULL;
-        Obj u = g_ent_find(map, &m->unit);
-        Obj comp = (ec && u) ? F(VA_GET_COMPONENT_OF, Obj (*)(Obj, Obj, void *))(ec, u, md(MI_GETCOMP_SKILL)) : NULL;
+        Obj comp = skill_comp(map, &m->unit);
         if (!is_cls(comp, "SkillComponent")) { rc = -12; break; }
         o_auto_skill(comp, g_str_new(m->key), NULL);
         break;

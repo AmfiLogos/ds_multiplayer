@@ -33,6 +33,14 @@ typedef struct mp_joinpoint {
     int (*override_save)(const uint8_t **det, size_t *dl, const uint8_t **json, size_t *jn);
 } mp_joinpoint;
 
+/* register_host_choice2 (appended 2026-10-16, MPF API for lane fepvp). Texts are copied on register. */
+typedef struct mp_host_choice {
+    const char *id, *label, *tip;                  /* copied on register (id <= 31, label <= 47, tip <= 299 bytes) */
+    void (*draw_page)(void *panel);                /* NULL = the menu's own Expedition Rules panel (rp_fe, M.set.fe_*), shown OPEN, no Done button. Else: called each frame while this choice's host page shows, panel = empty RectTransform in its own panel next to the column (where the Rules panel sits); draw_page(NULL) once when the page closes */
+    int (*page_start)(char *err, size_t errn);     /* host page Start: 0 = the mod queued the world load; menu then waits like "Your save" (HOST_LOADING -> LOBBY + MPA_HOST_START). != 0: err shown on the page */
+    int (*lobby_start)(char *err, size_t errn);    /* lobby Start of a session hosted from this choice: 0 = started (PLAYING, LOBBY_HIDE, START_GAME, like MPA_FE_START); != 0: err shown */
+} mp_host_choice;
+
 typedef struct mp_api_table {
     uint32_t version, size;                                        /* size = sizeof(mp_api_table) of the multiplayer that answered */
     /* ---- session facts */
@@ -75,6 +83,9 @@ typedef struct mp_api_table {
     int (*register_frame)(int when, void (*cb)(void));             /* MP_FRAME_* */
     int (*register_save_keep)(int (*keep)(const char *stem));      /* 1 = the game may not delete this save (an original kept by a mod) */
     int (*register_menu)(const mp_menu_hooks *h);                  /* windows inside the Multiplayer menu (mpmenu_kit.h) */
+    /* ---- appended 2026-10-16 (check size before use) */
+    int (*register_host_choice2)(const mp_host_choice *c);   /* 0 ok, -1 refused (5th choice / bad args); same id again = replace. Up to 4, under "Host a game" after "New save", registration order, stock gap + hover card right of the column */
+    const char *(*host_choice_now)(void);                    /* id of the choice whose host page shows or whose session runs; "" none */
 } mp_api_table;
 
 /* exported by multiplayer: NULL if version > MP_API_VERSION */
