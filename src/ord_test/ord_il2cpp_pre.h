@@ -21,4 +21,4 @@
 #define using using_
 #define explicit explicit_
 #define mutable mutable_
-#include "~/ds_skill_truth/dump_25846389/il2cpp.h"
+#include "il2cpp.h"                       /* -I ~/ds_skill_truth/dump_25846389 (run_tests.sh; game dump, not in git) */

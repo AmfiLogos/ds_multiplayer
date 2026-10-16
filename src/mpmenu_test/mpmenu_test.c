@@ -26,7 +26,7 @@ int main(void) {
     o.steam = 1; mpm_step(&m, &o, MPB_NONE); mpm_label(&m, MPB_JOIN_FRIEND, l, sizeof l); CHECK(!strcmp(l, "Join a friend on Steam"));
     CHECK((mpm_step(&m, &o, MPB_JOIN_FRIEND) & MPA_FRIENDS) && m.state == MPM_TITLE_FRIENDS);
     mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "No Steam friend is hosting") != NULL);
-    m.nfriends = 2; strcpy(m.friends[0], "The owner"); strcpy(m.friends[1], "Ana");
+    m.nfriends = 2; strcpy(m.friends[0], "Alex"); strcpy(m.friends[1], "Ana");
     CHECK((mpm_visible(&m, &o) & B(MPB_FRIEND1)) && !(mpm_visible(&m, &o) & B(MPB_FRIEND2)));
     mpm_label(&m, MPB_FRIEND1, l, sizeof l); CHECK(!strcmp(l, "Join Ana's world"));
     CHECK((mpm_step(&m, &o, MPB_FRIEND1) & MPA_JOIN_FRIEND) && m.friend_pick == 1);
@@ -155,15 +155,15 @@ int main(void) {
     mpm_init(&m); o = title(); o.scene = 2; o.campaign_ready = 1; o.role = 1;
     mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_PLAYING);                  /* mp.json session */
     /* host left (ux #9): a notice box text, nothing in the Multiplayer button */
-    strcpy(m.host, "The owner");
+    strcpy(m.host, "Alex");
     o.role = 0; strcpy(o.msg, "The host left the game"); mpm_step(&m, &o, MPB_NONE);
-    CHECK(m.state == MPM_IDLE && !m.msg[0] && !strcmp(m.notice, "<size=150%>The owner left the game</size>\nThe world is saved on the owner's computer. To play again, the owner hosts it and invites you."));
+    CHECK(m.state == MPM_IDLE && !m.msg[0] && !strcmp(m.notice, "<size=150%>Alex left the game</size>\nThe world is saved on Alex's computer. To play again, Alex hosts it and invites you."));
     mpm_label(&m, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer")); o.msg[0] = 0;
     /* lan_v10: a join started from the player's own world and refused (F9 / F17): the reason box, shown in the world */
-    { mpm_model q; mpm_init(&q); mpm_obs t2 = title(); t2.scene = 2; t2.campaign_ready = 1; t2.role = 2; strcpy(t2.host_name, "The owner");
+    { mpm_model q; mpm_init(&q); mpm_obs t2 = title(); t2.scene = 2; t2.campaign_ready = 1; t2.role = 2; strcpy(t2.host_name, "Alex");
       mpm_step(&q, &t2, MPB_NONE); mpm_step(&q, &t2, MPB_NONE); CHECK(q.state == MPM_PLAYING);
       t2.role = 0; strcpy(t2.msg, "Could not join: the host is playing another world now (Old World)"); mpm_step(&q, &t2, MPB_NONE);
-      CHECK(q.state == MPM_FAILED && strstr(q.notice, "Could not join the owner's game</size>\nThe host is playing another world now (Old World).")); }
+      CHECK(q.state == MPM_FAILED && strstr(q.notice, "Could not join Alex's game</size>\nThe host is playing another world now (Old World).")); }
     /* host start failed in the lobby */
     mpm_init(&m); m.state = MPM_LOBBY; o.failed = 1;
     a = mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_FAILED && (a & MPA_LOBBY_HIDE) && strstr(m.notice, "Multiplayer could not start</size>") && !m.msg[0]);
@@ -172,7 +172,7 @@ int main(void) {
     mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_GUEST_JOINING);
     CHECK(mpm_visible(&m, &o) == (B(MPB_INFO) | B(MPB_CANCEL_JOIN)));
     mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "Joining the host's game...") != NULL);
-    strcpy(o.host_name, "The owner"); mpm_step(&m, &o, MPB_NONE); mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "Joining the owner's game...") != NULL);
+    strcpy(o.host_name, "Alex"); mpm_step(&m, &o, MPB_NONE); mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "Joining Alex's game...") != NULL);
     o.guest_loading = 1; mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_GUEST_LOADING);
     mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "loading") != NULL);
     o.scene = 2; o.campaign_ready = 1; mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_GUEST_LOADING);
@@ -182,15 +182,15 @@ int main(void) {
     /* host still in the lobby (ux #14): the guest gets the waiting panel; Start on the host ends it */
     o.esc_open = 0; o.host_lobby = 1; a = mpm_step(&m, &o, MPB_NONE);
     CHECK(m.state == MPM_GUEST_LOBBY && (a & MPA_LOBBY_SHOW) && mpm_visible(&m, &o) == B(MPB_LEAVE));
-    { const char *gn[] = { "The owner", "Ben" }; char gt[512]; mpm_lobby_text(&m, gn, 2, gt, sizeof gt);
+    { const char *gn[] = { "Alex", "Ben" }; char gt[512]; mpm_lobby_text(&m, gn, 2, gt, sizeof gt);
       char tl[64]; mpm_lobby_title(&m, tl, sizeof tl);
-      CHECK(!strcmp(tl, "In the owner's lobby") && strstr(gt, "The game starts when the owner presses Start.") && strstr(gt, "\xC2\xB7 the owner (host)\n\xC2\xB7 Ben") && !strstr(gt, "Pause:") && !strstr(gt, "<b>")); }
+      CHECK(!strcmp(tl, "In Alex's lobby") && strstr(gt, "The game starts when Alex presses Start.") && strstr(gt, "\xC2\xB7 Alex (host)\n\xC2\xB7 Ben") && !strstr(gt, "Pause:") && !strstr(gt, "<b>")); }
     o.host_lobby = 0; a = mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_PLAYING && (a & MPA_LOBBY_HIDE));
     o.host_lobby = 1; mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_GUEST_LOBBY);
     { mpm_model m2 = m; mpm_obs o2 = o; o2.role = 0; strcpy(o2.msg, "Connection to the host lost"); mpm_step(&m2, &o2, MPB_NONE);   /* own link lost */
-      CHECK(m2.state == MPM_IDLE && strstr(m2.notice, "Connection to the owner lost</size>") && strstr(m2.notice, "The owner is waiting for you: rejoin from Recent worlds.")); }
+      CHECK(m2.state == MPM_IDLE && strstr(m2.notice, "Connection to Alex lost</size>") && strstr(m2.notice, "Alex is waiting for you: rejoin from Recent worlds.")); }
     o.role = 0; strcpy(o.msg, "The host left the game"); a = mpm_step(&m, &o, MPB_NONE);
-    CHECK(m.state == MPM_IDLE && (a & MPA_LOBBY_HIDE) && strstr(m.notice, "The owner left the game</size>")); o.msg[0] = 0; o.role = 2; o.host_lobby = 0;
+    CHECK(m.state == MPM_IDLE && (a & MPA_LOBBY_HIDE) && strstr(m.notice, "Alex left the game</size>")); o.msg[0] = 0; o.role = 2; o.host_lobby = 0;
     /* guest cancel and guest failure */
     mpm_init(&m); o = title(); o.role = 2; mpm_step(&m, &o, MPB_NONE);
     a = mpm_step(&m, &o, MPB_CANCEL_JOIN); CHECK(m.state == MPM_IDLE && (a & MPA_LEAVE));
@@ -203,18 +203,18 @@ int main(void) {
     strcpy(m.connecting, "1.2.3.4:47777"); o.escape = 1; a = mpm_step(&m, &o, MPB_NONE); o.escape = 0;
     CHECK(m.state == MPM_TITLE_MENU && (a & MPA_JOIN_CANCEL) && !m.connecting[0]);
     mpm_init(&m); o = title(); o.role = 2; mpm_step(&m, &o, MPB_NONE);
-    strcpy(o.host_name, "The owner"); mpm_step(&m, &o, MPB_NONE); o.host_name[0] = 0;
+    strcpy(o.host_name, "Alex"); mpm_step(&m, &o, MPB_NONE); o.host_name[0] = 0;
     o.role = 0; o.failed = 1; strcpy(o.msg, "Could not join: your game version is different from the host's: update both games"); mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_FAILED);
     /* lan_v10 (ux_flow F8): the reason in the notice box, the Multiplayer button plain */
-    CHECK(!strcmp(m.notice, "<size=150%>Could not join the owner's game</size>\nYour game version is different from the host's: update both games."));
+    CHECK(!strcmp(m.notice, "<size=150%>Could not join Alex's game</size>\nYour game version is different from the host's: update both games."));
     mpm_label(&m, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer")); o.msg[0] = 0;
     o.failed = 0; mpm_step(&m, &o, MPB_MULTIPLAYER); CHECK(m.state == MPM_TITLE_MENU && !m.msg[0]);
     /* lobby text */
-    const char *names[] = { "The owner", "Ben" }; char t[512];
+    const char *names[] = { "Alex", "Ben" }; char t[512];
     mpm_init(&m); mpm_lobby_text(&m, names, 2, t, sizeof t);
     CHECK(!strncmp(t, "Share your address, then press Start when everyone is in.\n", 58));
     { char tl[64]; mpm_lobby_title(&m, tl, sizeof tl); CHECK(!strcmp(tl, "Multiplayer lobby")); }
-    CHECK(strstr(t, "\xC2\xB7 the owner (host)\n\xC2\xB7 Ben\n") && strstr(t, "Pause: anyone  \xC2\xB7  Speed-up: on  \xC2\xB7  Gear: own units") && strstr(t, "<color=#A69085>") && !strstr(t, "<b>"));
+    CHECK(strstr(t, "\xC2\xB7 Alex (host)\n\xC2\xB7 Ben\n") && strstr(t, "Pause: anyone  \xC2\xB7  Speed-up: on  \xC2\xB7  Gear: own units") && strstr(t, "<color=#A69085>") && !strstr(t, "<b>"));
     mpm_lobby_text(&m, names, 0, t, sizeof t); CHECK(strstr(t, "\xC2\xB7 You (host)"));
     CHECK(!strstr(t, "Local:"));
     strcpy(m.direct, "192.168.1.20:47777"); mpm_lobby_text(&m, names, 2, t, sizeof t);
@@ -233,10 +233,10 @@ int main(void) {
     mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "Connecting to 1.2.3.4:47777 to watch...") != NULL);
     mpm_step(&m, &o, MPB_CANCEL_JOIN);
     CHECK((mpm_step(&m, &o, MPB_CONNECT) & MPA_JOIN_ADDR) && m.watch == 0);
-    o.role = 2; o.spectator = 1; strcpy(o.host_name, "The owner"); mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_GUEST_JOINING);
-    mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "Joining the owner's game as a spectator...") != NULL);
+    o.role = 2; o.spectator = 1; strcpy(o.host_name, "Alex"); mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_GUEST_JOINING);
+    mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "Joining Alex's game as a spectator...") != NULL);
     o.role = 0; strcpy(o.msg, "The host turned spectators off"); o.failed = 1; mpm_step(&m, &o, MPB_NONE);
-    CHECK(m.state == MPM_IDLE && strstr(m.notice, "The owner turned spectators off") && strstr(m.notice, "You can no longer watch this world."));
+    CHECK(m.state == MPM_IDLE && strstr(m.notice, "Alex turned spectators off") && strstr(m.notice, "You can no longer watch this world."));
     { mpm_model q; mpm_init(&q); mpm_obs po = title(); strcpy(q.host, "Ana"); q.state = MPM_PLAYING; po.scene = 2; po.role = 0; strcpy(po.msg, "The host turned spectators off");
       mpm_step(&q, &po, MPB_NONE); CHECK(q.state == MPM_IDLE && strstr(q.notice, "Ana turned spectators off")); }
     mpm_init(&m); o = title(); mpm_step(&m, &o, MPB_MULTIPLAYER); m.nhist = 8; m.hist_page = 1;
@@ -370,16 +370,16 @@ int main(void) {
         FILE *z = fopen(tp, "w"); if (z) fclose(z);                         /* empty file (left in TMPDIR: no rm) */
         char nm[MPM_TAG_NAMES][32], s[160];
         CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == -1);
-        const char *a[] = { "The owner", "Ana" }; CHECK(mpm_tag_add(tp, "g1", a, 2) == 1);
-        CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == 2 && !strcmp(nm[0], "The owner") && !strcmp(nm[1], "Ana"));
+        const char *a[] = { "Alex", "Ana" }; CHECK(mpm_tag_add(tp, "g1", a, 2) == 1);
+        CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == 2 && !strcmp(nm[0], "Alex") && !strcmp(nm[1], "Ana"));
         CHECK(mpm_tag_add(tp, "g1", a, 2) == 0);                      /* same names: no write */
         const char *b2[] = { "Ana", "Bo\tX\n", "", NULL }; CHECK(mpm_tag_add(tp, "g1", b2, 4) == 1);
         CHECK(mpm_tag_get(tp, "g1", nm, MPM_TAG_NAMES) == 3 && !strcmp(nm[2], "BoX"));
-        const char *c1[] = { "The owner", "Zed" }; CHECK(mpm_tag_add(tp, "g2", c1, 2) == 1);
+        const char *c1[] = { "Alex", "Zed" }; CHECK(mpm_tag_add(tp, "g2", c1, 2) == 1);
         CHECK(mpm_tag_add(tp, "bad guid", c1, 2) == 0 && mpm_tag_get(tp, "bad", nm, 4) == -1);
-        mpm_tag_names(nm, 3, 3, s, sizeof s); CHECK(!strcmp(s, "The owner, Ana and BoX"));
-        mpm_tag_names(nm, 3, 2, s, sizeof s); CHECK(!strcmp(s, "The owner, Ana +1"));
-        mpm_tag_names(nm, 1, 3, s, sizeof s); CHECK(!strcmp(s, "The owner"));
+        mpm_tag_names(nm, 3, 3, s, sizeof s); CHECK(!strcmp(s, "Alex, Ana and BoX"));
+        mpm_tag_names(nm, 3, 2, s, sizeof s); CHECK(!strcmp(s, "Alex, Ana +1"));
+        mpm_tag_names(nm, 1, 3, s, sizeof s); CHECK(!strcmp(s, "Alex"));
         CHECK(mpm_tag_remove(tp, "g1") == 1 && mpm_tag_get(tp, "g1", nm, 4) == -1);
         CHECK(mpm_tag_get(tp, "g2", nm, 4) == 2);                    /* the other world keeps its tag */
         CHECK(mpm_tag_remove(tp, "g1") == 0);

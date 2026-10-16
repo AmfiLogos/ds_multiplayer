@@ -80,7 +80,7 @@ static void test_claims(void) {
 
 static void test_votes(void) {
     ui_players p; memset(&p, 0, sizeof p);
-    strcpy(p.name[0], "The owner"); strcpy(p.name[1], "B");
+    strcpy(p.name[0], "Alex"); strcpy(p.name[1], "B");
     ui_votes v; memset(&v, 0, sizeof v);
     v.present = 0x7; v.allow_speedup = v.allow_pause = 1;
     v.speed[0] = 2; v.speed[1] = 1; v.speed[2] = 2;   /* speeds: 1 Normal, 2 Fast (3.5x) */
@@ -90,11 +90,11 @@ static void test_votes(void) {
     ui_status_line(UI_NET_PLAYING, &v, &p, 0, line, sizeof line);
     CHECKS(line, "You want Fast \u00B7 waiting for B");
     ui_status_line(UI_NET_PLAYING, &v, &p, 1, line, sizeof line);
-    CHECKS(line, "The owner, Player 3 want Fast \u00B7 press >> to agree");
+    CHECKS(line, "Alex, Player 3 want Fast \u00B7 press >> to agree");
     CHECK(!strstr(line, "2x") && !strstr(line, "3x"));
     v.speed[2] = 0;                                /* no vote yet = Normal */
     ui_status_line(UI_NET_PLAYING, &v, &p, 1, line, sizeof line);
-    CHECKS(line, "The owner wants Fast \u00B7 press >> to agree");
+    CHECKS(line, "Alex wants Fast \u00B7 press >> to agree");
     ui_status_line(UI_NET_PLAYING, &v, &p, 0, line, sizeof line);
     CHECKS(line, "You want Fast \u00B7 waiting for B, Player 3");
     v.speed[1] = 2; v.speed[2] = 2;
@@ -110,9 +110,9 @@ static void test_votes(void) {
     char who[64];
     CHECK(ui_pause_voters(&v, &p, who, sizeof who) == 1); CHECKS(who, "B");
     v.pause[0] = 1;
-    CHECK(ui_pause_voters(&v, &p, who, sizeof who) == 2); CHECKS(who, "The owner, B");
+    CHECK(ui_pause_voters(&v, &p, who, sizeof who) == 2); CHECKS(who, "Alex, B");
     ui_status_line(UI_NET_PLAYING, &v, &p, 0, line, sizeof line);
-    CHECKS(line, "Paused by the owner, B");
+    CHECKS(line, "Paused by Alex, B");
     { char pt[128]; ui_pause_text(&v, &p, pt, sizeof pt); CHECKS(pt, line); }     /* one text for panel + banner (#20) */
     { ui_votes w = v; memset(w.pause, 0, sizeof w.pause); w.paused_ext = 1; w.pause_by1 = 2;   /* auto pause (join / desync) */
       ui_status_line(UI_NET_PLAYING, &w, &p, 0, line, sizeof line); CHECKS(line, "Paused by B");
@@ -128,7 +128,7 @@ static void test_votes(void) {
     CHECK(ui_is_paused(&v));
     ui_status_line(UI_NET_PLAYING, &v, &p, 0, line, sizeof line); CHECKS(line, "Paused for a story event");
     v.allow_pause = 1;
-    ui_status_line(UI_NET_PLAYING, &v, &p, 0, line, sizeof line); CHECKS(line, "Paused for a story event (and by the owner, B)");
+    ui_status_line(UI_NET_PLAYING, &v, &p, 0, line, sizeof line); CHECKS(line, "Paused for a story event (and by Alex, B)");
     v.story_pause = 0x4;                           /* absent player's story hold does not count */
     v.allow_pause = 0;
     CHECK(!ui_is_paused(&v));
@@ -138,7 +138,7 @@ static void test_votes(void) {
     ui_status_line(UI_NET_OFF, &v, &p, 0, line, sizeof line);     CHECKS(line, "");
     /* labels and tags */
     char nm[40];
-    CHECKS(ui_player_label(&p, 0, nm), "The owner"); CHECKS(ui_player_label(&p, 4, nm), "Player 5");
+    CHECKS(ui_player_label(&p, 0, nm), "Alex"); CHECKS(ui_player_label(&p, 4, nm), "Player 5");
     CHECKS(ui_player_label(NULL, 0, nm), "Host");
     char tag[96];
     ui_owner_tag(&p, 1, tag, sizeof tag); CHECKS(tag, " <color=#44AAFF>[B]</color>");
@@ -286,10 +286,10 @@ static void test_mapvote(void) {
       CHECKS(ui_map_kind_text_floor(UI_MAP_RETURN_BASE, 3, k, sizeof k), "return to the settlement");
       CHECKS(ui_map_kind_text_floor(UI_MAP_NEXT_FLOOR, 0, k, sizeof k), "go down to the next floor"); }
     /* cancel (60 s timeout, review #5): only the proposer or the host; decides "no" on every peer */
-    { ui_players q; memset(&q, 0, sizeof q); strcpy(q.name[0], "The owner"); strcpy(q.name[1], "Ben"); strcpy(q.name[2], "Cy");
+    { ui_players q; memset(&q, 0, sizeof q); strcpy(q.name[0], "Alex"); strcpy(q.name[1], "Ben"); strcpy(q.name[2], "Cy");
       char wl[128];
       CHECK(ui_mapvote_propose(&m, 90, 1, UI_MAP_NEXT_FLOOR, NULL, 0, 0x7));
-      CHECK(ui_mapvote_wait_line(&m, &q, 1, 0x7, wl, sizeof wl) == 1); CHECKS(wl, "Waiting for the owner, Cy (1 of 3 agree)");
+      CHECK(ui_mapvote_wait_line(&m, &q, 1, 0x7, wl, sizeof wl) == 1); CHECKS(wl, "Waiting for Alex, Cy (1 of 3 agree)");
       CHECK(ui_mapvote_wait_line(&m, &q, 0, 0x7, wl, sizeof wl) == 0 && !wl[0]);          /* not the proposer */
       ui_mapvote_vote(&m, 0, 90, 1, 0x7);
       CHECK(ui_mapvote_wait_line(&m, &q, 1, 0x7, wl, sizeof wl) == 1); CHECKS(wl, "Waiting for Cy (2 of 3 agree)");
@@ -301,12 +301,12 @@ static void test_mapvote(void) {
       char r[160];
       ui_mapvote_result(&m, &q, 0x7, 2, r, sizeof r); CHECKS(r, "No answer in 60 s: the vote was cancelled");
       CHECK(ui_mapvote_propose(&m, 92, 1, UI_MAP_NEXT_FLOOR, NULL, 0, 0x7));
-      ui_mapvote_marks(&m, &q, 0x7, "\u2713", r, sizeof r); CHECKS(r, "<color=#FFEE88>The owner</color> \u2026   <color=#44AAFF>Ben</color> <color=#71ab40>\u2713</color>   <color=#DD66BB>Cy</color> \u2026");
+      ui_mapvote_marks(&m, &q, 0x7, "\u2713", r, sizeof r); CHECKS(r, "<color=#FFEE88>Alex</color> \u2026   <color=#44AAFF>Ben</color> <color=#71ab40>\u2713</color>   <color=#DD66BB>Cy</color> \u2026");
       CHECK(ui_mapvote_vote(&m, 1, 92, UI_MAP_CANCEL_USER, 0x7) == 0);
       ui_mapvote_result(&m, &q, 0x7, 2, r, sizeof r); CHECKS(r, "Ben cancelled the vote");
       CHECK(ui_mapvote_propose(&m, 93, 1, UI_MAP_NEXT_FLOOR, NULL, 0, 0x3));
       CHECK(ui_mapvote_vote(&m, 0, 93, 0, 0x3) == 0);                                          /* 1-1 tie: host said no */
-      ui_mapvote_result(&m, &q, 0x3, 2, r, sizeof r); CHECKS(r, "The owner said no: staying on floor 2");
+      ui_mapvote_result(&m, &q, 0x3, 2, r, sizeof r); CHECKS(r, "Alex said no: staying on floor 2");
       CHECK(ui_mapvote_propose(&m, 94, 1, UI_MAP_NEXT_FLOOR, NULL, 0, 0x3));
       CHECK(ui_mapvote_vote(&m, 0, 94, 1, 0x3) == 1);
       ui_mapvote_result(&m, &q, 0x3, 2, r, sizeof r); CHECKS(r, "Everyone agreed: going down");
@@ -357,9 +357,9 @@ static void test_view(void) {
     ui_pause_line(&p, 0, 1, l, sizeof l); CHECKS(l, "Paused by Host");
     ui_pause_line(&p, -1, 1, l, sizeof l); CHECKS(l, "Paused for a story event");
     ui_pause_line(&p, -1, 0, l, sizeof l); CHECKS(l, "Paused");
-    strcpy(p.name[0], "The owner");
-    ui_resync_text(&p, 1, 0, l, sizeof l); CHECKS(l, "B's game went out of sync: reloading everyone from the owner's save");
-    ui_resync_text(&p, 1, 1, l, sizeof l); CHECKS(l, "Your game went out of sync: reloading everyone from the owner's save");
+    strcpy(p.name[0], "Alex");
+    ui_resync_text(&p, 1, 0, l, sizeof l); CHECKS(l, "B's game went out of sync: reloading everyone from Alex's save");
+    ui_resync_text(&p, 1, 1, l, sizeof l); CHECKS(l, "Your game went out of sync: reloading everyone from Alex's save");
     ui_owner_tag_world(&p, 1, "\u25CF", l, sizeof l); CHECKS(l, " <color=#44AAFF>\u25CF B</color>");
     ui_owner_tag_world(&p, 1, NULL, l, sizeof l); CHECKS(l, " <color=#44AAFF>B</color>");
     ui_owner_tag_world(&p, -1, "\u25CF", l, sizeof l); CHECKS(l, "");
@@ -402,15 +402,15 @@ static void test_live(void) {
     int isp2[2] = {1, 1}, own2[2] = {0, 0};
     CHECK(ui_filter_selection(isp2, own2, 2, 1, 0, keep) == 2);                    /* none of mine: view only */
     CHECK(ui_filter_selection(isp2, own2, 1, 1, 0, keep) == 1);                    /* single: kept */
-    ui_players p; memset(&p, 0, sizeof p); strcpy(p.name[0], "The owner"); strcpy(p.name[1], "B");
+    ui_players p; memset(&p, 0, sizeof p); strcpy(p.name[0], "Alex"); strcpy(p.name[1], "B");
     char r[512];
-    ui_player_row2(&p, 0, 0, 5, 0, r, sizeof r); CHECKS(r, "<color=#FFEE88>The owner</color>");
+    ui_player_row2(&p, 0, 0, 5, 0, r, sizeof r); CHECKS(r, "<color=#FFEE88>Alex</color>");
     ui_player_row2(&p, 1, 0, 42, 0, r, sizeof r); CHECKS(r, "<color=#44AAFF>B</color>  42 ms");
     ui_player_row2(&p, 1, 0, 42, 2, r, sizeof r); CHECK(strstr(r, "out of sync") != NULL);
     ui_list_header(2, 0, r, sizeof r); CHECKS(r, "Players (2)");
-    { ui_players q; memset(&q, 0, sizeof q); strcpy(q.name[0], "The owner"); strcpy(q.name[1], "Ben");
+    { ui_players q; memset(&q, 0, sizeof q); strcpy(q.name[0], "Alex"); strcpy(q.name[1], "Ben");
       char L[128], R[256];
-      ui_player_cols(&q, 0, 1, 10, 0, "\u25CF", L, sizeof L, R, sizeof R); CHECKS(L, "<color=#FFEE88>\u25CF</color> The owner"); CHECKS(R, "host");
+      ui_player_cols(&q, 0, 1, 10, 0, "\u25CF", L, sizeof L, R, sizeof R); CHECKS(L, "<color=#FFEE88>\u25CF</color> Alex"); CHECKS(R, "host");
       ui_player_cols(&q, 1, 1, 10, 0, NULL, L, sizeof L, R, sizeof R); CHECKS(L, "<color=#44AAFF>\u2022</color> Ben"); CHECKS(R, "");
       ui_player_cols(&q, 1, 0, 130, 0, "\u25CF", L, sizeof L, R, sizeof R); CHECKS(R, "");      /* no ms, no bar glyphs */
       CHECK(ui_conn_level(30, 0, 0) == 3 && ui_conn_level(119, 39, 0) == 3 && ui_conn_level(120, 0, 0) == 2 && ui_conn_level(250, 0, 0) == 2);
@@ -429,7 +429,7 @@ static void test_live(void) {
     CHECK(!strncmp(r, "2  <color=#44AAFF>B</color>  ", 29) && strstr(r, "#58D68D") && !strstr(r, "#5D6D7E"));
     ui_player_row3(&p, 1, 0, 150, 0, r, sizeof r); CHECK(strstr(r, "#5D6D7E") != NULL);
     ui_player_row3(&p, 1, 0, 5, 2, r, sizeof r); CHECK(strstr(r, ">X<") != NULL);
-    ui_player_row3(&p, 0, 0, 5, 0, r, sizeof r); CHECKS(r, "1  <color=#FFEE88>The owner</color>  ");
+    ui_player_row3(&p, 0, 0, 5, 0, r, sizeof r); CHECKS(r, "1  <color=#FFEE88>Alex</color>  ");
 }
 
 static void test_address(void) {
@@ -502,19 +502,19 @@ static void test_v10(void) {
     CHECK(ui_edge_arrow(1000, 600, 24, 500, -900, &ax, &ay, &dg) && ay > 23 && ay < 25 && dg < -89 && dg > -91);
     CHECK(ui_edge_arrow(1000, 600, 24, -500, 1500, &ax, &ay, &dg) && ax >= 23.9f && ay <= 576.1f && dg > 90 && dg < 180);
     /* story: countdown then the host */
-    ui_players pl; memset(&pl, 0, sizeof pl); pl.present = 0x7; strcpy(pl.name[0], "The owner"); strcpy(pl.name[1], "Ben");
+    ui_players pl; memset(&pl, 0, sizeof pl); pl.present = 0x7; strcpy(pl.name[0], "Alex"); strcpy(pl.name[1], "Ben");
     ui_story st; ui_story_reset(&st, 0, -1); char line[200];
-    ui_story_line(&st, &pl, 2, 1, 0, 3, 45, line, sizeof line); CHECKS(line, "Ben chooses \u00B7 45 s, then the owner decides");
+    ui_story_line(&st, &pl, 2, 1, 0, 3, 45, line, sizeof line); CHECKS(line, "Ben chooses \u00B7 45 s, then Alex decides");
     ui_story_line(&st, &pl, 0, 1, 0, 3, 45, line, sizeof line); CHECKS(line, "Ben chooses \u00B7 45 s, then you decide");
-    ui_story_line(&st, &pl, 1, 1, 0, 3, 45, line, sizeof line); CHECKS(line, "You choose \u00B7 45 s, then the owner decides");
-    ui_story_line(&st, &pl, 1, 0, 0, 3, -1, line, sizeof line); CHECKS(line, "The owner chooses");
+    ui_story_line(&st, &pl, 1, 1, 0, 3, 45, line, sizeof line); CHECKS(line, "You choose \u00B7 45 s, then Alex decides");
+    ui_story_line(&st, &pl, 1, 0, 0, 3, -1, line, sizeof line); CHECKS(line, "Alex chooses");
     ui_story_line(&st, &pl, 1, UI_STORY_VOTE, 1, 3, 9, line, sizeof line); CHECKS(line, "Vote \u00B7 1 of 3 \u00B7 host breaks ties \u00B7 9 s, then the votes decide");
     CHECK(ui_story_timeout(&st, 90, 1, 0x7) == -1 && st.handover && st.chooser == 0 && st.node == 90);   /* owner rule: Ben away -> the host */
     CHECK(ui_story_vote(&st, 1, 90, 2, 0x7, 1) == -1);                      /* Ben's late click no longer counts */
     CHECK(ui_story_vote(&st, 0, 90, 1, 0x7, 1) == 1);                       /* the host's click decides */
     ui_story_line(&st, &pl, 1, 0, 0, 3, -1, line, sizeof line); CHECKS(line, "Chosen");
     ui_story_reset(&st, 0, -1); ui_story_timeout(&st, 91, 1, 0x7);
-    ui_story_line(&st, &pl, 1, 0, 0, 3, -1, line, sizeof line); CHECKS(line, "The owner decides (no answer in 60 s)");
+    ui_story_line(&st, &pl, 1, 0, 0, 3, -1, line, sizeof line); CHECKS(line, "Alex decides (no answer in 60 s)");
     ui_story_line(&st, &pl, 0, 0, 0, 3, -1, line, sizeof line); CHECKS(line, "You decide (no answer in 60 s)");
     ui_story_reset(&st, 0, -1);
     CHECK(ui_story_vote(&st, 2, 92, 3, 0x7, UI_STORY_VOTE) == -1 && ui_story_timeout(&st, 92, UI_STORY_VOTE, 0x7) == 3);   /* majority with a vote in: it decides */

@@ -3,8 +3,8 @@
 set -e; cd "${0:A:h}"
 B=${TMPDIR:-/tmp}/ord_test_build; mkdir -p $B
 python3 gen_events.py
-nice -n 19 clang++ -std=c++17 -fsyntax-only -w -I. offsets_check.cpp
-nice -n 19 clang++ -std=c++17 -fsyntax-only -w -I. offsets_manual.cpp
+nice -n 19 clang++ -std=c++17 -fsyntax-only -w -I. -I$HOME/ds_skill_truth/dump_25846389 offsets_check.cpp
+nice -n 19 clang++ -std=c++17 -fsyntax-only -w -I. -I$HOME/ds_skill_truth/dump_25846389 offsets_manual.cpp
 echo "offsets: all static_asserts hold against il2cpp.h"
 python3 gen_offsets_md.py
 nice -n 19 clang -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -o $B/test_ord test_ord.c ../ord_core.c
