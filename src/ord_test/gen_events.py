@@ -61,7 +61,10 @@ FLAGS = {'DropItemRequested': 'ORD_EF_RAYCAST', 'TradeCommitRequested': 'ORD_EF_
          'TransferAndEquipRequested': 'ORD_EF_EQUIP',
          # handlers read ISelectReader: the owner check uses the first selected unit
          'ToggleBehaviourOption': 'ORD_EF_SELOWNER', 'ToggleTaskOptionRequested': 'ORD_EF_SELOWNER',
-         'SelectAmmoRequested': 'ORD_EF_SELOWNER'}
+         'SelectAmmoRequested': 'ORD_EF_SELOWNER',
+         # quick-slot INDEX orders: sent with the issuer's skill key, resolved against each copy's own slots
+         'ToggleAutoSkillRequested': 'ORD_EF_QSLOT', 'SetQuickSlotRequested': 'ORD_EF_QSLOT',
+         'UnsetQuickSlotRequested': 'ORD_EF_QSLOT', 'MoveQuickSlotRequested': 'ORD_EF_QSLOT'}
 # owner (unit the order is about) for the mp ownership check: first field found in this order
 OWNER = ['UserGuid', 'UnitGuid', 'OwnerGuid', 'Owner', 'From', 'targetGuid', 'TargetGuid', 'Guid', 'SourceGuid', 'Target']
 

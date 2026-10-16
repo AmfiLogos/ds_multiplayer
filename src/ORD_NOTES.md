@@ -171,3 +171,9 @@ Results are in `build_ord/base_results_gear{0,1,2}.json`. The save copy has gold
 - Proof, pair IJ, dungeon save, gear 0. B (client) owns Leo and Silvarion; the host owns Ivan and Leonis (unclaimed).
   - The host drops Ivan's WoodClub (443,104). The client designates a pick-up there: the host's units are refused on both peers (log), Silvarion picks the club up; inventories, saves and fingerprints are equal.
   - The client selects all and right-clicks: Leo and Silvarion move, Ivan and Leonis stay, on both peers.
+
+## Quick-slot orders by skill key (mpfix-ws, 2026-10-16)
+ToggleAutoSkill / Set / Unset / MoveQuickSlot (flag `ORD_EF_QSLOT`) carry the issuer's skill key(s) and a "slotted"
+flag; each copy resolves the key in its own quick slots (`ord_qs_plan`). A copy without that slot applies only the
+skill part (auto-use flip, or learn / forget through a lent slot 0). Needed for the weapon-slot mod (5 slots on its
+host, 4 on a stock guest). Details and pair proofs: ext/mpfix/NOTES_ws.md.

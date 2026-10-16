@@ -8,8 +8,13 @@
 //     an element's corner (computed here: the callerRect overload 0xF4A244 places in the tooltip's own canvas);
 //   - one hook on Tooltip_ETC.Show 0xF3D8B8: for MP_KEY it runs the stock Show with a real key (BASE_KEY, so every stock
 //     layout step runs), then puts our title and body in the two texts and turns the subtitle and flavour lines off.
-// Same frame, same fonts, same colours and placement as the game's own tooltips. TooltipContext.HideHoldLayout (+0xA0)
-// is set: no "hold key" line (our texts have no links).
+// Same frame, same fonts and colours as the game's own tooltips.
+// Placement (owner v12 item 3): a card for an element inside a panel goes OUTSIDE that panel, at its right edge, top
+// aligned with the element; no room on the right = outside the panel's left edge. Never over the panel (it covered the
+// next button). The panel: panel_of (the widest box drawn around the element, narrower than 70% of the screen). A hook on
+// Tooltip_Base.SetTooltipAlignment 0xF387DC moves our card right after the stock alignment (no flash); unstick() keeps it
+// there. Mouse-placed cards (game_tip_show) keep the stock placement. TooltipContext.HideHoldLayout (+0xA0) is set: no
+// "hold key" line (our texts have no links).
 #include "ui_tip.h"
 #include "ui_model.h"
 #include "rig.h"
@@ -18,6 +23,7 @@
 #include <string.h>
 #include <time.h>
 #include <dlfcn.h>
+#include <math.h>
 
 void *ord_debug_class(const char *ns, const char *name) __attribute__((weak_import));
 
@@ -104,7 +110,8 @@ static int build_ok(void) {
     static int ok = -1;
     if (ok >= 0) return ok;
     static const struct { uintptr_t rva; uint32_t ins; } want[] = { { 0xF3D8B8, 0xa9bc5ff8 }, { 0xF4A244, 0xd10483ff },
-                                                                     { 0xF4A648, 0xd104c3ff }, { 0xF4AA04, 0xd10103ff } };
+                                                                     { 0xF4A648, 0xd104c3ff }, { 0xF4AA04, 0xd10103ff },
+                                                                     { 0xF387DC, 0x6dba2beb } };
     ok = 1;
     for (size_t i = 0; i < sizeof want / sizeof want[0]; i++)
         if (*(const uint32_t *)(ds_base + want[i].rva) != want[i].ins) { ok = 0; rig_log("tip: game function %#lx does not match build 25846389: tooltips off", (unsigned long)want[i].rva); }
@@ -112,9 +119,15 @@ static int build_ok(void) {
 }
 static int scene_ready(void) { int sc = scene(); return (sc == 1 || sc == 2) && !busy(); }   /* title / campaign, not loading */
 static int hooked;
+static void (*o_set_align)(Obj, float, void *);
+static void hk_set_align(Obj self, float y_off, void *mi);
 static int ensure_hook(void) {
     if (!build_ok()) return 0;
-    if (!hooked) hooked = rig_hook(0xF3D8B8, (void *)hk_etc_show, (void **)&o_etc_show, "tip Tooltip_ETC.Show") == 0 ? 1 : -1;
+    if (!hooked) {
+        hooked = rig_hook(0xF3D8B8, (void *)hk_etc_show, (void **)&o_etc_show, "tip Tooltip_ETC.Show") == 0 ? 1 : -1;
+        if (hooked > 0 && rig_hook(0xF387DC, (void *)hk_set_align, (void **)&o_set_align, "tip Tooltip_Base.SetTooltipAlignment") != 0)
+            rig_log("tip: alignment hook failed: cards keep the stock place until the frame check moves them");
+    }
     return hooked > 0;
 }
 
@@ -140,18 +153,100 @@ static Obj canvas_of(Obj comp) {                             /* the root Canvas 
     Obj c = canvas_near(comp);
     return c ? F(0x5476FAC, Obj (*)(Obj, void *))(c, NULL) : NULL;                                   /* rootCanvas */
 }
-/* where the stock tooltip goes for an element: its bottom-left corner, 2 px right and 2 px down (Tooltip_Base
-   OFFSET_X / OFFSET_Y), in screen pixels. The stock callerRect overload computes this in the TOOLTIP's canvas, so an
-   element on another canvas (our HUD, the Teams window) landed in the wrong place. */
-static int rect_point(Obj rect, float *x, float *y) {
-    if (!is_class(rect, "UnityEngine", "RectTransform")) return 0;
-    R4 r = F(0x5106978, R4 (*)(Obj, void *))(rect, NULL);                                            /* RectTransform.rect (local) */
-    V3 w = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rect, (V3){ r.x, r.y, 0 }, NULL);                  /* Transform.TransformPoint */
-    Obj cv = canvas_of(rect);
+static Obj tr_parent(Obj t) { return is_class(t, "UnityEngine", "Transform") ? F(0x510992C, Obj (*)(Obj, void *))(t, NULL) : NULL; }
+/* a RectTransform's drawn rect in screen pixels (x0, y0, x1, y1; y up), on any canvas (overlay: world = pixels; camera mode:
+   through the canvas camera). No rotation in our UIs: two corners are enough. */
+static int scr_rect(Obj rt, float q[4]) {
+    if (!is_class(rt, "UnityEngine", "RectTransform")) return 0;
+    R4 r = F(0x5106978, R4 (*)(Obj, void *))(rt, NULL);                                              /* RectTransform.rect (local) */
+    V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ r.x, r.y, 0 }, NULL);                     /* Transform.TransformPoint */
+    V3 b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ r.x + r.w, r.y + r.h, 0 }, NULL);
+    Obj cv = canvas_of(rt);
     Obj cam = cv && F(0x5475018, int (*)(Obj, void *))(cv, NULL) != 0 ? F(0x5477610, Obj (*)(Obj, void *))(cv, NULL) : NULL;   /* overlay: no camera */
-    V2 sp = F(0x5474610, V2 (*)(Obj, V3, void *))(u_alive(cam) ? cam : NULL, w, NULL);             /* RectTransformUtility.WorldToScreenPoint */
-    *x = sp.x + 2; *y = sp.y - 2;
+    V2 sa = F(0x5474610, V2 (*)(Obj, V3, void *))(u_alive(cam) ? cam : NULL, a, NULL);             /* RectTransformUtility.WorldToScreenPoint */
+    V2 sb = F(0x5474610, V2 (*)(Obj, V3, void *))(u_alive(cam) ? cam : NULL, b, NULL);
+    q[0] = sa.x < sb.x ? sa.x : sb.x; q[2] = sa.x < sb.x ? sb.x : sa.x;
+    q[1] = sa.y < sb.y ? sa.y : sb.y; q[3] = sa.y < sb.y ? sb.y : sa.y;
     return 1;
+}
+static void obj_name(Obj o, char *out, size_t cap) {
+    Obj s = u_alive(o) ? F(0x50FB198, Obj (*)(Obj, void *))(o, NULL) : NULL; size_t i = 0;
+    if (s) { int32_t n = AT(s, 0x10, int32_t); const uint16_t *c = (const uint16_t *)((char *)s + 0x14);
+             for (; i < (size_t)n && i + 1 < cap; i++) out[i] = c[i] < 0x80 && c[i] >= 0x20 && c[i] != '"' && c[i] != '\\' ? (char)c[i] : '?'; }
+    out[i] = 0;
+}
+/* the panel an element sits in (screen pixels into pq; none: the element itself). Candidates, all drawing something (a
+   Graphic), active, narrower than 70% of the screen:
+     - an ancestor that holds the element horizontally (title column Img_BackGroundBox, our Rules / lobby / Recent Worlds boxes);
+     - a sibling of the element or of one of its ancestors that holds the whole element (the HUD Players panel and its
+       settings box: their rows hang on size-0 holders, the box image is a sibling).
+   The widest candidate wins. Scanning stops at the first full-screen ancestor (its children are scanned, not its parents). */
+static void panel_of(Obj rect, const float eq[4], float pq[4]) {
+    static uintptr_t hg; Obj gty = u_gc_get(hg);
+    if (!gty) { gty = type_of("UnityEngine.UI", "Graphic"); hg = u_gc_new(gty); }
+    float sw = (float)F(0x5092C94, int (*)(void *))(NULL), best = -1;
+    memcpy(pq, eq, 4 * sizeof(float));
+    #define GRAPHIC(t) (gty && u_alive(F(0x50EDA7C, Obj (*)(Obj, Obj, void *))((t), gty, NULL)))   /* Component.GetComponent(Type) */
+    int d = 0, scanned = 0;
+    for (Obj t = tr_parent(rect); t && d < 24; t = tr_parent(t), d++) {
+        float q[4];
+        if (!scr_rect(t, q)) break;
+        int full = q[2] - q[0] >= 0.7f * sw;                        /* a full-screen layer: the panel is below it */
+        int n = F(0x510EAE4, int (*)(Obj, void *))(t, NULL);       /* Transform.childCount: the siblings of the level below */
+        for (int i = 0; i < n && scanned < 600; i++, scanned++) {
+            Obj k = F(0x510FC60, Obj (*)(Obj, int, void *))(t, i, NULL);   /* Transform.GetChild */
+            float r[4];
+            if (!scr_rect(k, r) || r[2] - r[0] >= 0.7f * sw || r[2] - r[0] <= best) continue;
+            if (r[0] > eq[0] + 1 || r[2] < eq[2] - 1 || r[1] > eq[1] + 1 || r[3] < eq[3] - 1) continue;   /* holds the whole element */
+            Obj go = u_go(k);
+            if (!u_alive(go) || !F(0x50F3724, bool (*)(Obj, void *))(go, NULL) || !GRAPHIC(k)) continue;   /* activeInHierarchy */
+            memcpy(pq, r, sizeof r); best = r[2] - r[0];
+        }
+        if (full) break;
+        if (q[2] - q[0] < 1 || q[3] - q[1] < 1 || q[2] - q[0] <= best) continue;   /* a holder without a size / narrower */
+        if (q[0] > eq[0] + 1 || q[2] < eq[2] - 1) continue;         /* does not hold the element */
+        if (GRAPHIC(t)) { memcpy(pq, q, sizeof q); best = q[2] - q[0]; }
+    }
+    #undef GRAPHIC
+}
+static int tgt_on;                                            /* the current card is anchored to an element's panel */
+static float tgt_panel[4], tgt_elem[4], tgt_top;              /* screen px: panel, element, the card's top */
+static char tgt_side[8];                                      /* "right" / "left" / "inside" (no room on either side) */
+static float placed_x, placed_y;                              /* where place_card put the card's top-left (screen px) */
+static int anchor_of(Obj rect, float *x, float *y) {          /* first guess for the stock call: right of the panel */
+    float eq[4];
+    if (!scr_rect(rect, eq)) return 0;
+    memcpy(tgt_elem, eq, sizeof eq);
+    panel_of(rect, eq, tgt_panel);
+    float sw = (float)F(0x5092C94, int (*)(void *))(NULL);
+    tgt_top = eq[3];
+    *x = tgt_panel[2] + (sw * 0.005f > 2 ? sw * 0.005f : 2); *y = tgt_top;
+    tgt_on = 1; snprintf(tgt_side, sizeof tgt_side, "right");
+    return 1;
+}
+/* the card's top-left: right of the panel, else left of it, top at the element's top; kept on screen. Pivot top-left. */
+static void place_card(Obj t) {
+    Obj r = AT(t, 0x140, Obj);                                                        /* Tooltip_Base._rect */
+    if (!tgt_on || !is_class(r, "UnityEngine", "RectTransform")) return;
+    R4 rc = F(0x5106978, R4 (*)(Obj, void *))(r, NULL);                            /* rect (local) */
+    V3 ls = F(0x510F4F8, V3 (*)(Obj, void *))(r, NULL);                            /* lossyScale */
+    float w = rc.w * ls.x, h = rc.h * ls.y, sw = (float)F(0x5092C94, int (*)(void *))(NULL), sh = (float)F(0x5092CD4, int (*)(void *))(NULL);
+    if (w < 1 || h < 1) return;                                                     /* not laid out yet */
+    float gap = sw * 0.005f > 2 ? sw * 0.005f : 2, x = tgt_panel[2] + gap, y = tgt_top;
+    if (x + w <= sw) snprintf(tgt_side, sizeof tgt_side, "right");
+    else if (tgt_panel[0] - gap - w >= 0) { x = tgt_panel[0] - gap - w; snprintf(tgt_side, sizeof tgt_side, "left"); }
+    else { snprintf(tgt_side, sizeof tgt_side, "inside");                           /* no room either side: the wider side, on screen */
+           x = sw - tgt_panel[2] >= tgt_panel[0] ? sw - w : 0; if (x < 0) x = 0; }
+    if (y - h < 0) y = h; if (y > sh) y = sh;
+    V2 pv = F(0x5107200, V2 (*)(Obj, void *))(r, NULL);                            /* RectTransform.pivot */
+    if (pv.x != 0 || pv.y != 1) F(0x51072F4, void (*)(Obj, V2, void *))(r, (V2){ 0, 1 }, NULL);
+    F(0x5109B04, void (*)(Obj, V3, void *))(r, (V3){ x, y, 0 }, NULL);             /* Transform.position (overlay canvas: px) */
+    placed_x = x; placed_y = y;
+}
+static int ours(Obj t) { return u_alive(t) && !memcmp((char *)t + 0x6C, &TIP_ID, sizeof TIP_ID); }   /* Tooltip_Base.TooltipID */
+static void hk_set_align(Obj self, float y_off, void *mi) {
+    o_set_align(self, y_off, mi);
+    if (shown && tgt_on && ours(self)) place_card(self);
 }
 /* above our own windows (Teams 32000, panel 31000): once per view. The TooltipUI's OWN canvas (override sorting, stock
    10020), never the root UI_Canvas: raising the root (first version) put the whole game HUD over the Teams window. */
@@ -182,7 +277,8 @@ static void show_core(const char *title, const char *body, Obj rect) {
     u_gc_free(h_rect); h_rect = u_gc_new(rect);
     on_top(v);
     float x, y;
-    if (!rect || !rect_point(rect, &x, &y)) {
+    tgt_on = 0;
+    if (!rect || !anchor_of(rect, &x, &y)) {
         struct { float x, y, z; } m = F(0x51AD4DC, __typeof__(m) (*)(void *))(NULL);   /* Input.mousePosition */
         x = m.x; y = m.y;
         if (test_pos) { x = test_x; y = test_y; }
@@ -200,7 +296,7 @@ void game_tip_hide(void) {
     if (!scene_ready()) { cur_title[0] = cur_body[0] = 0; u_gc_free(h_rect); h_rect = 0; return; }   /* loading: the scene clear hides it */
     Obj v = tooltip_view();
     if (v && build_ok()) F(0xF4AA04, void (*)(Obj, Guid, void *))(v, TIP_ID, NULL);   /* TooltipUI.HideToolTip(Guid) */
-    shown = 0; cur_title[0] = cur_body[0] = 0; u_gc_free(h_rect); h_rect = 0;
+    shown = 0; cur_title[0] = cur_body[0] = 0; u_gc_free(h_rect); h_rect = 0; tgt_on = 0;
 }
 /* The stock Tooltip_Base.DelayedAlignment parks the window off-screen, then waits each frame for CanAlignTooltip
    (0xF38A24) before SetTooltipAlignment. Sometimes it never comes true (gamelane 2026-10-14: 7 of 13 frames, window
@@ -212,6 +308,7 @@ static void place(Obj t) {
     Obj r = AT(t, 0x140, Obj);                                                        /* Tooltip_Base._rect */
     if (!is_class(r, "UnityEngine", "RectTransform")) return;
     F(0xF38364, void (*)(Obj, void *))(t, NULL);                                    /* Tooltip_Base.StopAlignmentRoutine */
+    if (tgt_on) { place_card(t); placed_by_us = 1; self_placed++; return; }
     F(0x51072F4, void (*)(Obj, V2, void *))(r, (V2){ 0, 1 }, NULL);                /* RectTransform.pivot: top-left */
     R4 rc = F(0x5106978, R4 (*)(Obj, void *))(r, NULL);                            /* rect (local) */
     V3 ls = F(0x510F4F8, V3 (*)(Obj, void *))(r, NULL);                            /* lossyScale */
@@ -227,7 +324,15 @@ static void place(Obj t) {
 static void unstick(void) {
     Obj t = u_gc_get(h_last_tip);
     if (!u_alive(t)) return;
-    if (AT(t, 0x170, Obj) == NULL) { routine_since = 0; return; }
+    if (AT(t, 0x170, Obj) == NULL) {                         /* aligned: an anchored card stays outside its panel */
+        routine_since = 0;
+        if (tgt_on && ours(t)) {
+            Obj r = AT(t, 0x140, Obj);
+            V3 p = is_class(r, "UnityEngine", "Transform") ? F(0x5109A08, V3 (*)(Obj, void *))(r, NULL) : (V3){ placed_x, placed_y, 0 };   /* Transform.position */
+            if (fabsf(p.x - placed_x) > 0.5f || fabsf(p.y - placed_y) > 0.5f) place_card(t);
+        }
+        return;
+    }
     double now = now_s(); static int64_t since_frame;
     if (!routine_since) { routine_since = now; since_frame = rig_frames; return; }
     if (now - routine_since >= 0.3 && rig_frames - since_frame >= 4) { place(t); routine_since = 0; }   /* the stock run needs 2 frames */
@@ -260,7 +365,7 @@ char *ui_tip_exec(const char *cmd, const char *line) {
         Obj tr = u_alive(o) ? F(0x50ED864, Obj (*)(Obj, void *))(o, NULL) : NULL;                   /* Component.transform */
         double hold = 0; jnum(line, "hold", &hold);
         if (tr) { show_core(title, body, tr); if (hold > 0) until = now_s() + hold; } else rc = -3;   /* else hides 0.2 s later (game_tip_frame) */
-    } else if (strcmp(act, "probe")) rc = -2;
+    } else if (strcmp(act, "probe") && strcmp(act, "chain")) rc = -2;
     Buf b = { 0 };
     bput(&b, "{\"ok\":%s,\"rc\":%d,\"view\":%d,\"hooked\":%d,\"tips_on\":%d,\"shown\":%d,\"filled\":%d", rc ? "false" : "true", rc,
          tooltip_view() != NULL, hooked, tips_on(), shown, u_alive(u_gc_get(h_last_tip)));
@@ -278,6 +383,21 @@ char *ui_tip_exec(const char *cmd, const char *line) {
           q[0] = a0.x; q[1] = a0.y; q[2] = a1.x; q[3] = a1.y;
           on = a1.x > a0.x && a1.y > a0.y && a0.x >= -1 && a0.y >= -1 && a1.x <= sw + 1 && a1.y <= sh + 1; }
       b.p[--b.n] = 0;                                        /* reopen the object */
-      bput(&b, ",\"screen_rect\":[%.0f,%.0f,%.0f,%.0f],\"on_screen\":%d}", q[0], q[1], q[2], q[3], on); }
+      bput(&b, ",\"screen_rect\":[%.0f,%.0f,%.0f,%.0f],\"on_screen\":%d", q[0], q[1], q[2], q[3], on);
+      /* owner v12 item 3: the card's place against the element's panel (screen px, y up). tip_xy = the card's top-left. */
+      bput(&b, ",\"anchored\":%d,\"side\":\"%s\",\"panel_rect\":[%.0f,%.0f,%.0f,%.0f],\"elem_rect\":[%.0f,%.0f,%.0f,%.0f],\"tip_xy\":[%.0f,%.0f],\"screen\":[%.0f,%.0f]}",
+           tgt_on, tgt_on ? tgt_side : "", tgt_panel[0], tgt_panel[1], tgt_panel[2], tgt_panel[3], tgt_elem[0], tgt_elem[1], tgt_elem[2], tgt_elem[3],
+           q[0], q[3], (float)F(0x5092C94, int (*)(void *))(NULL), (float)F(0x5092CD4, int (*)(void *))(NULL)); }
+    if (!strcmp(act, "chain")) {                              /* debug: the element's ancestors with their screen rects */
+        static uintptr_t hg; Obj gty = u_gc_get(hg); if (!gty) { gty = type_of("UnityEngine.UI", "Graphic"); hg = u_gc_new(gty); }
+        b.p[--b.n] = 0; bput(&b, ",\"chain\":[");
+        int d = 0;
+        for (Obj t = u_gc_get(h_rect); t && d < 16; t = tr_parent(t), d++) {
+            float q[4] = { 0, 0, 0, 0 }; char nm[64]; scr_rect(t, q); obj_name(t, nm, sizeof nm);
+            Obj g = gty ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(t, gty, NULL) : NULL;
+            bput(&b, "%s{\"name\":\"%s\",\"rect\":[%.0f,%.0f,%.0f,%.0f],\"graphic\":%d}", d ? "," : "", nm, q[0], q[1], q[2], q[3], u_alive(g));
+        }
+        bput(&b, "]}");
+    }
     return b.p;
 }
