@@ -8,14 +8,14 @@
 // buttons are in it), and on again on Back. Nothing is hooked; every il2cpp call goes by name through the host, so the
 // same code builds for Windows.
 #include "cm_home.h"
+#include "cm_il.h"
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-typedef void *Obj;
-#define AT(o, off, T) (*(T *)((char *)(o) + (off)))
+#define AT CM_AT
 
 static const DSLHost *H; static DSLPlugin *ME; static const DSLUi *U;
 const DSLHost *cm_host(void) { return H; }
@@ -40,84 +40,30 @@ static int ent_cmp(const void *a, const void *b) {
     return x->order != y->order ? (x->order < y->order ? -1 : 1) : x->seq - y->seq;
 }
 
-/* ------------------------------------------------------------------ il2cpp by name (through the host) */
-static struct {
-    void *(*class_get_type)(void *); Obj (*type_get_object)(void *);
-    uintptr_t (*gc_new)(Obj, bool); Obj (*gc_get)(uintptr_t); void (*gc_free)(uintptr_t);   /* Unity 6: pointer-sized handles */
-    const void *(*class_get_methods)(void *, void **); const char *(*method_get_name)(const void *);
-    uint32_t (*method_param_count)(const void *); void *(*method_param)(const void *, uint32_t);
-    char *(*type_get_name)(void *); bool (*method_is_generic)(const void *); void (*il_free)(void *);
-} I;
-typedef struct { const void *mi; void *fn; } M;
-static M m_find, m_inst, m_destroy, m_alive, m_go, m_tr, m_setactive, m_parent, m_sib_get, m_sib_set, m_count, m_child;
-static void *k_view; static int32_t f_credit = -1; static int il_ok = -1;
-
-/* a method by name and parameter type names ("System.Type,System.Boolean"; NULL = any), non-generic */
-static M msig(void *k, const char *name, int argc, const char *sig) {
-    M r = { 0 }; if (!k) return r;
-    void *it = NULL; const void *mi;
-    while ((mi = I.class_get_methods(k, &it))) {
-        if (strcmp(I.method_get_name(mi), name) || (int)I.method_param_count(mi) != argc) continue;
-        if (I.method_is_generic && I.method_is_generic(mi)) continue;
-        if (sig) {
-            char buf[256] = ""; size_t o = 0;
-            for (int i = 0; i < argc; i++) {
-                char *tn = I.type_get_name(I.method_param(mi, (uint32_t)i));
-                o += (size_t)snprintf(buf + o, o < sizeof buf ? sizeof buf - o : 0, "%s%s", i ? "," : "", tn ? tn : "?");
-                if (tn && I.il_free) I.il_free(tn);
-            }
-            if (strcmp(buf, sig)) continue;
-        }
-        r.mi = mi; r.fn = H->method_address((void *)mi); return r;
-    }
-    return r;
-}
-#define CALL(m, R, ...) ((R (*)(__VA_ARGS__))(m).fn)
+static int32_t f_credit = -1; static void *k_view; static int il_ok = -1;
 static int il_init(void) {
-    if (il_ok >= 0) return il_ok;
-    if (!H->il2cpp_ready || !H->il2cpp_ready() || !H->il2cpp_fn || !H->find_class || !H->method_address || !H->field_offset) return 0;
-#define X(var, name) *(void **)&I.var = H->il2cpp_fn(name)
-    X(class_get_type, "il2cpp_class_get_type"); X(type_get_object, "il2cpp_type_get_object");
-    X(gc_new, "il2cpp_gchandle_new"); X(gc_get, "il2cpp_gchandle_get_target"); X(gc_free, "il2cpp_gchandle_free");
-    X(class_get_methods, "il2cpp_class_get_methods"); X(method_get_name, "il2cpp_method_get_name");
-    X(method_param_count, "il2cpp_method_get_param_count"); X(method_param, "il2cpp_method_get_param");
-    X(type_get_name, "il2cpp_type_get_name"); X(method_is_generic, "il2cpp_method_is_generic"); X(il_free, "il2cpp_free");
-#undef X
-    il_ok = 0;
-    if (!I.class_get_type || !I.type_get_object || !I.gc_new || !I.gc_get || !I.gc_free || !I.class_get_methods
-        || !I.method_get_name || !I.method_param_count || !I.method_param || !I.type_get_name) { H->log(ME, "home: il2cpp exports missing"); return 0; }
-    void *kO = H->find_class("UnityEngine", "Object"), *kC = H->find_class("UnityEngine", "Component"),
-         *kG = H->find_class("UnityEngine", "GameObject"), *kT = H->find_class("UnityEngine", "Transform");
-    k_view = H->find_class("Refactor.UI", "TitleMenuView");
-    m_find = msig(kO, "FindObjectOfType", 2, "System.Type,System.Boolean");
-    m_inst = msig(kO, "Instantiate", 2, "UnityEngine.Object,UnityEngine.Transform");
-    m_destroy = msig(kO, "Destroy", 1, NULL); m_alive = msig(kO, "op_Implicit", 1, NULL);
-    m_go = msig(kC, "get_gameObject", 0, NULL); m_tr = msig(kC, "get_transform", 0, NULL);
-    m_setactive = msig(kG, "SetActive", 1, NULL);
-    m_parent = msig(kT, "get_parent", 0, NULL); m_sib_get = msig(kT, "GetSiblingIndex", 0, NULL);
-    m_sib_set = msig(kT, "SetSiblingIndex", 1, NULL); m_count = msig(kT, "get_childCount", 0, NULL); m_child = msig(kT, "GetChild", 1, NULL);
-    f_credit = k_view ? H->field_offset(k_view, "_creditButton") : -1;
-    M *all[] = { &m_find, &m_inst, &m_destroy, &m_alive, &m_go, &m_tr, &m_setactive, &m_parent, &m_sib_get, &m_sib_set, &m_count, &m_child };
-    for (size_t i = 0; i < sizeof all / sizeof *all; i++) if (!all[i]->fn) { H->log(ME, "home: Unity method %zu not found", i); return 0; }
-    if (!k_view || f_credit < 0) { H->log(ME, "home: TitleMenuView._creditButton not found"); return 0; }
+    if (il_ok == 1) return 1;
+    if (!cm_il_init(H, ME)) return 0;
+    k_view = cm_il_class("Refactor.UI", "TitleMenuView");
+    f_credit = cm_il_field(k_view, "_creditButton");
+    if (!k_view || f_credit < 0) { H->log(ME, "home: TitleMenuView._creditButton not found"); return il_ok = 0; }
     return il_ok = 1;
 }
-static bool alive(Obj o) { return o && CALL(m_alive, bool, Obj, const void *)(o, m_alive.mi); }
-static Obj go_of(Obj c) { return alive(c) ? CALL(m_go, Obj, Obj, const void *)(c, m_go.mi) : NULL; }
-static Obj tr_of(Obj c) { return alive(c) ? CALL(m_tr, Obj, Obj, const void *)(c, m_tr.mi) : NULL; }
-static void set_active(Obj go, bool on) { if (alive(go)) CALL(m_setactive, void, Obj, bool, const void *)(go, on, m_setactive.mi); }
-static Obj tr_parent(Obj t) { return alive(t) ? CALL(m_parent, Obj, Obj, const void *)(t, m_parent.mi) : NULL; }
-static int child_count(Obj t) { return alive(t) ? CALL(m_count, int, Obj, const void *)(t, m_count.mi) : 0; }
-static Obj child_at(Obj t, int i) { return CALL(m_child, Obj, Obj, int, const void *)(t, i, m_child.mi); }
-static Obj hget(uintptr_t h) { return h ? I.gc_get(h) : NULL; }
-static void hset(uintptr_t *h, Obj o) { if (*h) I.gc_free(*h); *h = o ? I.gc_new(o, false) : 0; }
+#define alive cm_alive
+#define go_of cm_go
+#define tr_of cm_tr
+#define set_active cm_set_active
+#define tr_parent cm_parent
+#define child_count cm_child_count
+#define child_at cm_child
+#define hget cm_il_hget
+#define hset cm_il_hset
 
 /* ------------------------------------------------------------------ the page */
 static uintptr_t h_view, h_col, h_page;                     /* title view seen last, its stock column, our column (Transforms) */
 static DSLObj bt[EMAX + 1]; static Entry ord[EMAX]; static int nbt, page_on;
 static Obj title_view(void) {
-    Obj t = CALL(m_find, Obj, Obj, bool, const void *)(I.type_get_object(I.class_get_type(k_view)), false, m_find.mi);
-    return alive(t) ? t : NULL;
+    return cm_find(k_view, false);
 }
 static void on_entry(void *ud, DSLObj w) {
     (void)w; int i = (int)(intptr_t)ud;
@@ -131,13 +77,12 @@ static int build_page(Obj view) {
     Obj credit = AT(view, f_credit, Obj), col = tr_parent(tr_of(credit));
     if (!col) { H->log(ME, "home: title column not found"); return -1; }
     Obj par = tr_parent(col);
-    Obj pt = CALL(m_inst, Obj, Obj, Obj, const void *)(col, par, m_inst.mi);   /* a component in = its clone's component out */
+    Obj pt = cm_instantiate(col, par);                        /* a component in = its clone's component out */
     if (!alive(pt)) { H->log(ME, "home: page column copy failed"); return -1; }
-    int sib = CALL(m_sib_get, int, Obj, const void *)(col, m_sib_get.mi);
-    CALL(m_sib_set, void, Obj, int, const void *)(pt, sib + 1, m_sib_set.mi);
+    cm_set_sibling(pt, cm_sibling(col) + 1);
     for (int i = child_count(pt) - 1; i >= 0; i--) {              /* empty the copy (stock buttons, MP and loader clones) */
         Obj c = child_at(pt, i), g = go_of(c);
-        set_active(g, false); CALL(m_destroy, void, Obj, const void *)(g, m_destroy.mi);
+        set_active(g, false); cm_destroy(g);
     }
     memcpy(ord, ents, sizeof ents); qsort(ord, (size_t)nents, sizeof *ord, ent_cmp);
     nbt = 0;
@@ -155,7 +100,7 @@ void cm_home_open(void) {
     if (!U || !il_init()) { if (H) H->log(ME, "home: cannot open (kit %s, il2cpp %d)", U ? "ok" : "missing", il_ok); return; }
     Obj v = title_view(); if (!v) { H->log(ME, "home: no title screen"); return; }
     if (hget(h_view) != v || !alive(hget(h_page)) || !alive(hget(h_col))) {
-        if (alive(hget(h_page))) CALL(m_destroy, void, Obj, const void *)(go_of(hget(h_page)), m_destroy.mi);
+        if (alive(hget(h_page))) cm_destroy(go_of(hget(h_page)));
         if (build_page(v)) return;
     }
     set_active(go_of(hget(h_col)), false);

@@ -141,6 +141,7 @@ static void handle(const char *j) {
     else if (!strcmp(cmd, "via")) via_view = (int)jnum(j, "view", 1);
     else if (!strcmp(cmd, "key")) rc = key_code((int)jnum(j, "code", 36));
     else if (!strcmp(cmd, "type")) { jstr(j, "text", s, sizeof s); DSLObj w = target(t); rc = w ? t_type(w, s) : -1; }
+    else if (!strcmp(cmd, "field_set")) { jstr(j, "text", s, sizeof s); DSLObj w = target(t); if (w) U->field_set(w, s); else rc = -1; }
     else if (!strcmp(cmd, "capture")) { jstr(j, "name", s, sizeof s); rc = capture(s); }
     else if (!strcmp(cmd, "call")) {
         char fn[96]; jstr(j, "fn", fn, sizeof fn); jstr(j, "s", s, sizeof s);

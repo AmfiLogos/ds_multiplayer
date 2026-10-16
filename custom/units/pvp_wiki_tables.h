@@ -47,3 +47,6 @@ static const char *const WK_COND_1[2] = { "AFFECTER_VeryExhausted", "AFFECTER_Se
 static const char *const *const WK_COND[2] = { WK_COND_0, WK_COND_1 };
 #define WK_COND_N 2
 static const int WK_COND_OPTS[2] = { 2, 2 };
+static const signed char WK_RACE_RETIRED[7] = { 1, 0, 0, 0, 0, 1, 1 };
+#define WK_RACE_DEFAULT 2
+static const signed char WK_IND_RETIRED[78] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0 };
