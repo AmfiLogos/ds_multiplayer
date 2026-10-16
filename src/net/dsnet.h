@@ -158,6 +158,15 @@ void dsnet_set_modset(int rule, const char *modset, const char *lines);
 const char *dsnet_my_mod_lines(void);
 /* after a DSNET_REJ_MODSET refusal (process-wide, the newest one): host rule, host lines ('\n'-joined). 0 = filled, -1 none */
 int dsnet_reject_host_mods(int *host_rule, char *lines, size_t n);
+/* Loader release (DSML_RELEASE, e.g. "13.3"; read once from the environment, "" = older loader without it). Sent after
+ * the name in every HELLO (a NUL, then the release: older servers stop the name at the NUL) and, with a MODSET refusal,
+ * the host's release after the host lines (older clients ignore it). dsnet_set_release overrides the environment (tests). */
+void dsnet_set_release(const char *release);
+const char *dsnet_my_release(void);
+/* the host's release from the newest DSNET_REJ_MODSET refusal ("" = unknown / older host) */
+const char *dsnet_reject_host_release(void);
+/* "Host has v<host>, you have v<mine>: update and try again." into out when both are known and differ: 1, else 0 (out "") */
+int dsnet_release_text(const char *host, const char *mine, char *out, size_t n);
 #define DSNET_MODSET_NONE "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"   /* sha256("") = no gameplay mod */
 /* Stable player id (16 bytes): created once and kept in the app data folder, or derived from the Steam id.
  * Sent in every HELLO from then on; NULL = a random id per connection (tests). Two connections with the

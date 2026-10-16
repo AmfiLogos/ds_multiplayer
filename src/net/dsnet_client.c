@@ -212,13 +212,16 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
         break;
     case P_REJECT:
         if (n >= 2) c->rejected = p[1];
-        dsnet_reject_detail[0] = 0; dsnet_reject_has_host = 0;
+        dsnet_reject_detail[0] = 0; dsnet_reject_has_host = 0; dsnet_reject_host_rel[0] = 0;
         if (n >= 4 && 4 + (uint32_t)get16(p + 2) <= n) {           /* u16 words, words, [u8 host rule, u16 len, host lines] */
             uint32_t wl = get16(p + 2), o = 4 + wl;
             snprintf(dsnet_reject_detail, sizeof dsnet_reject_detail, "%.*s", (int)wl, (const char *)p + 4);
             if (o + 3 <= n && o + 3 + (uint32_t)get16(p + o + 1) <= n) {
                 dsnet_reject_host_rule = p[o]; dsnet_reject_has_host = 1;
                 snprintf(dsnet_reject_host_lines, sizeof dsnet_reject_host_lines, "%.*s", (int)get16(p + o + 1), (const char *)p + o + 3);
+                uint32_t r = o + 3 + get16(p + o + 1);                /* [u8 len, host release] (newer hosts) */
+                if (r + 1 <= n && r + 1 + (uint32_t)p[r] <= n && p[r] <= DSNET_RELEASE_MAX)
+                    snprintf(dsnet_reject_host_rel, sizeof dsnet_reject_host_rel, "%.*s", (int)p[r], (const char *)p + r + 1);
             }
         }
         dsnet_logf("client: rejected by server, reason %d", c->rejected);
@@ -379,6 +382,8 @@ static dsnet_client *client_new(int fd, const char *name, int want_host, int rol
     p = put16(p, (uint16_t)dl); memcpy(p, dsnet_mod_lines, dl); p += dl;
     p = put8(p, (uint8_t)role);
     memcpy(p, name, nl); p += nl;
+    const char *rel = dsnet_my_release(); size_t rl = strlen(rel);
+    if (rl) { *p++ = 0; memcpy(p, rel, rl); p += rl; }       /* release after a NUL: older servers end the name there */
     dsnet_link_send(&c->link, b, p - b);
     c->last_rx = dsnet_now_ms();
     c->running = 1;
