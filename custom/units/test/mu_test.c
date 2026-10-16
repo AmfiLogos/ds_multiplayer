@@ -1,6 +1,6 @@
 /* My Units + link reader + card tests (no game): make -C custom/units/test test  (NET=1 adds the live short-link checks)
- *  1. every unit of the launcher-written library (fixtures/launcher_library.json, Rust store.rs) read by the C gives the
- *     SAME decoded unit as the team link the launcher made for it (fixtures/launcher_links.json, codec::team_link)
+ *  1. every unit of the launcher-written library (data/launcher_library.json, Rust store.rs) read by the C gives the
+ *     SAME decoded unit as the team link the launcher made for it (data/launcher_links.json, codec::team_link)
  *  2. a team added from a link, saved, loaded back: same units (wk_hash), library.json.bak kept, launcher format
  *  3. mu_entries: copies with manifest.source "wiki" + library_id; the library file bytes unchanged
  *  4. link forms: ?team= / #team= / %-encoded / #b=~ / #b=<JSON> / bare code / short links / other hosts refused
@@ -303,7 +303,7 @@ static void t_timeout(void) {
 }
 
 int main(int argc, char **argv) {
-    const char *fx = argc > 1 ? argv[1] : "../fixtures", *tmp = argc > 2 ? argv[2] : "./tmp";
+    const char *fx = argc > 1 ? argv[1] : "../data", *tmp = argc > 2 ? argv[2] : "./tmp";
     char link[16384] = "";
     { char p[600]; snprintf(p, sizeof p, "%s/launcher_links.json", fx); char e[200]; jv *l = jload(p, e, sizeof e);
       /* a 3-unit team link: three fixture links' codes would need re-encoding; the first link is a 1-unit team */
