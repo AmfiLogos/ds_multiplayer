@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""BepInEx bridge pair test: Mac host X (lane dsrig_bridge.dylib, no BepInEx) + Windows guest W_BRG (lane baselib.dll +
+"""BepInEx bridge pair test: Mac host X (lane build/mac/dsrig.dylib, no BepInEx) + Windows guest W_BRG (lane baselib.dll +
 BepInEx be.788 + DsmpBridge + DsmpBridgeDemo plugins). Run through the lane runner (lease the pair first):
   python3 tools/brg_wrig.py xplay <pair> tests/bridge_xplay.py [--dylib PATH] [--mac-bie]
 --mac-bie: the Mac host runs like the l1-core launcher starts it with BepInEx (tools/mac_bie_host.py: dsload + multiplayer
@@ -52,7 +52,7 @@ def trigger(y, text):
 
 def main():
     a = sys.argv
-    rig.DYLIB = os.path.abspath(a[a.index('--dylib') + 1]) if '--dylib' in a else os.path.join(LANE, 'build', 'dsrig_bridge.dylib')
+    rig.DYLIB = os.path.abspath(a[a.index('--dylib') + 1]) if '--dylib' in a else os.path.join(LANE, 'build', 'mac', 'dsrig.dylib')
     pair = rig.lease('bepinex'); X, Y = pair[0], pair[1]; PORT = rig.PAIR_PORTS[pair]
     MACBIE = '--mac-bie' in a
     if MACBIE:
