@@ -2,6 +2,8 @@
 
 Lockstep multiplayer mod for **Dungeon Settlers** (Steam). All players run the same simulation; only player orders travel over the network.
 
+**Roadmap:** what we work on now and next, and where you can help: [ROADMAP.md](ROADMAP.md).
+
 - **Mac (Apple Silicon):** native dylib loaded into the game.
 - **Windows:** `baselib.dll` proxy. Tested in CrossOver; a real Windows PC test is still to do.
 - Mac host and Windows guest can play together.
