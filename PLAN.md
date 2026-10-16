@@ -461,3 +461,26 @@ multiplayer tag next to the name of the save and then just put the players that 
   build/merge_mpfix79 (+ _mouse): unit ALL PASS (pvp 597, FE guard). Game tests (smoke, mp2, menu_pair, choice2) left to
   gate13's G2 rerun first, then run 06:22-06:35 (DSRIG_RELEASE=1, lead ok): smoke 3/3, mp2 19/0, choice2 8/8,
   menu_pair 17/17, left_prompt 16/0 (one earlier run 15/1, rejoin row timing). build/ dylibs = this build.
+
+## v13 released (gate13, 2026-10-16 05:25-12:25)
+- Release: https://github.com/AmfiLogos/ds_multiplayer/releases/tag/v13 (Latest). Tags: ds_multiplayer `v13` = d6a6156,
+  ds_modloader (folder ~/ds_launcher) `v13` = 9358133 (loader/mp_pin.txt = d6a6156).
+- Dungeon-Settlers-Modded-Mac.zip sha256 c1db5ddce7d4f3836fb9c74d8c1c8184d2150d609f650a21483b0c7d63578035
+- Dungeon-Settlers-Modded-Windows.zip sha256 104e3022a514d22a865b1fcb12c104f9e133e8e14a365fc60f3ebf10bb6e0211
+- Mods (both kits, from loader/build/mods_all, build_mods.sh --check OK): multiplayer, custom-modes, gcd-cdr, hell-difficulty.
+  First start on Mac and Windows: every shipped mod on except Hell (default_on false).
+- Gate: 74 checks, latest result of each PASS, inputs unchanged (ext/gate13/out/summary.txt, inputs.txt; runner rig/gate13/,
+  run_all.sh + rerun.sh + rerun2.sh). Zips: no saves, game files, templates; owner name 0 hits (zipscan.sh + scan_names.py).
+  MelonLoader 0.1.0 / BepInEx 0.1.2 Mac packages: sha256 = installer pins.
+- Fixed during the gate: Mac stub default profile (Hell off, same set as Windows); row table 64 -> 512 (mpfix, Your save list
+  showed single-player worlds); dlsym fallback for RTLD_LOCAL loader modules (mpfix: Teams, FE dive start and the join-refused
+  text were not found under the Mac loader; v12-mvp has the same bug: same RTLD_LOCAL dlopen + 21 RTLD_DEFAULT lookups in
+  ui_game.c); user name in Windows kit binaries and Mac dsml-helper (crossmods + gate13; the published v12-mvp zips have it);
+  Bring Units "From a save" listed PvP/hub worlds (units).
+- Decisions (team-lead): G3 = weapon slot flip run + mixed mod set refused at join (the mod stays gameplay, cast run dropped);
+  Windows My Units dive = checks 1, 2, 5, 6 + Mac dive proof; G7 run as mpfix ran it (native Mac host; --mac-bie harness stale);
+  G11 PvP = checks 1, 4, 7. Known issue: Mac host + Windows guest PvP resyncs 1-3 times per match
+  (research/known_issue_pvp_xplay_desync.md, owner mpfix).
+- Flakes seen: mu_dive_mac check 4 failed once then passed; left_prompt race (test fixed by mpfix 7072214).
+- Owner's Mac: old "Dungeon Settlers Modded.app" -> ~/Applications/old_versions/Dungeon Settlers Modded-2026-10-16-1225.app;
+  new app installed (not launched), identical to the release zip.
