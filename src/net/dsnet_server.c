@@ -548,6 +548,14 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
             free(m);
             return;
         }
+        if (c->rx.kind == BLOB_FULL) {             /* host's full-state list -> everyone else in game (outside the sim) */
+            if (c->rx.total <= DSNET_FULL_MAX)
+                for (int i = 0; i < MAX_CONNS; i++)
+                    if (live(s->conn[i]) && s->conn[i] != c)
+                        dsnet_link_send_blob(&s->conn[i]->link, ++s->blob_id, BLOB_FULL, c->rx.tick, 0, c->rx.buf, c->rx.total);
+            free(c->rx.buf); c->rx.buf = NULL;
+            return;
+        }
         if (c->rx.kind == BLOB_PATCH) {            /* host's state at the PATCH_POINT -> the players in it */
             int sent = 0;
             for (int i = 0; i < MAX_CONNS; i++) {

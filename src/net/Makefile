@@ -29,6 +29,8 @@ asan:
 	$(CC) $(CFLAGS) -O1 -fsanitize=address -fno-omit-frame-pointer $(SRC) test/test_link.c -lpthread -o build/asan/test_link
 	./build/asan/test_link
 	./build/asan/test_dsnet --only big_cmd
+	./build/asan/test_dsnet --only hello_max
+	./build/asan/test_dsnet --only full_big
 
 clean:
 	rm -rf build

@@ -466,7 +466,8 @@ int      dsnet_upload_patch(dsnet_client *c, const uint8_t *data, size_t len);
 int      dsnet_send_report(dsnet_client *c, const uint8_t *data, size_t len);
 /* Full-state check (lan_v10): the host sends its section list for a step outside the sim; guests keep the newest one.
  * dsnet_full_take: 1 = a new one arrived since the last take (*data malloc'd, *tick its step). */
-int      dsnet_send_full(dsnet_client *c, uint32_t tick, const uint8_t *data, size_t len);
+#define DSNET_FULL_MAX (8u * 1024 * 1024)
+int      dsnet_send_full(dsnet_client *c, uint32_t tick, const uint8_t *data, size_t len);   /* sent as a blob */
 int      dsnet_full_take(dsnet_client *c, uint32_t *tick, uint8_t **data, size_t *len);
 int      dsnet_report_take(dsnet_client *c, uint8_t **data, size_t *len, int *from);
 

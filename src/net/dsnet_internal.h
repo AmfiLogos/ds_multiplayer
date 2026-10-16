@@ -39,7 +39,8 @@ enum {
     P_VIEW,           /* c->s  u32 map_key, f32 cx, cy, half_w, half_h; s->c u8 from + same. Outside the sim (like P_TYPING):
                          relayed to every other player that is not loading (dropped, never queued) */
     P_WORLD,          /* c->s (host) u8 id[16], name[32]: the world it runs now; the server puts it in every later WELCOME */
-    P_FULL,           /* host c->s, then s->c relay: u32 tick, text (full-state check: "section hash" lines, lan_v10) */
+    P_FULL,           /* host c->s, then s->c relay: u32 tick, text (full-state check: "section hash" lines, lan_v10).
+                         Old form, received only: dsnet_send_full sends BLOB_FULL (a big list is over one frame) */
     P_MARK,           /* c->s  u8 op (1 add, 2 delete), u8 owner, u8 id, u32 map_key, i16 x, i16 y; s->c u8 from + same (add: owner
                          = from). Relayed to all but the sender; the server drops a 5th add from one sender within 5 s */
     P_SPECT,          /* s->c  u8 allow, u8 max, u8 count, then per spectator: u8 id, u8 state, u16 ping ms, name[32] (~5 Hz) */
@@ -48,7 +49,7 @@ enum {
 };
 /* SAVE: host -> server -> joiners (join point). PATCH: host -> server -> the players of a PATCH_POINT (partial resync).
    REPORT: guest -> server -> host, outside the sim (desync report part; the server stamps seq_after = the sender's slot). */
-enum { BLOB_SAVE = 1, BLOB_PATCH = 2, BLOB_REPORT = 3, BLOB_MAIL = 4 };   /* MAIL data: to_uid[16], from_uid[16] (server-stamped), u8 kind, payload */
+enum { BLOB_SAVE = 1, BLOB_PATCH = 2, BLOB_REPORT = 3, BLOB_MAIL = 4, BLOB_FULL = 5 };   /* FULL: host's full-state list, tick = its step */   /* MAIL data: to_uid[16], from_uid[16] (server-stamped), u8 kind, payload */
 #define DSNET_MAX_REPORT (8u * 1024 * 1024)
 #define BLOB_HDR 22
 
