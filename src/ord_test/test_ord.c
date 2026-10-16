@@ -186,6 +186,7 @@ static void test_events(void) {
             fill_event(d, m->evobj, m->ctx.map);
             if (d->flags & ORD_EF_RAYCAST) { m->has_ray = (uint8_t)(rnd() & 1); if (m->has_ray) rguid(&m->ray); }
             if (d->flags & ORD_EF_PARTY) { m->party_active = rnd() & 1; m->nparty = (int)(rnd() % 4); for (int k = 0; k < m->nparty; k++) rguid(&m->party[k]); }
+            if (d->flags & ORD_EF_QSLOT) { rstr(m->qkey, 40); rstr(m->qkey2, 40); m->qreg = rnd() & 1; }
             uint8_t *b; size_t n;
             ord_msg *r = roundtrip(m, d->name, &b, &n);
             CHECK(r->ev == d, "%s: event type changed", d->name);
@@ -197,6 +198,8 @@ static void test_events(void) {
                 CHECK(r->has_ray == m->has_ray && (!m->has_ray || !memcmp(&r->ray, &m->ray, 16)), "%s: raycast differs", d->name);
             if (d->flags & ORD_EF_PARTY)
                 CHECK(r->party_active == m->party_active && r->nparty == m->nparty && !memcmp(r->party, m->party, 16 * (size_t)m->nparty), "%s: party differs", d->name);
+            if (d->flags & ORD_EF_QSLOT)
+                CHECK(!strcmp(r->qkey, m->qkey) && !strcmp(r->qkey2, m->qkey2) && r->qreg == m->qreg, "%s: skill keys differ", d->name);
             ord_guid o1, o2; ord_owner(&fenv, m, &o1); ord_owner(&fenv, r, &o2);
             CHECK(!memcmp(&o1, &o2, 16), "%s: owner differs after round trip", d->name);
             if (rep == 0) robustness(b, n, d->name);
@@ -350,6 +353,205 @@ static void test_map_kind(void) {
     CHECK(cm && cm->f[1].off == 0x14 && cm->f[1].kind == ORD_F_I32, "ChangeMapRequested.ToMap offset");
 }
 
+
+/* ---------------------------------------------------------------- quick slots by skill key (ORD_EF_QSLOT) */
+static void qs_set(ord_qslots *s, int n, const char *const *k) { memset(s, 0, sizeof *s); s->n = n; for (int i = 0; i < n; i++) snprintf(s->k[i], ORD_STR, "%s", k[i] ? k[i] : ""); }
+static ord_msg *qs_msg(const char *ev, int32_t i, int32_t t, const char *skill) {
+    ord_msg *m = calloc(1, sizeof *m);
+    m->kind = ORD_K_EVENT; m->ev = ord_event_by_name(ev); m->evobj = f_ev_new(m->ev);
+    int io, to, so; ord_qs_fields(m->ev, &io, &to, &so);
+    *(int32_t *)((char *)m->evobj + io) = i;
+    if (to >= 0) *(int32_t *)((char *)m->evobj + to) = t;
+    if (so >= 0) *(ord_obj *)((char *)m->evobj + so) = skill ? f_str_new(skill) : NULL;
+    return m;
+}
+/* the stock handlers (InputEventHandler.OnEvent, see ord_core.c) on a model copy: slots + learned skills (ordered,
+   AddSkill = AddOrMoveToLast) + auto-use flags. An index outside the slots throws (IndexOutOfRange) at that point. */
+#define QM_SK 24
+typedef struct { ord_qslots s; int nl; char learned[QM_SK][16]; int nauto; char akey[QM_SK][16]; int aval[QM_SK]; } QCopy;
+static int qm_reg(const QCopy *c, const char *k) { for (int i = 0; i < c->s.n; i++) if (!strcmp(c->s.k[i], k)) return 1; return 0; }
+static int qm_auto(QCopy *c, const char *k) { for (int i = 0; i < c->nauto; i++) if (!strcmp(c->akey[i], k)) return i; return -1; }
+static void qm_flip(QCopy *c, const char *k) { int a = qm_auto(c, k); if (a >= 0) c->aval[a] ^= 1; }
+static void qm_learn(QCopy *c, const char *k) {
+    int i; for (i = 0; i < c->nl && strcmp(c->learned[i], k); i++) {}
+    if (i < c->nl) { for (; i + 1 < c->nl; i++) memcpy(c->learned[i], c->learned[i + 1], 16); c->nl--; }
+    snprintf(c->learned[c->nl++], 16, "%s", k);
+    if (qm_auto(c, k) < 0) { snprintf(c->akey[c->nauto], 16, "%s", k); c->aval[c->nauto++] = 0; }
+}
+static void qm_forget(QCopy *c, const char *k) {
+    for (int i = 0; i < c->nl; i++) if (!strcmp(c->learned[i], k)) { for (; i + 1 < c->nl; i++) memcpy(c->learned[i], c->learned[i + 1], 16); c->nl--; break; }
+}
+static void qm_handler(QCopy *c, int kind, int32_t i, int32_t t, const char *x) {
+    ord_qslots *s = &c->s;
+    if (i < 0 || i >= s->n) { if (kind == ORD_QS_SET && x && !qm_reg(c, x)) qm_learn(c, x); return; }   /* throws (Set: after AddSkill) */
+    char k[ORD_STR]; snprintf(k, sizeof k, "%s", s->k[i]);
+    switch (kind) {
+    case ORD_QS_TOGGLE: if (k[0] && qm_reg(c, k)) qm_flip(c, k); break;
+    case ORD_QS_UNSET: s->k[i][0] = 0; if (k[0] && !qm_reg(c, k)) qm_forget(c, k); break;
+    case ORD_QS_SET:
+        if (!qm_reg(c, x)) qm_learn(c, x);
+        for (int j = 0; j < s->n; j++) if (!strcmp(s->k[j], x)) s->k[j][0] = 0;
+        snprintf(s->k[i], ORD_STR, "%s", x); break;
+    case ORD_QS_MOVE: {
+        if (t < 0 || t >= s->n) return;
+        char b[ORD_STR]; snprintf(b, sizeof b, "%s", s->k[t]);
+        if (b[0]) { snprintf(s->k[t], ORD_STR, "%s", k); snprintf(s->k[i], ORD_STR, "%s", b); }
+        else { s->k[i][0] = 0; snprintf(s->k[t], ORD_STR, "%s", k); }
+        break;
+    }
+    }
+}
+/* what ord_game.c qslot_apply does with a plan */
+static void qm_apply(QCopy *c, const ord_msg *m) {
+    ord_qplan *p = calloc(1, sizeof *p);
+    ord_qs_plan(&fenv, m, &c->s, p);
+    int kind = ord_qs_kind(m->ev), io, to, so; ord_qs_fields(m->ev, &io, &to, &so);
+    char x[ORD_STR] = ""; if (so >= 0) fenv.str_get(*(ord_obj *)((char *)m->evobj + so), x, sizeof x);
+    if (p->act == ORD_QP_RUN) {
+        for (int k = 0; k < p->npre; k++) snprintf(c->s.k[p->pre[k].slot], ORD_STR, "%s", p->pre[k].key);
+        qm_handler(c, kind, p->idx, p->idx2, x);
+        for (int k = 0; k < p->npost; k++) snprintf(c->s.k[p->post[k].slot], ORD_STR, "%s", p->post[k].key);
+    } else if (p->act == ORD_QP_AUTO) qm_flip(c, p->key);
+    else if (p->act == ORD_QP_WRITE) for (int k = 0; k < p->npost; k++) snprintf(c->s.k[p->post[k].slot], ORD_STR, "%s", p->post[k].key);
+    free(p);
+}
+static int qm_same_skills(const QCopy *a, const QCopy *b) {
+    if (a->nl != b->nl || a->nauto != b->nauto) return 0;
+    for (int i = 0; i < a->nl; i++) if (strcmp(a->learned[i], b->learned[i])) return 0;
+    for (int i = 0; i < a->nauto; i++) {
+        int j; for (j = 0; j < b->nauto && strcmp(b->akey[j], a->akey[i]); j++) {}
+        if (j == b->nauto || b->aval[j] != a->aval[i]) return 0;
+    }
+    return 1;
+}
+static void test_qslot(void) {
+    /* field offsets from the event table = dump.cs (ToggleAutoSkillRequested.Index 0x24, SetQuickSlotRequested.Skill
+       0x28 / Index 0x30, MoveQuickSlotRequested.Index 0x24 / TargetIndex 0x28) */
+    int io, to, so;
+    ord_qs_fields(ord_event_by_name("ToggleAutoSkillRequested"), &io, &to, &so); CHECK(io == 0x24 && to < 0 && so < 0, "toggle fields");
+    ord_qs_fields(ord_event_by_name("UnsetQuickSlotRequested"), &io, &to, &so); CHECK(io == 0x24 && to < 0 && so < 0, "unset fields");
+    ord_qs_fields(ord_event_by_name("SetQuickSlotRequested"), &io, &to, &so); CHECK(io == 0x30 && to < 0 && so == 0x28, "set fields");
+    ord_qs_fields(ord_event_by_name("MoveQuickSlotRequested"), &io, &to, &so); CHECK(io == 0x24 && to == 0x28 && so < 0, "move fields");
+    CHECK(!ord_qs_kind(ord_event_by_name("SetItemQuickSlotRequested")), "item quick slot is not an index order");
+    CHECK(ord_event_by_name("ToggleAutoSkillRequested")->flags == ORD_EF_QSLOT, "toggle flag");
+
+    /* weapon-slot host (5 slots) and stock guest (4 = the host's first 4): the pair test's units */
+    static const char *const hk[] = { "SKILL_WhirlwindSlash", "SKILL_Slay", "SKILL_DestructiveSplit", "SKILL_BladeGrinding", "SKILL_EmergencyEscape" };
+    ord_qslots *host = calloc(1, sizeof *host), *guest = calloc(1, sizeof *guest), *other = calloc(1, sizeof *other);
+    qs_set(host, 5, hk); qs_set(guest, 4, hk);
+    static const char *const ok[] = { "SKILL_Slay", "SKILL_EmergencyEscape", NULL, "SKILL_WhirlwindSlash" };
+    qs_set(other, 4, ok);
+    ord_qplan *p = calloc(1, sizeof *p);
+
+    /* encode: the key at the issuer's index */
+    ord_msg *m = qs_msg("ToggleAutoSkillRequested", 4, -1, NULL);
+    ord_qs_capture(&fenv, m, host); CHECK(!strcmp(m->qkey, "SKILL_EmergencyEscape") && !m->qkey2[0], "capture toggle 4");
+    ord_qs_capture(&fenv, m, guest); CHECK(!m->qkey[0], "capture: index the issuer lacks -> no key");
+    ord_qs_capture(&fenv, m, NULL); CHECK(!m->qkey[0], "capture: no quick slots");
+    ord_qs_capture(&fenv, m, host);
+    /* round trip keeps the key */
+    { uint8_t *b; size_t n; ord_msg *r = roundtrip(m, "qslot toggle", &b, &n); CHECK(!strcmp(r->qkey, m->qkey), "toggle key round trip"); free(b); free(r); }
+    /* resolve */
+    CHECK(ord_qs_resolve(host, "SKILL_EmergencyEscape", 4) == 4, "resolve at the hint");
+    CHECK(ord_qs_resolve(other, "SKILL_EmergencyEscape", 4) == 1, "resolve moved key");
+    CHECK(ord_qs_resolve(other, "SKILL_Slay", 0) == 0 && ord_qs_resolve(other, "SKILL_Slay", 2) == 0, "resolve: hint holds another key");
+    CHECK(ord_qs_resolve(guest, "SKILL_EmergencyEscape", 4) == -1, "resolve: receiver lacks the slot");
+    CHECK(ord_qs_resolve(guest, "", 0) == -1 && ord_qs_resolve(NULL, "SKILL_Slay", 0) == -1, "resolve: empty key / no slots");
+
+    /* toggle: host runs the handler at 4, the guest (no slot) flips the skill's auto-use flag */
+    ord_qs_plan(&fenv, m, host, p); CHECK(p->act == ORD_QP_RUN && p->idx == 4 && !p->npre && !p->npost, "toggle on host: run at 4");
+    ord_qs_plan(&fenv, m, guest, p); CHECK(p->act == ORD_QP_AUTO && !strcmp(p->key, "SKILL_EmergencyEscape"), "toggle on guest: auto flag, no slot");
+    ord_qs_plan(&fenv, m, NULL, p); CHECK(p->act == ORD_QP_AUTO, "toggle, receiver has no quick slots: auto flag");
+    ord_qs_plan(&fenv, m, other, p); CHECK(p->act == ORD_QP_RUN && p->idx == 1, "toggle: other layout runs at the key's slot");
+    m->qkey[0] = 0; ord_qs_plan(&fenv, m, host, p); CHECK(p->act == ORD_QP_NONE, "toggle of an empty issuer slot: nothing");
+    free(m);
+    /* stock guest toggles its slot 2: the host resolves by key to its slot 2 too */
+    m = qs_msg("ToggleAutoSkillRequested", 2, -1, NULL); ord_qs_capture(&fenv, m, guest);
+    ord_qs_plan(&fenv, m, host, p); CHECK(p->act == ORD_QP_RUN && p->idx == 2, "guest toggle 2 -> host 2");
+    free(m);
+
+    /* unset 4: the guest lends slot 0 to the key, so its handler forgets the skill; slot 0 gets its key back */
+    m = qs_msg("UnsetQuickSlotRequested", 4, -1, NULL); ord_qs_capture(&fenv, m, host);
+    CHECK(!strcmp(m->qkey, "SKILL_EmergencyEscape") && m->qreg == 0, "capture unset");
+    ord_qs_plan(&fenv, m, host, p); CHECK(p->act == ORD_QP_RUN && p->idx == 4 && !p->npre, "unset on host");
+    ord_qs_plan(&fenv, m, guest, p);
+    CHECK(p->act == ORD_QP_RUN && p->idx == 0 && p->npre == 1 && !strcmp(p->pre[0].key, "SKILL_EmergencyEscape") &&
+          p->npost == 1 && p->post[0].slot == 0 && !strcmp(p->post[0].key, "SKILL_WhirlwindSlash"), "unset on guest: borrow slot 0");
+    ord_qs_plan(&fenv, m, NULL, p); CHECK(p->act == ORD_QP_NONE, "unset, no quick slots here: nothing");
+    free(m);
+
+    /* set a skill into host slot 4 (replacing EmergencyEscape) */
+    m = qs_msg("SetQuickSlotRequested", 4, -1, "SKILL_Fireball"); ord_qs_capture(&fenv, m, host);
+    CHECK(!strcmp(m->qkey, "SKILL_EmergencyEscape") && m->qreg == 0, "capture set");
+    ord_qs_plan(&fenv, m, host, p); CHECK(p->act == ORD_QP_RUN && p->idx == 4 && !p->npre && !p->npost, "set on host");
+    ord_qs_plan(&fenv, m, guest, p);
+    CHECK(p->act == ORD_QP_RUN && p->idx == 0 && !p->npre && p->npost == 1 && !strcmp(p->post[0].key, "SKILL_WhirlwindSlash"), "set on guest: borrow slot 0");
+    free(m);
+    /* host moves Slay (slot 1, also on the guest) into slot 4 by Set: the guest must NOT learn it again (AddOrMoveToLast) */
+    m = qs_msg("SetQuickSlotRequested", 4, -1, "SKILL_Slay"); ord_qs_capture(&fenv, m, host); CHECK(m->qreg == 1, "set: skill already slotted");
+    ord_qs_plan(&fenv, m, guest, p); CHECK(p->act == ORD_QP_RUN && p->idx == 0 && !p->npre, "set slotted skill on guest");
+    free(m);
+    /* host sets EmergencyEscape (only in its slot 4) into slot 2: the guest has no slot holding it but must not learn it again */
+    m = qs_msg("SetQuickSlotRequested", 2, -1, "SKILL_EmergencyEscape"); ord_qs_capture(&fenv, m, host); CHECK(m->qreg == 1, "set: host-only slotted skill");
+    ord_qs_plan(&fenv, m, guest, p);
+    CHECK(p->act == ORD_QP_RUN && p->idx == 2 && p->npre == 1 && p->pre[0].slot != 2 && !strcmp(p->pre[0].key, "SKILL_EmergencyEscape") &&
+          p->npost == 1 && p->post[0].slot == p->pre[0].slot, "set host-only skill on guest: lend a slot for the registered check");
+    free(m);
+    m = qs_msg("SetQuickSlotRequested", 4, -1, "SKILL_EmergencyEscape"); ord_qs_capture(&fenv, m, host);
+    ord_qs_plan(&fenv, m, guest, p); CHECK(p->act == ORD_QP_NONE, "set the same skill again into a slot the guest lacks: nothing");
+    free(m);
+    m = qs_msg("SetQuickSlotRequested", 4, -1, NULL); ord_qs_capture(&fenv, m, host);
+    ord_qs_plan(&fenv, m, host, p); CHECK(p->act == ORD_QP_NONE, "set null skill: nothing");
+    free(m);
+
+    /* move host 1 -> 4 (swap with EmergencyEscape): the guest puts EmergencyEscape in its slot 1, layout only */
+    m = qs_msg("MoveQuickSlotRequested", 1, 4, NULL); ord_qs_capture(&fenv, m, host);
+    CHECK(!strcmp(m->qkey, "SKILL_Slay") && !strcmp(m->qkey2, "SKILL_EmergencyEscape"), "capture move");
+    ord_qs_plan(&fenv, m, host, p); CHECK(p->act == ORD_QP_RUN && p->idx == 1 && p->idx2 == 4, "move on host");
+    ord_qs_plan(&fenv, m, guest, p); CHECK(p->act == ORD_QP_WRITE && p->npost == 1 && p->post[0].slot == 1 && !strcmp(p->post[0].key, "SKILL_EmergencyEscape"), "move on guest: write");
+    ord_qs_plan(&fenv, m, other, p); CHECK(p->act == ORD_QP_RUN && p->idx == 0 && p->idx2 == 1, "move on other layout: by keys");
+    free(m);
+    m = qs_msg("MoveQuickSlotRequested", 4, 2, NULL); ord_qs_capture(&fenv, m, host);
+    ord_qs_plan(&fenv, m, guest, p); CHECK(p->act == ORD_QP_WRITE && p->post[0].slot == 2 && !strcmp(p->post[0].key, "SKILL_EmergencyEscape"), "move 4 -> 2 on guest");
+    free(m);
+
+    /* model: random orders from both copies, captured on the issuer's (possibly older) state and applied later on
+       both copies in the same order. Learned skills (with their order) and auto-use flags must stay equal. */
+    static const char *const pool[] = { "W", "a", "b", "c", "d", "e", "f", "g" };
+    int bad = 0, runs = 0, autos = 0, lends = 0;
+    for (int game = 0; game < 300; game++) {
+        QCopy *c[2] = { calloc(1, sizeof(QCopy)), calloc(1, sizeof(QCopy)) };
+        static const char *const start[] = { "W", "a", "b", "c", "d" };
+        qs_set(&c[0]->s, 5, start); qs_set(&c[1]->s, 4, start);
+        for (int k = 0; k < 2; k++) for (int j = 0; j < 6; j++) { qm_learn(c[k], pool[j]); c[k]->aval[j] = j & 1; }
+        ord_msg *q[8]; int nq = 0;
+        for (int step = 0; step < 120; step++) {
+            if (nq < 8 && (nq == 0 || rnd() % 2)) {
+                int who = (int)(rnd() % 2), n = c[who]->s.n, kind = 1 + (int)(rnd() % 4);
+                static const char *const names[] = { "", "ToggleAutoSkillRequested", "SetQuickSlotRequested", "UnsetQuickSlotRequested", "MoveQuickSlotRequested" };
+                ord_msg *o = qs_msg(names[kind], (int32_t)(rnd() % (unsigned)n), (int32_t)(rnd() % (unsigned)n), pool[rnd() % 8]);
+                ord_qs_capture(&fenv, o, &c[who]->s);
+                q[nq++] = o;
+            } else {
+                ord_msg *o = q[0]; memmove(q, q + 1, sizeof q[0] * (size_t)--nq);
+                for (int k = 0; k < 2; k++) {
+                    ord_qplan *pp = calloc(1, sizeof *pp); ord_qs_plan(&fenv, o, &c[k]->s, pp);
+                    runs += pp->act == ORD_QP_RUN; autos += pp->act == ORD_QP_AUTO; lends += pp->npre > 0; free(pp);
+                    qm_apply(c[k], o);
+                }
+                if (!qm_same_skills(c[0], c[1])) { if (!bad++) printf("model: skills differ after %s (game %d step %d)\n", o->ev->name, game, step); }
+                free(o);
+            }
+        }
+        while (nq) free(q[--nq]);
+        free(c[0]); free(c[1]);
+    }
+    CHECK(!bad, "model: learned skills / auto-use differ between the 5-slot and 4-slot copy in %d applies", bad);
+    CHECK(runs > 1000 && autos > 50 && lends > 50, "model coverage: %d runs, %d auto-only, %d lent slots", runs, autos, lends);
+    printf("qslot model: %d runs, %d auto-only, %d lent slots, 300 games x 120 steps\n", runs, autos, lends);
+    free(p); free(host); free(guest); free(other);
+}
+
 int main(void) {
     test_map_kind();
     for (int i = 0; i < NENT; i++) { ents[i].k = K_ENT; rguid(&ents[i].g); }
@@ -357,6 +559,7 @@ int main(void) {
     test_events();
     test_interaction_mem();
     test_tierb();
+    test_qslot();
     free_all();
     printf("%s: %d checks, %d failures (%d event types, %d set_ref stores)\n", fails ? "FAILED" : "OK", checks, fails,
            ord_event_count, setrefs);

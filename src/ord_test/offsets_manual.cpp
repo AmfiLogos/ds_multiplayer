@@ -137,3 +137,22 @@ OFF(Refactor_Task_TaskGroup_o, fields._EntityGuid_k__BackingField, 0x20);
 OFF(Refactor_Task_TaskGroup_o, fields._Tasks_k__BackingField, 0x38);
 OFF(Refactor_Task_SharedTaskData_o, fields._TaskType_k__BackingField, 0x20);
 int main() { return 0; }
+// quick slots by skill key (ord_game.c qslot_array / qslots_read / qslot_write; mpfix-ws 2026-10-16)
+OFF(Refactor_Main_CampaignDataContainer_o, fields.PlayerUnitDataContainer, 0x48);
+OFF(Refactor_Main_PlayerUnitDataContainer_o, fields._unitQuickSlot, 0x20);
+OFF(Refactor_Main_UnitQuickSlotContainer_o, fields._unitQuickSlot, 0x10);
+OFF(System_Collections_Generic_Dictionary_Guid__QuickSlotData__o, fields._entries, 0x18);
+OFF(System_Collections_Generic_Dictionary_Guid__QuickSlotData__o, fields._count, 0x20);
+OFF(System_Collections_Generic_Dictionary_Entry_Guid__object__o, fields.hashCode, 0x0);
+OFF(System_Collections_Generic_Dictionary_Entry_Guid__object__o, fields.key, 0x8);
+OFF(System_Collections_Generic_Dictionary_Entry_Guid__object__o, fields.value, 0x18);
+OFF(Refactor_Main_QuickSlotData_o, fields._quickSlots, 0x10);
+OFF(System_String_array, max_length, 0x18);
+OFF(System_String_array, m_Items, 0x20);
+OFF(Refactor_Component_SkillComponent_o, fields._autoUse, 0x48);
+OFF(Refactor_Main_Event_ToggleAutoSkillRequested_o, fields.Index, 0x24);
+OFF(Refactor_Main_Event_UnsetQuickSlotRequested_o, fields.Index, 0x24);
+OFF(Refactor_Main_Event_MoveQuickSlotRequested_o, fields.Index, 0x24);
+OFF(Refactor_Main_Event_MoveQuickSlotRequested_o, fields.TargetIndex, 0x28);
+OFF(Refactor_Main_Event_SetQuickSlotRequested_o, fields.Skill, 0x28);
+OFF(Refactor_Main_Event_SetQuickSlotRequested_o, fields.Index, 0x30);
