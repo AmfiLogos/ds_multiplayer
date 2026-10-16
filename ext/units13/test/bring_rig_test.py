@@ -15,7 +15,7 @@ ck = C.Checks(OUT)
 if '--no-build' not in sys.argv:
     C.build_driver()
 C.install()
-sd = os.path.join(C.I, 'data', 'Saves'); os.makedirs(sd, exist_ok=True)
+sd = os.path.join(OUT, 'saves'); os.makedirs(sd, exist_ok=True)      # the test's own save folder
 if not os.path.exists(os.path.join(sd, SAVE)):
     shutil.copyfile(os.path.join(BACKUP, SAVE), os.path.join(sd, SAVE))                 # copy, never move
 shutil.copyfile(os.path.join(C.WT, 'custom/units/test/data/launcher_library.json'), os.path.join(C.out_lib_dir(OUT), 'library.json'))
@@ -27,7 +27,7 @@ def rig(cmd, **kw):
 
 with C.Copy(['multiplayer', 'custom-modes', 'units-driver'], OUT) as c:
     c.wait_title()
-    a = rig('mu_bring_open', max=2, sources=3)
+    a = rig('mu_bring_open', max=2, sources=3, dir=sd)
     ck('rig mu_bring_open', a.get('ok') is True, a)
     time.sleep(1.5)
     s = rig('mu_bring_state')

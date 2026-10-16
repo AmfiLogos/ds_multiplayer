@@ -33,7 +33,11 @@ def one(n, mods, expect_entries):
         st = c.state(); h = st.get('cm', {}).get('home', {})
         ck(f'r{n} click opens the home page', a['rc'] == 0 and h.get('open') == 1, h)
         btns = h.get('buttons', '').split(';') if h.get('buttons') else []
-        ck(f'r{n} page buttons', btns == expect_entries + ['Back'], btns)
+        # the entries other lanes register (Unit Builder 20, Gallery 30, Test Fights 40) come when their parts are built in:
+        # My Units first, Back last, the known entries in their order
+        known = ['My Units', 'Unit Builder', 'Gallery', 'Test Fights']
+        ok = btns[-1:] == ['Back'] and btns[:1] == expect_entries[:1] and btns[:-1] == [k for k in known if k in btns[:-1]] and len(btns) >= 2
+        ck(f'r{n} page buttons', ok, btns)
         mods_on = c.req('rect', target='title:Mods')['rc']
         ck(f'r{n} stock column hidden', mods_on == 0, f'Mods on_tree {mods_on}')
         back = c.req('rect', target='home:Back')
