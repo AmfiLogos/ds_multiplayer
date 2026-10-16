@@ -28,7 +28,7 @@ for seed in 5 11 424242; do
   $T/save_test rt $T/run/builds_$seed.jsonl $T/run > $T/run/rt_$seed.txt || st=1
 done
 python3 -I -c 'import json,sys; [print(json.dumps(u["build"])) for u in json.load(open(sys.argv[1]))["units"]]' \
-  $R/custom/units/test/fixtures/launcher_library.json > $T/run/builds_library.jsonl
+  $R/custom/units/test/data/launcher_library.json > $T/run/builds_library.jsonl
 $T/save_test rt $T/run/builds_library.jsonl $T/run > $T/run/rt_library.txt || st=1
 grep -h "^==\|passed\|FAIL\|ERROR\|Sanitizer\|runtime error" $T/run/*.txt | head -60
 exit $st

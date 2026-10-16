@@ -16,7 +16,7 @@ test:
 	[ ! -d tmp/run ] || mv tmp/run old/run_$$(date +%s)
 	mkdir -p tmp/run
 	node node/make_team.js 3 5 > tmp/run/team3.txt
-	MU_TEAM_LINK="$$(cat tmp/run/team3.txt)" $(O)/mu_test fixtures tmp/run
+	MU_TEAM_LINK="$$(cat tmp/run/team3.txt)" $(O)/mu_test data tmp/run
 builder:
 	mkdir -p $(O)
 	nice -n 5 cc $(CF) -o $(O)/card_tool card_tool.c $(LINK)

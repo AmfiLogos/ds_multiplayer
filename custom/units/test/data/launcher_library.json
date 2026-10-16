@@ -1,0 +1,1759 @@
+{
+  "format": "ds-launcher-units",
+  "version": 1,
+  "game_build": "25846389",
+  "units": [
+    {
+      "id": "3e0b151998896644",
+      "name": "Unit 0",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Unit 0",
+        "race": "AFFECTER_Elf",
+        "lvl": 10.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_Hunter",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Genius",
+          "WillPower": "Poor",
+          "Intelligence": "Poor",
+          "Agility": "Outstanding",
+          "Perception": "Outstanding"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {
+          "Intelligence": 1
+        },
+        "cond": [],
+        "eq": {
+          "Head": "ITEM_IronHelmet",
+          "Body": "ITEM_ThickClothArmor",
+          "Accessory1": "ITEM_BlueCrystalNecklace",
+          "Accessory2": "ITEM_StickyBedstraw"
+        },
+        "tags": {
+          "Accessory1": [
+            {
+              "i": 1.0,
+              "v": 12.8
+            },
+            {
+              "i": 1.0,
+              "v": 15.0
+            }
+          ]
+        },
+        "portrait": "ElfStandardFemale_005",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "0f246324cfe63630",
+      "name": "Élodie Ünïcødé 1",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Élodie Ünïcødé 1",
+        "race": "AFFECTER_Human",
+        "lvl": 1.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_TavernRunner",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Exceptional",
+          "WillPower": "Genius",
+          "Intelligence": "Poor",
+          "Agility": "Exceptional",
+          "Perception": "Moderate"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_RecklessAssault",
+          "SKILL_FireCloak"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_CarapaceSword",
+          "Secondary": "ITEM_Torch",
+          "Head": "ITEM_CopperHelmet",
+          "Accessory1": "ITEM_BlueCrystalNecklace"
+        },
+        "tags": {
+          "Accessory1": [
+            {
+              "i": 2.0
+            },
+            {
+              "i": 4.0,
+              "v": 6.38
+            }
+          ]
+        },
+        "portrait": "HumanFatFemale_006",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "passiveStacks": {
+          "SKILL_DeepWater": 120.0
+        },
+        "shelf": {
+          "Blunt": [
+            "SKILL_VileInsult",
+            "SKILL_BattleStomp"
+          ],
+          "Fortress": [
+            "SKILL_MockingGrin"
+          ],
+          "Tide": [
+            "SKILL_DeepWater"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "7d79c7aeb6894762",
+      "name": "\"Quoted\" \\ back 2",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "\"Quoted\" \\ back 2",
+        "race": "AFFECTER_LizardMan",
+        "lvl": 6.0,
+        "offer": "Least",
+        "roll": "min",
+        "bg": "AFFECTER_Slave",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Moderate",
+          "WillPower": "Genius",
+          "Intelligence": "Genius",
+          "Agility": "Outstanding",
+          "Perception": "Moderate"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_ShieldHandling"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [
+          "AFFECTER_SevereExhausted"
+        ],
+        "eq": {
+          "Primary": "ITEM_WoodSword",
+          "Head": "ITEM_HideHelmet",
+          "Body": "ITEM_FortifiedBoneArmor",
+          "Accessory1": "ITEM_SilverNecklace"
+        },
+        "tags": {
+          "Accessory1": [
+            {
+              "i": 16.0,
+              "v": 20.0
+            }
+          ]
+        },
+        "portrait": "LizardMan_005",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "Sword": [
+            "SKILL_SaberGale",
+            "SKILL_DualRequest"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "8e751407209ad47f",
+      "name": "LongLongLongLongLongLongLongLongLongLong3",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "LongLongLongLongLongLongLongLongLongLong3",
+        "race": "AFFECTER_Lycan",
+        "lvl": 3.0,
+        "offer": "Least",
+        "roll": "min",
+        "bg": "AFFECTER_Miner",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Moderate",
+          "WillPower": "Exceptional",
+          "Intelligence": "Exceptional",
+          "Agility": "Exceptional",
+          "Perception": "Outstanding"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_Bastion",
+          "SKILL_RecklessAssault"
+        ],
+        "insc": [],
+        "souls": [
+          "AFFECTER_ChainKnightSentinelSoul"
+        ],
+        "acqInds": [],
+        "elix": {
+          "Intelligence": 1
+        },
+        "cond": [],
+        "eq": {
+          "Secondary": "ITEM_WoodShield",
+          "Head": "ITEM_IronHelmet",
+          "Body": "ITEM_FortifiedBoneArmor",
+          "Accessory1": "ITEM_GreenCrystalNecklace",
+          "Accessory2": "ITEM_BloodstoneRing"
+        },
+        "tags": {
+          "Accessory1": [
+            3.0
+          ]
+        },
+        "portrait": "LycanFemale_001",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "c1ec3b9b693d7efd",
+      "name": "日本語 4",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "日本語 4",
+        "race": "AFFECTER_Elf",
+        "lvl": 11.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Peddler",
+        "inds": [],
+        "tal": {
+          "Strength": "Poor",
+          "Constitution": "Moderate",
+          "WillPower": "Exceptional",
+          "Intelligence": "Genius",
+          "Agility": "Moderate",
+          "Perception": "Poor"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_OpeningStrike",
+          "SKILL_FireCloak"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_FireCopperStaff",
+          "Head": "ITEM_IronHelmet",
+          "Body": "ITEM_LeatherArmor",
+          "Accessory2": "ITEM_NatureGreenSpirit"
+        },
+        "tags": {},
+        "portrait": "ElfSlimFemale_000",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "6bc0dc9b5bd8f1f0",
+      "name": "Plain5",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Plain5",
+        "race": "AFFECTER_Human",
+        "lvl": 4.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_CursedChild",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Outstanding",
+          "WillPower": "Poor",
+          "Intelligence": "Poor",
+          "Agility": "Poor",
+          "Perception": "Poor"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Head": "ITEM_BoneHelmet",
+          "Body": "ITEM_FortifiedBoneArmor",
+          "Accessory1": "ITEM_GreenCrystalNecklace"
+        },
+        "tags": {
+          "Accessory1": [
+            {
+              "i": 2.0,
+              "d": 1
+            },
+            {
+              "i": 3.0,
+              "v": 0.15
+            }
+          ]
+        },
+        "portrait": "HumanStandardMale_022",
+        "advanced": false,
+        "manual": {
+          "Intelligence": 39.0,
+          "CrossbowSkillAptitude": "33.5"
+        },
+        "addShield": false,
+        "hideHead": false,
+        "passiveStacks": {
+          "SKILL_SharpShooter": 120.0
+        },
+        "shelf": {
+          "Blitz": [
+            "SKILL_SharpShooter"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "27dc9bdfe3a38792",
+      "name": "Unit 6",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Unit 6",
+        "race": "AFFECTER_LizardMan",
+        "lvl": 4.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Hunter",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Moderate",
+          "WillPower": "Moderate",
+          "Intelligence": "Moderate",
+          "Agility": "Outstanding",
+          "Perception": "Exceptional"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_FastHand",
+          "SKILL_TwinThrust",
+          "SKILL_ArrowRain",
+          "SKILL_LifeBurst"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {
+          "Perception": 5
+        },
+        "cond": [
+          "AFFECTER_VeryExhausted"
+        ],
+        "eq": {
+          "Head": "ITEM_ThickClothCoif",
+          "Body": "ITEM_LeatherArmor",
+          "Accessory1": "ITEM_FlowerNecklace"
+        },
+        "tags": {},
+        "portrait": "LizardMan_012",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "NatureMagic": [
+            "SKILL_SunHeartBloom"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "01b0c61516889185",
+      "name": "Élodie Ünïcødé 7",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Élodie Ünïcødé 7",
+        "race": "AFFECTER_Lycan",
+        "lvl": 12.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Begger",
+        "inds": [],
+        "tal": {
+          "Strength": "Poor",
+          "Constitution": "Genius",
+          "WillPower": "Genius",
+          "Intelligence": "Moderate",
+          "Agility": "Moderate",
+          "Perception": "Moderate"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_ArrowRain",
+          "SKILL_IronClad",
+          "SKILL_ShieldUp",
+          "SKILL_BarrierResurge"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Head": "ITEM_ClothCoif",
+          "Accessory1": "ITEM_SilverNecklace",
+          "Accessory2": "ITEM_EchoFlowerRing"
+        },
+        "tags": {
+          "Accessory1": [
+            {
+              "i": 5.0,
+              "v": 14.1
+            }
+          ]
+        },
+        "portrait": "LycanMale_001",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "8cf4f53a48614616",
+      "name": "\"Quoted\" \\ back 8",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "\"Quoted\" \\ back 8",
+        "race": "AFFECTER_Elf",
+        "lvl": 8.0,
+        "offer": "Least",
+        "roll": "min",
+        "bg": "AFFECTER_Begger",
+        "inds": [],
+        "tal": {
+          "Strength": "Poor",
+          "Constitution": "Poor",
+          "WillPower": "Genius",
+          "Intelligence": "Exceptional",
+          "Agility": "Outstanding",
+          "Perception": "Moderate"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_AnkleBreak",
+          "SKILL_BarrierResurge"
+        ],
+        "insc": [],
+        "souls": [
+          "AFFECTER_GiantStoneGolemSoul"
+        ],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_GreenCrystalWoodStaff",
+          "Body": "ITEM_FortifiedBoneArmor",
+          "Accessory1": "ITEM_ClothBag"
+        },
+        "tags": {},
+        "portrait": "ElfStandardFemale_001",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "f62ec83f3d832514",
+      "name": "LongLongLongLongLongLongLongLongLongLong9",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "LongLongLongLongLongLongLongLongLongLong9",
+        "race": "AFFECTER_Human",
+        "lvl": 6.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Blacksmith",
+        "inds": [],
+        "tal": {
+          "Strength": "Poor",
+          "Constitution": "Moderate",
+          "WillPower": "Exceptional",
+          "Intelligence": "Exceptional",
+          "Agility": "Outstanding",
+          "Perception": "Outstanding"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_BattleStomp",
+          "SKILL_DestructiveSplit",
+          "SKILL_BarrierResurge",
+          "SKILL_SharpShooter"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {
+          "Constitution": 1
+        },
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_CarapaceBow",
+          "Head": "ITEM_ThickClothCoif",
+          "Body": "ITEM_CopperArmor",
+          "Ammo": "ITEM_CopperArrow"
+        },
+        "tags": {},
+        "portrait": "HumanFatFemale_000",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "passiveStacks": {
+          "SKILL_SharpShooter": 120.0
+        },
+        "shelf": {
+          "Blunt": [
+            "SKILL_VileInsult"
+          ],
+          "Execution": [
+            "SKILL_Executioner"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "f2155635e00f2c52",
+      "name": "日本語 10",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "日本語 10",
+        "race": "AFFECTER_LizardMan",
+        "lvl": 2.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_CursedChild",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Genius",
+          "WillPower": "Moderate",
+          "Intelligence": "Poor",
+          "Agility": "Genius",
+          "Perception": "Exceptional"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_TidalMark"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [
+          "AFFECTER_SevereExhausted"
+        ],
+        "eq": {
+          "Head": "ITEM_HideHelmet",
+          "Body": "ITEM_ThickClothArmor",
+          "Accessory1": "ITEM_GreenCrystalNecklace",
+          "Accessory2": "ITEM_SilverRing"
+        },
+        "tags": {
+          "Accessory1": [
+            1.0,
+            {
+              "i": 1.0,
+              "v": 14.5
+            }
+          ],
+          "Accessory2": [
+            {
+              "i": 5.0,
+              "v": 8.65
+            }
+          ]
+        },
+        "portrait": "LizardMan_010",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "9f0c7543959a5120",
+      "name": "Plain11",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Plain11",
+        "race": "AFFECTER_Lycan",
+        "lvl": 5.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Miner",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Genius",
+          "WillPower": "Exceptional",
+          "Intelligence": "Exceptional",
+          "Agility": "Exceptional",
+          "Perception": "Genius"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_Fortified"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_WaterArcronStaff",
+          "Accessory1": "ITEM_FlowerNecklace"
+        },
+        "tags": {},
+        "portrait": "LycanMale_005",
+        "advanced": false,
+        "manual": {
+          "Constitution": 49.9,
+          "AttackSpeed": "33.5"
+        },
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "Fortress": [
+            "SKILL_MockingGrin"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "e4bfc2b7f44698db",
+      "name": "Unit 12",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Unit 12",
+        "race": "AFFECTER_Elf",
+        "lvl": 12.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Squire",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Outstanding",
+          "WillPower": "Moderate",
+          "Intelligence": "Moderate",
+          "Agility": "Genius",
+          "Perception": "Exceptional"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_Bastion"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {
+          "Perception": 2
+        },
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_ArcronSpear",
+          "Head": "ITEM_BoneHelmet",
+          "Body": "ITEM_ArcronArmor",
+          "Accessory1": "ITEM_BlueGoblinNecklace",
+          "Accessory2": "ITEM_EchoFlowerRing"
+        },
+        "tags": {},
+        "portrait": "ElfSlimFemale_005",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "Guardian": [
+            "SKILL_Withstand"
+          ],
+          "Sword": [
+            "SKILL_SentinelCry"
+          ],
+          "Warrior": [
+            "SKILL_BladeSpirit"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "a227a35e595c01da",
+      "name": "Élodie Ünïcødé 13",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Élodie Ünïcødé 13",
+        "race": "AFFECTER_Human",
+        "lvl": 12.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_ExiledLord",
+        "inds": [],
+        "tal": {
+          "Strength": "Poor",
+          "Constitution": "Poor",
+          "WillPower": "Genius",
+          "Intelligence": "Moderate",
+          "Agility": "Outstanding",
+          "Perception": "Poor"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_Bastion"
+        ],
+        "insc": [],
+        "souls": [
+          "AFFECTER_GoblinChiefShamanSoul"
+        ],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_WoodSword",
+          "Secondary": "ITEM_CarapaceShield",
+          "Head": "ITEM_LeatherHelmet",
+          "Body": "ITEM_IronArmor",
+          "Accessory1": "ITEM_SilverNecklace",
+          "Accessory2": "ITEM_BlueCrystalRing"
+        },
+        "tags": {
+          "Accessory1": [
+            {
+              "i": 3.0,
+              "v": 6.71
+            }
+          ],
+          "Accessory2": [
+            {
+              "i": 5.0,
+              "v": 4.0
+            },
+            {
+              "i": 1.0,
+              "v": 10.0
+            }
+          ]
+        },
+        "portrait": "HumanStandardMale_010",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "passiveStacks": {
+          "SKILL_DeepWater": 2600.0
+        },
+        "shelf": {
+          "Sword": [
+            "SKILL_SaberGale"
+          ],
+          "Tide": [
+            "SKILL_DeepWater"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "1961d7d44b1063a9",
+      "name": "\"Quoted\" \\ back 14",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "\"Quoted\" \\ back 14",
+        "race": "AFFECTER_LizardMan",
+        "lvl": 7.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Blacksmith",
+        "inds": [],
+        "tal": {
+          "Strength": "Moderate",
+          "Constitution": "Moderate",
+          "WillPower": "Genius",
+          "Intelligence": "Moderate",
+          "Agility": "Genius",
+          "Perception": "Exceptional"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_Fortified",
+          "SKILL_ArrowRain",
+          "SKILL_SnipingShot"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [
+          "AFFECTER_SevereHungry"
+        ],
+        "eq": {
+          "Head": "ITEM_BoneHelmet",
+          "Accessory2": "ITEM_EchoFlowerRing"
+        },
+        "tags": {},
+        "portrait": "LizardMan_000",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "Execution": [
+            "SKILL_Executioner"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "6667584d35cf25db",
+      "name": "LongLongLongLongLongLongLongLongLongLong15",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "LongLongLongLongLongLongLongLongLongLong15",
+        "race": "AFFECTER_Lycan",
+        "lvl": 8.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_Wanderer",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Genius",
+          "WillPower": "Moderate",
+          "Intelligence": "Exceptional",
+          "Agility": "Exceptional",
+          "Perception": "Genius"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {
+          "Perception": 4
+        },
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_FireCarapaceStaff",
+          "Accessory1": "ITEM_FlowerNecklace",
+          "Accessory2": "ITEM_StickyBedstraw"
+        },
+        "tags": {},
+        "portrait": "LycanMale_001",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "40a036a9afc8d029",
+      "name": "日本語 16",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "日本語 16",
+        "race": "AFFECTER_Elf",
+        "lvl": 11.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Peddler",
+        "inds": [],
+        "tal": {
+          "Strength": "Moderate",
+          "Constitution": "Moderate",
+          "WillPower": "Moderate",
+          "Intelligence": "Outstanding",
+          "Agility": "Poor",
+          "Perception": "Outstanding"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_Ignition",
+          "SKILL_FireProof",
+          "SKILL_LastCinder"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_BoneClub",
+          "Head": "ITEM_ThickClothCoif",
+          "Body": "ITEM_ThickClothArmor",
+          "Accessory1": "ITEM_ClothBag",
+          "Accessory2": "ITEM_BlueCrystalRing"
+        },
+        "tags": {
+          "Accessory2": [
+            {
+              "i": 3.0,
+              "v": 7.5
+            },
+            {
+              "i": 2.0,
+              "v": 7.5,
+              "d": 1
+            }
+          ]
+        },
+        "portrait": "ElfSlimMale_005",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "FireMagic": [
+            "SKILL_Explosion"
+          ],
+          "Stake": [
+            "SKILL_BraceStance"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "94586aa51a01b223",
+      "name": "Plain17",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Plain17",
+        "race": "AFFECTER_Human",
+        "lvl": 10.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Begger",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Poor",
+          "WillPower": "Poor",
+          "Intelligence": "Genius",
+          "Agility": "Exceptional",
+          "Perception": "Moderate"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_WoodBow",
+          "Head": "ITEM_BloodWoodHelmet",
+          "Accessory1": "ITEM_SilverNecklace",
+          "Accessory2": "ITEM_DevrickTalisman",
+          "Ammo": "ITEM_CarapaceArrow"
+        },
+        "tags": {
+          "Accessory1": [
+            2.0
+          ]
+        },
+        "portrait": "HumanStandardFemale_021",
+        "advanced": false,
+        "manual": {
+          "WillPower": 33.9,
+          "Constitution": "33.5"
+        },
+        "addShield": false,
+        "hideHead": false,
+        "passiveStacks": {
+          "SKILL_DeepWater": 5.0
+        },
+        "shelf": {
+          "Tide": [
+            "SKILL_DeepWater"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "82fa8ffb0f159fb5",
+      "name": "Unit 18",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Unit 18",
+        "race": "AFFECTER_LizardMan",
+        "lvl": 6.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_Messenger",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Genius",
+          "WillPower": "Exceptional",
+          "Intelligence": "Poor",
+          "Agility": "Poor",
+          "Perception": "Poor"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [
+          "AFFECTER_ChainKnightSentinelSoul"
+        ],
+        "acqInds": [],
+        "elix": {
+          "WillPower": 1
+        },
+        "cond": [
+          "AFFECTER_VeryExhausted"
+        ],
+        "eq": {
+          "Primary": "ITEM_BloodWoodSword",
+          "Secondary": "ITEM_CarapaceShield",
+          "Head": "ITEM_BloodWoodHelmet",
+          "Body": "ITEM_CarapaceArmor",
+          "Accessory1": "ITEM_SilverNecklace"
+        },
+        "tags": {
+          "Accessory1": [
+            {
+              "i": 9.0,
+              "v": 14.35
+            }
+          ]
+        },
+        "portrait": "LizardMan_012",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "6bd3bbb1d69934f7",
+      "name": "Élodie Ünïcødé 19",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Élodie Ünïcødé 19",
+        "race": "AFFECTER_Lycan",
+        "lvl": 1.0,
+        "offer": "Least",
+        "roll": "min",
+        "bg": "AFFECTER_NobleAdventurer",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Poor",
+          "WillPower": "Outstanding",
+          "Intelligence": "Poor",
+          "Agility": "Exceptional",
+          "Perception": "Exceptional"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_FastHand"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Head": "ITEM_IronHelmet",
+          "Accessory2": "ITEM_BloodstoneRing"
+        },
+        "tags": {},
+        "portrait": "LycanFemale_000",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "490b08a784951f45",
+      "name": "\"Quoted\" \\ back 20",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "\"Quoted\" \\ back 20",
+        "race": "AFFECTER_Elf",
+        "lvl": 11.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Blacksmith",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Moderate",
+          "WillPower": "Genius",
+          "Intelligence": "Moderate",
+          "Agility": "Exceptional",
+          "Perception": "Moderate"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_Slay",
+          "SKILL_BattleStomp",
+          "SKILL_BarrierResurge"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Head": "ITEM_BloodWoodHelmet",
+          "Body": "ITEM_FortifiedBoneArmor",
+          "Accessory1": "ITEM_DevrickPendant",
+          "Accessory2": "ITEM_SilverRing"
+        },
+        "tags": {
+          "Accessory2": [
+            {
+              "i": 12.0,
+              "v": 7.5
+            }
+          ]
+        },
+        "portrait": "ElfStandardFemale_002",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "Execution": [
+            "SKILL_Executioner"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "78895b9b78f4d919",
+      "name": "LongLongLongLongLongLongLongLongLongLong21",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "LongLongLongLongLongLongLongLongLongLong21",
+        "race": "AFFECTER_Human",
+        "lvl": 8.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_CityGuard",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Moderate",
+          "WillPower": "Poor",
+          "Intelligence": "Genius",
+          "Agility": "Moderate",
+          "Perception": "Poor"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {
+          "Intelligence": 2
+        },
+        "cond": [],
+        "eq": {
+          "Secondary": "ITEM_Torch",
+          "Head": "ITEM_BoneHelmet",
+          "Body": "ITEM_CopperArmor",
+          "Accessory1": "ITEM_DevrickPendant"
+        },
+        "tags": {},
+        "portrait": "HumanStandardFemale_009",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "passiveStacks": {
+          "SKILL_DeepWater": 5.0
+        },
+        "shelf": {
+          "Tide": [
+            "SKILL_DeepWater"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "854bac5626e5c145",
+      "name": "日本語 22",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "日本語 22",
+        "race": "AFFECTER_LizardMan",
+        "lvl": 4.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_Messenger",
+        "inds": [],
+        "tal": {
+          "Strength": "Moderate",
+          "Constitution": "Genius",
+          "WillPower": "Poor",
+          "Intelligence": "Genius",
+          "Agility": "Genius",
+          "Perception": "Moderate"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_ChargeAttack"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [
+          "AFFECTER_SevereExhausted"
+        ],
+        "eq": {
+          "Primary": "ITEM_WaterBloodWoodStaff",
+          "Head": "ITEM_FortifiedBoneHelmet",
+          "Body": "ITEM_BloodWoodArmor",
+          "Accessory2": "ITEM_BloodstoneRing"
+        },
+        "tags": {},
+        "portrait": "LizardMan_000",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "001bd006d289540e",
+      "name": "Plain23",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Plain23",
+        "race": "AFFECTER_Lycan",
+        "lvl": 5.0,
+        "offer": "Least",
+        "roll": "min",
+        "bg": "AFFECTER_Carter",
+        "inds": [],
+        "tal": {
+          "Strength": "Moderate",
+          "Constitution": "Exceptional",
+          "WillPower": "Outstanding",
+          "Intelligence": "Genius",
+          "Agility": "Poor",
+          "Perception": "Outstanding"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_CrimsonRecoil"
+        ],
+        "insc": [],
+        "souls": [
+          "AFFECTER_GiantStoneGolemSoul"
+        ],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_CopperSpear",
+          "Head": "ITEM_CopperHelmet",
+          "Accessory1": "ITEM_DevrickPendant",
+          "Accessory2": "ITEM_GreenCrystalRing"
+        },
+        "tags": {
+          "Accessory2": [
+            {
+              "i": 4.0,
+              "v": 10.0
+            }
+          ]
+        },
+        "portrait": "LycanMale_000",
+        "advanced": false,
+        "manual": {
+          "Agility": 38.2,
+          "Strength": "33.5"
+        },
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "Blitz": [
+            "SKILL_FirstAssault"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "cbefc1b7ac83ee44",
+      "name": "Unit 24",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Unit 24",
+        "race": "AFFECTER_Elf",
+        "lvl": 12.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_CursedChild",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Exceptional",
+          "WillPower": "Poor",
+          "Intelligence": "Moderate",
+          "Agility": "Poor",
+          "Perception": "Exceptional"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_HealingTouch",
+          "SKILL_BlazingEcho"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {
+          "WillPower": 4
+        },
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_GreenCrystalBoneStaff",
+          "Head": "ITEM_FortifiedBoneHelmet",
+          "Body": "ITEM_LeatherArmor",
+          "Accessory1": "ITEM_ClothBag"
+        },
+        "tags": {},
+        "portrait": "ElfSlimFemale_000",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "Burst": [
+            "SKILL_FireBattleMage"
+          ],
+          "NatureMagic": [
+            "SKILL_SunHeartBloom"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "c7b25ddfd7e9db2a",
+      "name": "Élodie Ünïcødé 25",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Élodie Ünïcødé 25",
+        "race": "AFFECTER_Human",
+        "lvl": 5.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_Slave",
+        "inds": [],
+        "tal": {
+          "Strength": "Moderate",
+          "Constitution": "Poor",
+          "WillPower": "Exceptional",
+          "Intelligence": "Exceptional",
+          "Agility": "Exceptional",
+          "Perception": "Exceptional"
+        },
+        "insctrees": [],
+        "learned": [
+          "SKILL_VerticalSlash"
+        ],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_RedCrystalWoodStaff",
+          "Head": "ITEM_LeatherHelmet",
+          "Body": "ITEM_FortifiedBoneArmor",
+          "Accessory1": "ITEM_DevrickPendant",
+          "Accessory2": "ITEM_StickyBedstraw"
+        },
+        "tags": {},
+        "portrait": "HumanStandardFemale_002",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "passiveStacks": {
+          "SKILL_DeepWater": 5.0
+        },
+        "shelf": {
+          "Fortress": [
+            "SKILL_FinesseEdge"
+          ],
+          "Shield": [
+            "SKILL_GuardiansTaunt"
+          ],
+          "Sword": [
+            "SKILL_SwordFlow"
+          ],
+          "Tide": [
+            "SKILL_DeepWater"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "ae5934850000c705",
+      "name": "\"Quoted\" \\ back 26",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "\"Quoted\" \\ back 26",
+        "race": "AFFECTER_LizardMan",
+        "lvl": 7.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Mercenary",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Genius",
+          "WillPower": "Genius",
+          "Intelligence": "Genius",
+          "Agility": "Genius",
+          "Perception": "Poor"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [
+          "AFFECTER_VeryExhausted"
+        ],
+        "eq": {
+          "Primary": "ITEM_CopperBow",
+          "Head": "ITEM_ThickClothCoif",
+          "Body": "ITEM_LeatherArmor"
+        },
+        "tags": {},
+        "portrait": "LizardMan_004",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "Execution": [
+            "SKILL_Executioner",
+            "SKILL_FatalVerdict"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "4726b0d2b76432f5",
+      "name": "LongLongLongLongLongLongLongLongLongLong27",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "LongLongLongLongLongLongLongLongLongLong27",
+        "race": "AFFECTER_Lycan",
+        "lvl": 3.0,
+        "offer": "Least",
+        "roll": "max",
+        "bg": "AFFECTER_Gambler",
+        "inds": [],
+        "tal": {
+          "Strength": "Exceptional",
+          "Constitution": "Genius",
+          "WillPower": "Poor",
+          "Intelligence": "Outstanding",
+          "Agility": "Poor",
+          "Perception": "Outstanding"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {
+          "Strength": 4
+        },
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_WaterArcronStaff",
+          "Accessory1": "ITEM_BlueGoblinNecklace"
+        },
+        "tags": {},
+        "portrait": "LycanFemale_002",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {},
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "a66f4a75828dfff4",
+      "name": "日本語 28",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "日本語 28",
+        "race": "AFFECTER_Elf",
+        "lvl": 1.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_CursedChild",
+        "inds": [],
+        "tal": {
+          "Strength": "Outstanding",
+          "Constitution": "Moderate",
+          "WillPower": "Exceptional",
+          "Intelligence": "Exceptional",
+          "Agility": "Outstanding",
+          "Perception": "Genius"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [
+          "AFFECTER_RedMonsterRatSoul"
+        ],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_CarapaceGreatSword",
+          "Accessory1": "ITEM_BlueGoblinNecklace",
+          "Accessory2": "ITEM_BloodstoneRing"
+        },
+        "tags": {},
+        "portrait": "ElfStandardFemale_003",
+        "advanced": false,
+        "manual": {},
+        "addShield": false,
+        "hideHead": false,
+        "shelf": {
+          "NatureMagic": [
+            "SKILL_SnatchingPrey"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    },
+    {
+      "id": "b7e5a8dfd984e784",
+      "name": "Plain29",
+      "created": 1792083599674,
+      "updated": 1792083599674,
+      "build": {
+        "name": "Plain29",
+        "race": "AFFECTER_Human",
+        "lvl": 9.0,
+        "offer": "Least",
+        "roll": "avg",
+        "bg": "AFFECTER_Deserter",
+        "inds": [],
+        "tal": {
+          "Strength": "Poor",
+          "Constitution": "Exceptional",
+          "WillPower": "Poor",
+          "Intelligence": "Moderate",
+          "Agility": "Genius",
+          "Perception": "Poor"
+        },
+        "insctrees": [],
+        "learned": [],
+        "insc": [],
+        "souls": [],
+        "acqInds": [],
+        "elix": {},
+        "cond": [],
+        "eq": {
+          "Primary": "ITEM_WoodGreatSword",
+          "Head": "ITEM_CopperHelmet",
+          "Accessory2": "ITEM_BlueGoblinBracelet"
+        },
+        "tags": {},
+        "portrait": "HumanFatFemale_000",
+        "advanced": false,
+        "manual": {
+          "Constitution": 29.1,
+          "MaxEnergy": "33.5"
+        },
+        "addShield": false,
+        "hideHead": false,
+        "passiveStacks": {
+          "SKILL_DeepWater": 30.0
+        },
+        "shelf": {
+          "Guardian": [
+            "SKILL_Withstand"
+          ],
+          "Tide": [
+            "SKILL_DeepWater"
+          ]
+        },
+        "shelfTags": {},
+        "quick": null
+      }
+    }
+  ],
+  "teams": [
+    {
+      "id": "0fabf8e0ec2ade6d",
+      "name": "Full Eight",
+      "unit_ids": [
+        "3e0b151998896644",
+        "0f246324cfe63630",
+        "7d79c7aeb6894762",
+        "8e751407209ad47f",
+        "c1ec3b9b693d7efd",
+        "6bc0dc9b5bd8f1f0",
+        "27dc9bdfe3a38792",
+        "01b0c61516889185"
+      ]
+    },
+    {
+      "id": "d80a2177dda1fd1e",
+      "name": "Trio",
+      "unit_ids": [
+        "e4bfc2b7f44698db",
+        "6bc0dc9b5bd8f1f0",
+        "b7e5a8dfd984e784"
+      ]
+    },
+    {
+      "id": "f9d5127883e2b7cc",
+      "name": "Solo",
+      "unit_ids": [
+        "94586aa51a01b223"
+      ]
+    }
+  ]
+}
