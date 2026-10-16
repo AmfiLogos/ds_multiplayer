@@ -9,7 +9,7 @@ import json, os, re, shutil, subprocess, sys, time
 H = os.path.expanduser('~'); sys.path.insert(0, f'{H}/ds_multiplayer/win')
 import wloader as w
 SETUP, OUT = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2]); os.makedirs(OUT, exist_ok=True)
-LOCK = f'{H}/ds_multiplayer/rig/wine.lock'; GAMEW = 'C:\\SteamLibrary\\steamapps\\common\\Dungeon Settlers'
+WL = f'{H}/ds_multiplayer/rig/wine_lease.py'; GAMEW = 'C:\\SteamLibrary\\steamapps\\common\\Dungeon Settlers'
 BAN = re.compile(__import__('base64').b64decode('KD9pOmdhbWluZ2tlbGV8a2VsZWRpYWJhdGV8ZGlhYmF0ZWtlbGUpfCg/PCFbQS1aYS16XSlbS2tdW0VlXVtMbF1bRWVdKD8hW2Etel0p').decode())   # the repos' pre-push ban regex (owner name), kept encoded so this file passes that hook
 res = []
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'banscan.py')).read().split('for z in sys.argv')[0])   # save_like()
@@ -17,9 +17,7 @@ def log(*a): print(time.strftime('%H:%M:%S'), *a, flush=True)
 def check(n, ok, info=''): res.append(bool(ok)); log('PASS' if ok else 'FAIL', n, f' [{str(info)[:300]}]')
 def wine(*args, timeout=900):
     return subprocess.run(['nice', '-n', '19', f'{w.C}/wine', '--bottle', w.BOTTLE] + list(args), capture_output=True, text=True, timeout=timeout)
-busy = subprocess.run(['/bin/sh', '-c', "ps -axo etime=,comm= | grep -iE 'wine|\\.exe$' | grep -ve '-[0-9][0-9]:'"], capture_output=True, text=True).stdout.strip()
-if busy: sys.exit('wine busy: ' + busy)
-os.mkdir(LOCK); open(f'{LOCK}/owner', 'w').write('gate13\n')
+if subprocess.run([sys.executable, WL, 'take', 'gate13', '--pid', str(os.getpid())]).returncode: sys.exit('wine busy / locked')
 try:
     if not w.bottle_silent(): raise SystemExit('bottle not silent')
     if os.path.exists(w.ROOT): os.rename(w.ROOT, w.ROOT + '.gate13-' + time.strftime('%Y%m%d-%H%M%S'))
@@ -71,6 +69,5 @@ except Exception as ex:
 finally:
     try: w.stop()
     except Exception: pass
-    os.makedirs(f'{H}/ds_multiplayer/rig/old', exist_ok=True)
-    os.replace(f'{LOCK}/owner', f'{H}/ds_multiplayer/rig/old/wine.lock.owner.gate13.{int(time.time())}'); os.rmdir(LOCK)
+    subprocess.run([sys.executable, WL, 'release', 'gate13'])
     log(f'RESULT {sum(res)}/{len(res)} pass')
