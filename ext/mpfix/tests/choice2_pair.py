@@ -94,12 +94,12 @@ def main():
         # 1. three choices, stock gap
         press('MULTIPLAYER'); time.sleep(1)
         s = ms(); fr = s.get('frames', {}); t = s.get('title', {})
-        col = sorted([fr[str(i)] for i in (B['HOST_SAVE'], 122, *[ch['button'] for ch in chs], B['JOIN_ADDR']) if str(i) in fr], key=lambda r: -r[3])   # 122 New save
+        col = sorted([fr[str(i)] for i in (B['HOST_SAVE'], 122, *[ch['button'] for ch in chs]) if str(i) in fr], key=lambda r: -r[3])   # 122 New save; the "Host a game" group only (the divider + "Join a game" follow, owner v13 item 1)
         gaps = [round(col[i][1] - col[i + 1][3], 1) for i in range(len(col) - 1)]
         labels = [t.get(str(ch['button']), {}).get('text') for ch in chs]
         shot('1_multiplayer_page')
         check('1. Foreign Expedition, Test Arena, Test Hub under "Host a game", in registration order, stock gap',
-              r1.get('rc') == 0 and r2.get('rc') == 0 and labels == [ch['label'] for ch in chs] and labels[0] == 'Foreign Expedition' and labels[-2:] == ['Test Arena', 'Test Hub'] and len(col) == len(chs) + 3
+              r1.get('rc') == 0 and r2.get('rc') == 0 and labels == [ch['label'] for ch in chs] and labels[0] == 'Foreign Expedition' and labels[-2:] == ['Test Arena', 'Test Hub'] and len(col) == len(chs) + 2
               and stock_gap and all(abs(g - stock_gap) <= 1 for g in gaps), f'labels {labels} stock gap {stock_gap} gaps {gaps}')
         # 2. Arena page: Start + Back, draw_page with a panel, then NULL once on Back
         press('C1'); time.sleep(1)

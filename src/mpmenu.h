@@ -69,6 +69,7 @@ enum mpm_button {
     MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE,                               /* Multiplayer page, under "Host a game": Your save / New save / Foreign Expedition (ids >= 64) */
     MPB_HOST_C1, MPB_HOST_C2, MPB_HOST_C3,                                  /* host choices 2..4 (MPB_HOST_FE = choice 1), registration order */
     MPB_HOST_START,                                                         /* host page of a register_host_choice2 choice: Start (page_start) */
+    MPB_JOIN_DIV, MPB_JOIN_HDR,                                             /* Multiplayer page: the game's divider + "Join a game" over the join rows (owner v13 item 1) */
     MPB_COUNT
 };
 /* what the game side sees each frame */

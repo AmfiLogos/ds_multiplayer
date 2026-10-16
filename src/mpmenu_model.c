@@ -370,6 +370,7 @@ int mpm_is_visible(const mpm_model *m, const mpm_obs *o, int b) {
     if (b == MPB_HOST_SAVE || b == MPB_HOST_NEW) return m->state == MPM_TITLE_MENU;
     { int k = mpm_choice_of_btn(b); if (k >= 0) return m->state == MPM_TITLE_MENU && k < nch(m); }   /* only once a mod registered it */
     if (b == MPB_HOST_START) return m->state == MPM_TITLE_HOST && cur_v2(m);
+    if (b == MPB_JOIN_DIV || b == MPB_JOIN_HDR) return m->state == MPM_TITLE_MENU;   /* Host a game ... | divider | Join a game ... */
     if (b < 0 || b >= 64) return 0;
     return (int)(mpm_visible(m, o) >> b & 1u);
 }
@@ -438,6 +439,8 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
         else out[0] = 0;
         break;
     case MPB_HOST: snprintf(out, cap, "Host a game"); break;
+    case MPB_JOIN_HDR: snprintf(out, cap, "Join a game"); break;
+    case MPB_JOIN_DIV: out[0] = 0; break;
     case MPB_HOST_SAVE: snprintf(out, cap, "Your save"); break;
     case MPB_HOST_NEW: snprintf(out, cap, "New save"); break;
     case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : "Foreign Expedition"); break;

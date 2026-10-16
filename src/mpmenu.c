@@ -385,7 +385,7 @@ Obj mk_txt(Obj tpl_txt, Obj parent_tr, int cinzel, float size, int align, int wr
  * after LABEL_NAME. The selector arrows are children of their rows (arrow_ids), not column entries. */
 static const int title_ids[] = { MPB_MULTIPLAYER, MPB_HEADER, MPB_LABEL_ADDR, MPB_LABEL_NAME, MPB_INFO,
                                  MPB_FRIEND0, MPB_FRIEND1, MPB_FRIEND2, MPB_FRIEND3, MPB_FRIEND4, MPB_FRIEND5, MPB_SETTINGS,
-                                 MPB_DIVIDER, MPB_HOST, MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE, MPB_HOST_C1, MPB_HOST_C2, MPB_HOST_C3, MPB_JOIN_ADDR, MPB_JOIN_FRIEND, MPB_FE_RESLIST, MPB_LOAD_SAVE, MPB_HOST_START, MPB_NEW_CAMPAIGN, MPB_CONNECT, MPB_WATCH, MPB_CANCEL_JOIN, MPB_BACK };
+                                 MPB_DIVIDER, MPB_HOST, MPB_HOST_SAVE, MPB_HOST_NEW, MPB_HOST_FE, MPB_HOST_C1, MPB_HOST_C2, MPB_HOST_C3, MPB_JOIN_DIV, MPB_JOIN_HDR, MPB_JOIN_ADDR, MPB_JOIN_FRIEND, MPB_FE_RESLIST, MPB_LOAD_SAVE, MPB_HOST_START, MPB_NEW_CAMPAIGN, MPB_CONNECT, MPB_WATCH, MPB_CANCEL_JOIN, MPB_BACK };
 /* the Rules panel's buttons (title: SubUI_TitleMenuButton clones registered in h_tb; lobby: in h_lwb) */
 static const int arrow_ids[] = { MPB_PAUSE_PREV, MPB_PAUSE_NEXT, MPB_SPEED_PREV, MPB_SPEED_NEXT, MPB_GEAR_PREV, MPB_GEAR_NEXT,
                                  MPB_UNITS_PREV, MPB_UNITS_NEXT, MPB_POP_PREV, MPB_POP_NEXT, MPB_EVENTS_PREV, MPB_EVENTS_NEXT, MPB_ADMIN_PREV, MPB_ADMIN_NEXT,
@@ -743,7 +743,7 @@ static void title_build(Obj v) {
         AT(b, 0x140, Obj) = NULL;                                           /* _onButtonClicked: no stock action */
         Obj l = AT(b, 0x130, Obj);
         txt_style(l, 0, 22, 514, 1);                                        /* design #8: the stock menu size 22 (Credits is 24) */
-        int plain = id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME || id == MPB_INFO || id == MPB_HEADER || id == MPB_DIVIDER || id == MPB_HOST;
+        int plain = id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME || id == MPB_INFO || id == MPB_HEADER || id == MPB_DIVIDER || id == MPB_HOST || id == MPB_JOIN_HDR || id == MPB_JOIN_DIV;
         if (plain) images_off(u_tr(b), 0);
         if (plain || id == MPB_SETTINGS) txt_body(l);                      /* text rows: the stock body material, no outline */
         /* approved mockup "Host page A": subtitle, Your name, field, Rules box, line, Host from a save (primary), ... Back */
@@ -761,7 +761,12 @@ static void title_build(Obj v) {
             if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);
             txt_color(l, C_START);
         }
-        if (id == MPB_HOST) { row_height(b, 262, 30); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB); }   /* "Host a game": the line over its 3 choices */
+        if (id == MPB_HOST || id == MPB_JOIN_HDR) { row_height(b, 262, 30); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB); }   /* "Host a game" / "Join a game": the line over their choices */
+        if (id == MPB_JOIN_DIV) {                                           /* the game's own divider (the column's PlaceHolder, also under Back) */
+            row_height(b, 262, 17);
+            Obj ph = tr_find(parent, "PlaceHolder"), d = ph ? u_instantiate(ph, u_tr(b)) : NULL;
+            if (d) place(d, 0, 0, 55, 9); else mk_img(tpl_img, u_tr(b), -1, C_LINE, 0, 0, 262, 1);
+        }
         /* owner v12 item 4: the stock row height (the clone keeps the stock button's size), so the column's spacing gives the
            stock gap. A smaller row (40 before) left the stock frame image at full size: the frames touched. */
         if (id == MPB_HOST_SAVE || id == MPB_HOST_NEW || mpm_choice_of_btn(id) >= 0) txt_style(l, 0, 19, 514, 0);
