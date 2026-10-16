@@ -459,4 +459,5 @@ multiplayer tag next to the name of the save and then just put the players that 
 - ALL v13 lanes merged (MP 3fe0ffc, LD 30ef516). Next: gate13.
 - mpfix 79c2dee (gate13 fix, already on main 3dfac26) -> 4abd432: src/mpmenu.c world/save row table 64 -> 512. Merge build
   build/merge_mpfix79 (+ _mouse): unit ALL PASS (pvp 597, FE guard). Game tests (smoke, mp2, menu_pair, choice2) left to
-  gate13's G2 rerun (release.lock held; orchestrator13's option). build/ dylibs = this build.
+  gate13's G2 rerun first, then run 06:22-06:35 (DSRIG_RELEASE=1, lead ok): smoke 3/3, mp2 19/0, choice2 8/8,
+  menu_pair 17/17, left_prompt 16/0 (one earlier run 15/1, rejoin row timing). build/ dylibs = this build.
