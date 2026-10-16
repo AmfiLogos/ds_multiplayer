@@ -182,6 +182,7 @@ for fn in FILES:
         t = t.replace("st.st_mtimespec.tv_sec + st.st_mtimespec.tv_nsec / 1e9", "(double)st.st_mtime")
         t = t.replace("localtime_r(&st.st_mtimespec.tv_sec, &tm)", "localtime_s(&tm, &st.st_mtime)")
         t = t.replace("st.st_mtimespec.tv_sec", "st.st_mtime")
+        t = t.replace(".st_mtimespec.tv_nsec", ".st_mtime * 0LL").replace(".st_mtimespec.tv_sec", ".st_mtime")   # any other form
         if "localtime_r(" in t:
             t = re.sub(r"localtime_r\(([^,()]+), ([^()]+)\)", r"localtime_s(\2, \1)", t)
         if "st_mtimespec" in t: problems.append(f"{fn}: st_mtimespec left (Darwin-only stat field)")

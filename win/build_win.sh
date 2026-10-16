@@ -49,10 +49,13 @@ echo built build/multiplayer.dll
 OC=build/obj_cm; mkdir -p $OC/solo $OC/mp; for o in $OC/solo/*.o(N) $OC/mp/*.o(N); do mv -f $o build/old_obj/; done
 # solo part: no multiplayer link; dlopen / dlsym / dladdr = LoadLibrary / GetProcAddress (port/cm/dlfcn.h); WinHTTP for
 # fights/cm_http.c; zlib inflate objects of this build. Its import library: the mp part calls My Units etc. in it.
-for f in $CM_SOLO; do nice -n 5 $TC ${CF:#-DCM_SAME_IMAGE} -fwrapv $CEMB -Iport/cm ${INC:#-Iport/posix} -include cm_win.h -c $f -o $OC/solo/${f:t:r}.o; done
+for f in $CM_SOLO; do nice -n 5 $TC ${CF:#-DCM_SAME_IMAGE} -fwrapv $CEMB -Iport/cm $INC -include dswin.h -include cm_win.h -c $f -o $OC/solo/${f:t:r}.o; done
+nice -n 5 $TC $CF -c port/dswin.c -o $OC/solo/zz_dswin.o                 # its own copy of the POSIX shims (dsw_rename ...)
 nice -n 5 $TC -shared -o build/link/custom-modes.dll $OC/solo/*.o $O/zl_*.o -Wl,--export-all-symbols -Wl,--out-implib,build/libcustom-modes.dll.a -static -static-libgcc -lwinhttp -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/link/custom-modes.dll build/custom-modes.dll
-for f in $CM_MP; do nice -n 5 $TC $CF -fwrapv $CEMB $INC -include dswin.h -c $f -o $OC/mp/${f:t:r}.o; done
+# weak_import -> plain declaration: lld never pulls a WEAK undefined symbol from an import library, so a weak call into
+# multiplayer.dll / custom-modes.dll (e.g. mp_game_session, ui_mp.h) stayed 0 and crashed at the title (2026-10-16)
+for f in $CM_MP; do nice -n 5 $TC $CF -fwrapv -Dweak_import=unused $CEMB $INC -include dswin.h -c $f -o $OC/mp/${f:t:r}.o; done
 nice -n 5 $TC -shared -o build/custom-modes-mp.dll.tmp $OC/mp/*.o build/libmultiplayer.dll.a build/libcustom-modes.dll.a -Wl,--export-all-symbols -static -static-libgcc -lws2_32 -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/custom-modes-mp.dll.tmp build/custom-modes-mp.dll
 echo "built build/custom-modes.dll (${#CM_SOLO} files) + build/custom-modes-mp.dll (${#CM_MP} files)"
