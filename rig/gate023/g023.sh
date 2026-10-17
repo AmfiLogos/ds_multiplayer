@@ -1,4 +1,6 @@
 #!/bin/zsh
+# Mac only (owner 2026-10-18): the Windows side is the real Windows VM lane (WIN_GREEN.txt); the Wine checks are in
+# g023w.sh, an optional last check that never blocks the release.
 # g023.sh - the v0.1.13 gate (loader v0.1.13, multiplayer 0.1.10, custom-modes 0.1.5; int013 = the boot screen, Windows
 # fast start on again + one-batch hooks, normal saves in the modded game, Unit Builder / Gallery / Test Fights, Players
 # panel, PvP rules panel, Windows installer in 10 languages). Copy of g022.sh: the i18n game tests on the v0.1.13 test
@@ -95,49 +97,9 @@ chk g023_cloud_unit '== 25 ok, 0 failed' $LD/loader zsh test/cloud/run.sh
 chk g023_cloud '7/7 checks, violations 0' $LD/loader python3 $LR l1_cloud_test.py $OUT/g023_cloud
 chk g023_safety '7/7 checks, violations 0' $LD/loader python3 $LR l1_safety_test.py $OUT/g023_safety
 chk g023_savewarn '7/7 checks, violations 0' $LD/loader python3 $LR l1_savewarn_test.py $OUT/g023_savewarn
+chk g023_saves '([0-9]+)/\1 checks, violations 0' $LD/loader python3 $LR l1_saves_test.py $OUT/g023_saves   # game saves played in place: game file gets the progress, modded-only saves apart, Hell asks, delete asks (v0.1.13)
 # ---- auto-update with local test releases (packaging)
 chk g023_update_mac 'RESULT 24/24 pass' $LD zsh loader/test/update/mac_gate.sh $OUT/g023_update_mac $LD/loader/test_env/instances/Z/DungeonSettlers.app
-# ---- Windows (wine bottle DSMP; the gate holds the wine lock for this block only, then gives it back)
-print "g023_wine_lock $(python3 $WL take ship018-gate --pid $$ --wait 3600 >/dev/null && echo PASS || echo FAIL)" | tee -a $SUM
-# a Windows test that takes rig/wine.lock with its own mkdir (update_test.sh) gets the lock from the gate for its run
-handover() { local hp=$(sed -n 2p $HOME/ds_multiplayer/rig/wine.lock/owner) rc
-  python3 $HOME/ds_multiplayer/rig/wine_lease.py release ship018-gate >/dev/null || return 1
-  "$@"; rc=$?
-  python3 $HOME/ds_multiplayer/rig/wine_lease.py take ship018-gate --pid $hp --wait 600 >/dev/null || { echo "could not retake wine.lock"; return 1; }
-  return $rc; }
-# the default install folder is moved aside (never removed) before a Windows test that installs there: the new installer
-# refuses a folder that already holds files (a previous test's kept saves)
-fresh_root() { local R="$HOME/Library/Application Support/CrossOver/Bottles/DSMP/drive_c/users/crossover/AppData/Local/Dungeon Settlers Modded"
-  [[ -e $R ]] && mv "$R" "$R.gate018-$(date +%Y%m%d-%H%M%S)"; true; }
-updwin() { fresh_root; handover env KIT=$LD/loader/build/win/kit zsh loader/start/win/test/update_test.sh; }
-chk g023_update_win '== 0 failed' $LD updwin
-chk g023_uninst 'RESULT ([0-9]+)/\1 pass' $WT python3 $WH $LD/loader/start/win/installer/test/uninst_test.py $(print $REL/*Setup*.exe) $LD/loader/build/win/kit
-chk g023_setup 'RESULT ([0-9]+)/\1 pass' $WT python3 $WH $H/setup_test.py $(print $REL/*Setup*.exe) $OUT/g023_setup
-winst() { fresh_root; env $WE zsh loader/start/win/test/winstart_test.sh; }
-chk g023_winstart '== 0 failed' $LD winst
-chk g023_nonascii 'RESULTS 9 / 9' $LD python3 $WH loader/start/win/test/nonascii_test.py loader/build/win/kit $LD/loader/build/mods_all/win/gcd-cdr
-chk g023_w_pkg '([0-9]+)/\1 checks' $WT python3 $WH $H/w_pkg_gate.py $REL $OUT/g023_w_pkg
-chk g023_pathwarn '== ([0-9]+)/\1 passed' $LD python3 $WH loader/start/win/test/pathwarn_test.py $(print $REL/*Setup*.exe) $LD/loader/build/win/kit
-chk g023_win_cjk '([0-9]+)/\1 checks' $WT python3 $WH $H/w_cjk_gate.py $LD/loader/build/win/kit $OUT/g023_win_cjk ja
-chk g023_win_repair '([0-9]+)/\1 checks' $WT python3 $WH $H/w_repair_gate.py $LD/loader/build/win/kit $REL/custom-modes-0.1.5.zip $OUT/g023_win_repair
-pvpx() {   # PvP v1, Mac host + Windows guest W (C:\DSW, this tree's baselib.dll); every check incl. 6 (0 desyncs, 500+ ticks)
-  local DSW="$HOME/Library/Application Support/CrossOver/Bottles/DSMP/drive_c/DSW" R=$HOME/ds_multiplayer/rig/rig.py LOCK=$HOME/ds_multiplayer/rig/wine.lock t=$(date +%Y%m%d-%H%M%S)
-  (cd $WT/win && nice -n 19 zsh build_win.sh > $OUT/g023_build_win.log 2>&1) || { echo "win build failed"; return 1; }
-  git -C $WT checkout -q win/win_map.tsv
-  mkdir -p "$DSW/old_gate13"; for f in baselib.dll det_ranges_win.tsv; do mv "$DSW/$f" "$DSW/old_gate13/$f.$t"; cp $WT/win/build/$f "$DSW/$f"; done
-  [[ $(head -1 $LOCK/owner 2>/dev/null) == ship018-gate ]] || { echo "the gate must hold wine.lock (ship018-gate)"; return 1; }
-  local P=$(python3 $R lease ship018-$$ --pid $$ | tail -1) rc=1 XL=$OUT/g023_pvp_raw.log
-  if [[ $P == [A-J][A-J] ]]; then
-    (cd $HOME/ds_multiplayer/win && python3 xplay_run.py $P $WT/ext/fepvp13/tests/pvp_v1_pair.py --math --dylib $D --tag gate023_xv1) > $XL 2>&1
-    command grep -E '(PASS|FAIL) [0-9]' $XL; echo "raw log (xplay_run's release() stub raises at the end): $XL"
-    local f=$(command grep -cE '^[0-9:]+ FAIL [0-9]' $XL) p=$(command grep -cE '^[0-9:]+ PASS [0-9]' $XL)
-    (( f == 0 && p >= 10 )) && { echo "XPV PASS all $p checks"; rc=0; } || echo "XPV FAIL $f failed"
-    python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P ship018-$$ >/dev/null
-  fi
-  return $rc
-}
-chk g023_pvp_xplay 'XPV PASS' $WT pvpx
-python3 $WL release ship018-gate >/dev/null
 # ---- multiplayer in the rig
 rigstep() {   # smoke | mp2 on a pair leased as ship018-<pid> (waits up to 8 min), the dylib pinned by rig/pin_run.py
   local R=$HOME/ds_multiplayer/rig N=ship018-$$ P= i rc L=$OUT/g023_$1_raw.log
