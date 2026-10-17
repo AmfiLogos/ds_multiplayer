@@ -472,7 +472,7 @@ static void fit_one(fit_e *e, Obj t, float w, float h) {
                  F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->wrap, NULL); }   /* measure as styled */
     int over;
     if (!e->wrap) over = MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw) > w + 1;
-    else over = MCALL(m_fit_ph, float, Obj, const void *)(t, m_fit_ph) > h * 1.1f + 2;
+    else over = MCALL(m_fit_ph, float, Obj, const void *)(t, m_fit_ph) > h + 2;   /* a second line in a one-line button runs out of its frame */
     e->on = 0;
     if (over) {
         float mn = fit_min(e->size);
