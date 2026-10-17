@@ -4387,7 +4387,10 @@ static void sees_draw(uint32_t who, ui_players *p) {
     Obj fc = u_gc_get(h_fchip_t);                           /* (u_go on null throws: the 22:03 run hung ui_coop on the host) */
     float cy = pl_y0 - 2;                                    /* under the portrait bar, level with the Players panel's top */
     if (u_alive(fc) && u_go_active_self(u_go(fc)) && cy > y0 - 100) cy = y0 - 100;   /* under the spectator's "Following" chip */
-    place(bg, -w / 2, cy, w, 26); place(t, -w / 2, cy, w, 26);
+    float L = -w / 2;              /* centred, but never over the Teams button right of the Players panel: a long name (10 CJK
+                                      characters) with a long translation grew the line left onto the button label */
+    { float ax, ay, aw, ah; if (ui_panel_anchor(&ax, &ay, &aw, &ah)) { float r = ax + aw + 8 + (uiset.compact ? 88.0f : 112.0f) + 8; if (L < r && r - L < 400) L = r; } }
+    place(bg, L, cy, w, 26); place(t, L, cy, w, 26);
     graphic_color(bg, hex_col("#222025", 0.75f));
 }
 /* every frame: the window, its marks, the camera's one-frame-in-6 */
