@@ -48,6 +48,7 @@ struct mp_session {
     int popups[6];               /* open local popup pause reasons */
     int popup_voted;             /* the popups produced a pause vote */
     int resume_pending;          /* PAUSE_ALL seen: re-send own run vote once in sync */
+    int paused_burst;            /* this frame's steps: paused steps run at once (mp_ticks_to_run_now) */
     /* host: players that left and are waited for (owner 2026-10-13: auto pause + "Wait for <name>" / "Keep playing") */
     uint8_t slot_uid[DSNET_MAX_PLAYERS][16]; char slot_name[DSNET_MAX_PLAYERS][32]; uint32_t slot_known;
     int hold_waiting;            /* host chose "Wait" (local; the holds themselves are dsnet state) */
@@ -320,6 +321,7 @@ static void on_cmd(const dsnet_cmd *cmd, void *user) {
 
 int mp_ticks_to_run_now(mp_session *s, float frame_ms) {
     if (!s || !s->c) return 0;
+    s->paused_burst = 0;
     if (frame_ms <= 0) { double t = now_ms(); frame_ms = s->last_frame ? (float)(t - s->last_frame) : 16.7f; s->last_frame = t; }
     dsnet_can_run_tick(s->c, s->timer);                 /* runs a pending save load (on_load) */
     if (s->loading) {
@@ -339,6 +341,12 @@ int mp_ticks_to_run_now(mp_session *s, float frame_ms) {
     int behind = (int)(until - s->timer);
     if (behind <= 0) { s->pace_acc = 0; return 0; }
     if (behind > 30) return behind > 200 ? 200 : behind;               /* catching up (load, long stall) */
+    /* fastboot_mp (2026-10-17): paused steps run 0 world ticks (nothing moves, no view to smooth), so a backlog of them
+       runs at once, down to the normal 3-step buffer. After a join / resync reload the slower peer came back 10-20
+       paused steps behind and paced them out at 60 steps/s (0.15-0.3 s) before it reached the resume step. Steps are
+       the same commands on every peer whatever their count per frame (as in the catch-up above); mp_frame stops the
+       burst at the first step that runs ticks. */
+    if (s->shown_paused && behind > 3) { s->pace_acc = 0; s->paused_burst = 1; return behind - 3; }
     float step = s->cfg.tick_ms > 0 ? s->cfg.tick_ms : 1000.0f / 60.0f;
     float trim = behind >= 8 ? 1.15f : behind <= 2 ? 0.9f : 1.0f;      /* keep a 3-7 step buffer */
     s->pace_acc += (frame_ms > 250 ? 250 : frame_ms) * trim;
@@ -480,9 +488,13 @@ int mp_frame(mp_session *s, float frame_ms) {
         /* a flow that started in the previous step's last tick: hold BEFORE this step's commands, or a join point
            (host save + reload) or an order would run in the middle of a map transition (lead bug 2026-10-12) */
         if (s->api.ready && !s->api.ready(s->api.user)) break;
-        if (mp_apply_cmds(s, t) < 0) break;
+        int ncmd = mp_apply_cmds(s, t);
+        if (ncmd < 0) break;
+        int ticked = s->step_ticks > 0;
         if (!run_ticks(s, t, s->step_ticks)) break;
         done++;
+        if (s->paused_burst && (ticked || ncmd > 0)) break;   /* a burst ends at a step with commands (a vote, an expedition
+                                                                 start: its flow begins next frame) or ticks (the resume) */
         /* A paused step (0 ticks) that applied a game order ends this frame's steps. Its follow-up (a map change:
            CampaignLoadingEventHandler, started by the frame's EventQueue.Update after this loop) runs in no sim tick,
            so ready() only drops on the NEXT frame. Without this stop a 10 fps peer ran more 0-tick steps (each one

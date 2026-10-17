@@ -229,6 +229,7 @@ void mpm_page_started(mpm_model *m, int rc, const char *err);            /* afte
 void  mpmenu_install(void);                        /* add-image callback, after ui_install() */
 void  mpmenu_frame(void);                          /* once per MainFlow.Update, title screen too */
 char *mpmenu_exec(const char *cmd, const char *line);   /* "mpm_*" socket commands (tests); NULL = not ours */
+void  mpmenu_fv_kick(void);                       /* rig_exec: view lookups immediate for 10 frames (find_view_x) */
 void  mpmenu_title_init(void *title_menu_view);   /* optional: rebuild the title clones on the next frame */
 int   mpmenu_title_click(void *button);            /* 1 = our clone (the click hook calls it) */
 int   mpmenu_gear_mode(void);                      /* lobby gear option for the ord / ui lanes; -1 no session */
