@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """w_cjk_gate.py <kit dir> <out> [<lang code, default ja>]: Windows (DSMP bottle, -batchmode -nographics, wine lock held by
 the gate through held_lock_run.py): the release kit installed fresh, the game started in a CJK language
-(UserSetting.json), then: the loader set that language with every text and none dropped; it took the game's own fonts
-for it; the loader's title button and the Mods window (DSL_UI_TEST state) show that language's texts and no loader text
-in English. Prints "x/y checks"."""
+(UserSetting.json), then: the loader set that language with every text and none dropped; the loader and multiplayer took
+the game's own fonts for it; the loader's title button is in that language; multiplayer and Custom Modes run in it with
+none dropped; the real releases offer no mod update. The Mods window cannot open with -nographics (no UI sprites). Prints "x/y checks"."""
 import glob, json, os, re, shutil, sys, time
 H = os.path.expanduser('~'); sys.path.insert(0, f'{H}/ds_launcher/loader/test')
 import w_pkg_test as t
@@ -15,29 +15,6 @@ LD = os.path.expanduser(os.environ.get('LD', '~/ds_launcher'))
 EN = json.load(open(f'{LD}/loader/lang/en.json')); TRL = json.load(open(f'{LD}/loader/lang/{CODE}.json'))
 LOCK = t.LOCK
 t.owned = lambda: os.path.exists(f'{LOCK}/owner') and open(f'{LOCK}/owner').read().split('\n')[0].strip() in ('gate13', os.environ.get('GATE_WINE_OWNER', 'gate13'))
-UI = os.path.join(OUT, 'ui'); os.makedirs(UI, exist_ok=True)
-SEQ = [0]
-def ui(op, **kw):
-    SEQ[0] += 1; seq = str(SEQ[0]); kw.update({'op': op, 'seq': seq})
-    tmp = os.path.join(UI, 'cmd.json.tmp'); open(tmp, 'w').write(json.dumps(kw)); os.replace(tmp, os.path.join(UI, 'cmd.json'))
-    t0 = time.time()
-    while time.time() - t0 < 40:
-        try:
-            j = json.load(open(os.path.join(UI, 'result.json')))
-            if j.get('seq') == seq: return j
-        except Exception: pass
-        time.sleep(0.2)
-    return {'error': f'ui {op} timed out'}
-def english_left(strings):
-    """loader texts shown in English although the language has its own text"""
-    return sorted({s for s in strings if s in EN and isinstance(TRL.get(s), str) and TRL[s] != s and re.search('[A-Za-z]{3}', s)})
-def all_strings(o):
-    if isinstance(o, str): yield o
-    elif isinstance(o, dict):
-        for v in o.values(): yield from all_strings(v)
-    elif isinstance(o, list):
-        for v in o: yield from all_strings(v)
-
 if not t.owned(): sys.exit('w_cjk_gate: the wine lock is not held by the gate')
 root = w.ROOT
 if os.path.exists(root): os.rename(root, root + '.gate020-' + time.strftime('%Y%m%d-%H%M%S'))   # clean install (never removed)
@@ -46,25 +23,36 @@ data = os.path.join(w.PROF, 'data'); os.makedirs(data, exist_ok=True)
 us = json.load(open(f'{H}/ds_launcher/loader/test_env/instances/X/data/UserSetting.json'))   # the game's own file format
 us['GeneralSettingData']['SaveCurrentLanguageType'] = LANG; us['GeneralSettingData']['IsLanguageInitialized'] = True
 json.dump(us, open(os.path.join(data, 'UserSetting.json'), 'w'), indent=1)
-os.environ['DSL_UI_TEST'] = w.winpath(UI)
 try:
     t.start(); s = t.title(600); t.check(f'title reached in {CODE}', s, s)
-    L = t.dlog()
-    m = re.search(r'language (\d+) \(([\w-]+)\) from [^;]*; texts [^:]*: (\d+) loaded, (\d+) dropped', L)
+    def logs(): return t.dlog() + (open(os.path.join(w.PROF, 'rig.log'), errors='replace').read() if os.path.exists(os.path.join(w.PROF, 'rig.log')) else '')
+    def wait_for(rx, limit=60):                         # lines come a few seconds after the title (fonts, title column)
+        t0 = time.time()
+        while time.time() - t0 < limit:
+            m = re.search(rx, logs())
+            if m: return m
+            time.sleep(1)
+        return None
+    m = wait_for(r'language (\d+) \(([\w-]+)\) from .*?; texts .*?: (\d+) loaded, (\d+) dropped')   # Windows paths hold ':'
     t.check(f'loader language {CODE}, all {len(EN)} texts loaded, none dropped', m and m.group(2) == CODE and int(m.group(3)) >= len(EN) and m.group(4) == '0', m.group(0) if m else 'no language line')
-    bf = re.search(r'ui: body text font from [^(]*\(%s\), material "([^"]+)"' % re.escape(CODE), L)
-    tf = re.search(r'ui: title font "([^"]+)" \([^,]*, %s\)' % re.escape(CODE), L)
     want = FONT.get(CODE, ('Lora', 'Cinzel'))
-    t.check(f'the game\'s {CODE} fonts (body {want[0]}, title {want[1]})', bf and tf and bf.group(1).startswith(want[0]) and tf.group(1).startswith(want[1]), (bf and bf.group(1), tf and tf.group(1)))
-    n0 = t.logs_all().count('reg test: title'); t.request({'cmd': 'title'}); t.wait_text('reg test: title', n0, 30)
-    tl = [l for l in t.logs_all().splitlines() if 'reg test: title' in l][-1:] or ['']
-    t.check(f'title button "Mods" in {CODE} ({TRL.get("Mods")})', TRL.get('Mods') and TRL['Mods'] in tl[0], tl[0][-200:])
-    o = ui('open'); time.sleep(2); st = ui('state')
-    json.dump(st, open(os.path.join(OUT, 'mods_state.json'), 'w'), ensure_ascii=False, indent=1)
-    strs = list(all_strings(st)); left = english_left(strs)
-    ja = sum(1 for x in strs if re.search('[぀-ヿ㐀-鿿가-힯]', x))
-    t.check(f'Mods window open, its texts in {CODE} ({ja} CJK texts), no loader text in English', o.get('ok') == 1 and st.get('ok') == 1 and st.get('open') == 1 and ja > 0 and not left, (o.get('msg') or o.get('error'), st.get('open'), left[:8], ja))
-    ui('close')
+    bf = wait_for(r'ui: body text font from [^(]*\(%s\), material "([^"]+)"' % re.escape(CODE))
+    tf = wait_for(r'ui: title font "([^"]+)" \([^,]*, %s\)' % re.escape(CODE))
+    mf = wait_for(r'mpmenu: i18n: body font for %s: (\S+)' % re.escape(CODE))
+    t.check(f'the game\'s {CODE} fonts in the loader and multiplayer (body {want[0]}, title {want[1]})',
+            bf and tf and mf and bf.group(1).startswith(want[0]) and tf.group(1).startswith(want[1]) and mf.group(1).startswith(want[0]), (bf and bf.group(1), tf and tf.group(1), mf and mf.group(1)))
+    tb = wait_for(r'ui: title button "%s" added to the title column' % re.escape(TRL.get('Mods', '?')))
+    t.check(f'the loader\'s title button "Mods" in {CODE} ({TRL.get("Mods")}) on the title', tb, 'not added')
+    mp = wait_for(r'mpmenu: i18n: game language %d = %s \((\d+) texts, (\d+) dropped' % (LANG, re.escape(CODE)))
+    cm = wait_for(r'\[custom-modes\] i18n: language %s [^:]*: (\d+) texts, (\d+) dropped' % re.escape(CODE))
+    t.check(f'multiplayer and Custom Modes in {CODE}, texts loaded, none dropped', mp and cm and int(mp.group(1)) > 0 and mp.group(2) == '0' and int(cm.group(1)) > 0 and cm.group(2) == '0',
+            (mp and mp.group(0), cm and cm.group(0)))
+    # the real GitHub releases: this install's mods are the newest, so no mod update may be offered (the updater of
+    # v0.1.7-v0.1.9 took the old bundle-v0.1.x zips multiplayer-0.10.0 / custom-modes-0.11.0 / gcd-cdr-2.0.0 as newer)
+    wait_for(r'update: kit: installed'); time.sleep(5); L = t.dlog()
+    up = [l[13:] for l in L.splitlines() if re.search(r'update: mod \S+: installed|\.zip downloaded', l)]
+    t.check('auto-update (real releases): checked, no mod update offered', 'update: kit: installed' in L and not up, up[:4] or 'no update check line')
+    # the Mods window itself cannot open here: -nographics (the bottle has no graphics) gives the UI kit no sprites
 finally:
     w.stop()
 n = sum(1 for c in t.checks if c['ok'])
