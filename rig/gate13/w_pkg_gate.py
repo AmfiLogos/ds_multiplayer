@@ -14,7 +14,7 @@ t.owned = lambda: os.path.exists(f'{LOCK}/owner') and open(f'{LOCK}/owner').read
 def install():
     k = os.path.join(OUT, 'kit')
     if os.path.exists(k): shutil.move(k, os.path.join(OUT, f'kit.old.{int(time.time())}'))
-    shutil.copytree(f'{H}/ds_launcher/loader/build/win/kit', k)
+    shutil.copytree(os.path.join(os.path.expanduser(os.environ.get('LD', '~/ds_launcher')), 'loader/build/win/kit'), k)   # LD = the loader checkout under test
     shutil.move(os.path.join(k, 'files', 'mods', 'gcd-cdr'), os.path.join(OUT, f'gcd-cdr.removed.{int(time.time())}'))
     return t.w.install(k)
 os.makedirs(OUT, exist_ok=True)
