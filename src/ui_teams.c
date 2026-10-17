@@ -425,7 +425,6 @@ static uintptr_t h_ready_txt, h_region_txt, h_info, h_band, h_empty[3];
    world is clickable and the game's keys and Escape work (not modal). Remembered in mp_teams_button.json "folded". */
 static uintptr_t h_tfold, h_fbar, h_fshow, h_fclose;
 static int tfold;
-static float win_dx, win_k = 1;                              /* the window's shift (root units) and scale now (win_place) */
 #define FBAR_W 320.0f
 #define FBAR_H 56.0f
 static void fbar_build(Obj rt);
@@ -658,7 +657,7 @@ static int build_root(void) {
     /* the window: the panel with its frame; keep the title, the close button and the info icon */
     Obj w = u_instantiate(u_gc_get(h_tpl_panel), rt);
     if (!u_alive(w)) { rig_log("teams: window clone failed"); return -1; }
-    centre_anchor(w); rt_pos(w, 0, 0); tr_scale(w, 1.0f); win_dx = 0; win_k = 1;
+    centre_anchor(w); rt_pos(w, 0, 0); tr_scale(w, 1.0f);
     int n = (tm_is(w, K_TR) ? F(0x510EAE4, int (*)(Obj, void *))(w, NULL) : 0);
     for (int i = 0; i < n; i++) {
         Obj c = (tm_is(w, K_TR) ? F(0x510FC60, Obj (*)(Obj, int, void *))(w, i, NULL) : NULL);
@@ -1918,46 +1917,6 @@ static void stock_gear_frame(void) {
 /* the proposal side panel is not modal (lan_v10): the player panel, hotkeys and Escape stay as without it */
 /* viewui: the folded Teams window is not modal (the bar only) */
 __attribute__((visibility("default"))) int ui_teams_modal_open(void) { return (opened && !folded()) || stock_mode == 2; }
-/* i18n game test (all languages): the Players panel, drawn above the open window (viewui), covered its "Your units" row.
-   Side by side instead, as the game lays out its panels: while our window is up (not folded) ui_game puts the panel at
-   the screen's left edge (dlsym ui_teams_window_shown) and the window moves right of the panel and of the Teams button
-   when it snaps to it: as far as the screen's right margin, then smaller (never under WIN_MIN_K). Centred again after. */
-__attribute__((visibility("default"))) int ui_teams_window_shown(void) { return opened && !folded() && win(); }
-#define WIN_GAP 12.0f                                        /* canvas units between the panel and the window, and to the screen edge */
-#define WIN_MIN_K 0.8f
-static void win_place(void) {
-    Obj w = win();
-    if (!w || !opened || folded()) return;
-    float r[4];
-    if (!scr_rect(w, r) || r[2] < 1) return;
-    float rw = rt_rect(w).w; if (rw < 1) rw = WIN_W;
-    float wpx = r[2] / win_k, ppu = wpx / rw;                /* the window's width at scale 1, pixels per root unit */
-    float home = r[0] + r[2] / 2 - win_dx * ppu, hx0 = home - wpx / 2, hx1 = home + wpx / 2;
-    float cs = canvas_scale(w); if (cs <= 0) cs = 1;
-    float gap = WIN_GAP * cs, sw = (float)F(0x5092C94, int (*)(void *))(NULL);   /* Screen.width */
-    float R = -1, a, b, bx, by, bw, bh;
-    static int (*ppx)(float *, float *); static unsigned tries;
-    if (!ppx && tries++ % 60 == 0) ppx = (int (*)(float *, float *))dlsym(RTLD_DEFAULT, "ui_panel_px");
-    if (ppx && ppx(&a, &b) && a < home) R = b;
-    if (R >= 0 && !hud_dragged && ui_teams_button_rect(&bx, &by, &bw, &bh) && bx < home && bx + bw > R) R = bx + bw;
-    float dx = 0, k = 1;
-    if (R >= 0 && R + gap > hx0) {
-        float need = R + gap - hx0, room = sw - gap - hx1;
-        if (need <= room) dx = need;
-        else {
-            float left = R + gap, right = sw - gap;
-            k = (right - left) / wpx; if (k > 1) k = 1; if (k < WIN_MIN_K) k = WIN_MIN_K;
-            float c = left + wpx * k / 2; if (c + wpx * k / 2 > right) c = right - wpx * k / 2;
-            dx = c - home;
-        }
-    }
-    dx /= ppu;
-    float ddx = dx - win_dx, dk = k - win_k;
-    if (ddx < 0.5f && ddx > -0.5f && dk < 0.002f && dk > -0.002f) return;
-    rt_pos(w, dx, 0); tr_scale(w, k);
-    rig_log("teams: window %s (shift %.0f, scale %.2f; panel group right %.0f px, screen %.0f px)", dx || k < 1 ? "beside the Players panel" : "centred", dx, k, R, sw);
-    win_dx = dx; win_k = k;
-}
 /* viewui: the player panel draws above the open window; its clicks and tooltips are ui_game's (ui_panel_hit, dlsym) */
 static int panel_hit(V2 m) {
     static int (*fn)(float, float); static unsigned tries;
@@ -2228,7 +2187,6 @@ void ui_teams_frame(void) {
     start_frame();
     if (n % 30 == 1) hud_frame();
     hud_place();
-    win_place();
     hud_input();
     for (int b = 0; b < 2; b++)
         if (F(0x51ACDD0, bool (*)(int, void *))(b, NULL)) {   /* Input.GetMouseButtonDown */
