@@ -394,7 +394,7 @@
 "Mute %s's Pings"	ui_game.c:5201
 "Names Above Units"	ui_game.c:5221
 "Names above units"	ui_game.c:2520
-"Needs Custom Modes"	mpmenu.c:1244
+"Needs Units Laboratory"	mpmenu.c:1244
 "Needs the Steam version"	mpmenu.c:1744 mpmenu_model.c:463
 "New Save"	mpmenu.c:3078
 "New save"	mpmenu_model.c:498
@@ -611,7 +611,7 @@
 "Teams (watching)"	ui_teams.c:1084
 "Teams Button"	ui_game.c:5224
 "Teams button"	ui_game.c:2536
-"Teams of players fight each other. Install and turn on the Custom Modes mod to play it."	mpmenu.c:3080
+"Teams of players fight each other. Install and turn on the Units Laboratory mod to play it."	mpmenu.c:3080
 "Temporary Control"	ui_game.c:5284
 "The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead."	mpmenu.c:2985
 "The Teams screen is not available here"	ui_teams.c:1435

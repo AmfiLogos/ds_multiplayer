@@ -52,7 +52,7 @@ def overflow(c, tag):
 
 with C.Copy(['custom-modes', 'units-driver'], OUT, ui_scale=SCALE) as c:
     c.wait_title()
-    c.click('title:Custom Modes', wait=1.2)
+    c.click('title:Units Laboratory', wait=1.2)
     h = c.state().get('cm', {}).get('home', {})
     ck('home page lists My Units', h.get('buttons', '').split(';')[:1] == ['My Units'], h)
     c.click('home:My Units', wait=2.0)

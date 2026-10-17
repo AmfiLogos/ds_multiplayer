@@ -21,15 +21,15 @@ def one(n, mods, expect_entries):
     with C.Copy(mods, d) as c:
         st = c.wait_title()
         col = c.column(st); labels = [x[0] for x in col if x[1]]
-        ck(f'r{n} title has Custom Modes', 'Custom Modes' in labels, labels)
-        if 'Mods' in labels and 'Custom Modes' in labels:
-            sm = [x[2] for x in col if x[0] == 'Mods'][0]; sc = [x[2] for x in col if x[0] == 'Custom Modes'][0]
+        ck(f'r{n} title has Custom Modes', 'Units Laboratory' in labels, labels)
+        if 'Mods' in labels and 'Units Laboratory' in labels:
+            sm = [x[2] for x in col if x[0] == 'Mods'][0]; sc = [x[2] for x in col if x[0] == 'Units Laboratory'][0]
             ck(f'r{n} Custom Modes right below Mods', sc == sm + 1, f'Mods {sm} Custom Modes {sc}')
         c.cap(f'r{n}_title')
-        c.req('hover', target='title:Custom Modes'); time.sleep(1.5)
+        c.req('hover', target='title:Units Laboratory'); time.sleep(1.5)
         st = c.state(); ck(f'r{n} no hover card on Custom Modes', not st['tip']['shown'], st['tip'])
         c.req('mouse_off')
-        a = c.click('title:Custom Modes', wait=1.5)
+        a = c.click('title:Units Laboratory', wait=1.5)
         st = c.state(); h = st.get('cm', {}).get('home', {})
         ck(f'r{n} click opens the home page', a['rc'] == 0 and h.get('open') == 1, h)
         btns = h.get('buttons', '').split(';') if h.get('buttons') else []
@@ -51,7 +51,7 @@ def one(n, mods, expect_entries):
         ck(f'r{n} Back closes the page', h.get('open') == 0, h)
         ck(f'r{n} stock column back', c.req('rect', target='title:Mods')['rc'] == 1)
         c.cap(f'r{n}_back')
-        c.click('title:Custom Modes', wait=1.5)
+        c.click('title:Units Laboratory', wait=1.5)
         ck(f'r{n} opens again', c.state().get('cm', {}).get('home', {}).get('open') == 1)
         c.click('home:Back', wait=1.0)
         ck(f'r{n} no guard violation', not c.violations, c.violations)

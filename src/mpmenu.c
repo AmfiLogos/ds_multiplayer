@@ -688,7 +688,7 @@ static uintptr_t h_title_cog, h_title_more, h_title_sum, h_title_box, h_title_pc
 static uintptr_t h_cnote[MPM_CHOICES]; static V2 cnote_ap0[MPM_CHOICES]; static float cnote_x[MPM_CHOICES];
 static mpm_choices hcl;                                                     /* (defined with the host choice code below) */
 /* owner 2026-10-17: the Multiplayer page always shows a PvP entry. Without a "pvp" choice (Custom Modes not installed, off
-   or refused) the first free choice slot shows it greyed, with "Needs Custom Modes" under it; the model gives an
+   or refused) the first free choice slot shows it greyed, with "Needs Units Laboratory" under it; the model gives an
    unregistered slot no action, so a click does nothing. -1: PvP is registered (its own button) or no slot is free. */
 static int pvp_stub_slot(void) {
     if (M.state != MPM_TITLE_MENU) return -1;
@@ -1241,7 +1241,7 @@ static void title_sync(const mpm_obs *o) {
     float cnh[MPM_CHOICES] = { 0 };                                         /* host choices: second line on, its height (0 = none) */
     for (int k = 0; k < MPM_CHOICES; k++) {
         Obj b = tb(mpm_choice_btn(k)), nt = u_gc_get(h_cnote[k]);
-        const char *n = !b || !u_on(b) ? NULL : k == ps ? TR("Needs Custom Modes") : k < hcl.n ? mpm_choice_note(hcl.c[k].id) : NULL;
+        const char *n = !b || !u_on(b) ? NULL : k == ps ? TR("Needs Units Laboratory") : k < hcl.n ? mpm_choice_note(hcl.c[k].id) : NULL;
         if (!u_alive(nt)) continue;
         u_active(nt, n != NULL);
         if (!n) continue;
@@ -3077,7 +3077,7 @@ static void tips_frame(const mpm_obs *o) {
     TIP(tb(MPB_HOST_SAVE), TR("Your Save"), TR("Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer."));
     TIP(tb(MPB_HOST_NEW), TR("New Save"), TR("Start a new campaign and open it to other players as soon as it is created."));
     for (int k = 0; k < hcl.n; k++) TIP(tb(mpm_choice_btn(k)), hcl.c[k].label, hcl.c[k].tip);
-    { int ps = pvp_stub_slot(); if (ps >= 0) TIP(tb(mpm_choice_btn(ps)), TR("PvP"), TR("Teams of players fight each other. Install and turn on the Custom Modes mod to play it.")); }
+    { int ps = pvp_stub_slot(); if (ps >= 0) TIP(tb(mpm_choice_btn(ps)), TR("PvP"), TR("Teams of players fight each other. Install and turn on the Units Laboratory mod to play it.")); }
     TIP(tb(MPB_HOST_START), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Prepares the world for this mode and opens the lobby. Friends join you there."));
     TIP(tb(MPB_JOIN_ADDR), TR("Join by Address"), TR("Join a friend's world with their address. Use it without Steam, or on the same home network."));
     TIP(tb(MPB_JOIN_FRIEND), TR("Join a Friend on Steam"), TR("Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."));

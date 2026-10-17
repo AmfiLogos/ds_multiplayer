@@ -7,7 +7,7 @@ test-only units-driver (ext/units13/driver). dsload.dylib = ~/ds_launcher/loader
 A pair lease is held while the copy runs (LANE_RULES 6: a loader copy counts as a pair).
 
   from cmrig import Copy
-  with Copy(['multiplayer', 'custom-modes', 'units-driver'], out) as c: c.wait_title(); c.req('click', target='title:Custom Modes')
+  with Copy(['multiplayer', 'custom-modes', 'units-driver'], out) as c: c.wait_title(); c.req('click', target='title:Units Laboratory')
 """
 import json, os, shutil, signal, subprocess, sys, threading, time
 sys.path.insert(0, os.path.expanduser('~/ds_launcher/loader/test'))
@@ -245,7 +245,7 @@ class Copy:
                 l, a, s = e.rsplit('|', 2); out.append((l, int(a), int(s)))
         return out
 
-    def wait_title(self, need=('Custom Modes',), limit=240):
+    def wait_title(self, need=('Units Laboratory',), limit=240):
         t0 = time.time()
         while time.time() - t0 < limit:
             try:

@@ -84,7 +84,7 @@ def saves_list():
 saves0 = saves_list()
 with C.Copy(['custom-modes', 'units-driver'], OUT, lane='builder13', ui_scale=SCALE) as c:
     c.wait_title()
-    c.click('title:Custom Modes', wait=1.2)
+    c.click('title:Units Laboratory', wait=1.2)
     h = cm(c).get('home', {})
     btns = h.get('buttons', '').split(';')
     ck('home page: Unit Builder right after My Units', btns[:2] == ['My Units', 'Unit Builder'], h)
@@ -175,7 +175,7 @@ with C.Copy(['custom-modes', 'units-driver'], OUT, lane='builder13', ui_scale=SC
         L = lib(); u2 = next((x for x in L['units'] if x['id'] == uid), {})
         ck('Edit: same id, still one unit, build replaced', sid == uid and len(L['units']) == n_lib + 1 and u2.get('build', {}).get('race') == (r2[0] if r2 else b.get('race')), (sid, len(L['units']), u2.get('build', {}).get('race')))
         # My Units > New unit
-        c.click('title:Custom Modes', wait=0.5)
+        c.click('title:Units Laboratory', wait=0.5)
         c.click('home:My Units', wait=1.5)
         m = wait(c, lambda s: s.get('open'), 10, 'mu')
         ck('My Units shows the Unit Builder door', m.get('builder') == 1, m)

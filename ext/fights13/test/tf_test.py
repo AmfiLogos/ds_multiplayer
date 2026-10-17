@@ -60,7 +60,7 @@ def scene():
 
 
 def go_home(c):
-    c.click('title:Custom Modes', wait=1.5)
+    c.click('title:Units Laboratory', wait=1.5)
     return c.state().get('cm', {}).get('home', {})
 
 
