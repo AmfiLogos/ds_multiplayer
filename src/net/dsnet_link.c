@@ -269,7 +269,7 @@ int dsnet_blob_feed(dsnet_blob_rx *rx, const uint8_t *p, uint32_t n) {
         rx->buf = malloc(total ? total : 1);
         if (!rx->buf) return -1;
     }
-    if (!rx->buf || id != rx->id || off != rx->got || off + dlen > rx->total) return -1;
+    if (!rx->buf || id != rx->id || p[4] != rx->kind || total != rx->total || off != rx->got || off + dlen > rx->total) return -1;   /* one blob: kind and size fixed */
     memcpy(rx->buf + off, p + BLOB_HDR, dlen);
     rx->got += dlen;
     return rx->got == rx->total;

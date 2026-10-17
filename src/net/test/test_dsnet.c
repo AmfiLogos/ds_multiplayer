@@ -69,6 +69,7 @@ typedef struct peer {
     uint32_t busy_at; int busy_ms, busy_done; double busy_since;
     int want_run, vote_while_desynced, sent_desync_vote;   /* auto-pause policy of the toy game */
     size_t save_pad; int save_bad, upload_rc, oversize_rc;
+    int fe_on_jp, fe_sent; uint32_t jp_ticks[4]; int njp;   /* host: FE_START from inside the 1st join point (review #4) */
     int save_fail_mode;           /* host: 1 = the game's save fails (notice sent), 2 = it fails and nothing is sent */
     int lossy_save;               /* host: a save loses s[7] (like in-progress tasks) and the host reloads it itself */
     int partial, patch_fail, patch_tried, patch_rc_host, reports_sent; uint32_t patch_tick, patch_count;   /* lan_v10 */
@@ -120,6 +121,11 @@ static void on_cmd(const dsnet_cmd *cmd, void *user) {
         if (dsnet_is_host(p->c)) p->patch_rc_host = dsnet_upload_patch(p->c, (const uint8_t *)&p->st, sizeof p->st);
         break;
     case DSNET_JOIN_POINT:
+        if (dsnet_is_host(p->c) && p->njp < 4) p->jp_ticks[p->njp++] = cmd->tick;
+        if (dsnet_is_host(p->c) && p->fe_on_jp && !p->fe_sent) {   /* the server sees FE_START before this join point's save */
+            uint8_t pl[20]; memset(pl, 0x5A, 16); memset(pl + 16, 0, 4);
+            dsnet_submit(p->c, DSNET_FE_START, 0, pl, sizeof pl); p->fe_sent = 1;
+        }
         if (dsnet_is_host(p->c) && p->save_fail_mode) { if (p->save_fail_mode == 1) dsnet_upload_save_failed(p->c); break; }
         if (dsnet_is_host(p->c)) {
             p->oversize_rc = dsnet_upload_save(p->c, (const uint8_t *)p, DSNET_MAX_BLOB);   /* must refuse */
@@ -1908,6 +1914,57 @@ static void test_tx_stall(void) {
            ok ? "PASS" : "FAIL", t_cut, (now_ms() - t0) / 1000);
 }
 
+/* ---- code review #3: a full-state list over one frame (60 KB) reaches the guests; the host keeps its link ---- */
+static void test_full_big(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_server *srv; peer *ps[3];
+    if (setup(&srv, ps, 3, 100, NULL, NULL)) { printf("  FAIL setup\n"); failures++; return; }
+    size_t sizes[3] = { 200, 300000, DSNET_FULL_MAX }; int got_all = 1;
+    for (int k = 0; k < 3; k++) {
+        size_t n = sizes[k]; uint8_t *d = malloc(n);
+        for (size_t i = 0; i < n; i++) d[i] = (uint8_t)('a' + (i * 7 + k) % 26);
+        CHECK(dsnet_send_full(ps[0]->c, 1000 + k, d, n) == 0, "send %zu refused", n);
+        for (int g = 1; g < 3; g++) {
+            uint32_t t = 0; uint8_t *r = NULL; size_t rl = 0; double tw = now_ms();
+            while (!dsnet_full_take(ps[g]->c, &t, &r, &rl) && now_ms() - tw < 5000) sleep_ms(2);
+            if (!r || rl != n || t != 1000u + k || memcmp(r, d, n) || r[n] != 0) { got_all = 0; printf("  c%d: %zu bytes -> %zu, tick %u\n", g, n, rl, t); }
+            free(r);
+        }
+        free(d);
+    }
+    uint8_t one = 0;
+    CHECK(dsnet_send_full(ps[0]->c, 9, &one, DSNET_FULL_MAX + 1) == -1, "over DSNET_FULL_MAX not refused");
+    CHECK(got_all, "a full-state list did not arrive whole");
+    for (int i = 0; i < 3; i++) CHECK(!dsnet_is_disconnected(ps[i]->c), "%s lost its link", ps[i]->name);
+    for (int i = 0; i < 3; i++) dsnet_client_close(ps[i]->c);
+    dsnet_server_stop(srv);
+    for (int i = 0; i < 3; i++) free(ps[i]);
+    printf("%s full_big: 200 B, 300 KB and 8 MB full-state lists reached both guests whole, 8 MB + 1 refused, nobody cut (%.1fs)\n",
+           ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
+}
+
+/* ---- code review #1: the longest HELLO (31-byte build id, 64-char mod set, 4095 bytes of mod lines, 31-byte name)
+ * fits the client's buffer and joins (ASan: make asan) ---- */
+static void test_hello_max(void) {
+    int ok = 1; double t0 = now_ms();
+    static char lines[DSNET_MODLINES_MAX]; char set[65], build[32], name[40];
+    for (int i = 0; i < DSNET_MODLINES_MAX - 1; i++) lines[i] = i % 40 == 39 ? '\n' : 'a' + i % 26;
+    lines[DSNET_MODLINES_MAX - 1] = 0;
+    memset(set, 'f', 64); set[64] = 0; memset(build, 'b', 31); build[31] = 0; memset(name, 'n', 39); name[39] = 0;
+    dsnet_set_identity(build, 3);
+    dsnet_set_modset(DSNET_MATCH_MODS, set, lines);
+    dsnet_cfg cfg = test_cfg(1); cfg.build_id = build; cfg.mod_version = 3;
+    dsnet_server *srv = dsnet_server_start(&cfg);
+    dsnet_client *h = dsnet_client_connect_local(srv, name);
+    dsnet_client *g = dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), name);
+    CHECK(dsnet_wait_welcome(h, 2000) == 0 && dsnet_wait_welcome(g, 2000) == 0, "longest HELLO not welcomed (reason %d)", dsnet_reject_reason(g));
+    dsnet_client_close(g); dsnet_client_close(h); dsnet_server_stop(srv);
+    dsnet_set_modset(DSNET_MATCH_VANILLA, "", "");
+    dsnet_set_identity("", 0);
+    printf("%s hello_max: %zu-byte mod lines + 64-char set + 31-byte build and name: host and guest welcomed (%.1fs)\n",
+           ok ? "PASS" : "FAIL", strlen(lines), (now_ms() - t0) / 1000);
+}
+
 static void test_chat(void) {
     int ok = 1; double t0 = now_ms();
     dsnet_cfg cfg = test_cfg(3);
@@ -2281,6 +2338,32 @@ static void test_fe_mail(void) {
     printf("%s fe_mail: 300 KB guest -> host (sender stamped), host -> one guest by uid, absent uid dropped, sim unchanged (%.1fs)\n",
            ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
 }
+/* ---- code review #4: a join-point save made before FE_START (old world) arrives after it: dropped, the guests load
+ * only the save of the join point after FE_START ---- */
+static void test_fe_stale(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_server *srv; peer *ps[3]; uint8_t uids[3][16];
+    if (fe_setup(&srv, ps, 2, 600, uids)) { printf("  FAIL setup\n"); failures++; return; }
+    ps[0]->fe_on_jp = 1;
+    for (int i = 0; i < 2; i++) { ps[i]->orders_every = 7; peer_go(ps[i]); }
+    while (ps[0]->timer < 150) sleep_ms(2);
+    memset(uids[2], 0x32, 16); dsnet_set_player_uid(uids[2]);
+    ps[2] = peer_new("late", dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "late"), 600);
+    dsnet_set_player_uid(NULL);
+    CHECK(dsnet_wait_welcome(ps[2]->c, 2000) == 0, "no welcome");
+    peer_go(ps[2]);
+    CHECK(wait_done(ps, 3, 20000) == 0, "timeout");
+    CHECK(ps[0]->njp >= 2, "host saw %d join points", ps[0]->njp);
+    uint32_t jp1 = ps[0]->jp_ticks[0], jp2 = ps[0]->jp_ticks[1];
+    for (int i = 1; i < 3; i++)
+        CHECK(ps[i]->loads == 1 && ps[i]->load_tick == jp2 && !ps[i]->save_bad, "%s: loads %d at %u (join points %u, %u)",
+              ps[i]->name, ps[i]->loads, ps[i]->load_tick, ps[0]->jp_ticks[0], jp2);
+    all_equal(ps, 3, 200);
+    stop_all(ps, 3, srv);
+    printf("%s fe_stale: FE_START inside the join point at %u -> its save dropped, both guests loaded once at %u, equal (%.1fs)\n",
+           ok ? "PASS" : "FAIL", jp1, jp2, (now_ms() - t0) / 1000);
+}
+
 static void test_fe_start(void) {
     int ok = 1; double t0 = now_ms();
     dsnet_server *srv; peer *ps[3]; uint8_t uids[3][16];
@@ -2365,6 +2448,9 @@ int main(int argc, char **argv) {
     RUN("hello_deadline", test_hello_deadline());
     RUN("tx_stall", test_tx_stall());
     RUN("big_cmd", test_big_cmd());
+    RUN("full_big", test_full_big());
+    RUN("hello_max", test_hello_max());
+    RUN("fe_stale", test_fe_stale());
     RUN("save_fail", (test_save_fail(1), test_save_fail(2)));
     RUN("identity", test_identity());
     RUN("hold", test_hold());
