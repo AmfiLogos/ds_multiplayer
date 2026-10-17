@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
+#include <CoreFoundation/CoreFoundation.h>
 
 typedef id (*init4_t)(id, SEL, CGRect, unsigned long, unsigned long, BOOL);
 typedef id (*init5_t)(id, SEL, CGRect, unsigned long, unsigned long, BOOL, id);
@@ -59,6 +60,27 @@ static void hold_policy(id app) {
 }
 static void my_finish(id self, SEL s) { hold_policy(self); ((void (*)(id, SEL))o_finish)(self, s); }
 
+/* 1 = this app's Info.plist says LSBackgroundOnly: a test copy (rig/make_instance.sh), never a player's game */
+int rig_bg_app(void) {
+    CFBundleRef mb = CFBundleGetMainBundle(); if (!mb) return 0;
+    CFTypeRef v = CFBundleGetValueForInfoDictionaryKey(mb, CFSTR("LSBackgroundOnly"));
+    return v && ((CFGetTypeID(v) == CFBooleanGetTypeID() && CFBooleanGetValue((CFBooleanRef)v)) ||
+                 (CFGetTypeID(v) == CFStringGetTypeID() && CFStringCompare((CFStringRef)v, CFSTR("1"), 0) == kCFCompareEqualTo));
+}
+
+/* the app never activates and is never the front app (once; every copy except DSRIG_LIVE) */
+void rig_noact_install(void) {
+    static int done; if (done) return; done = 1;
+    swap("NSApplication", "activateIgnoringOtherApps:", (IMP)noopb, NULL);
+    swap("NSApplication", "activate", (IMP)noop0, NULL);
+    swap("NSRunningApplication", "activateWithOptions:", (IMP)no0, NULL);
+    swap("NSApplication", "setActivationPolicy:", (IMP)my_policy, &o_policy);
+    swap("NSApplication", "finishLaunching", (IMP)my_finish, &o_finish);
+    id *nsapp = (id *)dlsym(RTLD_DEFAULT, "NSApp");                  /* AppKit already launched: set it now */
+    if (nsapp && *nsapp) hold_policy(*nsapp);
+    rig_log("win: activation off, policy held at Prohibited");
+}
+
 void rig_win_install(void) {
     swap("NSWindow", "initWithContentRect:styleMask:backing:defer:", (IMP)my_init4, (IMP*)&o_init4);
     swap("NSWindow", "initWithContentRect:styleMask:backing:defer:screen:", (IMP)my_init5, (IMP*)&o_init5);
@@ -68,13 +90,7 @@ void rig_win_install(void) {
     swap("NSWindow", "canBecomeKeyWindow", (IMP)no0, NULL);
     swap("NSWindow", "canBecomeMainWindow", (IMP)no0, NULL);
     swap("NSWindow", "toggleFullScreen:", (IMP)noop1, NULL);
-    swap("NSApplication", "activateIgnoringOtherApps:", (IMP)noopb, NULL);
-    swap("NSApplication", "activate", (IMP)noop0, NULL);
-    swap("NSRunningApplication", "activateWithOptions:", (IMP)no0, NULL);
-    swap("NSApplication", "setActivationPolicy:", (IMP)my_policy, &o_policy);
-    swap("NSApplication", "finishLaunching", (IMP)my_finish, &o_finish);
-    id *nsapp = (id *)dlsym(RTLD_DEFAULT, "NSApp");                  /* AppKit already launched: set it now */
-    if (nsapp && *nsapp) hold_policy(*nsapp);
+    rig_noact_install();
     rig_log("win: NSWindow/NSApplication hiding installed");
 }
 
@@ -122,7 +138,6 @@ void rig_win_place(void) {
    with alpha 0, moved to that space through the window server (SkyLight, our own connection), and only made
    opaque once CGSCopySpacesForWindows confirms it is there. The app is never activated (activation no-ops as in
    hidden mode), so the owner's current desktop never shows it and never switches. */
-#include <dlfcn.h>
 #include <CoreFoundation/CoreFoundation.h>
 typedef int (*cgs_conn_t)(void);
 typedef void (*cgs_move_t)(int, CFArrayRef, uint64_t);
