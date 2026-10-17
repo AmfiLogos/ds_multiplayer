@@ -105,13 +105,54 @@ void *class_by_name(const char *ns, const char *name) {
     }
     return NULL;
 }
+/* fastboot_mp (2026-10-17): an ABSENT view is looked up again at most every FV_RETRY frames per call site (handle +
+   names). FindObjectOfType walks the scene's objects and ran every frame for views the scene does not have (the title
+   view in the world, the Esc menu before it was first opened, the HUD on the title): a big part of this module's main-
+   thread time during a world load. A found view keeps its cached handle (unchanged). Lookups stay immediate during a rig
+   command (mpmenu_fv_kick from rig_exec), for 10 frames after a key / mouse press (Input.anyKeyDown, read in
+   mpmenu_frame; without that icall: always immediate, as before) and inside find_view_now (actions that open a view).
+   UI only: no sim state. */
+#define FV_RETRY 15
+#define FV_SITES 48
+static struct { const uintptr_t *h; const char *ns, *name; int64_t next; } fv_miss[FV_SITES];
+static int64_t fv_free_until = INT64_MAX;                         /* immediate lookups while rig_frames < this */
+static int fv_now_depth;
+void mpmenu_fv_kick(void) { if (fv_free_until != INT64_MAX && fv_free_until < rig_frames + 10) fv_free_until = rig_frames + 10; }
+static Obj find_view_lookup(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive);
 Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
+    int i, slot = -1;
+    for (i = 0; i < FV_SITES; i++) {
+        if (fv_miss[i].h == h && fv_miss[i].ns == ns && fv_miss[i].name == name) break;
+        if (!fv_miss[i].h && slot < 0) slot = i;
+    }
+    if (i < FV_SITES && rig_frames < fv_miss[i].next && rig_frames >= fv_free_until && !fv_now_depth) return NULL;   /* retried later */
+    v = find_view_lookup(h, kcache, ns, name, inactive);
+    if (v) { if (i < FV_SITES) fv_miss[i].h = NULL; }
+    else if (i < FV_SITES || slot >= 0) {                             /* table full: no throttle for that site */
+        if (i == FV_SITES) { i = slot; fv_miss[i].h = h; fv_miss[i].ns = ns; fv_miss[i].name = name; }
+        fv_miss[i].next = rig_frames + FV_RETRY;
+    }
+    return v;
+}
+static Obj find_view_now(uintptr_t *h, void **k, const char *ns, const char *name, bool inactive) {
+    fv_now_depth++; Obj v = find_view_x(h, k, ns, name, inactive); fv_now_depth--; return v;
+}
+static void fv_input_frame(void) {                                    /* once per frame: a key / mouse press opens views */
+    static bool (*anykey)(void); static int looked;
+    if (!looked) {
+        looked = 1; anykey = (bool (*)(void))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::get_anyKeyDown()");
+        rig_log("mpmenu: view lookups %s", anykey ? "throttled while absent (every 15 frames; immediate after input)" : "immediate (Input.anyKeyDown not available)");
+        if (anykey) fv_free_until = 0;
+    }
+    if (anykey && anykey()) mpmenu_fv_kick();
+}
+static Obj find_view_lookup(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
     if (!*kcache) *kcache = class_by_name(ns, name);
     if (!*kcache) return NULL;
     Obj tobj = F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(*kcache));   /* class -> Type object */
-    v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, inactive, NULL);
+    Obj v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, inactive, NULL);
     u_gc_free(*h); *h = u_alive(v) ? u_gc_new(v) : 0;
     return u_alive(v) ? v : NULL;
 }
@@ -501,10 +542,10 @@ static uintptr_t h_anyf, h_slv, h_namefield; static void *k_anyf, *k_slv;
 static int primed;
 char my_name[64];                                                   /* current name (file / Steam / Mac user) */
 static Obj field_source(const char **from) {
-    Obj slv = find_view_x(&h_slv, &k_slv, "Refactor", "SaveLoadView", true), fld = slv ? AT(slv, 0xB8, Obj) : NULL;
+    Obj slv = find_view_now(&h_slv, &k_slv, "Refactor", "SaveLoadView", true), fld = slv ? AT(slv, 0xB8, Obj) : NULL;   /* immediate: self-paced (fields_find) */
     *from = "the load list's name field";
-    if (!u_alive(fld)) { Obj cs = find_view_x(&h_cs, &k_cs, "Refactor.UI", "SubUI_CampaignSetting", true); fld = cs ? AT(cs, 0x30, Obj) : NULL; *from = "the new-campaign name field"; }
-    if (!u_alive(fld)) { fld = find_view_x(&h_anyf, &k_anyf, "TMPro", "TMP_InputField", true); *from = "a scene TMP_InputField"; }
+    if (!u_alive(fld)) { Obj cs = find_view_now(&h_cs, &k_cs, "Refactor.UI", "SubUI_CampaignSetting", true); fld = cs ? AT(cs, 0x30, Obj) : NULL; *from = "the new-campaign name field"; }
+    if (!u_alive(fld)) { fld = find_view_now(&h_anyf, &k_anyf, "TMPro", "TMP_InputField", true); *from = "a scene TMP_InputField"; }
     return u_alive(fld) ? fld : NULL;
 }
 Obj first_image(Obj tr, int depth);
@@ -853,8 +894,9 @@ static void title_build(Obj v) {
     rig_log("mpmenu: title clones added at sibling %d", at);
 }
 static void title_sync(const mpm_obs *o) {
+    if (o->scene != 1) return;                                              /* no TitleMenuView lookup in the world */
     Obj v = title_view();
-    if (!v || o->scene != 1) return;
+    if (!v) return;
     if (u_gc_get(h_title_built) != v || !tb(MPB_MULTIPLAYER)) title_build(v);
     uint64_t vis = mpm_visible(&M, o);
     int sub = vis & ~(1ull << MPB_MULTIPLAYER) ? 1 : 0;                        /* our own menu page: hide the stock buttons */
@@ -1744,6 +1786,7 @@ static void notice_frame(const mpm_obs *o) {
 enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG };   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
 static char lbox_text[400]; static int lbox_up;                             /* lbox_up = BX_* */
 static Obj lbox_view(void) { return find_view_x(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }
+static Obj lbox_view_now(void) { return find_view_now(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }   /* showing a box */
 static int lbox_ours(Obj v) {
     if (!lbox_up || !u_alive(v) || !u_on(v)) return 0;
     char t[400] = ""; str_utf8(tmp_get(AT(v, 0x30, Obj)), t, sizeof t);
@@ -1768,7 +1811,7 @@ static void leave_box_show(void) {
     /* the stock box draws under the Esc menu (and the lobby, which lives on it): close that first; the box then stands
        alone over the world. Cancel in the lobby brings the lobby back (mpmenu_frame); in play the game goes on. */
     Obj ev = esc_view(); if (ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL);   /* SystemMenuView.OnReturnToGamePressed */
-    Obj v = lbox_view();
+    Obj v = lbox_view_now();
     if (!u_alive(v) || !mm_is(v, K_CNV)) { pending_click = MPB_LEAVE_CONFIRM; rig_log("mpmenu: no notice box: Leave goes ahead"); return; }
     leave_box_text(lbox_text, sizeof lbox_text);
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
@@ -1810,7 +1853,7 @@ static int (*inv_pending)(char *, size_t), (*inv_answer)(int);
 static char inv_host[64]; static int join_box_on, join_phase_shown = -1, nosave_ask;   /* nosave_ask: show the second box next frame */
 static void box_show(int kind, const char *text, const char *yes, const char *no) {
     Obj ev = esc_view(); if (kind != BX_UNTAG && ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL);   /* not under the Esc menu (the load list stays) */
-    Obj v = lbox_view();
+    Obj v = lbox_view_now();
     if (!u_alive(v) || !mm_is(v, K_CNV)) { rig_log("mpmenu: no notice box for: %s", text); return; }
     snprintf(lbox_text, sizeof lbox_text, "%s", text);
     if (no) F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
@@ -3008,6 +3051,7 @@ int mpmenu_register_hooks(const mp_menu_hooks *h) {
 void mpmenu_frame(void) {
     fog_poll();
     frames++;
+    fv_input_frame();
     { static int was; int t = teams_modal(); if (was && !t) teams_close_frames = 3; else if (teams_close_frames > 0) teams_close_frames--; was = t; }   /* the Escape that closed Teams stays ours */
     if (!mf) return;
     join_poll();

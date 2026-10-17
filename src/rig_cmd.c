@@ -461,6 +461,7 @@ char *mp_bridge_exec(const char *cmd, const char *line);  /* mp_bridge.c (BepInE
 char *rig_exec(const char *line) {
     char cmd[64] = "";
     if (!jstr(line, "cmd", cmd, sizeof cmd)) return err("no cmd");
+    mpmenu_fv_kick();                                              /* views a command opens are found at once */
     { char *xr = mpx_rig_cmd(cmd, line); if (xr) return xr; }       /* Custom Modes test commands (fe_*, pvp_*: mp_api register_rig_cmd) */
     char *dr = rig_det_exec(cmd, line); if (dr) return dr;
     if (!strncmp(cmd, "mpm_", 4)) { char *mm = mpmenu_exec(cmd, line); if (mm) return mm; }

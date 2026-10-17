@@ -1,0 +1,99 @@
+diff --git a/src/mp_game.c b/src/mp_game.c
+index a25540c..e985fea 100644
+--- a/src/mp_game.c
++++ b/src/mp_game.c
+@@ -347,7 +347,9 @@ static int jp_blocks_put(uint8_t *b, int always) {                  /* b = where
+    its own save right after the upload; every peer then starts from the same loaded state. */
+ static uint8_t *host_det;
+ static int g_ready(void *u) { (void)u; return !host_reload && rig_det_mp_ready(); }
+-static void g_tick(void *u) { (void)u; if (mpx_tick_frozen()) return; rig_det_sim_tick(); mpx_tick(); }
++static double tr_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1e3 + t.tv_nsec / 1e6; }
++static void g_tick(void *u) { (void)u; if (mpx_tick_frozen()) return; double a = tr_now(); rig_det_sim_tick(); double b = tr_now(); mpx_tick(); double c = tr_now();
++    if (c - a > 40 && getenv("DSRIG_RESUME_TRACE")) rig_log("mp: slow tick: sim %.0f ms, custom modes %.0f ms", b - a, c - b); }
+ static void g_scope(void *u, int enter) { (void)u; rig_det_sim_scope(enter); }
+ static uint64_t g_fp(void *u) { (void)u; uint64_t h[4]; rig_world_hash(rig_det_sim_state(), h, NULL, NULL);
+     uint64_t mix; return mpx_fp_mix(&mix) ? h[0] ^ (mix * 0x9E3779B97F4A7C15ULL) : h[0]; }
+@@ -473,7 +475,7 @@ static int g_load(void *u, const uint8_t *data, size_t len) {
+ }
+ 
+ /* ---------------------------------------------------------------- lan_v10: partial resync + desync report (game side) */
+-static void g_fp4(void *u, uint64_t h[4]) { (void)u; rig_world_hash(rig_det_sim_state(), h, NULL, NULL); }
++static void g_fp4(void *u, uint64_t h[4]) { (void)u; double a = tr_now(); rig_world_hash(rig_det_sim_state(), h, NULL, NULL); if (tr_now() - a > 40 && getenv("DSRIG_RESUME_TRACE")) rig_log("mp: slow fingerprint %.0f ms", tr_now() - a); }
+ static void g_fp_step(void *u, uint32_t step) { (void)u; rig_snap_ring_put(step); }
+ static uint64_t g_deep(void *u) { (void)u; return rig_deep_hash(); }
+ /* full-state check: the game's own save (CampaignSaveLoader.Save, guests allowed through mp_saving, iron-mode cleanup
+@@ -1239,6 +1241,16 @@ int mp_game_frame(void) {
+         rig_log("mp: ready again: local speed set to %d%s (now %d)", st.speed ? st.speed : 1, st.paused ? " paused" : "", gs ? AT(gs, 0x10, int32_t) : -1);
+     }
+     was_ready = ready_now;
++    { static int tr = -1; if (tr < 0) tr = getenv("DSRIG_RESUME_TRACE") != NULL;      /* fastboot_mp: resume trace */
++      if (tr) {
++        static char last[256]; char k[256]; mp_stats st; mp_get_stats(S, &st); dsnet_client *dc = mp_client(S);
++        uint32_t pm = dsnet_present_mask(dc), vp = 0;
++        for (int i = 0; i < 32; i++) if (pm >> i & 1) { int sp = 0, pa = 0; dsnet_vote_of(dc, i, &sp, &pa); if (pa) vp |= 1u << i; }
++        snprintf(k, sizeof k, "lock %d rdy %d busy %d trn %d hr %d sc %d | ld %d ns %d ds %d pau %d tps %d hold %d story %x bmask %x votes %x pres %x",
++                 rig_det_locked(), rig_det_mp_ready(), busy(), trn_flow_busy(), host_reload, scene(), st.loading, st.needs_state, st.desynced,
++                 st.paused, dsnet_ticks_per_step(dc), dsnet_hold_count(dc), dsnet_story_pause_mask(dc), dsnet_busy_mask(dc), vp, pm);
++        if (strcmp(k, last)) { strcpy(last, k); rig_log("mp: trace %s | timer %u until %u", k, st.timer, dsnet_tick_until(dc)); }
++      } }
+     if (host_reload && !trn_flow_busy()) {                   /* after the frame's steps: reload what was sent (never inside a map change) */
+         char p[1400]; snprintf(p, sizeof p, "%s/data/Saves/%s.json", rig_dir, MP_SAVE_NAME);
+         rig_det_state_set(host_det);
+diff --git a/src/rig_cmd.c b/src/rig_cmd.c
+index 6373c38..df6e5de 100644
+--- a/src/rig_cmd.c
++++ b/src/rig_cmd.c
+@@ -130,6 +130,9 @@ RState rstate(void) { RState st; F(0x50E77B0, void (*)(RState *, void *))(&st, N
+ 
+ /* ---------------------------------------------------------------- per-frame */
+ static int fps = 30;
++#include <sys/time.h>
++int rig_frame_ms[4];
++static double rig_ms_now(void) { struct timeval t; gettimeofday(&t, NULL); return t.tv_sec * 1000.0 + t.tv_usec / 1000.0; }
+ void rig_frame(void *mainflow) {
+     mf = mainflow;
+     static int live = -1;               /* DSRIG_LIVE=1: the owner's MP app, a normal game: no mute, no fps/vSync cap, */
+@@ -166,10 +169,16 @@ void rig_frame(void *mainflow) {
+         r = nx;
+     }
+     if (getenv("DSRIG_MINIMAL")) return;
++    double a = rig_ms_now();
+     mp_game_poll();                     /* Steam joiner bridge / invites (title screen too) */
++    double b = rig_ms_now();
+     ui_frame();                         /* multiplayer UI: status line, owner tags (title screen too) */
++    double c = rig_ms_now();
+     mpmenu_frame();                     /* Multiplayer menu (title screen too) */
++    double d = rig_ms_now();
+     mpx_frame(MP_FRAME_ALWAYS);         /* Custom Modes (mp_api register_frame): PvP order handler, FE UI flags */
++    double e = rig_ms_now();
++    rig_frame_ms[0] = (int)(b - a); rig_frame_ms[1] = (int)(c - b); rig_frame_ms[2] = (int)(d - c); rig_frame_ms[3] = (int)(e - d);
+ }
+ 
+ /* ---------------------------------------------------------------- commands */
+diff --git a/src/rig_main.c b/src/rig_main.c
+index 1fc5122..61ecede 100644
+--- a/src/rig_main.c
++++ b/src/rig_main.c
+@@ -97,9 +97,22 @@ static void custom_modes_start(void) {
+ static void (*o_update)(void *, void *);
+ static void my_update(void *self, void *mi) {
+     { extern int rig_hooks_late; rig_hooks_late = 1; }   /* hooks installed from now on use the late stub page */
++    static int ft = -1; if (ft < 0) ft = getenv("DSRIG_RESUME_TRACE") != NULL;   /* fastboot_mp: frame trace (temporary) */
++    struct timeval t0, t1, t2, t3; static struct timeval tl;
++    if (ft) gettimeofday(&t0, NULL);
+     rig_frame(self);
++    if (ft) gettimeofday(&t1, NULL);
+     if (!getenv("DSRIG_MINIMAL")) rig_det_frame(self);                /* locked: runs this frame's sim ticks; the hooks then skip them in Update */
++    if (ft) gettimeofday(&t2, NULL);
+     o_update(self, mi);
++    if (ft) {
++        gettimeofday(&t3, NULL);
++#define MS(a, b) (((b).tv_sec - (a).tv_sec) * 1000.0 + ((b).tv_usec - (a).tv_usec) / 1000.0)
++        double gap = tl.tv_sec ? MS(tl, t0) : 0, tot = MS(t0, t3);
++        if (gap + tot > 120) { extern int rig_frame_ms[4]; rig_log("frame: %.0f ms outside Update, %.0f ms in it: rig_frame %.0f (poll %d ui %d mpmenu %d mpx %d), det+mp %.0f, game Update %.0f",
++                                       gap, tot, MS(t0, t1), rig_frame_ms[0], rig_frame_ms[1], rig_frame_ms[2], rig_frame_ms[3], MS(t1, t2), MS(t2, t3)); }
++        tl = t3;
++    }
+ }
+ 
+ typedef void *Obj;

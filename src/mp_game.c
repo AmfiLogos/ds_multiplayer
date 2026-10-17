@@ -312,6 +312,41 @@ static bool h_defticks(Obj it, void *mi) {
     }
     return o_defticks(it, mi);
 }
+/* fastboot_mp (2026-10-17): the game's fade to black before an mp load. CampaignViewLoadHelper.CallFadeOut
+   (<CallFadeOut>d__15.MoveNext 0xDB02B8, called by LoadCampaign before the save is read) starts ScreenFadeEffectView's
+   fade (a view: SetLoadingRegion, PrepareFadeOut, ViewScreenFadeOutData) and then yields WaitUntil(IsFadeOutCompleted,
+   +0x51): 0.8 s of frames. In an mp load (sync_file_pending, not ready) the wait ends after one frame instead; the fade
+   goes on on screen and is over long before the world is built (1.4 s and more). No sim state changes: no tick runs in
+   a load (det hold), the old world is replaced by the save, and the det streams come from the host's det state at the
+   lock; the frame count of this wait already differs per machine. DSRIG_MP_FADE=1 keeps the stock wait.
+   The world -> title -> world trip (MoveSceneToTitle) is NOT skipped: ClearOnSceneChange (CampaignEntityLoadHelper.
+   ClearOnMapChange, ResourceLoader.ReleaseSceneAssets, SelectProcessor.Clear...) and the scene unload are what make
+   the load start from a clean world; without them the old world's objects (on a desynced guest: different ones)
+   would stay (ext/fastboot_mp/NOTES.md). */
+#define VA_FADEOUT_NEXT 0xDB02B8     /* bool <CallFadeOut>d__15.MoveNext() (+0x10 state, +0x18 current) */
+static unsigned fade_skips;
+#ifdef __APPLE__
+static int fade_skip_opt(void) { const char *e = getenv("DSRIG_MP_FADE"); return !(e && e[0] == '1'); }
+static bool (*o_fadeout)(Obj, void *);
+static bool h_fadeout(Obj it, void *mi) {
+    int st = AT(it, 0x10, int32_t);
+    bool r = o_fadeout(it, mi);
+    if (r && st == 0 && AT(it, 0x10, int32_t) == 1 && sync_file_pending && !rig_det_mp_ready() && fade_skip_opt()) {
+        AT(it, 0x18, Obj) = NULL;                            /* yield null (one frame) instead of the WaitUntil; */
+        fade_skips++;                                        /* the original's state 1 then ends it */
+        rig_log("mp: load: fade-out wait skipped (mp load)");
+    }
+    return r;
+}
+/* A hook added by fastboot_mp goes in only when the method still starts with the bytes of build 25846389 (the rig
+   itself only runs on that GameAssembly, rig_main.c): another build or another hook at that place = stock behaviour. */
+static int hook_checked(uintptr_t va, uint32_t w0, uint32_t w1, void *repl, void **orig, const char *who) {
+    const volatile uint32_t *p = (const volatile uint32_t *)(ds_base + va);
+    if (p[0] != w0 || p[1] != w1) { rig_log("mp: %s not hooked: its first bytes %08x %08x are not build %s's (stock behaviour)", who, p[0], p[1], RIG_BUILD); return -1; }
+    return rig_hook(va, repl, orig, who);
+}
+#endif
+
 /* Second guard: the last join-point save stays in memory until its load is done; if the load still lands on the
    title without a campaign (file gone, preflight failed), it is written again and re-queued (2 tries). */
 static uint8_t *retry_json, *retry_det; static size_t retry_n, retry_dl;
@@ -777,6 +812,10 @@ static void install_hooks(void) {
         rig_hook(VA_STABILIZE_NEXT, (void *)h_stabilize, (void **)&o_stabilize, "WaitUntilGameStabilizes.MoveNext") ||
         rig_hook(VA_DEFTICKS_NEXT, (void *)h_defticks, (void **)&o_defticks, "WaitForDefaultTicks.MoveNext"))
         rig_log("mp: load-speed hooks failed: mp loads keep the stock waits");
+#ifdef __APPLE__
+    if (hook_checked(VA_FADEOUT_NEXT, 0xA9BC5FF8u, 0xA90157F6u, (void *)h_fadeout, (void **)&o_fadeout, "CallFadeOut.MoveNext"))
+        rig_log("mp: fade hook off: mp loads keep the stock fade wait");
+#endif
 }
 
 /* Hooks always go in: with no session they pass through. mp.json (optional) starts a session at the
@@ -1287,7 +1326,7 @@ void mp_game_status(Buf *b) {
     bstr(b, report_path);
     bput(b, ",\"guest_world\":%s,\"saves_blocked\":%llu,\"sync_files_deleted\":%llu,\"sync_file_pending\":%s,\"cache_refreshes\":%llu,\"game_deletes_blocked\":%llu,\"load_retries\":%d",
          guest_world ? "true" : "false", (unsigned long long)saves_blocked, (unsigned long long)sync_files_deleted, sync_file_pending ? "true" : "false", (unsigned long long)cache_refreshes, (unsigned long long)game_deletes_blocked, load_retries);
-    bput(b, ",\"load_stab_skips\":%u,\"load_poll_frames\":%u,\"join_fast\":%d", stab_skips, poll_frames, fast_opt());
+    bput(b, ",\"load_stab_skips\":%u,\"load_poll_frames\":%u,\"join_fast\":%d,\"load_fade_skips\":%u", stab_skips, poll_frames, fast_opt(), fade_skips);
     dsnet_client *dc = mp_client(S);
     {   /* owner tables (cross-play check: same on every peer) and why a desync was flagged (bit 1 game, 2 owners) */
         uint64_t hu = 0, hi = 0; int nu = 0, ni = 0;
