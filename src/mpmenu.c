@@ -186,7 +186,7 @@ static int host_failed, pending_click;
 static uintptr_t h_title; static void *k_title;
 uintptr_t h_tb[MPB_COUNT];                       /* title clones (SubUI_TitleMenuButton, _buttonName +0x130) */
 static uintptr_t h_title_built;                         /* view the clones belong to */
-static int stock_hidden;
+static int stock_hidden; static unsigned stock_was; static uintptr_t h_stock_view; static void stock_set(Obj v, int hide);
 static uintptr_t h_field, h_cs; static void *k_cs;           /* address field: clone of the new-campaign name field */
 /* Esc menu: SystemMenuView _returnToGameButton +0x48 .. _quitToTitleSceneButton +0x78, _version DASText +0x80 */
 static uintptr_t h_esc; static void *k_esc;
@@ -1207,8 +1207,19 @@ static void title_build(Obj v) {
       if (root) u_active(root, false); }
     u_gc_free(h_field); h_field = 0; u_gc_free(h_namefield); h_namefield = 0; primed = 0; fields_seen = 0;
     u_gc_free(h_title_built); h_title_built = u_gc_new(v);
+    if (stock_hidden && u_gc_get(h_stock_view) == v) stock_set(v, 0);       /* rebuilt while our page hid them: shown as they were */
     stock_hidden = 0;
     rig_log("mpmenu: title clones added at sibling %d", at);
+}
+/* our own menu page hides the 7 stock title buttons; Back shows again only those that were shown (the game hides
+   Continue when there is no save to continue: showing all 7 put it back and the menu changed height, owner 2026-10-17) */
+static void stock_set(Obj v, int hide) {
+    for (int i = 0; i < 7; i++) {
+        Obj b = AT(v, 0x30 + 8 * i, Obj);
+        if (hide) { if (u_on(b)) stock_was |= 1u << i; else stock_was &= ~(1u << i); u_active(b, false); }
+        else if (stock_was >> i & 1) u_active(b, true);
+    }
+    stock_hidden = hide; u_gc_free(h_stock_view); h_stock_view = hide ? u_gc_new(v) : 0;
 }
 static void title_sync(const mpm_obs *o) {
     if (o->scene != 1) return;                                              /* no TitleMenuView lookup in the world */
@@ -1217,7 +1228,7 @@ static void title_sync(const mpm_obs *o) {
     if (u_gc_get(h_title_built) != v || !tb(MPB_MULTIPLAYER)) title_build(v);
     uint64_t vis = mpm_visible(&M, o);
     int sub = vis & ~(1ull << MPB_MULTIPLAYER) ? 1 : 0;                        /* our own menu page: hide the stock buttons */
-    if (sub != stock_hidden) { for (int off = 0x30; off <= 0x60; off += 8) u_active(AT(v, off, Obj), !sub); stock_hidden = sub; }
+    if (sub != stock_hidden) stock_set(v, sub);
     int ps = pvp_stub_slot(), psb = ps >= 0 ? mpm_choice_btn(ps) : MPB_NONE;   /* greyed PvP entry (no Custom Modes) */
     for (int i = 0; i < NT; i++) {
         Obj b = tb(title_ids[i]); if (!b) continue;
@@ -3451,7 +3462,7 @@ static void destroy_go(Obj comp) { if (u_alive(comp)) { Obj g = u_go(comp); if (
 /* the language changed on the title: our title clones go (rebuilt by title_sync on this frame, in the new language and fonts) */
 static void title_teardown(void) {
     Obj v = title_view();
-    if (v && stock_hidden) { for (int off = 0x30; off <= 0x60; off += 8) u_active(AT(v, off, Obj), true); }
+    if (v && stock_hidden) stock_set(v, 0);
     stock_hidden = 0;
     for (int i = 0; i < NT; i++) destroy_go(tb(title_ids[i]));                /* column rows (their arrows / rows go with the panels) */
     destroy_go(u_gc_get(h_rw_root)); destroy_go(u_gc_get(rp_title.root)); destroy_go(u_gc_get(rp_fe.root)); destroy_go(u_gc_get(h_cp_root));
