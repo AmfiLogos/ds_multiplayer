@@ -1623,7 +1623,7 @@ static void hk_recruit_click(Obj v, int idx, void *mi);
 static Obj tr_find(Obj t, const char *path);
 static void hk_ev_click(Obj v, int idx, void *mi); static uintptr_t h_chip_tx[], h_recruit_line, h_recruit_view; static int owners_ro, owners_toggles;
 static double tip_until; static char tip_shown[160]; int ui_conn_text(int player, char *out, int cap); static int ev_rule(void);
-static char *ui_lend_cmd(const char *line); static char *ui_escape_cmd(const char *line); static char *ui_tip_hover_cmd(const char *line); static char *ui_tip_where_cmd(void); static char *ui_players_lists_cmd(const char *line); static void viewer_geom(float *g); static void viewer_move_test(const char *line, int reset); static void viewer_follow(int on_); static void viewer_ask(void); static Obj cam_setting(void);
+static char *ui_lend_cmd(const char *line); static char *ui_escape_cmd(const char *line); static char *ui_tip_hover_cmd(const char *line); static char *ui_tip_where_cmd(void); static char *ui_players_lists_cmd(const char *line); static void viewer_geom(float *g); static void viewer_move_test(const char *line, int reset); static void viewer_overlay_json(Buf *b, const char *action); static void viewer_follow(int on_); static void viewer_ask(void); static Obj cam_setting(void);
 static int viewer_on, viewer_leader, follow_target; static uintptr_t h_vtitle; static uint32_t followers[UI_MAX_PLAYERS];
 char *ui_exec(const char *cmd, const char *line) {
     teams_lookup();
@@ -1736,12 +1736,14 @@ char *ui_exec(const char *cmd, const char *line) {
         char a[16] = "state"; jstr(line, "action", a, sizeof a);
         if (!strcmp(a, "follow")) viewer_follow(1); else if (!strcmp(a, "free")) viewer_follow(0); else if (!strcmp(a, "ask")) viewer_ask();
         else if (!strcmp(a, "move") || !strcmp(a, "reset")) viewer_move_test(line, a[0] == 'r');   /* the right-drag's result */
+        else viewer_overlay_json(NULL, a);                   /* mpoverlay: click_hide / click_show (the link, where it is drawn) */
         Obj cs = cam_setting(); V3 cp = cs ? F(0xD23584, V3 (*)(Obj, void *))(cs, NULL) : (V3){ 0, 0, 0 };
         char t[200] = ""; Obj vt = u_gc_get(h_vtitle); if (u_alive(vt) && u_go_active_self(u_go(vt))) str_utf8(tmp_get(vt), t, sizeof t);
         Buf b = {0}; bput(&b, "{\"ok\":true,\"viewer\":%d,\"leader\":%d,\"follow\":%d,\"followers_of_me\":%u,\"cam\":[%.2f,%.2f],\"title\":", viewer_on, viewer_leader, follow_target, me() >= 0 ? followers[me()] : 0, cp.x, cp.y);
         bstr(&b, t);
         { float g[9]; viewer_geom(g);                        /* layer units: box x, y(top), h; panel L, Y(top), w, h; bar bottom; drag set */
           bput(&b, ",\"box\":[%.0f,%.0f,%.0f],\"panel\":[%.0f,%.0f,%.0f,%.0f],\"bar_bottom\":%.0f,\"moved\":%.0f", g[0], g[1], g[2], g[3], g[4], g[5], g[6], g[7], g[8]); }
+        viewer_overlay_json(&b, NULL);
         bput(&b, "}"); return b.p;
     }
     if (!strcmp(cmd, "ui_sprites")) {                        /* ui_sprites {match}: loaded Sprite names containing match (lan_v10 art search) */
@@ -3584,16 +3586,22 @@ static Obj vbutton(Obj root, int k) {                        /* framed text butt
     return b;
 }
 static int viewer_min;                                       /* Escape folded the viewer box to its title line */
+/* mpoverlay (owner 2026-10-17): "Hide" on the box folds it to a small "Watching  Show" bar and hides the "sees this too"
+   line; "Show" brings both back (one click each, no tooltip; remembered in mp_ui_viewer.json "hide"). viewer_aside: the
+   box would cover the open Teams window and no free spot is left: it waits hidden until the window closes or folds. */
+static int viewer_hidden, viewer_aside;
+static uintptr_t h_vlink;                                    /* the box's "Hide" / the bar's "Show" */
 static float pl_scale(void);
-/* the viewer box's own place (right-click drag), <persistentDataPath>/mp_ui_viewer.json {"x":..,"y":..} */
+/* the viewer box's own place (right-click drag), <persistentDataPath>/mp_ui_viewer.json {"x":..,"y":..,"hide":1} */
 static int vpos_loaded, vpos_set, vb_drag, vb_dragging; static float vpos_x, vpos_y, vb_cur_x, vb_cur_y, vb_mx, vb_my, vb_x0, vb_y0;
 static void vpos_path(char *out, size_t cap) { char d[900]; str_utf8(F(0x507B74C, Obj (*)(void *))(NULL), d, sizeof d); snprintf(out, cap, "%s/mp_ui_viewer.json", d); }
 static void vpos_load(void) {
     if (vpos_loaded) return;
     vpos_loaded = 1; char pth[1024]; vpos_path(pth, sizeof pth);
     FILE *f = fopen(pth, "r"); if (!f) return;
-    if (fscanf(f, " {\"x\":%f,\"y\":%f}", &vpos_x, &vpos_y) == 2) vpos_set = 1;
-    fclose(f);
+    char buf[200]; size_t n = fread(buf, 1, sizeof buf - 1, f); buf[n] = 0; fclose(f);
+    if (sscanf(buf, " {\"x\":%f,\"y\":%f", &vpos_x, &vpos_y) == 2) vpos_set = 1;
+    viewer_hidden = strstr(buf, "\"hide\":1") != NULL;
 }
 static void viewer_frame(void); static void vpos_save(void);
 static void viewer_move_test(const char *line, int reset) {
@@ -3609,8 +3617,42 @@ static void viewer_geom(float *g) {
 static void vpos_save(void) {
     char pth[1024]; vpos_path(pth, sizeof pth);
     FILE *f = fopen(pth, "w"); if (!f) return;
-    if (vpos_set) fprintf(f, "{\"x\":%.0f,\"y\":%.0f}\n", vpos_x, vpos_y); else fputs("{}\n", f);
+    fputs("{", f);
+    if (vpos_set) fprintf(f, "\"x\":%.0f,\"y\":%.0f", vpos_x, vpos_y);
+    if (viewer_hidden) fprintf(f, "%s\"hide\":1", vpos_set ? "," : "");
+    fputs("}\n", f);
     fclose(f);
+}
+static int scr_w(void); static int scr_h(void);
+/* mpoverlay: the open Teams window (or its fold bar) in units of layer `root` (x0 left, x1 right, y0 bottom, y1 top);
+   0 = not shown */
+static int teams_win_layer(Obj root, float r[4]) {
+    static int (*fn)(float *); static unsigned tries;
+    if (!fn && tries++ % 50 == 0) fn = (int (*)(float *))dlsym(RTLD_DEFAULT, "ui_teams_window_px");
+    float px[4];
+    if (!root || !fn || !fn(px)) return 0;
+    scr_to_layer(root, px[0], px[1], &r[0], &r[2]); scr_to_layer(root, px[0] + px[2], px[1] + px[3], &r[1], &r[3]);
+    return 1;
+}
+/* a box of w x h layer units, top-left (*X, *Y), that must not cover the open Teams window nor the rects in `avoid`
+   (x0, x1, y0, y1 each): its own place if that is clear, else under the window, else at the screen's left edge at the
+   same height. 0 = no free spot (the caller hides it while the window is up). The bottom 120 units stay free for the
+   game's build bar. */
+static int teams_free_spot(Obj root, float w, float h, float *X, float *Y, const float (*avoid)[4], int na) {
+    float wr[4];
+    if (!teams_win_layer(root, wr)) return 1;
+    float sx0, sy0, sx1, sy1; scr_to_layer(root, 0, 0, &sx0, &sy0); scr_to_layer(root, (float)scr_w(), (float)scr_h(), &sx1, &sy1);
+    const float G = 12, cx[3] = { *X, *X, sx0 + G }, cy[3] = { *Y, wr[2] - G, *Y };
+    for (int k = 0; k < 3; k++) {
+        float x = cx[k], y = cy[k];
+        if (x + w > sx1 - G) x = sx1 - G - w;
+        if (x < sx0 + G) x = sx0 + G;
+        if (y > sy1 || y - h < sy0 + 120 || x + w > sx1) continue;
+        int clear = x + w <= wr[0] || x >= wr[1] || y - h >= wr[3] || y <= wr[2];
+        for (int i = 0; i < na && clear; i++) clear = x + w <= avoid[i][0] || x >= avoid[i][1] || y - h >= avoid[i][3] || y <= avoid[i][2];
+        if (clear) { *X = x; *Y = y; return 1; }
+    }
+    return 0;
 }
 /* spectator (owner 2026-10-14): the box shows on every map: "Watching the owner's world", Follow <player>'s camera (the
    leader's P_VIEW moves this camera, outside the sim) / Free camera / Next player (another present player to follow) */
@@ -3655,29 +3697,49 @@ static void viewer_frame(void) {
         u_gc_free(h_vbox); h_vbox = u_gc_new(box); u_gc_free(h_vtitle); h_vtitle = u_gc_new(tt); u_gc_free(h_vtext); h_vtext = u_gc_new(tx);
         for (int k = 0; k < 3; k++) vbutton(root, k);
     }
-    int full = v && !viewer_min;
-    show(box, v); show(u_gc_get(h_vtitle), v); show(u_gc_get(h_vtext), full);
-    for (int k = 0; k < 3; k++) { show(u_gc_get(h_vbtn_b[k]), full); show(u_gc_get(h_vbtn_bg[k]), full); show(u_gc_get(h_vbtn_t[k]), full); }
-    if (!v) return;
-    ui_players p; players(&p); char nm[40], t[200];
-    ui_player_label(&p, leader, nm);
-    /* lead lan_v9: never over the portrait bar or the Players panel: under the panel (its drawn bottom), left-aligned
-       with it, unless the player dragged it (right-click drag, own place in mp_ui_viewer.json) */
-    vpos_load();
-    float X0, Y0;
-    if (vpos_set) { X0 = vpos_x; Y0 = vpos_y; }
-    else {
+    if (v && u_alive(box) && !u_alive(u_gc_get(h_vlink))) {  /* mpoverlay: the Hide / Show link (Lora 14, the Teams window's Hide style) */
+        Obj root = layer_top(), lk = root ? line_clone(root, 1, 80, 28, 0) : NULL;
+        if (ui_is(lk, K_TMP)) { rt_top_left(u_tr(lk)); tmp_style(lk, u_gc_get(h_lora), 14, 516); }
+        u_gc_free(h_vlink); h_vlink = u_gc_new(lk);
+    }
+    Obj tt = u_gc_get(h_vtitle), lk = u_gc_get(h_vlink);
+    ui_players p; char nm[40] = "", t[200];
+    int hid = 0, full = 0, aside = 0, sv = 0;
+    float X0 = 0, Y0 = 0, bw = 660, tw = 0, lw = 40;
+    if (v) {
+        players(&p); ui_player_label(&p, leader, nm);
+        /* lead lan_v9: never over the portrait bar or the Players panel: under the panel (its drawn bottom), left-aligned
+           with it, unless the player dragged it (right-click drag, own place in mp_ui_viewer.json) */
+        vpos_load();
+        hid = viewer_hidden; full = !viewer_min && !hid;
         Obj pl = u_gc_get(h_plate); float k = uiset.compact ? 0.75f : 1.0f;
         float ph = u_alive(pl) && pl_shown ? u_rt_size(u_tr(pl)).y * k : 0;
-        X0 = pl_shown ? pl_cur_L : PL_LEFT; Y0 = (pl_shown ? pl_cur_Y : pl_y0) - ph - 10;
+        if (vpos_set) { X0 = vpos_x; Y0 = vpos_y; }
+        else { X0 = pl_shown ? pl_cur_L : PL_LEFT; Y0 = (pl_shown ? pl_cur_Y : pl_y0) - ph - 10; }
+        sv = spect(); char hn[40]; ui_player_label(&p, 0, hn);
+        char wt[160]; snprintf(wt, sizeof wt, sv ? TR("Watching %s's world") : TR("Watching %s's expedition"), sv ? hn : nm);
+        if (hid) snprintf(t, sizeof t, "<smallcaps><color=#ccbeb8>%s</color></smallcaps>", TR("Watching"));
+        else if (full) snprintf(t, sizeof t, "<smallcaps><color=#ccbeb8>%s</color></smallcaps>", wt);
+        else snprintf(t, sizeof t, "<smallcaps><color=#ccbeb8>%s</color></smallcaps> <size=80%%><color=#a69085>%s</color></size>", wt, TR("(click for options)"));
+        line_text(tt, t); line_text(lk, ui_col("#d9be8f", hid ? TR("Show") : TR("Hide")));
+        tw = tmp_pref_w(tt); lw = tmp_pref_w(lk) + 4; if (lw < 40) lw = 40;
+        float need = 18 + tw + 20 + lw + 16;                 /* the link never sits on the title: a long title widens the box */
+        bw = hid || need > 660 ? need : 660;
+        /* mpoverlay: never over the open Teams window: its own place, else a free spot, else hidden while it is up */
+        float av[1][4]; int na = 0;
+        if (pl_shown && u_alive(pl)) { av[0][0] = pl_cur_L; av[0][1] = pl_cur_L + u_rt_size(u_tr(pl)).x * k; av[0][2] = pl_cur_Y - ph; av[0][3] = pl_cur_Y; na = 1; }
+        aside = !teams_free_spot(layer_top(), bw, full ? 112 : 48, &X0, &Y0, (const float (*)[4])av, na);
     }
+    if (aside != viewer_aside) rig_log("ui: viewer box %s", aside ? "waits hidden: it would cover the Teams window (no free spot)" : "back");
+    viewer_aside = aside;
+    int vis = v && !aside;
+    show(box, vis); show(tt, vis); show(lk, vis); show(u_gc_get(h_vtext), vis && full);
+    for (int k = 0; k < 3; k++) { show(u_gc_get(h_vbtn_b[k]), vis && full); show(u_gc_get(h_vbtn_bg[k]), vis && full); show(u_gc_get(h_vbtn_t[k]), vis && full); }
+    if (!vis) return;
     vb_cur_x = X0; vb_cur_y = Y0;
-    place(box, X0, Y0, 660, full ? 70 : 48);
-    int sv = spect(); char hn[40]; ui_player_label(&p, 0, hn);
-    char wt[160]; snprintf(wt, sizeof wt, sv ? TR("Watching %s's world") : TR("Watching %s's expedition"), sv ? hn : nm);
-    if (full) snprintf(t, sizeof t, "<smallcaps><color=#ccbeb8>%s</color></smallcaps>", wt);
-    else snprintf(t, sizeof t, "<smallcaps><color=#ccbeb8>%s</color></smallcaps> <size=80%%><color=#a69085>%s</color></size>", wt, TR("(click for options)"));
-    place(u_gc_get(h_vtitle), X0 + 18, Y0 - 10, 620, 28); line_text(u_gc_get(h_vtitle), t);
+    place(box, X0, Y0, bw, full ? 70 : 48);
+    place(tt, X0 + 18, Y0 - 10, tw + 8, 28);
+    place(lk, X0 + bw - 16 - lw, Y0 - 10, lw, 28);
     if (!full) return;
     if (sv) snprintf(t, sizeof t, "%s", ui_col("#a69085", TR("You are a spectator. You can chat and ping.")));
     else snprintf(t, sizeof t, TR("<color=#a69085>You have no units on this run. You can watch and chat; %s gives the orders.</color>"), nm);
@@ -3701,6 +3763,10 @@ static void viewer_frame(void) {
         bx += w + 10;
     }
 }
+static void viewer_hide_set(int h) {                         /* mpoverlay: Hide / Show (one click), remembered */
+    vpos_load(); viewer_hidden = h; viewer_min = 0; vpos_save(); viewer_frame();
+    rig_log("ui: viewer box %s", h ? "hidden (Watching / Show bar)" : "shown");
+}
 static void viewer_mouse(void) {
     if (!viewer_on) { vb_drag = 0; return; }
     struct { float x, y, z; } m3 = F(0x51AD4DC, __typeof__(m3) (*)(void *))(NULL);
@@ -3719,6 +3785,9 @@ static void viewer_mouse(void) {
         vb_drag = vb_dragging = 0; return;
     }
     if (!F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) return;
+    /* mpoverlay: the link, or anywhere on the hidden bar */
+    if (ui_hit(u_gc_get(h_vlink), m3.x, m3.y) || (viewer_hidden && ui_hit(u_gc_get(h_vbox), m3.x, m3.y))) { viewer_hide_set(!viewer_hidden); return; }
+    if (viewer_hidden) return;
     if (viewer_min) { if (ui_hit(u_gc_get(h_vbox), m3.x, m3.y)) { viewer_min = 0; viewer_frame(); } return; }   /* unfold */
     for (int k = 0; k < 3; k++) {
         if (!ui_hit(u_gc_get(h_vbtn_b[k]), m3.x, m3.y)) continue;
@@ -4377,7 +4446,8 @@ static void sees_draw(uint32_t who, ui_players *p) {
         for (size_t k = 0; k < 2; k++) { Obj g = u_gc_get(hs[k]); if (ui_is(g, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(g, false, NULL); }
     }
     Obj bg = u_gc_get(h_sees_bg), t = u_gc_get(h_sees_t);
-    int on_ = who && root && u_alive(t);
+    vpos_load();
+    int on_ = who && root && u_alive(t) && !(viewer_on && viewer_hidden);   /* mpoverlay: the viewer box's Hide hides this line too */
     show(bg, on_); show(t, on_); sees_shown = on_ ? who : 0;
     if (!on_) return;
     char tx[400], nm[40]; size_t n = 0; int k = 0, cnt = 0;
@@ -4398,8 +4468,36 @@ static void sees_draw(uint32_t who, ui_players *p) {
     float L = -w / 2;              /* centred, but never over the Teams button right of the Players panel: a long name (10 CJK
                                       characters) with a long translation grew the line left onto the button label */
     { float ax, ay, aw, ah; if (ui_panel_anchor(&ax, &ay, &aw, &ah)) { float r = ax + aw + 8 + (uiset.compact ? 88.0f : 112.0f) + 8; if (L < r && r - L < 400) L = r; } }
+    /* mpoverlay: never over the open Teams window (a free spot clear of the Players panel and the viewer box, else hidden) */
+    { float av[2][4]; int na = 0; Obj pl = u_gc_get(h_plate), vb = u_gc_get(h_vbox); float k = uiset.compact ? 0.75f : 1.0f;
+      if (pl_shown && u_alive(pl)) { V2 s = u_rt_size(u_tr(pl)); av[na][0] = pl_cur_L; av[na][1] = pl_cur_L + s.x * k; av[na][2] = pl_cur_Y - s.y * k; av[na][3] = pl_cur_Y; na++; }
+      if (viewer_on && u_alive(vb) && u_go_active_self(u_go(vb))) { V2 s = u_rt_size(u_tr(vb)); av[na][0] = vb_cur_x; av[na][1] = vb_cur_x + s.x; av[na][2] = vb_cur_y - s.y - (viewer_min || viewer_hidden ? 0 : 42); av[na][3] = vb_cur_y; na++; }
+      if (!teams_free_spot(root, w, 26, &L, &cy, (const float (*)[4])av, na)) { show(bg, 0); show(t, 0); sees_shown = 0; return; } }
     place(bg, L, cy, w, 26); place(t, L, cy, w, 26);
     graphic_color(bg, hex_col("#222025", 0.75f));
+}
+/* test (ui_viewer): action click_hide / click_show = a click on the link where it is drawn (refused when it is not
+   shown); state: hidden, aside, the link text and screen rects [x, y, w, h] (y up) of the box, the link, the "sees this
+   too" line and the Teams window */
+static void viewer_overlay_json(Buf *b, const char *action) {
+    Obj lk = u_gc_get(h_vlink);
+    if (action && (!strcmp(action, "click_hide") || !strcmp(action, "click_show"))) {
+        int want = action[6] == 'h';
+        if (u_alive(lk) && u_go_active_self(u_go(lk)) && viewer_hidden != want) viewer_hide_set(want);
+        else rig_log("ui: test %s refused (link shown %d, hidden %d)", action, u_alive(lk) && u_go_active_self(u_go(lk)), viewer_hidden);
+        return;
+    }
+    if (!b) return;
+    char t[120] = ""; if (u_alive(lk)) str_utf8(tmp_get(lk), t, sizeof t);
+    bput(b, ",\"hidden\":%d,\"aside\":%d,\"link\":", viewer_hidden, viewer_aside); bstr(b, t);
+    Obj objs[3] = { u_gc_get(h_vbox), lk, u_gc_get(h_sees_t) }; const char *nm[3] = { "box_px", "link_px", "sees_px" };
+    for (int k = 0; k < 3; k++) {
+        SR r; int ok = u_alive(objs[k]) && u_go_active_self(u_go(objs[k])) && scr_rect(u_tr(objs[k]), &r);
+        if (ok) bput(b, ",\"%s\":[%.0f,%.0f,%.0f,%.0f]", nm[k], r.x0, r.y0, r.x1 - r.x0, r.y1 - r.y0); else bput(b, ",\"%s\":null", nm[k]);
+    }
+    static int (*fn)(float *); if (!fn) fn = (int (*)(float *))dlsym(RTLD_DEFAULT, "ui_teams_window_px");
+    float w[4];
+    if (fn && fn(w)) bput(b, ",\"win_px\":[%.0f,%.0f,%.0f,%.0f]", w[0], w[1], w[2], w[3]); else bput(b, ",\"win_px\":null");
 }
 /* every frame: the window, its marks, the camera's one-frame-in-6 */
 static void mini_frame(void) {
@@ -4715,7 +4813,7 @@ static int escape_ours(void) {
     if (!on()) return 0;
     if (lmenu_n) { lmenu_close(); rig_log("ui: Escape closed the lend menu"); return 1; }
     if (pl_pop) { pl_pop = 0; plist_frame(); rig_log("ui: Escape closed the panel settings"); return 1; }
-    if (viewer_on && !viewer_min) { viewer_min = 1; viewer_frame(); rig_log("ui: Escape folded the viewer box"); return 1; }
+    if (viewer_on && !viewer_min && !viewer_hidden && !viewer_aside) { viewer_min = 1; viewer_frame(); rig_log("ui: Escape folded the viewer box"); return 1; }
     return 0;
 }
 static void hk_escape(Obj h, Obj msg, void *mi) {

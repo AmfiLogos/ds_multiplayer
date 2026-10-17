@@ -1917,6 +1917,12 @@ static void stock_gear_frame(void) {
 /* the proposal side panel is not modal (lan_v10): the player panel, hotkeys and Escape stay as without it */
 /* viewui: the folded Teams window is not modal (the bar only) */
 __attribute__((visibility("default"))) int ui_teams_modal_open(void) { return (opened && !folded()) || stock_mode == 2; }
+/* mpoverlay (owner 2026-10-17): the open Teams window as drawn (its fold bar when folded), screen pixels (x, y =
+   bottom-left, y up); 0 = not shown. For ui_game (dlsym): the viewer box and the "sees this too" line keep off it. */
+__attribute__((visibility("default"))) int ui_teams_window_px(float out[4]) {
+    if (!opened) return 0;
+    return folded() ? scr_rect(u_gc_get(h_fbar), out) : scr_rect(win(), out);
+}
 /* viewui: the player panel draws above the open window; its clicks and tooltips are ui_game's (ui_panel_hit, dlsym) */
 static int panel_hit(V2 m) {
     static int (*fn)(float, float); static unsigned tries;
