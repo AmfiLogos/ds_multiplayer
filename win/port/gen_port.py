@@ -4,7 +4,8 @@
 - Copies src/rig_cmd.c, src/rig_det.c, src/mp_*.c to win/build/gen/ and rewrites every hex literal that
   win_map.tsv knows (method / metadata / export / internal) to its Windows value. Field offsets are not
   touched (they are the same for every field the mod uses; win_map.tsv checks that).
-- rig_det.c: the arm64 frame-pointer walk (CALLERS) becomes RtlCaptureStackBackTrace (x64 .pdata unwind);
+- rig_det.c: CALLERS: c[0] stays __builtin_return_address(0); the arm64 frame-pointer walk for c[1], c[2] becomes
+  RtlCaptureStackBackTrace (x64 .pdata unwind), aligned on c[0];
   det_ranges.tsv -> det_ranges_win.tsv.
 - Writes build/det_ranges_win.tsv (same classes as rig/tools/gen_ranges.py, Windows addresses).
 - Fails if a source pattern it must patch is gone, or if an address that looks like an RVA has no Windows twin.
@@ -190,11 +191,22 @@ for fn in FILES:
         # DSRIG_RANGES names the Mac det_ranges.tsv (release gate, kit); Windows reads DSRIG_RANGES_WIN only
         # (2026-10-15: a kit run with the Mac file on Windows differed from the first tick)
         t = must_sub(t, 'getenv("DSRIG_RANGES")', 'getenv("DSRIG_RANGES_WIN")', fn)
+        # c[0] = the hook's own return address, as on the Mac. The walk only gives c[1], c[2]: they follow c[0]
+        # wherever it sits in the walk. Before (2026-10-18), c[0] was walk frame 1 of RtlCaptureStackBackTrace(1, 3).
+        # On Windows 11 ARM (x64 emulation) the walk has one more frame on top, so c[0] was the hook itself
+        # (outside GameAssembly = not view): every view Guid inside a sim cycle (FX, UI tooltips: ~1100 when a
+        # dungeon floor loads) counted as sim -> guid_sim_n higher on Windows -> deep-hash desync with a Mac.
         t = must_resub(t, r"#define CALLERS\(c\) do \{.*?\} while \(0\)\n",
+                       "static int callers_skew_logged;\n"
                        "#define CALLERS(c) do { \\\n"
-                       "    void *bt_[3] = { 0, 0, 0 }; USHORT n_ = RtlCaptureStackBackTrace(1, 3, bt_, NULL); \\\n"
-                       "    (c)[0] = n_ > 0 ? rva_of((uintptr_t)bt_[0]) : 0; (c)[1] = n_ > 1 ? rva_of((uintptr_t)bt_[1]) : 0; \\\n"
-                       "    (c)[2] = n_ > 2 ? rva_of((uintptr_t)bt_[2]) : 0; \\\n"
+                       "    uintptr_t r0_ = (uintptr_t)__builtin_return_address(0); \\\n"
+                       "    void *bt_[6] = { 0 }; USHORT n_ = RtlCaptureStackBackTrace(0, 6, bt_, NULL); \\\n"
+                       "    (c)[0] = rva_of(r0_); (c)[1] = (c)[2] = 0; \\\n"
+                       "    int i_ = 0; while (i_ < n_ && (uintptr_t)bt_[i_] != r0_) i_++; \\\n"
+                       "    if (i_ + 1 < n_) (c)[1] = rva_of((uintptr_t)bt_[i_ + 1]); \\\n"
+                       "    if (i_ + 2 < n_) (c)[2] = rva_of((uintptr_t)bt_[i_ + 2]); \\\n"
+                       "    if (i_ != 1 && !callers_skew_logged) { callers_skew_logged = 1; \\\n"
+                       "        rig_log(\"det: stack walk: the caller is frame %d of %d (expected 1)\", i_, (int)n_); } \\\n"
                        "} while (0)\n", fn)
         t = must_sub(t, "det_ranges.tsv", "det_ranges_win.tsv", fn)
     if fn == "rig_cmd.c":                                         # Windows-only test commands (port/win_test_cmds.c)
