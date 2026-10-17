@@ -112,6 +112,13 @@ extern uint8_t  dsnet_uid[16];
 extern int      dsnet_uid_set;
 extern int      dsnet_match_rule;
 extern char     dsnet_modset[65], dsnet_mod_lines[DSNET_MODLINES_MAX], dsnet_reject_detail[400];
+/* bytes of s that fit a 32-byte name field (31 + NUL) without cutting a UTF-8 character (the wire size stays 32) */
+static inline size_t utf8_len31(const char *s) {
+    size_t n = strnlen(s, 31);
+    if (n == 31) while (n > 0 && ((unsigned char)s[n] & 0xC0) == 0x80) n--;   /* s[31] continues a character: drop its start */
+    return n;
+}
+int dsnet_release_text_en(const char *host, const char *mine, char *out, size_t n);   /* the server's English refusal words */
 extern int      dsnet_reject_host_rule, dsnet_reject_has_host;
 extern char     dsnet_reject_host_lines[DSNET_MODLINES_MAX];
 extern char     dsnet_reject_host_rel[16];

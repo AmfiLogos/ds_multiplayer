@@ -14,6 +14,7 @@
 #include "mp_steam.h"
 #include "rig.h"
 #include "ui_model.h"
+#include "ds_i18n.h"                                     /* TR / TRN, language files, UTF-8 cuts (one DSI_IMPLEMENTATION: ds_i18n.c) */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,24 +68,37 @@ static Obj tmp_get(Obj t) {
     void *k = *(void **)t;
     return (*(Obj (**)(Obj, void *))((char *)k + 0x548))(t, *(void **)((char *)k + 0x550));
 }
+/* il2cpp_string_new returns an EMPTY string for UTF-8 that is not valid (research/i18n_plan.md 4): a label cut by bytes
+ * inside a character (snprintf into a fixed buffer) would be blank. The broken end is dropped first, on a copy. */
+static Obj u_str_ok(const char *s) {
+    if (!s) s = "";
+    size_t n = strlen(s); char sb[1024], *b = n < sizeof sb ? sb : malloc(n + 1);
+    if (!b) return u_str(s);
+    memcpy(b, s, n + 1); dsi_utf8_fix_end(b);
+    Obj r = u_str(b);
+    if (b != sb) free(b);
+    return r;
+}
+static void fit_text(Obj t, const char *s);
+static void fit_dirty(Obj t);
+static void fit_style(Obj t, float size, int wrap);
 void tmp_set(Obj t, const char *s) {
     if (!u_alive(t) || !mm_is(t, K_TMP)) return;
     if (!strcmp(cls_name(t), "DASText")) AT(t, 0x7C0, bool) = false;     /* DASText._useTextKey: keep our raw text */
     void *k = *(void **)t;
-    (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str(s), *(void **)((char *)k + 0x560));
+    (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str_ok(s), *(void **)((char *)k + 0x560));
+    fit_text(t, s);
 }
 static void tmp_set_obj(Obj t, Obj s) {                                     /* the same, with an il2cpp string as is */
     if (!u_alive(t) || !mm_is(t, K_TMP)) return;
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, s, *(void **)((char *)k + 0x560));
+    fit_dirty(t);
 }
-void str_utf8(Obj s, char *out, size_t cap) {          /* ASCII-safe copy of an il2cpp string (read-back) */
-    size_t n = 0; if (cap) out[0] = 0;
-    if (!s || !cap) return;
-    int32_t len = AT(s, 0x10, int32_t); const uint16_t *c = (const uint16_t *)((char *)s + 0x14);
-    for (int32_t i = 0; i < len && n + 1 < cap; i++) out[n++] = c[i] < 0x80 ? (char)c[i] : '?';
-    out[n] = 0;
-}
+void utf16_to_utf8(Obj s, char *out, size_t cap);
+/* copy of an il2cpp string (read-back). i18n: whole UTF-8 characters (it was ASCII with '?': a translated stock label or a
+ * Korean / Chinese world name read back and written again came out as "???") */
+void str_utf8(Obj s, char *out, size_t cap) { utf16_to_utf8(s, out, cap); }
 /* class lookup over the loaded assemblies (il2cpp API exports) + FindObjectOfType(Type, includeInactive) */
 void *class_by_name(const char *ns, const char *name);
 Obj image_of(Obj comp) {                                            /* GetComponent(typeof(UnityEngine.UI.Image)) */
@@ -358,31 +372,71 @@ void img_set(Obj im, Obj sprite, Col c) {                          /* sprite (sl
  * the menu-button label's material). The stock window body text, CommonNoticeView Panel_Notice/Txt_Notice (Lora 16), gives
  * its fontSharedMaterial; every Lora text of our windows uses it. Cinzel titles use the Cinzel font's own material. */
 static Obj tr_find(Obj t, const char *path);
-static uintptr_t h_body_mat, h_body_font;
-static int body_mat_logged;
-static Obj body_material(void) {
-    Obj m = u_gc_get(h_body_mat);
-    if (u_alive(m)) return m;
-    static uintptr_t hv; static void *kv;
-    Obj cn = find_view_x(&hv, &kv, "Refactor.UI", "CommonNoticeView", true);
-    Obj nt = cn ? tr_find(u_tr(cn), "Panel_Notice/Txt_Notice") : NULL;
-    static void *k; if (!k) k = class_by_name("TMPro", "TMP_Text");
-    Obj ty = k ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k)) : NULL;
-    Obj t = nt && ty ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(nt, ty, NULL) : NULL;
-    /* that text's material is "Lora-Regular SDF OutLine16" (an outline preset): use its font asset's own default material
-     * (TMP_Asset.m_Material: plain, no outline / underlay), as the ui lane does (lead 2026-10-13) */
-    Obj font = u_alive(t) ? F(0x4F0A59C, Obj (*)(Obj, void *))(t, NULL) : NULL;
+/* ---- i18n: the game's language and its fonts (research/i18n_plan.md 2, 4). Refactor.Setting.LanguageSetting, by name (Mac
+ * and Windows): GetCurrentLanguage() (static, polled each frame: lang_poll) and GetFont(FontStyleType) (EasyRead 0 = body,
+ * VeryDecorative 2 = titles; the language's own fonts: Lora / Cinzel, or the zh-Hans, zh-Hant, ja ones). */
+static void *ls_klass, *ls_lang_mi, *ls_font_mi; static int ls_tries; static int64_t ls_last_try = -100000;
+static int ls_ready(void) {                            /* class + methods found, its statics allocated */
+    if (!ls_klass && ls_tries < 10 && frames - ls_last_try >= 300) {
+        ls_last_try = frames; ls_tries++;
+        ls_klass = class_by_name("Refactor.Setting", "LanguageSetting");
+        if (ls_klass) { ls_lang_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetCurrentLanguage", 0);
+                        ls_font_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetFont", 1); }
+        rig_log("mpmenu: i18n: LanguageSetting %s (GetCurrentLanguage %s, GetFont %s)", ls_klass ? "found" : "NOT found",
+                ls_lang_mi ? "ok" : "missing", ls_font_mi ? "ok" : "missing");
+    }
+    return ls_klass && *(void **)((char *)ls_klass + 0xB8) != NULL;       /* Il2CppClass.static_fields */
+}
+static Obj font_material(Obj font) {                   /* the font asset's own default material (TMP_Asset.m_Material: no outline) */
     static void *mm; static int fo = -1;
     if (!mm) mm = mth("TMPro", "TMP_Asset", "get_material", 0);
     if (!mm && fo < 0) { void *ka = class_by_name("TMPro", "TMP_Asset"), *fld = ka ? F(0x6F8C14, void *(*)(void *, const char *))(ka, "m_Material") : NULL;
                           fo = fld ? (int)F(0x6F949C, size_t (*)(void *))(fld) : 0; }
-    m = !u_alive(font) ? NULL : mm ? MCALL(mm, Obj, Obj, const void *)(font, mm) : fo > 0 ? AT(font, fo, Obj) : NULL;
-    if (u_alive(m)) { h_body_mat = u_gc_new(m); h_body_font = u_gc_new(font); }
-    if (!body_mat_logged) { body_mat_logged = 1; char nm[96] = ""; if (u_alive(m)) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), nm, sizeof nm);
-                            rig_log("mpmenu: body text: font %s, its default material \"%s\" (%s)", u_alive(font) ? "found" : "NOT found", nm, mm ? "get_material" : "m_Material field"); }
+    Obj m = !u_alive(font) ? NULL : mm ? MCALL(mm, Obj, Obj, const void *)(font, mm) : fo > 0 ? AT(font, fo, Obj) : NULL;
     return u_alive(m) ? m : NULL;
 }
-static void txt_body(Obj t) {                                             /* the stock body font + material, no outline */
+static uintptr_t h_lfont[3]; static unsigned lfont_gen = ~0u;
+static Obj lang_font(int style) {                      /* 0 body, 2 titles; NULL: not available (then the old sources) */
+    if (lfont_gen != dsi_generation()) { for (int i = 0; i < 3; i++) { u_gc_free(h_lfont[i]); h_lfont[i] = 0; } lfont_gen = dsi_generation(); }
+    Obj f = u_gc_get(h_lfont[style]);
+    if (u_alive(f)) return f;
+    if (!ls_ready() || !ls_font_mi) return NULL;
+    if (!*(void **)*(void **)((char *)ls_klass + 0xB8)) return NULL;      /* static _fontSO (+0x0): not loaded by the game yet */
+    f = MCALL(ls_font_mi, Obj, int32_t, const void *)(style, ls_font_mi);
+    if (!u_alive(f)) return NULL;
+    u_gc_free(h_lfont[style]); h_lfont[style] = u_gc_new(f);
+    char nm[96] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(f, NULL), nm, sizeof nm);
+    rig_log("mpmenu: i18n: %s font for %s: %s", style ? "title" : "body", dsi_code(), nm);
+    return f;
+}
+static Obj title_font(void) { Obj f = lang_font(2); if (!f) f = u_gc_get(h_cinzel); return u_alive(f) ? f : NULL; }   /* the scan's Cinzel: fallback */
+/* Body text material (owner 2026-10-13: our texts had a black outline the game's windows do not have; the clones carried
+ * the menu-button label's material). Body font = the language's EasyRead font (GetFont 0); fallback the stock window body
+ * text, CommonNoticeView Panel_Notice/Txt_Notice (Lora 16). Material: the font asset's own (plain). Re-fetched when the
+ * language changes. Cinzel titles use the title font's own material. */
+static uintptr_t h_body_mat, h_body_font; static unsigned body_gen = ~0u;
+static Obj body_material(void) {
+    Obj m = u_gc_get(h_body_mat);
+    if (u_alive(m) && body_gen == dsi_generation()) return m;
+    u_gc_free(h_body_mat); u_gc_free(h_body_font); h_body_mat = h_body_font = 0;
+    Obj font = lang_font(0); const char *how = "LanguageSetting.GetFont(EasyRead)";
+    if (!font) {
+        static uintptr_t hv; static void *kv;
+        Obj cn = find_view_x(&hv, &kv, "Refactor.UI", "CommonNoticeView", true);
+        Obj nt = cn ? tr_find(u_tr(cn), "Panel_Notice/Txt_Notice") : NULL;
+        static void *k; if (!k) k = class_by_name("TMPro", "TMP_Text");
+        Obj ty = k ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k)) : NULL;
+        Obj t = nt && ty ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(nt, ty, NULL) : NULL;
+        /* that text's material is "Lora-Regular SDF OutLine16" (an outline preset): its font asset's own material instead */
+        font = u_alive(t) ? F(0x4F0A59C, Obj (*)(Obj, void *))(t, NULL) : NULL; how = "CommonNoticeView Txt_Notice";
+    }
+    m = font_material(font);
+    if (m) { h_body_mat = u_gc_new(m); h_body_font = u_gc_new(font); }
+    if (body_gen != dsi_generation()) { body_gen = dsi_generation(); char nm[96] = ""; if (m) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), nm, sizeof nm);
+                                        rig_log("mpmenu: body text (%s): font from %s, its default material \"%s\"", dsi_code(), m ? how : "NOT found", nm); }
+    return m;
+}
+static void txt_body(Obj t) {                                             /* the language's body font + material, no outline */
     if (!mm_is(t, K_TMP)) return;
     Obj m = body_material(); if (!m) return;
     Obj f = u_gc_get(h_body_font); if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);
@@ -391,8 +445,8 @@ static void txt_body(Obj t) {                                             /* the
 }
 void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
     if (!mm_is(t, K_TMP)) return;
-    Obj f = cinzel ? u_gc_get(h_cinzel) : NULL;
-    if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);
+    Obj f = cinzel ? title_font() : NULL;                                  /* titles: the language's title font (Cinzel in Latin languages) */
+    if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);   /* TMP takes the font's own material (other atlas) */
     F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, false, NULL);
     F(0x4F0B340, void (*)(Obj, float, void *))(t, size, NULL);
     F(0x4F0B7BC, void (*)(Obj, int, void *))(t, align, NULL);              /* 513 middle-left, 514 centre, 516 middle-right */
@@ -400,8 +454,202 @@ void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
     F(0x4F0BB74, void (*)(Obj, int, void *))(t, 0, NULL);
     F(0x4F0C254, void (*)(Obj, bool, void *))(t, true, NULL);
     F(0x5260348, void (*)(Obj, bool, void *))(t, false, NULL);             /* raycastTarget off */
+    fit_style(t, size, wrap);                                               /* too long for its rect: auto size (text fit) */
 }
 void txt_color(Obj t, Col c) { if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(t, c, NULL); }
+/* ---------------------------------------------------------------- text fit (ext/i18n/CJK_FIT.md)
+ * How the game fits text: short labels and buttons in a fixed box use TMP auto size (min about 0.75 x max, small buttons
+ * down to 8-18); long text keeps its size and its box grows (ContentSizeFitter, preferred height). It never changes the
+ * size per language. Here: every text styled by txt_style keeps its design size. At the end of the menu frame, a text
+ * whose content or rect changed is measured at that size (TMP preferredWidth / preferredHeight). It fits: as before,
+ * no auto size (so English that fits looks exactly as before). It does not fit: auto size from the design size down
+ * to fit_min() (0.75 x, the game's), and a one-line label wraps when its rect holds two lines. Still too long at
+ * 0.75: the game's way for long text, the text keeps its design size and wraps to more lines (the line grows; it
+ * draws past its rect, centred); a box we own asks txt_fit_h() for the height its text needs and grows. */
+#define FIT_N 2048                                                           /* open addressing by object address */
+typedef struct { Obj t; uintptr_t h; float size, w, h_, qw, qh, qr, qs; uint32_t hash, qhash; uint8_t wrap, on, dirty, multi, stock, qk; } fit_e;   /* q*: txt_fit_h / _w cache */
+typedef struct { float x, y, w, h; } fit_rect;
+static fit_e fit_tab[FIT_N];
+static int fit_count;
+static void *m_fit_pw, *m_fit_ph, *m_fit_rect, *m_fit_live, *m_fit_pv;
+static float fit_min(float size) { float m = size * 0.75f; m = (float)(int)(m + 0.5f); return m < 8 ? (size < 8 ? size : 8) : m; }   /* the game's 0.75 */
+static int fit_methods(void) {
+    if (!m_fit_pw) { m_fit_pw = mth("TMPro", "TMP_Text", "get_preferredWidth", 0); m_fit_ph = mth("TMPro", "TMP_Text", "get_preferredHeight", 0);
+                     m_fit_rect = mth("UnityEngine", "RectTransform", "get_rect", 0); m_fit_live = mth("UnityEngine", "GameObject", "get_activeInHierarchy", 0);
+                     m_fit_pv = mth("TMPro", "TMP_Text", "GetPreferredValues", 2); }   /* (float width, float height): the only 2-argument one */
+    return m_fit_pw && m_fit_ph && m_fit_rect && m_fit_live;
+}
+typedef struct { float x, y; } fit_v2;
+/* the text as styled at this size (no auto size), wrap on/off; its preferred width / height at width w (<= 0: its rect) */
+static void fit_set(Obj t, int autosize, float size, int wrap) {
+    F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, autosize != 0, NULL); F(0x4F0B340, void (*)(Obj, float, void *))(t, size, NULL);
+    F(0x4F0BA48, void (*)(Obj, int, void *))(t, wrap, NULL);
+}
+static fit_v2 fit_pref(Obj t, float w) {
+    if (w > 0 && m_fit_pv) return MCALL(m_fit_pv, fit_v2, Obj, float, float, const void *)(t, w, 100000.f, m_fit_pv);
+    return (fit_v2){ MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw), MCALL(m_fit_ph, float, Obj, const void *)(t, m_fit_ph) };
+}
+static fit_e *fit_find(Obj t, int add) {
+    if (!t) return NULL;
+    size_t i = ((uintptr_t)t >> 4) * 2654435761u % FIT_N, tomb = (size_t)-1;
+    for (int n = 0; n < FIT_N; n++, i = (i + 1) % FIT_N) {
+        fit_e *e = &fit_tab[i];
+        if (e->t == t) return e;
+        if (e->t == (Obj)1) { if (tomb == (size_t)-1) tomb = i; continue; }
+        if (!e->t) {
+            if (!add) return NULL;
+            if (fit_count >= FIT_N * 3 / 4) return NULL;                     /* full: that text keeps the old way (no fit) */
+            if (tomb != (size_t)-1) e = &fit_tab[tomb];
+            memset(e, 0, sizeof *e); e->t = t; e->h = u_gc_new(t); fit_count++;
+            return e;
+        }
+    }
+    return NULL;
+}
+static void fit_drop(fit_e *e) { u_gc_free(e->h); memset(e, 0, sizeof *e); e->t = (Obj)1; fit_count--; }
+static uint32_t fit_hash(const char *s) { uint32_t h = 2166136261u; for (; s && *s; s++) h = (h ^ (uint8_t)*s) * 16777619u; return h; }
+/* txt_style: design size + wrap of this text; a text styled again the same way keeps its current fit (no flicker) */
+static void fit_style(Obj t, float size, int wrap) {
+    fit_e *e = fit_find(t, 1); if (!e) return;
+    F(0x4F0B68C, void (*)(Obj, float, void *))(t, size, NULL);              /* fontSizeMax: the design size */
+    F(0x4F0B634, void (*)(Obj, float, void *))(t, fit_min(size), NULL);     /* fontSizeMin */
+    if (e->size == size && e->wrap == (wrap != 0) && e->on) {
+        if (e->on == 4) { fit_set(t, 0, size, 1); return; }                 /* grows: design size, more lines */
+        F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
+        if (e->on >= 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->on == 2, NULL);
+        return;
+    }
+    e->size = size; e->wrap = wrap != 0; e->on = 0; e->dirty = 1;
+}
+static void fit_dirty(Obj t) { fit_e *e = fit_find(t, 0); if (e) e->dirty = 1; }
+static void fit_text(Obj t, const char *s) {
+    fit_e *e = fit_find(t, 0); if (!e) return;
+    uint32_t h = fit_hash(s); if (h != e->hash) { e->hash = h; e->dirty = 1; e->multi = s && strchr(s, '\n') != NULL; }
+}
+/* does the text fit w x h at the smallest size (fit_min)? A one-line label may use two lines when h holds them (two).
+   Leaves the text at that size; the caller sets it back. */
+static int fit_at_min(fit_e *e, Obj t, float w, float h, int *two) {
+    float mn = fit_min(e->size);
+    *two = !e->wrap && !e->multi && h >= 2.7f * mn;
+    fit_set(t, 0, mn, e->wrap || *two);
+    if (e->wrap || *two) return fit_pref(t, w).y <= h + 2;
+    return fit_pref(t, 0).x <= w + 1;
+}
+static void fit_one(fit_e *e, Obj t, float w, float h) {
+    if (w < 4 || h < 4) return;                                              /* not placed yet */
+    if (e->on) fit_set(t, 0, e->size, e->wrap);                              /* measure as styled */
+    int over;
+    if (!e->wrap) over = MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw) > w + 1;
+    else over = MCALL(m_fit_ph, float, Obj, const void *)(t, m_fit_ph) > h + 2;   /* a second line in a one-line button runs out of its frame */
+    e->on = 0;
+    if (over) {
+        float mn = fit_min(e->size); int two = 0;
+        float pw1 = MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw);  /* one line at the design size (wrap off: no wrap width) */
+        int fits = fit_at_min(e, t, w, h, &two);
+        fit_set(t, 0, e->size, e->wrap);
+        char tx[64] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
+        if (!fits) {                                                         /* the game's long text: design size, more lines */
+            e->on = 4; fit_set(t, 0, e->size, 1);
+            rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f even at %.0f: size %.0f, wraps (%.0f high)", tx, w, h, mn, e->size, fit_pref(t, w).y);
+            return;
+        }
+        e->on = two ? 2 : 1;                                                 /* 2: a one-line label that may use two lines */
+        /* 3: a wrapping text in a box made for one line (a button) that fits one line at the smaller size: one line, as
+           the game's buttons (a second line ran over the frame of Host from a save) */
+        if (e->wrap && !e->multi && h < 2.56f * e->size && pw1 * mn / e->size <= w) e->on = 3;
+        F(0x4F0B634, void (*)(Obj, float, void *))(t, mn, NULL);
+        F(0x4F0B68C, void (*)(Obj, float, void *))(t, e->size, NULL);
+        if (e->on >= 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->on == 2, NULL);
+        F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
+        rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f: auto size %.0f-%.0f%s", tx, w, h, mn, e->size, e->on == 2 ? ", two lines" : e->on == 3 ? ", one line" : "");
+    }
+}
+/* once per frame (end of mpmenu_frame): changed texts now; every text's rect every 15 frames (a later layout change) */
+static void fit_frame(void) {
+    if (!fit_count) return;
+    if (!fit_methods()) return;
+    int all = frames % 15 == 0;
+    for (int i = 0; i < FIT_N; i++) {
+        fit_e *e = &fit_tab[i];
+        if (!e->t || e->t == (Obj)1 || (!e->dirty && !all)) continue;
+        Obj t = u_gc_get(e->h);
+        if (!u_alive(t)) { fit_drop(e); continue; }
+        Obj g = u_go(t);
+        if (!g || !MCALL(m_fit_live, bool, Obj, const void *)(g, m_fit_live)) {                         /* measured once it shows */
+            if (e->stock) {                                                  /* a stock box closed: its own settings again */
+                if (e->on) { F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, false, NULL); F(0x4F0B340, void (*)(Obj, float, void *))(t, e->size, NULL);
+                             F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->wrap, NULL); }
+                fit_drop(e);
+            }
+            continue;
+        }
+        Obj rt = u_tr(t); if (!mm_is(rt, K_RT)) continue;
+        fit_rect r = MCALL(m_fit_rect, fit_rect, Obj, const void *)(rt, m_fit_rect);
+        if (!e->dirty && !e->stock && r.w == e->w && r.h == e->h_) continue;   /* a stock text: the game may set it too */
+        int first = e->dirty; e->w = first ? -1 : r.w; e->h_ = r.h; e->dirty = 0;   /* -1: measured again at the next full pass
+                                                                                    (TMP may see a new rect one frame late) */
+        fit_one(e, t, r.w, r.h);
+    }
+}
+/* for the game-side files (ui_game.c, ui_teams.c) and Custom Modes texts styled their own way: same fit */
+void txt_fit(Obj t, float size, int wrap) { if (mm_is(t, K_TMP)) fit_style(t, size, wrap); }
+void txt_fit_text(Obj t, const char *s) { fit_text(t, s); }
+/* the fit's current settings again (after a measure) */
+static void fit_apply(fit_e *e, Obj t) {
+    if (!e->on || e->on == 4) { fit_set(t, 0, e->size, e->on == 4 ? 1 : e->wrap); return; }
+    F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->on == 2 ? 1 : e->on == 3 ? 0 : e->wrap, NULL);
+    F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
+}
+/* the height a box we own needs for text t laid out at w x h (its design box): h when the text fits there at its design
+   size or auto-sized down to 0.75; else its height at the design size, wrapped at w (the game's long text: the box grows,
+   the text keeps its size). Its caller grows the box (and moves what is stacked under it). Cached per text / box. */
+float txt_fit_h(Obj t, float w, float h) {
+    if (!mm_is(t, K_TMP) || w < 4 || h < 4 || !fit_methods()) return h;
+    fit_e *e = fit_find(t, 0); if (!e || e->size < 1) return h;
+    char tx[1024] = ""; str_utf8(tmp_get(t), tx, sizeof tx); uint32_t hs = fit_hash(tx);
+    if (e->qr > 0 && e->qk == 1 && e->qhash == hs && e->qw == w && e->qh == h && e->qs == e->size) return e->qr;
+    fit_set(t, 0, e->size, e->wrap);
+    int over = !e->wrap ? fit_pref(t, 0).x > w + 1 : fit_pref(t, w).y > h + 2, two = 0;
+    float r = h;
+    if (over && !fit_at_min(e, t, w, h, &two)) { fit_set(t, 0, e->size, 1); float ph = fit_pref(t, w).y; if (ph > h) r = (float)(int)(ph + 0.99f); }
+    fit_apply(e, t);
+    e->qhash = hs; e->qw = w; e->qh = h; e->qr = r; e->qs = e->size; e->qk = 1;
+    return r;
+}
+/* the same for a one-line box that can only grow wider (a chip): w when the text fits on one line at its design size or
+   at 0.75, else its one-line width at the design size */
+float txt_fit_w(Obj t, float w, float h) {
+    if (!mm_is(t, K_TMP) || w < 4 || h < 4 || !fit_methods()) return w;
+    fit_e *e = fit_find(t, 0); if (!e || e->size < 1) return w;
+    char tx[512] = ""; str_utf8(tmp_get(t), tx, sizeof tx); uint32_t hs = fit_hash(tx);
+    if (e->qr > 0 && e->qk == 2 && e->qhash == hs && e->qw == w && e->qh == h && e->qs == e->size) return e->qr;
+    fit_set(t, 0, e->size, 0);
+    float pw = fit_pref(t, 0).x, r = w;
+    if (pw > w + 1 && pw * fit_min(e->size) / e->size > w + 1) r = (float)(int)(pw + 0.99f);
+    fit_apply(e, t);
+    e->qhash = hs; e->qw = w; e->qh = h; e->qr = r; e->qs = e->size; e->qk = 2;
+    return r;
+}
+/* the height of text t at its design size, wrapped at width w (as the loader kit's DSLUi.text_height): for a box that
+   grows to its text rather than auto-size it (0: not measured) */
+float txt_text_h(Obj t, float w) {
+    if (!mm_is(t, K_TMP) || w < 4 || !fit_methods()) return 0;
+    fit_e *e = fit_find(t, 0); if (!e || e->size < 1) return 0;
+    fit_set(t, 0, e->size, 1); float ph = fit_pref(t, w).y; fit_apply(e, t);
+    return ph;
+}
+/* the stock notice box text (CommonNoticeView Txt_Notice: Lora 16 in a fixed 520 x 109 rect; the game never sizes it):
+   while our text is up it auto-sizes when too long; when the box closes, its stock settings come back */
+void txt_fit_stock(Obj t) {
+    if (!mm_is(t, K_TMP)) return;
+    fit_e *e = fit_find(t, 0);
+    if (e) { e->dirty = 1; return; }
+    if (F(0x4F0B5D4, bool (*)(Obj, void *))(t, NULL)) return;                /* the game auto-sizes it already */
+    float fs = F(0x4F0B338, float (*)(Obj, void *))(t, NULL);
+    if (fs < 4) return;
+    fit_style(t, fs, 1);
+    e = fit_find(t, 0); if (e) e->stock = 1;
+}
 /* new image / text under parent_tr, from a template (an Image without children, a TMP label) */
 Obj mk_img(Obj tpl_img, Obj parent_tr, int sprite, Col c, float x, float y, float w, float h) {
     if (!u_alive(tpl_img) || !u_alive(parent_tr)) return NULL;
@@ -510,7 +758,7 @@ static void observe(mpm_obs *o) {
     Obj ev = o->scene == 2 ? esc_view() : NULL;
     o->esc_open = ev && u_on(ev);
     mp_steam_info in; mp_steam_state(&in);
-    if (in.state == MP_STEAM_ENDED) { o->failed = 1; snprintf(o->msg, sizeof o->msg, "%s", in.msg); modset_notice(); }   /* Steam join refused for mods */
+    if (in.state == MP_STEAM_ENDED) { o->failed = 1; snprintf(o->msg, sizeof o->msg, "%s", mp_steam_end_text()); o->end = mp_steam_end_code(); modset_notice(); }   /* Steam join refused for mods */
     else if (in.is_host) o->role = 1;
     else if (in.state == MP_STEAM_JOINING || in.state == MP_STEAM_IN_GAME) {
         o->role = 2;
@@ -563,6 +811,17 @@ static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *
       }
       rig_log("mpmenu: field frame %s", u_alive(fim) && u_alive(spr) ? "= menu button frame (no magnifier)" : "unchanged (no image / sprite)"); }
     row_height(f, 262, 44);                                                 /* v2 §2a: input 262x44, Lora 18, centred vertically */
+    /* The text area (TMP_InputField.textViewport, "Text Area", stretched): the stock save-name field keeps 35.8 units on
+     * its left for the magnifier its "Search" sprite draws, 10 on its right (prefab: offset x 12.9, size -45.8; SaveLoadUI
+     * and RenameUnitUI). Our frame has no magnifier, so that gap only cut the address hint ("...:4777" at 216 of 262).
+     * Here the stock right inset on both sides; height and vertical place stay the source's. */
+    { Obj ta = tr_find(u_tr(f), "Text Area");
+      if (mm_is(ta, K_RT)) {
+          V2 sd = F(0x510701C, V2 (*)(Obj, void *))(ta, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(ta, NULL);   /* sizeDelta, anchoredPosition */
+          F(0x5106B64, void (*)(Obj, V2, void *))(ta, (V2){ 0, 0 }, NULL); F(0x5106D48, void (*)(Obj, V2, void *))(ta, (V2){ 1, 1 }, NULL);
+          F(0x5107110, void (*)(Obj, V2, void *))(ta, (V2){ -20, sd.y }, NULL);
+          F(0x5106F2C, void (*)(Obj, V2, void *))(ta, (V2){ 0, ap.y }, NULL);
+      } }
     { static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
       Obj tc = mtc && mm_is(f, K_FIELD) ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
       if (u_alive(tc)) { txt_body(tc); txt_style(tc, 0, 18, 513, 0); txt_color(tc, C_MAIN); } }
@@ -570,7 +829,7 @@ static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *
     (mm_is(f, K_FIELD) ? F(0x4EFC75C, void (*)(Obj, int, void *))(f, 0, NULL) : (void)0);                    /* contentType Standard */
     Obj ph = (mm_is(f, K_FIELD) ? F(0x4EFB9CC, Obj (*)(Obj, void *))(f, NULL) : NULL);                    /* placeholder ("Save File Name" in the source) */
     if (u_alive(ph) && strstr(cls_name(ph), "Text")) { tmp_set(ph, placeholder); txt_body(ph); txt_style(ph, 0, 16, 513, 0); txt_color(ph, C_SUB); }
-    (mm_is(f, K_FIELD) ? F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(text), NULL) : (void)0);          /* SetTextWithoutNotify */
+    (mm_is(f, K_FIELD) ? F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str_ok(text), NULL) : (void)0);       /* SetTextWithoutNotify */
     u_active(f, false);
     return f;
 }
@@ -588,12 +847,12 @@ static void fields_find(Obj parent) {
         char clip[128] = ""; str_utf8(F(0x518AEA0, Obj (*)(void *))(NULL), clip, sizeof clip);   /* prefill: clipboard, if it is an address */
         char hh[128]; uint16_t pp = 0;
         int is_addr = clip[0] && strchr(clip, '.') && !ui_parse_address(clip, hh, sizeof hh, &pp, MPM_DEFAULT_PORT);
-        Obj f = field_make(src, parent, "Address, like 192.168.1.20:47777", is_addr ? clip : "");
+        Obj f = field_make(src, parent, TR("Address, like 192.168.1.20:47777"), is_addr ? clip : "");
         u_gc_free(h_field); h_field = f ? u_gc_new(f) : 0;
         rig_log("mpmenu: address field cloned from %s%s", from, is_addr ? " (prefilled from the clipboard)" : "");
     }
     if (!u_alive(u_gc_get(h_namefield))) {
-        Obj f = field_make(src, parent, "Your name", my_name);
+        Obj f = field_make(src, parent, TR("Your name"), my_name);
         u_gc_free(h_namefield); h_namefield = f ? u_gc_new(f) : 0;
     }
     if (primed && primed < 40) { Obj p = popups(); if (p && popup_open(5)) F(0xF62A88, void (*)(Obj, int, void *))(p, 5, NULL); }   /* DeactivateView(5) */
@@ -638,6 +897,7 @@ Obj btn_label(Obj b, int esc) { return b ? AT(b, esc ? 0x28 : 0x130, Obj) : NULL
  * so it fits inside the lobby body under the title and above Start/Leave. */
 #define RP_WIDE_W 830
 #define RP_WIDE_H 376                                            /* 9 rules rows: the right column has 5 */
+static void destroy_go(Obj comp);
 static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt, float cx, float cy, const char *note, uintptr_t *reg, int wide) {
     float pw = wide ? RP_WIDE_W : 430, ph = wide ? RP_WIDE_H : 588;     /* narrow: 9 rows (+ Shared fog, Spectators); host page: always open, no Done */
     #define PX(x) ((x) - pw / 2)
@@ -647,13 +907,20 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
                           : 68 + 50 * (i) + ((i) > MPM_RULE_POP ? 22 : 0))     /* the Population row has a description line under it */
     #define RX(i) (wide ? (RCOL(i) ? 422 : 14) : 18)                            /* row left edge; rows are 394 wide */
     float rh = wide ? 44 : 48;
+    float end = (wide && RTOP(MPM_RULE_POP - 1) > RTOP(MPM_RULE_ROWS - 1) ? RTOP(MPM_RULE_POP - 1) : RTOP(MPM_RULE_ROWS - 1)) + rh;   /* the longer column */
+    /* the note under the rows: one line of 12 in English; a longer one (ru, de, fr, ja: two lines) gets a taller box at
+       the same size, as the game does for long text (it was auto-sized down to 8; English stays 22 high). Measured on a throwaway copy, so the
+       panel can grow before it is built. Narrow: the box starts 7 under the rows and grows down (the panel too, if needed). */
+    float nw = wide ? 600 : 394, nh = 22;
+    { Obj m = mk_txt(tpl_txt, parent, 0, 12, 513, 1, 0, 0, nw, 22, C_SUB); if (m) { tmp_set(m, note); float th = txt_text_h(m, nw); if (th > nh + 2) nh = (float)(int)(th + 0.99f); u_active(m, false); destroy_go(m); } }
+    if (!wide && end + 7 + nh + 8 > ph) ph = end + 7 + nh + 8;
     Obj root = mk_img(tpl_img, parent, S_BOX, C_WHITE, cx, cy, pw, ph);
     if (!root) return;
     Obj R = u_tr(root);
     u_gc_free(p->root); p->root = u_gc_new(root);
     mk_img(tpl_img, R, -1, C_BAND, 0, PY(wide ? 24 : 27), pw - 4, wide ? 44 : 50);
     mk_img(tpl_img, R, -1, C_COPPER, 0, PY(wide ? 46 : 52), pw - 4, 1);
-    Obj t = mk_txt(tpl_txt, R, 1, 24, 514, 0, 0, PY(wide ? 24 : 27), 400, 40, C_MAIN); tmp_set(t, "Rules");
+    Obj t = mk_txt(tpl_txt, R, 1, 24, 514, 0, 0, PY(wide ? 24 : 27), 400, 40, C_MAIN); tmp_set(t, TR("Rules"));
     for (int i = 0; i < MPM_RULE_ROWS; i++) {
         float yc = PY(RTOP(i) + rh / 2), x0 = RX(i);
         Obj rb = mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, PX(x0 + 197), yc, 394, rh);
@@ -669,10 +936,9 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
     }
     { Obj ds = mk_txt(tpl_txt, R, 0, 12, 513, 0, PX(RX(MPM_RULE_POP) + 197), PY(RTOP(MPM_RULE_POP) + rh + 11), 380, 20, C_SUB);   /* under Population */
       u_gc_free(p->desc); p->desc = ds ? u_gc_new(ds) : 0; }
-    float end = (wide && RTOP(MPM_RULE_POP - 1) > RTOP(MPM_RULE_ROWS - 1) ? RTOP(MPM_RULE_POP - 1) : RTOP(MPM_RULE_ROWS - 1)) + rh;   /* the longer column */
-    Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 1, wide ? PX(14 + 300) : 0, PY(end + (wide ? 40 : 18)), wide ? 600 : 394, 22, C_SUB); tmp_set(nt, note);
+    Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 1, wide ? PX(14 + 300) : 0, wide ? PY(end + 40) : PY(end + 7 + nh / 2), nw, nh, C_SUB); tmp_set(nt, note);
     u_gc_free(p->note); p->note = nt ? u_gc_new(nt) : 0;
-    Obj d = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(pw - 88), PY(end + (wide ? 40 : 59)), 140, 34, 16, "Done", C_MAIN);
+    Obj d = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(pw - 88), PY(end + (wide ? 40 : 59 + nh - 22)), 140, 34, 16, TR("Done"), C_MAIN);
     if (reg) { u_gc_free(reg[MPB_RULES_DONE]); reg[MPB_RULES_DONE] = d ? u_gc_new(d) : 0; }
     p->pw = pw; p->ph = ph; p->tip_row = -1;
     u_active(root, false);
@@ -723,7 +989,7 @@ static void fe_build(fepanel *p, Obj parent, Obj src, Obj tpl_img, Obj tpl_txt, 
     u_gc_free(p->root); p->root = u_gc_new(root);
     mk_img(tpl_img, R, -1, C_BAND, 0, PY(27), pw - 4, 50);
     mk_img(tpl_img, R, -1, C_COPPER, 0, PY(52), pw - 4, 1);
-    Obj t = mk_txt(tpl_txt, R, 1, 24, 514, 0, 0, PY(27), 400, 40, C_MAIN); tmp_set(t, "Expedition Rules");
+    Obj t = mk_txt(tpl_txt, R, 1, 24, 514, 0, 0, PY(27), 400, 40, C_MAIN); tmp_set(t, TR("Expedition Rules"));
     for (int i = 0; i < MPM_FE_ROWS; i++) {
         float top = 62 + step * i, yc = PY(top + rh / 2);
         Obj rb = mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, PX(18 + 197), yc, 394, rh);
@@ -738,8 +1004,8 @@ static void fe_build(fepanel *p, Obj parent, Obj src, Obj tpl_img, Obj tpl_txt, 
             int id = fe_arrows[i][a]; u_gc_free(h_tb[id]); h_tb[id] = b ? u_gc_new(b) : 0;
         }
     }
-    Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 1, 0, PY(end + 14), 394, 22, C_SUB); tmp_set(nt, "Visitors see these rules before they choose units.");
-    Obj d = mk_button(src, R, 0, S_NBTN, C_WHITE, PX(pw - 88), PY(end + 55), 140, 34, 16, "Done", C_MAIN);
+    Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 1, 0, PY(end + 14), 394, 22, C_SUB); tmp_set(nt, TR("Visitors see these rules before they choose units."));
+    Obj d = mk_button(src, R, 0, S_NBTN, C_WHITE, PX(pw - 88), PY(end + 55), 140, 34, 16, TR("Done"), C_MAIN);
     u_gc_free(h_tb[MPB_FE_DONE]); h_tb[MPB_FE_DONE] = d ? u_gc_new(d) : 0;
     p->tip_row = -1;
     u_active(root, false);
@@ -769,6 +1035,29 @@ static Obj empty_rt(Obj parent_tr, const char *name) {    /* new GameObject(name
     F(0x50F3204, void (*)(Obj, int, void *))(go, F(0x50F3118, int (*)(Obj, void *))(u_go(parent_tr), NULL), NULL);   /* the parent's layer */
     F(0x510B2C4, void (*)(Obj, Obj, bool, void *))(rt, parent_tr, false, NULL);       /* Transform.SetParent(parent, false) */
     return rt;
+}
+/* title-column rows as built (row, its frame image, its label rect), for rows that grow to a label still too long at 0.75 */
+static float trow_base[MPB_COUNT], trow_bgh[MPB_COUNT], trow_lw[MPB_COUNT], trow_lh[MPB_COUNT], trow_cur[MPB_COUNT];
+static void trow_note(int id, Obj b) {
+    if (id < 0 || id >= MPB_COUNT) return;
+    Obj rt = u_tr(b), bg = first_image(rt, 0), l = AT(b, 0x130, Obj);
+    trow_base[id] = trow_cur[id] = mm_is(rt, K_RT) ? F(0x510701C, V2 (*)(Obj, void *))(rt, NULL).y : 0;   /* sizeDelta */
+    trow_bgh[id] = bg && mm_is(u_tr(bg), K_RT) ? F(0x510701C, V2 (*)(Obj, void *))(u_tr(bg), NULL).y : 0;   /* 0: stretched */
+    trow_lw[id] = trow_lh[id] = 0;
+    if (mm_is(l, K_TMP) && fit_methods() && mm_is(u_tr(l), K_RT)) { fit_rect r = MCALL(m_fit_rect, fit_rect, Obj, const void *)(u_tr(l), m_fit_rect); trow_lw[id] = r.w; trow_lh[id] = r.h; }
+}
+/* each frame: a row whose label does not fit even at 0.75 grows to the label's height at its design size (+8 above and
+   below); the column's layout moves the rows under it down. A label that fits (all English) keeps the stock row. */
+static void trow_fit(int id, Obj b) {
+    if (id < 0 || id >= MPB_COUNT || id == MPB_SETTINGS || trow_base[id] < 30 || trow_lw[id] < 4 || trow_lh[id] < 4) return;
+    float need = txt_fit_h(AT(b, 0x130, Obj), trow_lw[id], trow_lh[id]);
+    float want = need > trow_lh[id] + 1 && need + 16 > trow_base[id] ? need + 16 : trow_base[id];
+    if (want == trow_cur[id]) return;
+    row_height(b, 262, want);
+    Obj bg = first_image(u_tr(b), 0);
+    if (bg && trow_bgh[id] > 1 && mm_is(u_tr(bg), K_RT)) { V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(bg), NULL); sd.y = trow_bgh[id] + want - trow_base[id]; F(0x5107110, void (*)(Obj, V2, void *))(u_tr(bg), sd, NULL); }
+    rig_log("mpmenu: text fit: title row %d grows to %.0f (label needs %.0f of %.0f)", id, want, need, trow_lh[id]);
+    trow_cur[id] = want;
 }
 static void title_build(Obj v) {
     Obj src = AT(v, 0x50, Obj), after = AT(v, 0x40, Obj);
@@ -824,6 +1113,7 @@ static void title_build(Obj v) {
             Obj sm = mk_txt(tpl_txt, u_tr(b), 0, 12, 513, 1, 0, -18, 238, 60, C_SUB);   /* up to 4 lines inside the box (owner lan_v8: it spilled) */
             u_gc_free(h_title_sum); h_title_sum = sm ? u_gc_new(sm) : 0;
         }
+        trow_note(id, b);
         u_set_sibling(u_tr(b), at + i);
         u_active(b, false);
         u_gc_free(h_tb[id]); h_tb[id] = u_gc_new(b);
@@ -865,14 +1155,14 @@ static void title_build(Obj v) {
                 u_gc_free(h_rw_ul[i]); h_rw_ul[i] = ul ? u_gc_new(ul) : 0; u_gc_free(h_rw_u[i]); h_rw_u[i] = un ? u_gc_new(un) : 0;
                 Obj x = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 22, 15, 26, 26, 15, "x", C_SUB);   /* remove: a small framed "x", own click */
                 if (x) { u_gc_free(h_tb[MPB_HISTX0 + i]); h_tb[MPB_HISTX0 + i] = u_gc_new(x); }
-                Obj w = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 40, -16, 62, 26, 14, "Watch", C_MAIN);   /* spectator rejoin (owner 2026-10-14) */
+                Obj w = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 40, -16, 62, 26, 14, TR("Watch"), C_MAIN);   /* spectator rejoin (owner 2026-10-14) */
                 if (w) { u_gc_free(h_tb[MPB_HISTW0 + i]); h_tb[MPB_HISTW0 + i] = u_gc_new(w); }
             }
             Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 0, -380 + 16 + 250, RY(rw_h - 20), 500, 20, C_SUB);
-            if (nt) tmp_set(nt, "Click a world to reconnect the same way. x removes it from this list.");
+            if (nt) tmp_set(nt, TR("Click a world to reconnect the same way. x removes it from this list."));
             u_gc_free(h_rw_note); h_rw_note = nt ? u_gc_new(nt) : 0;
-            Obj pv = mk_button(src, R, 0, S_NBTN, C_WHITE, 380 - 16 - 160, RY(rw_h - 20), 100, 26, 14, "\xE2\x80\xB9 Newer", C_MAIN);
-            Obj nx = mk_button(src, R, 0, S_NBTN, C_WHITE, 380 - 16 - 52, RY(rw_h - 20), 100, 26, 14, "Older \xE2\x80\xBA", C_MAIN);
+            Obj pv = mk_button(src, R, 0, S_NBTN, C_WHITE, 380 - 16 - 160, RY(rw_h - 20), 100, 26, 14, TR("\xE2\x80\xB9 Newer"), C_MAIN);
+            Obj nx = mk_button(src, R, 0, S_NBTN, C_WHITE, 380 - 16 - 52, RY(rw_h - 20), 100, 26, 14, TR("Older \xE2\x80\xBA"), C_MAIN);
             if (pv) { u_gc_free(h_tb[MPB_HIST_PREV]); h_tb[MPB_HIST_PREV] = u_gc_new(pv); }
             if (nx) { u_gc_free(h_tb[MPB_HIST_NEXT]); h_tb[MPB_HIST_NEXT] = u_gc_new(nx); }
             #undef RY
@@ -881,7 +1171,7 @@ static void title_build(Obj v) {
     }
     /* the Rules panel opens to the right of the column (mockup: left 470, top 312 at 1512 x 982 -> canvas centre offset) */
     /* owner v12 item 5: always open on the host page, no Done; the top stays where it was (the panels lost their Done row) */
-    rp_build(&rp_title, u_tr(v), src, 0, tpl_img, tpl_txt, -78, -89 + 26, "Saved with this world. New worlds start with your last rules.", h_tb, 0);
+    rp_build(&rp_title, u_tr(v), src, 0, tpl_img, tpl_txt, -78, -89 + 26, TR("Saved with this world. New worlds start with your last rules."), h_tb, 0);
     fe_build(&rp_fe, u_tr(v), src, tpl_img, tpl_txt, -78, -89 + 26);
     /* a register_host_choice2 choice's own panel (draw_page): a box where the Rules panel sits, an empty RectTransform inside */
     { Obj root = mk_img(tpl_img, u_tr(v), S_BOX, C_WHITE, -78, -89 + 26, 430, 588), pnl = root ? empty_rt(u_tr(root), "DSMP_HostChoicePanel") : NULL;
@@ -905,17 +1195,18 @@ static void title_sync(const mpm_obs *o) {
         Obj b = tb(title_ids[i]); if (!b) continue;
         int on = title_ids[i] < 64 ? (int)((vis >> title_ids[i]) & 1) : mpm_is_visible(&M, o, title_ids[i]);   /* Watch: id 68 */
         u_active(b, on);
-        if (on) { char l[160]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
+        if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
     }
+    for (int i = 0; i < NT; i++) { Obj b = tb(title_ids[i]); if (b && u_on(b)) trow_fit(title_ids[i], b); }   /* rows grow to a long label */
     if (M.state == MPM_TITLE_HOST) {                                        /* Rules box: closed = button + summary (mockup A), open = button (B) */
         int open = M.settings_open; Obj b = tb(MPB_SETTINGS), l = b ? AT(b, 0x130, Obj) : NULL;
         if (b) row_height(b, 262, open ? 52 : 104);
         float yb = open ? 0 : 30;
-        if (u_alive(l)) { place(l, 0, yb, 262, 44); txt_style(l, 0, open ? 20 : 18, 513, 0); txt_color(l, C_MAIN); tmp_set(l, "<margin-left=46>Rules</margin>"); }
+        if (u_alive(l)) { place(l, 0, yb, 262, 44); txt_style(l, 0, open ? 20 : 18, 513, 0); txt_color(l, C_MAIN); { char rl[96]; snprintf(rl, sizeof rl, "<margin-left=46>%s</margin>", TR("Rules")); tmp_set(l, rl); } }
         Obj cg = u_gc_get(h_title_cog); if (u_alive(cg)) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); place(cg, -108, yb, 22, 22); }
         Obj pc = u_gc_get(h_title_pcog); if (u_alive(pc)) { u_active(pc, spr(S_COG) == NULL); place(pc, -108, yb, 22, 22); }   /* stock not loaded: pixel cog */
         Obj mo = u_gc_get(h_title_more); if (u_alive(mo)) { place(mo, 113, yb, 20, 30); txt_color(mo, open ? C_GOLD : C_SUB); }
-        Obj sm = u_gc_get(h_title_sum); if (u_alive(sm)) { char t[200]; mpm_settings_summary(&M.set, t, sizeof t); tmp_set(sm, t); u_active(sm, !open); }
+        Obj sm = u_gc_get(h_title_sum); if (u_alive(sm)) { char t[512]; mpm_settings_summary(&M.set, t, sizeof t); tmp_set(sm, t); u_active(sm, !open); }
         Obj bx = u_gc_get(h_title_box); if (u_alive(bx) && mm_is(bx, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(bx, open ? (Col){ 1.25f, 1.2f, 1.2f, 1 } : C_WHITE, NULL);   /* open: lighter */
         if (bx && mm_is(bx, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bx, true, NULL);
     }
@@ -936,21 +1227,22 @@ static void title_sync(const mpm_obs *o) {
             shown++;
             hist_t *h = &hist[k]; char t[600], pl[400] = ""; size_t o = 0;
             u_active(tb(MPB_HISTW0 + i), strcmp(h->how, "host") != 0);        /* a world this copy hosted: no Watch */
-            snprintf(t, sizeof t, "%s  <size=72%%><color=#A69085>Day %lld</color></size>", h->world[0] ? h->world : "A world", h->day);
+            { char dy[64]; snprintf(dy, sizeof dy, TR("Day %lld"), h->day);
+              snprintf(t, sizeof t, "%s  <size=72%%><color=#A69085>%s</color></size>", h->world[0] ? h->world : TR("A world"), dy); }
             tmp_set(u_gc_get(h_rw_l1[i]), t);
             char tmp[240]; snprintf(tmp, sizeof tmp, "%s", h->players); char *save = NULL;
             for (char *tok = strtok_r(tmp, ";", &save); tok; tok = strtok_r(NULL, ";", &save)) {   /* "Name|id" (older: "Name|#colour") */
                 char *bar = strchr(tok, '|'); if (bar) *bar = 0;
                 const char *col = bar && bar[1] >= '0' && bar[1] <= '9' ? palette_color(atoi(bar + 1)) : "#CCBEB8";   /* old hex / none: neutral */
-                o += (size_t)snprintf(pl + o, sizeof pl - (o < sizeof pl ? o : sizeof pl), "%s<color=%s>%s</color>%s", o ? ", " : "", col, tok,
-                                      !strcmp(h->how, "host") || strcmp(tok, h->host) ? "" : " (host)");
+                o += (size_t)snprintf(pl + o, sizeof pl - (o < sizeof pl ? o : sizeof pl), "%s<color=%s>%s</color>%s", o ? TR(", ") : "", col, tok,
+                                      !strcmp(h->how, "host") || strcmp(tok, h->host) ? "" : TR(" (host)"));
             }
-            if (!strcmp(h->how, "host")) snprintf(t, sizeof t, "You hosted%s%s", pl[0] ? " \xC2\xB7 with " : "", pl);
-            else if (!strcmp(h->how, "steam")) snprintf(t, sizeof t, "Steam%s%s", pl[0] ? " \xC2\xB7 with " : "", pl);
-            else snprintf(t, sizeof t, "IP %s%s%s", h->addr, pl[0] ? " \xC2\xB7 with " : "", pl);
+            if (!strcmp(h->how, "host")) { if (pl[0]) snprintf(t, sizeof t, TR("You hosted \xC2\xB7 with %s"), pl); else snprintf(t, sizeof t, "%s", TR("You hosted")); }
+            else if (!strcmp(h->how, "steam")) { if (pl[0]) snprintf(t, sizeof t, TR("Steam \xC2\xB7 with %s"), pl); else snprintf(t, sizeof t, "%s", TR("Steam")); }
+            else { if (pl[0]) snprintf(t, sizeof t, TR("IP %s \xC2\xB7 with %s"), h->addr, pl); else snprintf(t, sizeof t, TR("IP %s"), h->addr); }
             tmp_set(u_gc_get(h_rw_l2[i]), t);
-            { char lab[32] = ""; int cnt = 0; for (const char *q = h->units; *q; q++) if (*q == ',') cnt++; if (h->units[0]) cnt++;
-              if (cnt > 3) snprintf(lab, sizeof lab, "Your units (+%d)", cnt - 3); else if (cnt) snprintf(lab, sizeof lab, "Your units");
+            { char lab[96] = ""; int cnt = 0; for (const char *q = h->units; *q; q++) if (*q == ',') cnt++; if (h->units[0]) cnt++;
+              if (cnt > 3) snprintf(lab, sizeof lab, TR("Your units (+%d)"), cnt - 3); else if (cnt) snprintf(lab, sizeof lab, "%s", TR("Your units"));
               tmp_set(u_gc_get(h_rw_ul[i]), lab); tmp_set(u_gc_get(h_rw_u[i]), ""); }   /* "[box] Name" for 3, "+N" in the label */
             { char ub[200]; snprintf(ub, sizeof ub, "%s", h->units); char *sv = NULL, *nm[6]; int nn = 0;
               for (char *tk = strtok_r(ub, ",", &sv); tk && nn < 6; tk = strtok_r(NULL, ",", &sv)) { while (*tk == ' ') tk++; nm[nn++] = tk; }
@@ -975,7 +1267,7 @@ static void title_sync(const mpm_obs *o) {
         float H = 56 + 12 + (shown ? shown : 1) * 72 + 40;
         place(rw, 103, 397 - H / 2, 760, H);
         place(u_gc_get(h_rw_band), 0, H / 2 - 28, 756, 54); place(u_gc_get(h_rw_line), 0, H / 2 - 56, 756, 1);
-        Obj tt = u_gc_get(h_rw_title); if (tt) { place(tt, 0, H / 2 - 28, 700, 44); tmp_set(tt, "Recent Worlds"); }
+        Obj tt = u_gc_get(h_rw_title); if (tt) { place(tt, 0, H / 2 - 28, 700, 44); tmp_set(tt, TR("Recent Worlds")); }
         for (int i = 0; i < 6; i++) { Obj b = tb(MPB_HIST0 + i); if (b) place(b, 0, H / 2 - (68 + 72 * i + 33), 736, 66); }
         place(u_gc_get(h_rw_note), -380 + 16 + 250, -H / 2 + 20, 500, 20);
         if (tb(MPB_HIST_PREV)) place(tb(MPB_HIST_PREV), 380 - 16 - 160, -H / 2 + 20, 100, 26);
@@ -1104,7 +1396,8 @@ static void esc_build(Obj v) {
         if (u_alive(rt)) { static void *kt; if (!kt) kt = class_by_name("TMPro", "TMP_Text");
             Obj ty = kt ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(kt)) : NULL;
             rtt = ty ? (mm_is(rt, K_COMP) ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(rt, ty, NULL) : NULL) : NULL; }
-        Obj cinzel = u_alive(rtt) ? (mm_is(rtt, K_TMP) ? F(0x4F0A59C, Obj (*)(Obj, void *))(rtt, NULL) : NULL) : NULL;
+        Obj cinzel = title_font();                                          /* i18n: the language's title font; else the popup's (Cinzel) */
+        if (!cinzel) cinzel = u_alive(rtt) ? (mm_is(rtt, K_TMP) ? F(0x4F0A59C, Obj (*)(Obj, void *))(rtt, NULL) : NULL) : NULL;
         if (u_alive(tt) && u_alive(cinzel)) (mm_is(tt, K_TMP) ? F(0x4F0A5A4, void (*)(Obj, Obj, void *))(tt, cinzel, NULL) : (void)0);
         if (u_alive(tt)) u_active(tt, false);
         u_gc_free(h_etitle); h_etitle = u_alive(tt) ? u_gc_new(tt) : 0;
@@ -1124,7 +1417,7 @@ static void esc_build(Obj v) {
     Obj seed = AT(v, 0x88, Obj);                                            /* design #7: why Load is off, a seed-style line */
     if (u_alive(seed)) {
         Obj r = u_instantiate(seed, u_tr_parent(u_tr(seed)));
-        if (u_alive(r)) { tmp_set(r, "<color=#A69085>Leave multiplayer to load another world</color>"); u_active(r, false); }
+        if (u_alive(r)) { { char lr[200]; snprintf(lr, sizeof lr, "<color=#A69085>%s</color>", TR("Leave multiplayer to load another world")); tmp_set(r, lr); } u_active(r, false); }
         u_gc_free(h_ereason); h_ereason = u_alive(r) ? u_gc_new(r) : 0;
     }
     ph_sibling = -1;
@@ -1151,7 +1444,7 @@ static void esc_sync(const mpm_obs *o) {
         Obj b = eb(esc_ids[i]); if (!b) continue;
         int on = (vis >> esc_ids[i]) & 1;
         u_active(b, on);
-        if (on) { char l[160]; mpm_label(&M, esc_ids[i], l, sizeof l); tmp_set(AT(b, 0x28, Obj), l); }
+        if (on) { char l[512]; mpm_label(&M, esc_ids[i], l, sizeof l); tmp_set(AT(b, 0x28, Obj), l); }
     }
     /* in game: our buttons grow the menu downward; the stock seed lines (Txt_CampaignSeed +0x88, Txt_DungeonSeed +0x90)
      * move down by as many button steps as we added, so they never sit between buttons */
@@ -1269,11 +1562,11 @@ static void lw_build(Obj v, int host) {
     /* invite (host): Steam invite (full width), address box + Copy, note */
     Obj b;
     if (host) {
-        b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 198), 0, 396, 40, 16, "Steam invite", C_MAIN); KEEP(h_lwb[LW_INVITE], b);
+        b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 198), 0, 396, 40, 16, TR("Steam invite"), C_MAIN); KEEP(h_lwb[LW_INVITE], b);
         KEEP(h_lw_addrbox[0], mk_img(tpl_img, R, -1, C_LINE, 0, 0, 292, 40));
         KEEP(h_lw_addrbox[1], mk_img(tpl_img, R, -1, (Col){ 0.106f, 0.098f, 0.122f, 1 }, 0, 0, 290, 38));
         T(T_INV_ADDR, 0, 16, 513, 0, 0, 0, 268, 30, C_MAIN);
-        b = mk_button(src, R, 1, S_NBTN, C_WHITE, 0, 0, 96, 40, 16, "Copy", C_MAIN); KEEP(h_lwb[LW_COPY], b);
+        b = mk_button(src, R, 1, S_NBTN, C_WHITE, 0, 0, 96, 40, 16, TR("Copy"), C_MAIN); KEEP(h_lwb[LW_COPY], b);
         T(T_INV_NOTE, 0, 12, 513, 1, 0, 0, 396, 34, C_SUB);
     }
     /* rules (read-only rows; the host's cog opens the Rules panel) */
@@ -1292,16 +1585,16 @@ static void lw_build(Obj v, int host) {
     /* bottom bar (placed at the content's height in lw_texts) */
     KEEP(h_lw_bbar, mk_img(tpl_img, R, -1, C_BAND, 0, LY(lw_h - 38), 876, 74));
     KEEP(h_lw_bline, mk_img(tpl_img, R, -1, C_COPPER, 0, LY(lw_h - 76), 876, 1));
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 103), LY(lw_h - 38), 206, 34, 16, host ? "Leave multiplayer" : "Leave", C_MAIN); KEEP(h_lwb[LW_LEAVE], b);
-    if (host) { b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, LX(848 - 116), LY(lw_h - 38), 232, 44, 18, "Start", C_START); KEEP(h_lwb[LW_START], b); }
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? 0 : LX(848 - 116), LY(lw_h - 38), 206, 34, 16, "Bring units", C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 103), LY(lw_h - 38), 206, 34, 16, host ? TR("Leave multiplayer") : TR("Leave"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b);
+    if (host) { b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, LX(848 - 116), LY(lw_h - 38), 232, 44, 18, mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), C_START); KEEP(h_lwb[LW_START], b); }
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? 0 : LX(848 - 116), LY(lw_h - 38), 206, 34, 16, TR("Bring units"), C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
     if (b) u_active(b, false);
     T(T_NOTE, 0, 14, 514, 0, 0, LY(lw_h - 38), 300, 24, C_ORANGE);
     #undef T
     #undef KEEP
     if (host) { Obj sh = mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 1 }, 0, 0, 876, 10);   /* hides the columns behind the open Rules */
                 u_gc_free(h_lw_rshade); h_lw_rshade = sh ? u_gc_new(sh) : 0; u_active(sh, false); }
-    if (host) rp_build(&rp_lobby, R, src, 1, tpl_img, tpl_txt, 0, 0, "Saved with this world. New worlds start with your last rules.", h_lwr, 1);
+    if (host) rp_build(&rp_lobby, R, src, 1, tpl_img, tpl_txt, 0, 0, TR("Saved with this world. New worlds start with your last rules."), h_lwr, 1);
     u_active(root, false);
     rig_log("mpmenu: lobby window built (%s; frame %s, Cinzel %s, cog %s)", host ? "host" : "guest", spr(S_BOX) ? "Box" : "plain", h_cinzel ? "yes" : "no", spr(S_COG) ? "yes" : "no");
 }
@@ -1320,13 +1613,13 @@ static void lw_texts(void) {
     int host = M.state == MPM_LOBBY;
     mp_steam_info in; mp_steam_state(&in);
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
-    char b[256]; const char *hn = M.host[0] ? M.host : "the host";
-    if (host) tmp_set(lwt(T_TITLE), "Multiplayer Lobby"); else { snprintf(b, sizeof b, "%s's Lobby", hn); tmp_set(lwt(T_TITLE), b); }
-    tmp_set(lwt(T_HINT), "Share your address, then press Start when everyone is in.");
-    snprintf(b, sizeof b, "Waiting for %s to start", hn); tmp_set(lwt(T_GUEST), b);
+    char b[256]; const char *hn = M.host[0] ? M.host : TR("the host");
+    if (host) tmp_set(lwt(T_TITLE), TR("Multiplayer Lobby")); else { snprintf(b, sizeof b, TR("%s's Lobby"), hn); tmp_set(lwt(T_TITLE), b); }
+    tmp_set(lwt(T_HINT), TR("Share your address, then press Start when everyone is in."));
+    snprintf(b, sizeof b, TR("Waiting for %s to start"), hn); tmp_set(lwt(T_GUEST), b);
     if (u_gc_get(h_lw_guestdot)) tmp_set(u_gc_get(h_lw_guestdot), "\xE2\x80\xA2");
     int n = in.nplayers > 0 ? in.nplayers : 1;
-    snprintf(b, sizeof b, "Players (%d)", n); tmp_set(lwt(T_PLAYERS), b); tmp_set(lwt(T_RULES), "Rules"); tmp_set(lwt(T_INV), "Invite");
+    snprintf(b, sizeof b, TR("Players (%d)"), n); tmp_set(lwt(T_PLAYERS), b); tmp_set(lwt(T_RULES), TR("Rules")); tmp_set(lwt(T_INV), TR("Invite"));
     /* players */
     char loading[64] = "";
     for (int i = 0; i < LW_ROWS; i++) {
@@ -1339,7 +1632,7 @@ static void lw_texts(void) {
         float y = LY(182 + 44 * i + 22);
         if (shown) {
             int id = in.nplayers > 0 ? in.players[i].id : 0, me = in.nplayers > 0 ? in.player : 0;
-            const char *nmn = in.nplayers > 0 && in.players[i].name[0] && strcmp(in.players[i].name, "player") ? in.players[i].name : in.nplayers > 0 ? "Player" : my_name;
+            const char *nmn = in.nplayers > 0 && in.players[i].name[0] && strcmp(in.players[i].name, "player") ? in.players[i].name : in.nplayers > 0 ? TR("Player") : my_name;
             tmp_set(nm, nmn); snprintf(lw_rowname[i], sizeof lw_rowname[i], "%s", nmn);
             for (int k = 0; k < nhooks; k++) { char t2[160];                /* Custom Modes (Foreign Expedition): "2 units brought" / "Choosing units..." */
                 if (hooks[k].lobby_name && hooks[k].lobby_name(id, nmn, t2, sizeof t2)) { tmp_set(nm, t2); break; } }
@@ -1350,7 +1643,7 @@ static void lw_texts(void) {
             if (state == DSNET_NET_LOADING && !loading[0]) snprintf(loading, sizeof loading, "%s", nmn);
             tag = id == 0 ? 1 : id == me ? 2 : 0;
             if (id != me) lvl = state == DSNET_NET_ABSENT ? 0 : ui_conn_level(ping, behind, cs);
-            tmp_set(st, tag == 1 ? "Host" : tag == 2 ? "You" : "");
+            tmp_set(st, tag == 1 ? TR("Host") : tag == 2 ? TR("You") : "");
             float right = 428 - 14 - (lvl >= 0 ? 18 + 12 : 0);              /* tag left of the bars */
             place(st, LX(right - 20), y, 40, 20);
             place(tb0, LX(right - 20), y, 42, 20); place(tb1, LX(right - 20), y, 40, 18);
@@ -1380,19 +1673,23 @@ static void lw_texts(void) {
         place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + 17), 396, 34);
         tmp_set(lwt(T_INV_ADDR), M.direct[0] ? M.direct : "...");
         { const char *port = strrchr(M.direct, ':');
-          snprintf(b, sizeof b, "Friends outside your home: open port %s on your router%s.%s%s", port ? port + 1 : "47777",
-                   in.steam ? ", or use Steam invite" : "", M.internet[0] ? " Internet: " : "", M.internet); tmp_set(lwt(T_INV_NOTE), b); }
-        if (cb) tmp_set(AT(cb, 0x28, Obj), frames < copied_until ? "Copied" : "Copy");
+          snprintf(b, sizeof b, in.steam ? TR("Friends outside your home: open port %s on your router, or use Steam invite.") : TR("Friends outside your home: open port %s on your router."),
+                   port ? port + 1 : "47777");
+          if (M.internet[0]) { size_t bl = strlen(b); snprintf(b + bl, sizeof b - bl, " "); bl = strlen(b); snprintf(b + bl, sizeof b - bl, TR("Internet: %s"), M.internet); }
+          tmp_set(lwt(T_INV_NOTE), b); }
+        if (cb) tmp_set(AT(cb, 0x28, Obj), frames < copied_until ? TR("Copied") : TR("Copy"));
         Obj ib2 = u_gc_get(h_lwb[LW_INVITE]);                               /* both ways in one app: Steam invite + the address */
-        if (ib2) tmp_set(AT(ib2, 0x28, Obj), in.steam ? "Steam invite" : "<color=#A69085>Steam invite <size=80%>\xC2\xB7 Needs the Steam version</size></color>");
+        if (ib2) { char iv[200]; if (in.steam) snprintf(iv, sizeof iv, "%s", TR("Steam invite"));
+                  else snprintf(iv, sizeof iv, "<color=#A69085>%s <size=80%%>\xC2\xB7 %s</size></color>", TR("Steam invite"), TR("Needs the Steam version"));
+                  tmp_set(AT(ib2, 0x28, Obj), iv); }
     }
     /* rules: host = what he set (sent as DSNET_RULES), guest = dsnet's */
     mpm_settings ss = M.set;
     if (c) { dsnet_rules r; dsnet_rules_get(c, &r); if (!host) { ss.pause_mode = r.pause_mode; ss.speedup = r.allow_speedup; ss.gear = r.gear_mode; ss.units = r.units_per_player; ss.events = r.event_choice; ss.population = r.population; ss.fog = r.shared_fog; }
              ss.admin = dsnet_admin_mode(c); ss.spectators = dsnet_spectators_allowed(c); ss.watching = __builtin_popcount(dsnet_spectator_mask(c)); }
     for (int i = 0; i < MPM_RULE_ROWS; i++) { char v[64]; mpm_rule_value(&ss, i, v, sizeof v); tmp_set(lwt(T_R0L + i), mpm_rule_label(i)); tmp_set(lwt(T_R0V + i), v); }
-    tmp_set(lwt(T_RULES_NOTE), host ? "Only the host can change the rules." : "Set by the host.");
-    if (loading[0]) snprintf(b, sizeof b, "%s is still loading", loading); else b[0] = 0;
+    tmp_set(lwt(T_RULES_NOTE), host ? TR("Only the host can change the rules.") : TR("Set by the host."));
+    if (loading[0]) snprintf(b, sizeof b, TR("%s is still loading"), loading); else b[0] = 0;
     tmp_set(lwt(T_NOTE), b);
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
@@ -1550,8 +1847,9 @@ static void h_slot_set(Obj self, const void *hdr, bool inter, Obj act, void *mi)
     if (tag_get(gs, nm) < 0) return;
     Obj t = AT(self, 0x38, Obj);                                            /* _titleText */
     char cur[256] = ""; str_utf8(tmp_get(t), cur, sizeof cur);
-    if (strstr(cur, "[Multiplayer]")) return;
-    char nt[320]; snprintf(nt, sizeof nt, "%s  <color=#8FC4FF>[Multiplayer]</color>", cur);
+    char tg[96]; snprintf(tg, sizeof tg, "  <color=#8FC4FF>[%s]</color>", TR("Multiplayer"));
+    if (strstr(cur, tg) || strstr(cur, "<color=#8FC4FF>[")) return;
+    char nt[320]; snprintf(nt, sizeof nt, "%s%s", cur, tg);
     tmp_set(t, nt);
 }
 
@@ -1573,7 +1871,7 @@ static void esc_load_rule(Obj v) {
     Obj lb = AT(v, 0x60, Obj), t = u_alive(lb) ? AT(lb, 0x28, Obj) : NULL;  /* _loadCampaignButton, _buttonName */
     if (!u_alive(t)) return;
     char cur[160] = ""; str_utf8(tmp_get(t), cur, sizeof cur);
-    if (strstr(cur, "Leave multiplayer") && load_label[0]) tmp_set(t, load_label);   /* label of an older build */
+    if ((strstr(cur, "Leave multiplayer") || strstr(cur, TR("Leave multiplayer"))) && load_label[0]) tmp_set(t, load_label);   /* label of an older build (English then) */
     /* the stock tint alone is hard to see (design run 8): the label also takes the secondary colour #a69085 */
     static int off;                                                         /* only undo our own greying (stock rules stay) */
     if (in_session()) {
@@ -1640,8 +1938,9 @@ static int other_world_text(const char *host) {          /* 1 = the last refusal
     if (!looked) { looked = 1; rej = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_last_reject"); ow = (const char *(*)(void))dlsym(RTLD_DEFAULT, "mp_game_other_world"); }
     if (!rej || rej() != 7) return 0;                    /* DSNET_REJ_OTHER_WORLD */
     const char *w = ow ? ow() : "";
-    snprintf(M.msg, sizeof M.msg, "%s is playing another world now%s%s%s, not %s.", host[0] ? host : "The host", w && w[0] ? " (" : "", w && w[0] ? w : "", w && w[0] ? ")" : "",
-             hist_world[0] ? hist_world : "this one");
+    const char *hh = host[0] ? host : TR("The host"), *nw = hist_world[0] ? hist_world : TR("this one");
+    if (w && w[0]) snprintf(M.msg, sizeof M.msg, TR("%s is playing another world now (%s), not %s."), hh, w, nw);
+    else snprintf(M.msg, sizeof M.msg, TR("%s is playing another world now, not %s."), hh, nw);
     return 1;
 }
 static char joined_how[8], joined_addr[96];               /* how this guest joined: "ip" + address, or "steam" */
@@ -1662,9 +1961,9 @@ static void join_refused(int rc, const char *addr) {
     if (!looked) { looked = 1; last_reject = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_last_reject"); }
     int r = rc && last_reject ? last_reject() : 0;
     const char *w = dsnet_reject_text(r);                               /* the same wording as mp_game's reject_text (ux #22) */
-    if (r == DSNET_REJ_MODSET) { snprintf(M.msg, sizeof M.msg, "Could not join: your gameplay mods are not the same as the host's"); modset_notice(); }
-    else if (*w) snprintf(M.msg, sizeof M.msg, "Could not join: %s", w);
-    else if (rc) snprintf(M.msg, sizeof M.msg, "%s answered, but the game did not start. Try again.", addr);
+    if (r == DSNET_REJ_MODSET) { snprintf(M.msg, sizeof M.msg, "%s", TR("Could not join: your gameplay mods are not the same as the host's")); modset_notice(); }
+    else if (*w) snprintf(M.msg, sizeof M.msg, TR("Could not join: %s"), w);
+    else if (rc) snprintf(M.msg, sizeof M.msg, TR("%s answered, but the game did not start. Try again."), addr);
 }
 static void join_by_address(void) {
     char txt[256] = "";
@@ -1676,7 +1975,8 @@ static void join_by_address(void) {
     mp_config fj; if (mp_config_load(p, &fj) == 0) snprintf(c.name, sizeof c.name, "%s", fj.name);
     uint16_t port = 0;
     if (ui_parse_address(txt, c.host_addr, sizeof c.host_addr, &port, MPM_DEFAULT_PORT)) {
-        snprintf(M.msg, sizeof M.msg, "\"%.40s\" is not an address. It looks like 192.168.1.20:47777", txt); return;
+        char tq[64]; snprintf(tq, sizeof tq, "%.40s", txt); dsi_utf8_fix_end(tq);
+        snprintf(M.msg, sizeof M.msg, TR("\"%s\" is not an address. It looks like 192.168.1.20:47777"), tq); return;
     }
     c.port = port;
     char nm[64]; field_text(h_namefield, nm, sizeof nm); if (nm[0]) snprintf(my_name, sizeof my_name, "%s", nm);
@@ -1698,16 +1998,16 @@ static void join_poll(void) {                                              /* ea
     if (r == 1) dsnet_connect_adopt(conn);
     dsnet_connect_free(conn); conn = NULL;
     rig_log("mpmenu: connect to %s: %d after %.0f ms", addr, r, now_ms_() - conn_t0);
-    if (r == DSNET_CONN_TIMEOUT) snprintf(M.msg, sizeof M.msg, "No answer from %s. Check the address, and ask the host to open port %u on the router.", addr, conn_cfg.port);
-    else if (r == DSNET_CONN_REFUSED) snprintf(M.msg, sizeof M.msg, "Nobody is hosting at %s. Check the address and the port.", addr);
-    else if (r == DSNET_CONN_BAD_ADDRESS) snprintf(M.msg, sizeof M.msg, "Unknown address: %s. Check the address.", addr);
-    else if (r < 0) snprintf(M.msg, sizeof M.msg, "Cannot reach %s. Check the address and your network.", addr);
-    if (r != 1 && hist_host[0]) { snprintf(M.msg, sizeof M.msg, "%s is not hosting this world right now.", hist_host); hist_host[0] = 0; }   /* a Recent worlds row */
+    if (r == DSNET_CONN_TIMEOUT) snprintf(M.msg, sizeof M.msg, TR("No answer from %s. Check the address, and ask the host to open port %u on the router."), addr, conn_cfg.port);
+    else if (r == DSNET_CONN_REFUSED) snprintf(M.msg, sizeof M.msg, TR("Nobody is hosting at %s. Check the address and the port."), addr);
+    else if (r == DSNET_CONN_BAD_ADDRESS) snprintf(M.msg, sizeof M.msg, TR("Unknown address: %s. Check the address."), addr);
+    else if (r < 0) snprintf(M.msg, sizeof M.msg, TR("Cannot reach %s. Check the address and your network."), addr);
+    if (r != 1 && hist_host[0]) { snprintf(M.msg, sizeof M.msg, TR("%s is not hosting this world right now."), hist_host); hist_host[0] = 0; }   /* a Recent worlds row */
     if (r != 1) { expect_world(""); hist_world[0] = 0; }                  /* no join: the expectation does not carry over */
     if (r != 1) return;
     int rc = mp_game_join(&conn_cfg);                                     /* uses the adopted socket: no connect wait */
     join_refused(rc, addr);
-    if (rc && hist_host[0] && !other_world_text(hist_host)) snprintf(M.msg, sizeof M.msg, "%s is not hosting this world right now.", hist_host);
+    if (rc && hist_host[0] && !other_world_text(hist_host)) snprintf(M.msg, sizeof M.msg, TR("%s is not hosting this world right now."), hist_host);
     hist_host[0] = 0; hist_world[0] = 0;
     if (!rc) { prefs_save(); snprintf(joined_how, sizeof joined_how, "ip"); snprintf(joined_addr, sizeof joined_addr, "%s", addr); }
     rig_log("mpmenu: join by address %s rc %d as \"%s\"", addr, rc, conn_cfg.name);
@@ -1770,9 +2070,10 @@ static void notice_frame(const mpm_obs *o) {
         rig_log("mpmenu: no notice box: \"%s\" goes to the button line", M.msg);
         M.notice[0] = 0; notice_tries = 0; return;
     }
-    (mm_is(v, K_CNV) ? F(0xF65498, void (*)(Obj, Obj, Obj, void *))(v, u_str(M.notice), NULL, NULL) : (void)0);   /* Show_Confirm */
+    (mm_is(v, K_CNV) ? F(0xF65498, void (*)(Obj, Obj, Obj, void *))(v, u_str_ok(M.notice), NULL, NULL) : (void)0);   /* Show_Confirm */
     tmp_set(AT(v, 0x30, Obj), M.notice);                                   /* raw text (not a text key) */
-    tmp_set(AT(v, 0x40, Obj), "OK");
+    txt_fit_stock(AT(v, 0x30, Obj));                                        /* a long text auto-sizes in the stock box */
+    tmp_set(AT(v, 0x40, Obj), TR("OK"));
     u_go_active(u_go(v), true);
     rig_log("mpmenu: notice box: %s", M.notice);
     M.notice[0] = 0; notice_tries = 0;
@@ -1790,22 +2091,24 @@ static Obj lbox_view_now(void) { return find_view_now(&h_cnv, &k_cnv, "Refactor.
 static int lbox_ours(Obj v) {
     if (!lbox_up || !u_alive(v) || !u_on(v)) return 0;
     char t[400] = ""; str_utf8(tmp_get(AT(v, 0x30, Obj)), t, sizeof t);
-    char want[400]; str_utf8(u_str(lbox_text), want, sizeof want);       /* the same ASCII-safe form as the read-back */
+    char want[400]; str_utf8(u_str_ok(lbox_text), want, sizeof want);       /* the same ASCII-safe form as the read-back */
     return !strcmp(t, want);
 }
-static void leave_box_text(char *out, size_t cap) {
+static int leave_box_text(char *out, size_t cap) {             /* returns how many other players are in (they go back to the title) */
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
     char names[200] = ""; size_t o = 0; int n = 0, me = c ? dsnet_player_id(c) : 0;
     uint32_t pm = c ? dsnet_present_mask(c) : 0;
     for (int p = 0; c && p < DSNET_MAX_PLAYERS; p++) {
         if (p == me || !(pm >> p & 1u)) continue;
         const char *nm = dsnet_player_name(c, p);
-        o += (size_t)snprintf(names + o, o < sizeof names ? sizeof names - o : 0, "%s<color=%s>%s</color>", n ? ", " : "", ui_player_color(p), nm && nm[0] ? nm : "A player");
+        o += (size_t)snprintf(names + o, o < sizeof names ? sizeof names - o : 0, "%s<color=%s>%s</color>", n ? TR(", ") : "", ui_player_color(p), nm && nm[0] ? nm : TR("A player"));
         n++;
     }
-    if (n) snprintf(out, cap, "<size=150%%>End the game for everyone?</size>\n%s %s back to the title.\n<size=88%%><color=#a69085>The world stays on your computer. You keep playing it alone.</color></size>",
-                    names, n > 1 ? "go" : "goes");
-    else snprintf(out, cap, "<size=150%%>Leave multiplayer?</size>\nNobody else is in this world now. Friends can no longer join.\n<size=88%%><color=#a69085>The world stays on your computer. You keep playing it alone.</color></size>");
+    char who[400];
+    if (n) snprintf(who, sizeof who, TRN("%s goes back to the title.", "%s go back to the title.", n), names);
+    snprintf(out, cap, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", n ? TR("End the game for everyone?") : TR("Leave multiplayer?"),
+             n ? who : TR("Nobody else is in this world now. Friends can no longer join."), TR("The world stays on your computer. You keep playing it alone."));
+    return n;
 }
 static void leave_box_show(void) {
     /* the stock box draws under the Esc menu (and the lobby, which lives on it): close that first; the box then stands
@@ -1813,11 +2116,12 @@ static void leave_box_show(void) {
     Obj ev = esc_view(); if (ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL);   /* SystemMenuView.OnReturnToGamePressed */
     Obj v = lbox_view_now();
     if (!u_alive(v) || !mm_is(v, K_CNV)) { pending_click = MPB_LEAVE_CONFIRM; rig_log("mpmenu: no notice box: Leave goes ahead"); return; }
-    leave_box_text(lbox_text, sizeof lbox_text);
-    F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
+    int others = leave_box_text(lbox_text, sizeof lbox_text);
+    F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str_ok(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
     tmp_set(AT(v, 0x30, Obj), lbox_text);
-    tmp_set(AT(v, 0x40, Obj), strstr(lbox_text, "End the game") ? "End for everyone" : "Leave");
-    tmp_set(AT(v, 0x50, Obj), "Cancel");
+    txt_fit_stock(AT(v, 0x30, Obj));
+    tmp_set(AT(v, 0x40, Obj), others ? TR("End for everyone") : TR("Leave"));          /* from the box's own case, not its text */
+    tmp_set(AT(v, 0x50, Obj), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }   /* centred, as the ui lane's boxes */
     u_go_active(u_go(v), true);
     lbox_up = BX_LEAVE;
@@ -1856,9 +2160,10 @@ static void box_show(int kind, const char *text, const char *yes, const char *no
     Obj v = lbox_view_now();
     if (!u_alive(v) || !mm_is(v, K_CNV)) { rig_log("mpmenu: no notice box for: %s", text); return; }
     snprintf(lbox_text, sizeof lbox_text, "%s", text);
-    if (no) F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
-    else F(0xF65498, void (*)(Obj, Obj, Obj, void *))(v, u_str(lbox_text), NULL, NULL);                            /* Show_Confirm: one button */
+    if (no) F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str_ok(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
+    else F(0xF65498, void (*)(Obj, Obj, Obj, void *))(v, u_str_ok(lbox_text), NULL, NULL);                            /* Show_Confirm: one button */
     tmp_set(AT(v, 0x30, Obj), lbox_text);
+    txt_fit_stock(AT(v, 0x30, Obj));
     tmp_set(AT(v, 0x40, Obj), yes);
     if (no) tmp_set(AT(v, 0x50, Obj), no);
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }
@@ -1885,9 +2190,9 @@ __attribute__((visibility("default"))) int mpmenu_spectators_off_ask(void) {
     int n = spect_watching();
     if (!n) { spect_apply(0); return 0; }
     char t[400];
-    if (n == 1) snprintf(t, sizeof t, "<size=150%%>Remove the spectator now?</size>\nThey go back to the title. Nobody can watch until you allow spectators again.");
-    else snprintf(t, sizeof t, "<size=150%%>Remove the %d spectators now?</size>\nThey go back to the title. Nobody can watch until you allow spectators again.", n);
-    box_show(BX_SPECT_OFF, t, "Remove", "Cancel");
+    char hd[160]; snprintf(hd, sizeof hd, TRN("Remove the spectator now?", "Remove the %d spectators now?", n), n);
+    snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s", hd, TR("They go back to the title. Nobody can watch until you allow spectators again."));
+    box_show(BX_SPECT_OFF, t, TR("Remove"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     if (lbox_up != BX_SPECT_OFF) { spect_apply(0); return 0; }            /* no box could be shown: the host asked for it, apply */
     return 1;
 }
@@ -1903,7 +2208,8 @@ static void invite_answer(int choice) {
     if (choice == 2 && rc == -2) {
         if (inv_pending && inv_pending(NULL, 0)) nosave_ask = 1;            /* the save failed: "Join anyway?" once this box has closed */
         else {
-            snprintf(M.notice, sizeof M.notice, "<size=150%%>Could not save your game</size>\nSo you did not join %s's game. Save from the Esc menu, then ask %s to invite you again.", inv_host, inv_host);
+            char bd[400]; snprintf(bd, sizeof bd, TR("So you did not join %s's game. Save from the Esc menu, then ask %s to invite you again."), inv_host, inv_host);
+            snprintf(M.notice, sizeof M.notice, "<size=150%%>%s</size>\n%s", TR("Could not save your game"), bd);
             M.state = MPM_FAILED; mp_steam_ack();
         }
     }
@@ -1930,15 +2236,17 @@ static void invite_frame(const mpm_obs *o) {
         nosave_ask = 0;
         if (inv_pending && inv_pending(NULL, 0)) {
             char t[400];
-            snprintf(t, sizeof t, "<size=150%%>Your game could not be saved</size>\nJoin %s's game anyway?\n<size=88%%><color=#a69085>Unsaved progress in this world will be lost.</color></size>", inv_host);
-            box_show(BX_NOSAVE, t, "Join anyway", "Cancel");
+            char q[200]; snprintf(q, sizeof q, TR("Join %s's game anyway?"), inv_host);
+            snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", TR("Your game could not be saved"), q, TR("Unsaved progress in this world will be lost."));
+            box_show(BX_NOSAVE, t, TR("Join anyway"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
         }
     }
     if (nosave_ask) return;
     if (inv_pending && o->scene == 2 && !M.confirm_leave && lbox_up == BX_NONE && inv_pending(inv_host, sizeof inv_host)) {
         char t[400];
-        snprintf(t, sizeof t, "<size=150%%>Join %s?</size>\n%s invited you to their world.\n<size=88%%><color=#a69085>Your progress here is saved first, then this world closes.</color></size>", inv_host, inv_host);
-        box_show(BX_INVITE, t, "Save and join", "Cancel");
+        char hd[160], bd[200]; snprintf(hd, sizeof hd, TR("Join %s?"), inv_host); snprintf(bd, sizeof bd, TR("%s invited you to their world."), inv_host);
+        snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", hd, bd, TR("Your progress here is saved first, then this world closes."));
+        box_show(BX_INVITE, t, TR("Save and join"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     }
     /* "Joining <host>'s game..." in the world (a join started from the player's own world) */
     mp_steam_info in; mp_steam_state(&in);
@@ -1948,10 +2256,11 @@ static void invite_frame(const mpm_obs *o) {
     if (join_box_on && (in.state != MP_STEAM_JOINING || o->scene != 2)) { join_box_on = 0; join_phase_shown = -1; if (lbox_up == BX_JOINING) box_close(); }
     if (join_box_on && lbox_up == BX_NONE && !M.confirm_leave && !(inv_pending && inv_pending(NULL, 0))) join_phase_shown = -1;
     if (join_box_on && (lbox_up == BX_NONE || lbox_up == BX_JOINING) && in.phase != join_phase_shown) {
-        const char *h = in.host_name[0] ? in.host_name : inv_host[0] ? inv_host : "the host";
-        char t[300]; snprintf(t, sizeof t, "<size=150%%>Joining %s's game...</size>\n<size=88%%><color=#a69085>%s</color></size>", h,
-                              in.phase == MP_PH_LOADING ? "Loading the world" : in.phase == MP_PH_WAITING_SAVE ? "Waiting for the world" : "Connecting");
-        box_show(BX_JOINING, t, "Cancel", NULL);
+        const char *h = in.host_name[0] ? in.host_name : inv_host[0] ? inv_host : TR("the host");
+        char hd[160]; snprintf(hd, sizeof hd, TR("Joining %s's game..."), h);
+        char t[300]; snprintf(t, sizeof t, "<size=150%%>%s</size>\n<size=88%%><color=#a69085>%s</color></size>", hd,
+                              in.phase == MP_PH_LOADING ? TR("Loading the world") : in.phase == MP_PH_WAITING_SAVE ? TR("Waiting for the world") : TR("Connecting"));
+        box_show(BX_JOINING, t, mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")), NULL);
         join_phase_shown = in.phase;
     }
 }
@@ -1976,16 +2285,16 @@ static void rules_watch(const mpm_obs *o) {
     dsnet_rules r; dsnet_rules_get(c, &r); int adm = dsnet_admin_mode(c);
     /* the first 4 s of a session (welcome, save, rules at host start) and the lobby (its window shows the rules): no message */
     if (seen < 8 || M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY || dsnet_player_id(c) == 0) { r0 = r; adm0 = adm; seen++; return; }
-    const char *hn = dsnet_player_name(c, 0); char host[48]; snprintf(host, sizeof host, "<color=%s>%s</color>", ui_player_color(0), hn && hn[0] ? hn : "The host");
-    if (adm != adm0) say(adm ? "%s turned Admin mode on: the host can control every unit." : "%s turned Admin mode off: the host controls only their own units.", host);
+    const char *hn = dsnet_player_name(c, 0); char host[48]; snprintf(host, sizeof host, "<color=%s>%s</color>", ui_player_color(0), hn && hn[0] ? hn : TR("The host"));
+    if (adm != adm0) say(adm ? TR("%s turned Admin mode on: the host can control every unit.") : TR("%s turned Admin mode off: the host controls only their own units."), host);
     if (r.units_per_player != r0.units_per_player)
-        say("Units per player is now %d (host rule).", r.units_per_player);
-    if (r.pause_mode != r0.pause_mode) say("Pause is now: %s (host rule).", r.pause_mode == MPM_PAUSE_NONE ? "no pause" : r.pause_mode == MPM_PAUSE_ALL_VOTE ? "pause by vote" : "anyone can pause");
-    if ((r.allow_speedup != 0) != (r0.allow_speedup != 0)) say("Speed-up is now %s (host rule).", r.allow_speedup ? "on" : "off");
-    if (r.gear_mode != r0.gear_mode) say("Gear is now: %s (host rule).", r.gear_mode == MPM_GEAR_SHARED_ANY ? "shared, anyone equips any unit" : r.gear_mode == MPM_GEAR_OWN_STORAGE ? "own storage per player" : "shared, equip your own units");
-    if (r.event_choice != r0.event_choice) { mpm_settings t = { 0 }; t.events = r.event_choice; char v[40]; mpm_rule_value(&t, 5, v, sizeof v); say("Event choices: %s (host rule).", v); }
-    if (r.population != r0.population) { mpm_settings t = { 0 }; t.population = r.population; char v[40]; mpm_rule_value(&t, 4, v, sizeof v); say("Population: %s (host rule).", v); }
-    if (r.shared_fog != r0.shared_fog) say("Shared fog of war: %s (host rule).", r.shared_fog ? "On" : "Off");
+        say(TR("Units per player is now %d (host rule)."), r.units_per_player);
+    if (r.pause_mode != r0.pause_mode) say(TR("Pause is now: %s (host rule)."), r.pause_mode == MPM_PAUSE_NONE ? TR("no pause") : r.pause_mode == MPM_PAUSE_ALL_VOTE ? TR("pause by vote") : TR("anyone can pause"));
+    if ((r.allow_speedup != 0) != (r0.allow_speedup != 0)) say(TR("Speed-up is now %s (host rule)."), r.allow_speedup ? TR("on") : TR("off"));
+    if (r.gear_mode != r0.gear_mode) say(TR("Gear is now: %s (host rule)."), r.gear_mode == MPM_GEAR_SHARED_ANY ? TR("shared, anyone equips any unit") : r.gear_mode == MPM_GEAR_OWN_STORAGE ? TR("own storage per player") : TR("shared, equip your own units"));
+    if (r.event_choice != r0.event_choice) { mpm_settings t = { 0 }; t.events = r.event_choice; char v[64]; mpm_rule_value(&t, 5, v, sizeof v); say(TR("Event choices: %s (host rule)."), v); }
+    if (r.population != r0.population) { mpm_settings t = { 0 }; t.population = r.population; char v[64]; mpm_rule_value(&t, 4, v, sizeof v); say(TR("Population: %s (host rule)."), v); }
+    if (r.shared_fog != r0.shared_fog) say(TR("Shared fog of war: %s (host rule)."), r.shared_fog ? TR("On") : TR("Off"));
     r0 = r; adm0 = adm;
 }
 
@@ -2015,8 +2324,8 @@ static void pick_frame(const mpm_obs *o) {
             u_gc_free(h_pick_title); h_pick_title = u_gc_new(t); u_gc_free(h_pick_btn); h_pick_btn = bt ? u_gc_new(bt) : 0;
             pick_on = 1; rig_log("mpmenu: load list retitled (was \"%s\" / \"%s\")", pick_title0, pick_btn0);
         }
-        char cur[128] = ""; str_utf8(tmp_get(t), cur, sizeof cur); if (strcmp(cur, "Host a world")) tmp_set(t, "Host a world");
-        if (bt) { str_utf8(tmp_get(bt), cur, sizeof cur); if (strcmp(cur, "Host")) tmp_set(bt, "Host"); }
+        char cur[128] = ""; str_utf8(tmp_get(t), cur, sizeof cur); if (strcmp(cur, TR("Host a world"))) tmp_set(t, TR("Host a world"));   /* our own text read back */
+        if (bt) { str_utf8(tmp_get(bt), cur, sizeof cur); if (strcmp(cur, TRC("verb", "Host"))) tmp_set(bt, TRC("verb", "Host")); }
     } else if (!want && pick_on) {
         Obj t = u_gc_get(h_pick_title), bt = u_gc_get(h_pick_btn);
         if (u_alive(t)) { tmp_set(t, pick_title0); if (pick_key0[0]) AT(t, 0x7C0, bool) = true; }
@@ -2119,6 +2428,8 @@ static void hist_update(void) {
     M.nhist = nhist;
     hist_save();
 }
+/* hist_t.host "the host" is stored data (name unknown): shown in the player's language */
+static const char *hist_shown_host(const char *h) { return !strcmp(h, "the host") ? TR("the host") : h; }
 static void hist_join(int k) {
     if (k < 0 || k >= nhist) return;
     hist_t *h = &hist[k];
@@ -2131,25 +2442,25 @@ static void hist_join(int k) {
     { char gid[64]; snprintf(gid, sizeof gid, "%s", h->key); char *bar = strchr(gid, '|'); if (bar) *bar = 0;
       expect_world(gid); snprintf(hist_world, sizeof hist_world, "%s", h->world); }
     if (!strcmp(h->how, "steam")) {
-        if (!M.steam) { snprintf(M.msg, sizeof M.msg, "This world was joined through Steam: needs the Steam version."); return; }
+        if (!M.steam) { snprintf(M.msg, sizeof M.msg, "%s", TR("This world was joined through Steam: needs the Steam version.")); return; }
         { static void (*next_spect)(int); static int looked;                /* core (dlsym): the next mp_game_join watches */
           if (!looked) { looked = 1; next_spect = (void (*)(int))dlsym(RTLD_DEFAULT, "mp_game_next_spectator"); }
-          if (M.watch && !next_spect) { snprintf(M.msg, sizeof M.msg, "Spectators cannot join through Steam."); return; }
+          if (M.watch && !next_spect) { snprintf(M.msg, sizeof M.msg, "%s", TR("Spectators cannot join through Steam.")); return; }
           if (next_spect) next_spect(M.watch); }
         friends_refresh();
         for (int i = 0; i < M.nfriends; i++) if (friend_id[i] == h->steamid) {
             int rc = mp_steam_join(friend_lobby[i]);
             if (!rc) { snprintf(joined_how, sizeof joined_how, "steam"); joined_steamid = h->steamid; return; }
         }
-        snprintf(M.msg, sizeof M.msg, "%s is not hosting this world right now.", h->host); return;
+        snprintf(M.msg, sizeof M.msg, TR("%s is not hosting this world right now."), hist_shown_host(h->host)); return;
     }
     /* IP: the same non-blocking connect as Join by address; "not hosting" if nobody answers there */
     mp_config cc; mp_config_defaults(&cc); cc.host = 0; cc.need_save = 1; uint16_t port = 0;
-    if (ui_parse_address(h->addr, cc.host_addr, sizeof cc.host_addr, &port, MPM_DEFAULT_PORT)) { snprintf(M.msg, sizeof M.msg, "Bad address in this row: %s", h->addr); return; }
+    if (ui_parse_address(h->addr, cc.host_addr, sizeof cc.host_addr, &port, MPM_DEFAULT_PORT)) { snprintf(M.msg, sizeof M.msg, TR("Bad address in this row: %s"), h->addr); return; }
     cc.port = port; snprintf(cc.name, sizeof cc.name, "%s", my_name); default_name(cc.name, sizeof cc.name);
     cc.spectator = M.watch;                                                 /* the row's Watch button */
     if (conn) dsnet_connect_free(conn);
-    conn_cfg = cc; conn_t0 = now_ms_(); snprintf(hist_host, sizeof hist_host, "%s", h->host);
+    conn_cfg = cc; conn_t0 = now_ms_(); snprintf(hist_host, sizeof hist_host, "%s", hist_shown_host(h->host));
     conn = dsnet_connect_start(cc.host_addr, port, DSNET_CONNECT_TIMEOUT_MS);
     snprintf(M.connecting, sizeof M.connecting, "%s:%u", cc.host_addr, port);
     rig_log("mpmenu: recent world %s: reconnecting to %s", h->world, M.connecting);
@@ -2260,16 +2571,18 @@ static void chat_pull(dsnet_client *c) {
         char t[300], body[260]; chat_esc(m.text, body, sizeof body);
         const char *col = ui_player_color(m.player);
         if (m.kind == DSNET_CHAT_TEXT && m.watching)              /* a spectator's line: grey, "(watching)" */
-            snprintf(t, sizeof t, "<color=%s>%s (watching):</color> %s", UI_SPECTATOR_COLOR, m.name[0] ? m.name : "Spectator", body);
-        else if (m.kind == DSNET_CHAT_TEXT) snprintf(t, sizeof t, "<color=%s>%s:</color> %s", col, m.name[0] ? m.name : "Player", body);
+        { char wn[96]; snprintf(wn, sizeof wn, TR("%s (watching):"), m.name[0] ? m.name : TR("Spectator"));
+            snprintf(t, sizeof t, "<color=%s>%s</color> %s", UI_SPECTATOR_COLOR, wn, body); }
+        else if (m.kind == DSNET_CHAT_TEXT) snprintf(t, sizeof t, "<color=%s>%s:</color> %s", col, m.name[0] ? m.name : TR("Player"), body);
         else if (m.kind == DSNET_CHAT_WATCHING || m.kind == DSNET_CHAT_STOPPED_WATCHING) {
             if (!chat_show_join) continue;
-            snprintf(t, sizeof t, "<i><color=#A69085>%s %s</color></i>", m.name[0] ? m.name : "A spectator",
-                     m.kind == DSNET_CHAT_WATCHING ? "is watching" : "stopped watching");
+            char ln[200]; snprintf(ln, sizeof ln, m.kind == DSNET_CHAT_WATCHING ? TR("%s is watching") : TR("%s stopped watching"), m.name[0] ? m.name : TR("A spectator"));
+            snprintf(t, sizeof t, "<i><color=#A69085>%s</color></i>", ln);
         } else {
             if (!chat_show_join || (m.kind == DSNET_CHAT_JOINED && m.player == dsnet_player_id(c))) continue;   /* not "you joined" */
-            snprintf(t, sizeof t, "<i><color=#A69085>%s %s</color></i>", m.name[0] ? m.name : "A player",
-                     m.kind == DSNET_CHAT_LEFT ? "left the game" : m.kind == DSNET_CHAT_RECONNECTED ? "reconnected" : "joined the game");
+            char ln[200]; snprintf(ln, sizeof ln, m.kind == DSNET_CHAT_LEFT ? TR("%s left the game") : m.kind == DSNET_CHAT_RECONNECTED ? TR("%s reconnected") : TR("%s joined the game"),
+                                   m.name[0] ? m.name : TR("A player"));
+            snprintf(t, sizeof t, "<i><color=#A69085>%s</color></i>", ln);
         }
         chat_add(t);
     }
@@ -2308,16 +2621,16 @@ static void chat_build(Obj parent) {
         Obj B = u_tr(box);
         mk_img(tpl_img, B, -1, C_BAND, 0, 135 - 16, 466, 30);
         mk_img(tpl_img, B, -1, C_LINE, 0, 135 - 31, 466, 1);
-        Obj ti = mk_txt(tpl_txt, B, 1, 15, 513, 0, -235 + 12 + 60, 135 - 16, 120, 26, C_MAIN); if (ti) tmp_set(ti, "Chat");
+        Obj ti = mk_txt(tpl_txt, B, 1, 15, 513, 0, -235 + 12 + 60, 135 - 16, 120, 26, C_MAIN); if (ti) tmp_set(ti, TR("Chat"));
         Obj hi = mk_txt(tpl_txt, B, 0, 11, 516, 0, 235 - 12 - 120, 135 - 16, 240, 22, C_SUB);
-        if (hi) tmp_set(hi, "Right-click and drag to move");
+        if (hi) tmp_set(hi, TR("Right-click and drag to move"));
         u_gc_free(h_ch_hint); h_ch_hint = hi ? u_gc_new(hi) : 0;
         for (int i = 0; i < CH_BOX_LINES; i++) {
             Obj l = mk_txt(tpl_txt, B, 0, 15, 513, 0, 0, 135 - 40 - 10 - 20 * i, 446, 20, C_MAIN);
             u_gc_free(h_ch_lines[i]); h_ch_lines[i] = l ? u_gc_new(l) : 0;
         }
         mk_img(tpl_img, B, -1, C_LINE, 0, -135 + 46, 466, 1);
-        Obj say = mk_txt(tpl_txt, B, 0, 14, 513, 0, -235 + 12 + 20, -135 + 23, 40, 24, C_GOLD); if (say) tmp_set(say, "Say:");
+        Obj say = mk_txt(tpl_txt, B, 0, 14, 513, 0, -235 + 12 + 20, -135 + 23, 40, 24, C_GOLD); if (say) tmp_set(say, TR("Say:"));
         mk_img(tpl_img, B, -1, C_LINE, 22, -135 + 23, 396, 30);
         mk_img(tpl_img, B, -1, (Col){ 0.106f, 0.098f, 0.122f, 1 }, 22, -135 + 23, 394, 28);
         Obj in = mk_txt(tpl_txt, B, 0, 15, 513, 0, 22, -135 + 23, 380, 26, C_MAIN);
@@ -2412,7 +2725,7 @@ static void chat_frame(const mpm_obs *o) {
         }
         if (enter || esc) {
             if (enter && chat_buf[0]) { int rc = dsnet_chat_send(c, chat_buf); rig_log("mpmenu: chat sent (%zu bytes, rc %d)", strlen(chat_buf), rc);
-                if (rc) chat_add("<i><color=#F16071>Message not sent: no connection to the other players.</color></i>"); }   /* F18 */
+                if (rc) { char ln[300]; snprintf(ln, sizeof ln, "<i><color=#F16071>%s</color></i>", TR("Message not sent: no connection to the other players.")); chat_add(ln); } }   /* F18 */
             chat_typing = 0; chat_close_frames = 2;
             dsnet_chat_typing(c, 0);                                        /* sent or cancelled: the others drop the line */
             if (u_alive(f)) { F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL);
@@ -2457,9 +2770,10 @@ static void chat_frame(const mpm_obs *o) {
           static char snm[32]; if (!nm && dsnet_spectator_info(c, p, snm, NULL, NULL) == 0) nm = snm;   /* a spectator types too */
           if (!nm) continue;
           if (k == 3) { more = 1; break; }
-          o += (size_t)snprintf(line + o, o < sizeof line ? sizeof line - o : 0, "%s<color=%s>%s</color>", k ? ", " : "", ui_player_color(p), nm); k++;
+          o += (size_t)snprintf(line + o, o < sizeof line ? sizeof line - o : 0, "%s<color=%s>%s</color>", k ? TR(", ") : "", ui_player_color(p), nm); k++;
       }
-      if (k && o < sizeof line) snprintf(line + o, sizeof line - o, "%s", more ? " and others are typing..." : k > 1 ? " are typing..." : " is typing...");
+      if (k) { char who[200]; snprintf(who, sizeof who, "%s", line);
+               snprintf(line, sizeof line, more ? TR("%s and others are typing...") : TRN("%s is typing...", "%s are typing...", k), who); }
       Obj t = u_gc_get(h_ch_typing), bg = u_gc_get(h_ch_typingbg);
       u_active(t, k > 0); u_active(bg, k > 0);
       snprintf(typing_shown, sizeof typing_shown, "%s", k ? line : "");
@@ -2491,7 +2805,7 @@ static void chat_frame(const mpm_obs *o) {
       for (int i = 0; i < nchat_shown; i++) {
           int k = chat_shown_k[i]; float r[4]; Obj t = u_gc_get(*chat_shown_h[i]);
           if (!chist[k].link || !u_on(t) || !rect_of(t, r) || m.x < r[0] || m.x > r[2] || m.y < r[1] || m.y > r[3]) continue;
-          if (tip_ready()) game_tip_show("Ping", "Click to move your camera there.");
+          if (tip_ready()) game_tip_show(TR("Ping"), TR("Click to move your camera there."));
           if (down) {
               static int (*fn)(int); static int looked; if (!looked) { looked = 1; fn = (int (*)(int))dlsym(RTLD_DEFAULT, "ui_chat_link_click"); }
               int acted = fn ? fn(chist[k].link) : 0; chat_link_clicks++;
@@ -2568,30 +2882,30 @@ static void run_actions(int a, const mpm_obs *o) {
     if (a & MPA_JOIN_ADDR) join_by_address();
     if ((a & MPA_JOIN_CANCEL) && conn) { dsnet_connect_free(conn); conn = NULL; rig_log("mpmenu: connect cancelled"); }
     if (a & MPA_FE_START) {                                                 /* build the hub with the Expedition Rules, then start */
-        char err[200] = "";
+        char err[512] = "";
         mpm_choice *hc = cur_choice();                                       /* the old-API choice this session was hosted from */
         for (int k = 0; (!hc || !hc->on_start) && k < hcl.n; k++) if (!hcl.c[k].v2 && hcl.c[k].on_start) hc = &hcl.c[k];   /* else the first one that can */
         int rc = hc && hc->on_start ? hc->on_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, sizeof err) : -1;   /* the registered start (Custom Modes: Foreign Expedition); 0 = started */
-        if (!hc || !hc->on_start) snprintf(err, sizeof err, "No mod offers this choice.");
+        if (!hc || !hc->on_start) snprintf(err, sizeof err, "%s", TR("No mod offers this choice."));
         rig_log("mpmenu: Foreign Expedition start rc %d %s", rc, err);
         if (rc == 0) { M.state = MPM_PLAYING; run_actions(MPA_LOBBY_HIDE | MPA_START_GAME, o); }
         else if (ui_notice) ui_notice(err);
     }
     if (a & MPA_CHOICE_PAGE) {                                              /* host page Start of a register_host_choice2 choice */
-        char err[200] = ""; mpm_choice *hc = cur_choice();
+        char err[512] = ""; mpm_choice *hc = cur_choice();
         int rc = hc && hc->page_start ? hc->page_start(err, sizeof err) : -1;
-        if (!hc || !hc->page_start) snprintf(err, sizeof err, "No mod offers this choice.");
+        if (!hc || !hc->page_start) snprintf(err, sizeof err, "%s", TR("No mod offers this choice."));
         rig_log("mpmenu: host choice \"%s\" page start rc %d %s", hc ? hc->id : "?", rc, err);
         { char nm[64]; field_text(h_namefield, nm, sizeof nm); if (nm[0]) snprintf(my_name, sizeof my_name, "%s", nm); }   /* name typed on the page */
         mpm_page_started(&M, rc, err);                                        /* 0: wait for the load like Your save (HOST_LOADING -> LOBBY) */
     }
     if (a & MPA_CHOICE_LOBBY) {                                             /* lobby Start of a session hosted from such a choice */
-        char err[200] = ""; mpm_choice *hc = cur_choice();
+        char err[512] = ""; mpm_choice *hc = cur_choice();
         int rc = hc && hc->lobby_start ? hc->lobby_start(err, sizeof err) : -1;
-        if (!hc || !hc->lobby_start) snprintf(err, sizeof err, "No mod offers this choice.");
+        if (!hc || !hc->lobby_start) snprintf(err, sizeof err, "%s", TR("No mod offers this choice."));
         rig_log("mpmenu: host choice \"%s\" lobby start rc %d %s", hc ? hc->id : "?", rc, err);
         if (rc == 0) { M.state = MPM_PLAYING; run_actions(MPA_LOBBY_HIDE | MPA_START_GAME, o); }
-        else if (ui_notice) ui_notice(err[0] ? err : "This mode could not start.");
+        else if (ui_notice) ui_notice(err[0] ? err : TR("This mode could not start."));
     }
     if (a & MPA_START_GAME) lobby_hold(0);
     if (a & MPA_RULES) rules_send("lobby");
@@ -2607,7 +2921,7 @@ static void run_actions(int a, const mpm_obs *o) {
     if (a & MPA_COPY_ADDR) { copied_until = frames + 60; F(0x518AFE0, void (*)(Obj, void *))(u_str(M.direct), NULL); rig_log("mpmenu: copied %s", M.direct); }
     if (a & MPA_INVITE) {                                                   /* F18: a failed overlay is said, not only logged */
         int rc = mp_steam_invite(); rig_log("mpmenu: invite rc %d", rc);
-        if (rc) say("The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead.");
+        if (rc) say("%s", TR("The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead."));
     }
     if (a & MPA_CONFIRM_LEAVE) leave_box_show();
     if (a & MPA_LEAVE_BOX_CLOSE) leave_box_close();
@@ -2618,7 +2932,7 @@ static void run_actions(int a, const mpm_obs *o) {
         if (!looked) { looked = 1; leave_title = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_leave_to_title"); }
         if (leave_title) leave_title(); else mp_steam_leave();
         host_failed = 0; rig_log("mpmenu: left the session");
-        if (host_alone) say("Multiplayer ended. You are playing alone now; the world stays on your computer.");
+        if (host_alone) say("%s", TR("Multiplayer ended. You are playing alone now; the world stays on your computer."));
     }
     if (a & MPA_FRIENDS) friends_refresh();
     if (a & MPA_HIST_JOIN) hist_join(M.hist_pick);
@@ -2627,7 +2941,7 @@ static void run_actions(int a, const mpm_obs *o) {
         expect_world("");
         int k = M.friend_pick, rc = k >= 0 && k < M.nfriends ? mp_steam_join(friend_lobby[k]) : -1;
         if (!rc) { snprintf(joined_how, sizeof joined_how, "steam"); joined_steamid = friend_id[k]; }
-        if (rc) snprintf(M.msg, sizeof M.msg, "Could not join %s's world (Steam). Try again, or use Join by address.", k >= 0 && k < 6 ? M.friends[k] : "a friend");
+        if (rc) snprintf(M.msg, sizeof M.msg, TR("Could not join %s's world (Steam). Try again, or use Join by address."), k >= 0 && k < 6 ? M.friends[k] : TR("a friend"));
         rig_log("mpmenu: join friend %d (lobby %llu): rc %d", k, (unsigned long long)(k >= 0 && k < 6 ? friend_lobby[k] : 0), rc);
     }
     if (a & MPA_LOBBY_SHOW) { popup_activate(1); rig_log("mpmenu: lobby panel opened"); }
@@ -2651,30 +2965,30 @@ static void tips_frame(const mpm_obs *o) {
     rpanel *rps[2] = { &rp_lobby, &rp_title };
     for (int k = 0; k < 2; k++) if (u_on_tree(u_gc_get(rps[k]->root))) {
         rp_tooltip(rps[k]);
-        TIP(k ? tb(MPB_RULES_DONE) : u_gc_get(h_lwr[MPB_RULES_DONE]), "Done", "Closes the Rules.");
+        TIP(k ? tb(MPB_RULES_DONE) : u_gc_get(h_lwr[MPB_RULES_DONE]), TR("Done"), TR("Closes the Rules."));
     }
     if (u_on_tree(u_gc_get(rp_fe.root))) {                                  /* Foreign Expedition rules (board FESettingsA) */
         rp_fe.tip_row = -1;
         for (int i = 0; i < MPM_FE_ROWS; i++) if (TIP(u_gc_get(rp_fe.row[i]), mpm_fe_label(i), mpm_fe_tip(i))) { rp_fe.tip_row = i; break; }
-        TIP(tb(MPB_FE_DONE), "Done", "Closes the rules.");
+        TIP(tb(MPB_FE_DONE), TR("Done"), TR("Closes the rules."));
     }
     int lobby_rules = M.state == MPM_LOBBY && M.lobby_settings_open, host = M.state == MPM_LOBBY;
     /* lobby window (3.5, 3.7) */
     if (M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY) {
-        TIP(u_gc_get(h_lwb[LW_START]), "Start", "Starts the game for everyone in the lobby. Players who join later catch up with the running game.");
-        TIP(u_gc_get(h_lwb[LW_LEAVE]), "Leave Multiplayer", "Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you leave and return to the title; your units stay reserved for you.");
+        TIP(u_gc_get(h_lwb[LW_START]), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Starts the game for everyone in the lobby. Players who join later catch up with the running game."));
+        TIP(u_gc_get(h_lwb[LW_LEAVE]), TR("Leave Multiplayer"), TR("Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you leave and return to the title; your units stay reserved for you."));
         if (!lobby_rules) {
-            TIP(u_gc_get(h_lwb[LW_GEAR]), "Rules", "Shows how this world plays. Only the host can change them.");
-            TIP(lwt(T_RULES), "Rules", "Shows how this world plays. Only the host can change them.");
-            TIP(u_gc_get(h_lwb[LW_INVITE]), "Steam Invite", "Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version.");
-            TIP(u_gc_get(h_lwb[LW_COPY]), "Copy Address", "Copies your address so you can send it to a friend. They paste it in Join by address.");
-            TIP(u_gc_get(h_lw_addrbox[0]), "Copy Address", "Copies your address so you can send it to a friend. They paste it in Join by address.");
-            TIP(lwt(T_PLAYERS), "Players", "Everyone in this world. The bars show each player's connection.");
+            TIP(u_gc_get(h_lwb[LW_GEAR]), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));
+            TIP(lwt(T_RULES), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));
+            TIP(u_gc_get(h_lwb[LW_INVITE]), TR("Steam Invite"), TR("Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version."));
+            TIP(u_gc_get(h_lwb[LW_COPY]), TR("Copy Address"), TR("Copies your address so you can send it to a friend. They paste it in Join by address."));
+            TIP(u_gc_get(h_lw_addrbox[0]), TR("Copy Address"), TR("Copies your address so you can send it to a friend. They paste it in Join by address."));
+            TIP(lwt(T_PLAYERS), TR("Players"), TR("Everyone in this world. The bars show each player's connection."));
             for (int i = 0; i < LW_ROWS; i++) {
-                static const char *lv[4] = { "Disconnected. The game waits, or the host keeps playing their units.", "Slow connection, or the game is loading or catching up.",
-                                             "Slow connection, or catching up with the game.", "Good connection. In sync." };
-                if (lw_level[i] >= 0 && lw_level[i] <= 3) for (int k = 0; k < 3; k++) TIP(u_gc_get(h_lw_bar[i][k]), lw_rowname[i], lv[lw_level[i]]);
-                if (lw_rowname[i][0]) TIP(u_gc_get(h_lw_rowbg[i]), lw_rowname[i], "The colour is this player's colour everywhere: names above units, portraits, Teams and chat.");
+                static const char *lv[4] = { TR_NOOP("Disconnected. The game waits, or the host keeps playing their units."), TR_NOOP("Slow connection, or the game is loading or catching up."),
+                                             TR_NOOP("Slow connection, or catching up with the game."), TR_NOOP("Good connection. In sync.") };
+                if (lw_level[i] >= 0 && lw_level[i] <= 3) for (int k = 0; k < 3; k++) TIP(u_gc_get(h_lw_bar[i][k]), lw_rowname[i], TR(lv[lw_level[i]]));
+                if (lw_rowname[i][0]) TIP(u_gc_get(h_lw_rowbg[i]), lw_rowname[i], TR("The colour is this player's colour everywhere: names above units, portraits, Teams and chat."));
             }
         }
     }
@@ -2682,42 +2996,43 @@ static void tips_frame(const mpm_obs *o) {
     /* Esc menu (3.14) */
     Obj ev = o->scene == 2 ? esc_view() : NULL;
     if (ev && u_on(ev) && M.state != MPM_LOBBY && M.state != MPM_GUEST_LOBBY) {
-        TIP(eb(MPB_ESC_INVITE), "Steam Invite", "Opens Steam's invite window so you can invite friends into this world.");
-        TIP(eb(MPB_LEAVE), "Leave Multiplayer", "Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you return to the title; your units stay reserved for you.");
-        if (in_session()) TIP(AT(ev, 0x60, Obj), "Load Campaign", "Leave multiplayer to load another world.");
+        TIP(eb(MPB_ESC_INVITE), TR("Steam Invite"), TR("Opens Steam's invite window so you can invite friends into this world."));
+        TIP(eb(MPB_LEAVE), TR("Leave Multiplayer"), TR("Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you return to the title; your units stay reserved for you."));
+        if (in_session()) { char lc[128]; snprintf(lc, sizeof lc, "%s", load_label[0] ? load_label : mpm_word("TEXTKEY_SystemMenu_LoadCampaign", TR_NOOP("Load Campaign")));   /* the stock button's own label */
+                            TIP(AT(ev, 0x60, Obj), lc, TR("Leave multiplayer to load another world.")); }
     }
     if (o->scene != 1) return;
     /* Recent worlds (3.1) */
-    for (int i = 0; i < 6; i++) TIP(tb(MPB_HISTW0 + i), "Watch", "Watch the game: you see everything and can chat and ping, but you own no units and cannot pause or vote.");   /* before its row's own tip */
+    for (int i = 0; i < 6; i++) TIP(tb(MPB_HISTW0 + i), TR("Watch"), TR("Watch the game: you see everything and can chat and ping, but you own no units and cannot pause or vote."));   /* before its row's own tip */
     for (int i = 0; i < 6; i++) {
-        TIP(tb(MPB_HISTX0 + i), "Remove from List", "Removes this world from Recent Worlds. The world itself and its save are not deleted.");
-        TIP(u_gc_get(h_rw_ul[i]), "Your Units", "The units you controlled in this world when you last left. They stay reserved for you until you come back.");
-        TIP(tb(MPB_HIST0 + i), "Reconnect", "Joins this world again the same way as last time (Steam or the IP address). Your units come back to you. A world you hosted opens the load list, to host it again.");
+        TIP(tb(MPB_HISTX0 + i), TR("Remove from List"), TR("Removes this world from Recent Worlds. The world itself and its save are not deleted."));
+        TIP(u_gc_get(h_rw_ul[i]), TR("Your Units"), TR("The units you controlled in this world when you last left. They stay reserved for you until you come back."));
+        TIP(tb(MPB_HIST0 + i), TR("Reconnect"), TR("Joins this world again the same way as last time (Steam or the IP address). Your units come back to you. A world you hosted opens the load list, to host it again."));
     }
-    TIP(tb(MPB_HIST_PREV), "More Worlds", "Shows the next page of Recent Worlds."); TIP(tb(MPB_HIST_NEXT), "More Worlds", "Shows the next page of Recent Worlds.");
-    TIP(u_gc_get(h_rw_title), "Recent Worlds", "Worlds you played in multiplayer, newest first, with the day, the players and your units.");
+    TIP(tb(MPB_HIST_PREV), TR("More Worlds"), TR("Shows the next page of Recent Worlds.")); TIP(tb(MPB_HIST_NEXT), TR("More Worlds"), TR("Shows the next page of Recent Worlds."));
+    TIP(u_gc_get(h_rw_title), TR("Recent Worlds"), TR("Worlds you played in multiplayer, newest first, with the day, the players and your units."));
     /* title column (3.1, 3.2, 3.4) */
     /* Multiplayer: no tooltip (owner 2026-10-15) */
-    TIP(tb(MPB_HOST_SAVE), "Your Save", "Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer.");
-    TIP(tb(MPB_HOST_NEW), "New Save", "Start a new campaign and open it to other players as soon as it is created.");
+    TIP(tb(MPB_HOST_SAVE), TR("Your Save"), TR("Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer."));
+    TIP(tb(MPB_HOST_NEW), TR("New Save"), TR("Start a new campaign and open it to other players as soon as it is created."));
     for (int k = 0; k < hcl.n; k++) TIP(tb(mpm_choice_btn(k)), hcl.c[k].label, hcl.c[k].tip);
-    TIP(tb(MPB_HOST_START), "Start", "Prepares the world for this mode and opens the lobby. Friends join you there.");
-    TIP(tb(MPB_JOIN_ADDR), "Join by Address", "Join a friend's world with their address. Use it without Steam, or on the same home network.");
-    TIP(tb(MPB_JOIN_FRIEND), "Join a Friend on Steam", "Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game.");
-    for (int i = 0; i < 6; i++) { char l[160], t[64]; mpm_label(&M, MPB_FRIEND0 + i, l, sizeof l); const char *q = strstr(l, "Join ");
-        snprintf(t, sizeof t, "%s", q && strstr(q, "'s") ? q : "Join a Friend's World"); { char *z = strchr(t, '<'); if (z) *z = 0; }
-        if (t[0] >= 'a' && t[0] <= 'z') t[0] -= 32;
-        TIP(tb(MPB_FRIEND0 + i), t, "Joins this friend's world through Steam. The world loads from the host; your own saves are not touched."); }
-    TIP(tb(MPB_SETTINGS), "Rules", "How this multiplayer world plays: pause, speed, gear, units and events. Saved with the world; new worlds start with your last rules.");
-    TIP(tb(MPB_LOAD_SAVE), "Host from a Save", "Pick one of your saves to open to other players. The world stays on your computer, and only you save it.");
-    TIP(tb(MPB_NEW_CAMPAIGN), "Host a New Campaign", "Start a new campaign and open it to other players as soon as it is created.");
-    TIP(u_gc_get(h_namefield), "Your Name", "The name other players see: in the player list, above your units and in chat.");
-    TIP(u_gc_get(h_field), "Host Address", "The address the host shares from their lobby, for example 192.168.1.20:47777. Outside your home network, the host must open the port on their router.");
-    TIP(tb(MPB_CONNECT), "Connect", "Connects to the host and loads their world. It stops trying after 8 seconds without an answer.");
-    TIP(tb(MPB_WATCH), "Watch", "Watch the game: you see everything and can chat and ping, but you own no units and cannot pause or vote.");
-    TIP(tb(MPB_CANCEL_JOIN), "Cancel", M.state == MPM_GUEST_JOINING || M.state == MPM_GUEST_LOADING ? "Stops joining and returns to the title. Escape does the same."
-                                                                                                    : "Stops connecting. You stay on this page. Escape does the same.");
-    TIP(tb(MPB_BACK), "Back", "Returns to the previous menu.");
+    TIP(tb(MPB_HOST_START), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Prepares the world for this mode and opens the lobby. Friends join you there."));
+    TIP(tb(MPB_JOIN_ADDR), TR("Join by Address"), TR("Join a friend's world with their address. Use it without Steam, or on the same home network."));
+    TIP(tb(MPB_JOIN_FRIEND), TR("Join a Friend on Steam"), TR("Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."));
+    for (int i = 0; i < 6; i++) { char t[256];                                 /* the friend's name from the model (not read out of the label) */
+        if (i < M.nfriends && M.friends[i][0]) snprintf(t, sizeof t, TR("Join %s's World"), M.friends[i]); else snprintf(t, sizeof t, "%s", TR("Join a Friend's World"));
+        dsi_utf8_fix_end(t);
+        TIP(tb(MPB_FRIEND0 + i), t, TR("Joins this friend's world through Steam. The world loads from the host; your own saves are not touched.")); }
+    TIP(tb(MPB_SETTINGS), TR("Rules"), TR("How this multiplayer world plays: pause, speed, gear, units and events. Saved with the world; new worlds start with your last rules."));
+    TIP(tb(MPB_LOAD_SAVE), TR("Host from a Save"), TR("Pick one of your saves to open to other players. The world stays on your computer, and only you save it."));
+    TIP(tb(MPB_NEW_CAMPAIGN), TR("Host a New Campaign"), TR("Start a new campaign and open it to other players as soon as it is created."));
+    TIP(u_gc_get(h_namefield), TR("Your Name"), TR("The name other players see: in the player list, above your units and in chat."));
+    TIP(u_gc_get(h_field), TR("Host Address"), TR("The address the host shares from their lobby, for example 192.168.1.20:47777. Outside your home network, the host must open the port on their router."));
+    TIP(tb(MPB_CONNECT), TR("Connect"), TR("Connects to the host and loads their world. It stops trying after 8 seconds without an answer."));
+    TIP(tb(MPB_WATCH), TR("Watch"), TR("Watch the game: you see everything and can chat and ping, but you own no units and cannot pause or vote."));
+    TIP(tb(MPB_CANCEL_JOIN), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")), M.state == MPM_GUEST_JOINING || M.state == MPM_GUEST_LOADING ? TR("Stops joining and returns to the title. Escape does the same.")
+                                                                                                    : TR("Stops connecting. You stay on this page. Escape does the same."));
+    TIP(tb(MPB_BACK), mpm_word("TEXTKEY_Common_Back", TR_NOOP("Back")), TR("Returns to the previous menu."));
     #undef TIP
 }
 /* per-player fog (mp_fog.c): follow the host rule and the owner table; then the module's own frame work */
@@ -2812,12 +3127,13 @@ static void tag_case_show(tag_row *r) {
     }
     char clan[200] = ""; utf16_to_utf8(name0, clan, sizeof clan);
     char who[200]; mpm_tag_names(nm, n, 3, who, sizeof who);
-    char t[600]; snprintf(t, sizeof t, "%s  <size=75%%><color=#8FC4FF>Multiplayer</color><color=#A69085>  with %s</color></size>", clan, who);
+    char wt[300]; snprintf(wt, sizeof wt, TR("with %s"), who);
+    char t[600]; snprintf(t, sizeof t, "%s  <size=75%%><color=#8FC4FF>%s</color><color=#A69085>  %s</color></size>", clan, TR("Multiplayer"), wt);
     tmp_set(nt, t);
     if (!u_alive(rm)) {
         rm = mk_txt(nt, u_tr(nt), 0, 14, 513, 0, 0, 0, 120, 24, C_SUB);
         if (!rm) return;
-        tmp_set(rm, "<u>Remove tag</u>");
+        { char rt[96]; snprintf(rt, sizeof rt, "<u>%s</u>", TR("Remove tag")); tmp_set(rm, rt); }
         F(0x5260348, void (*)(Obj, bool, void *))(rm, true, NULL);          /* raycastTarget on: the click stops on it (see below) */
         u_gc_free(r->rm); r->rm = u_gc_new(rm);
     }
@@ -2856,7 +3172,7 @@ static void tag_answer(int confirm) {
     for (int i = 0; i < TAG_ROWS; i++) {                                    /* its save rows: the stock title back */
         Obj sl = u_gc_get(tslot[i].row), tt = u_alive(sl) && !strcmp(tslot[i].guid, tag_pending) ? AT(sl, 0x38, Obj) : NULL;
         char cur[320] = ""; if (u_alive(tt)) utf16_to_utf8(tmp_get(tt), cur, sizeof cur);
-        char *k = strstr(cur, "  <color=#8FC4FF>[Multiplayer]</color>"); if (k) { *k = 0; tmp_set(tt, cur); }
+        char *k = strstr(cur, "  <color=#8FC4FF>["); if (k) { *k = 0; tmp_set(tt, cur); }   /* our tag (h_slot_set), any language */
     }
     tag_pending[0] = 0;
 }
@@ -2864,8 +3180,9 @@ static void tag_ask(tag_row *r) {
     char nm[MPM_TAG_NAMES][32], who[200], clan[200] = "", t[400]; int n = tag_get(r->guid, nm); if (n < 0) return;
     mpm_tag_names(nm, n, MPM_TAG_NAMES, who, sizeof who); utf16_to_utf8(u_gc_get(r->name0), clan, sizeof clan);
     snprintf(tag_pending, sizeof tag_pending, "%s", r->guid);
-    snprintf(t, sizeof t, "<size=150%%>Remove the multiplayer tag?</size>\n%s was played with %s.\n<size=88%%><color=#a69085>The world itself does not change. The tag comes back if a friend joins it again.</color></size>", clan, who);
-    box_show(BX_UNTAG, t, "Remove", "Cancel");
+    char bd[400]; snprintf(bd, sizeof bd, TR("%s was played with %s."), clan, who);
+    snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", TR("Remove the multiplayer tag?"), bd, TR("The world itself does not change. The tag comes back if a friend joins it again."));
+    box_show(BX_UNTAG, t, TR("Remove"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     if (lbox_up != BX_UNTAG) tag_answer(1);                                 /* no box could be shown: the player asked for it */
 }
 static tag_row *tag_rm_at(V3 m) {
@@ -3048,12 +3365,73 @@ int mpmenu_register_hooks(const mp_menu_hooks *h) {
     return 0;
 }
 
+/* ---------------------------------------------------------------- i18n (ds_i18n.h; research/i18n_plan.md)
+ * Language files: <folder of multiplayer.dylib / .dll>/lang/<code>.json (DSMP_LANG_DIR overrides; none = English). The game's
+ * language is polled once per frame (LanguageSetting.GetCurrentLanguage, by name). It can only change on the title screen
+ * (Options), so on a change the title clones are rebuilt (labels and fonts); campaign windows are built in the language of
+ * their scene. Other lanes compare dsi_generation() in their own update. Mod-registered labels (host choices, Esc buttons)
+ * are drawn as registered: the mod registers them again, translated, when the language changes. */
+static void lang_dir_init(void) {
+    char d[1200] = ""; const char *env = getenv("DSMP_LANG_DIR");
+    if (env && *env) snprintf(d, sizeof d, "%s", env);
+    else { Dl_info di; if (dladdr((void *)lang_dir_init, &di) && di.dli_fname) { snprintf(d, sizeof d, "%s", di.dli_fname);
+                         char *sl = strrchr(d, '/'); if (sl) snprintf(sl + 1, sizeof d - (size_t)(sl + 1 - d), "lang"); else d[0] = 0; } }
+    dsi_set_dir(d);
+    rig_log("mpmenu: i18n: language files in %s", d[0] ? d : "(none: English)");
+}
+/* a game word (mpm_word): TextKeyExtensions.GetText(key) in the game's language, cached per language; NULL = use ours */
+static const char *game_word(const char *key, const char *en) {
+    static struct { char key[64], text[128]; unsigned gen; } c[24]; static int n;
+    (void)en;
+    int sc = scene(); if (sc != 1 && sc != 2) return NULL;                 /* the text tables are loaded on the title and in a world */
+    int k = 0; while (k < n && strcmp(c[k].key, key)) k++;
+    if (k < n && c[k].gen == dsi_generation()) return c[k].text[0] ? c[k].text : NULL;
+    static void *mi; static int tried; if (!mi && !tried) { tried = 1; mi = mth("Refactor", "TextKeyExtensions", "GetText", 1); }
+    if (!mi) return NULL;
+    if (k == n) { if (n == 24) return NULL; n++; }
+    snprintf(c[k].key, sizeof c[k].key, "%s", key); c[k].gen = dsi_generation(); c[k].text[0] = 0;
+    Obj s = MCALL(mi, Obj, Obj, const void *)(u_str(key), mi);
+    utf16_to_utf8(s, c[k].text, sizeof c[k].text);
+    if (!strncmp(c[k].text, "TextKey not found", 17) || !strcmp(c[k].text, key)) c[k].text[0] = 0;   /* missing: our English */
+    rig_log("mpmenu: i18n: game word %s (%s) = \"%s\"", key, dsi_code(), c[k].text[0] ? c[k].text : "(not found)");
+    return c[k].text[0] ? c[k].text : NULL;
+}
+static void destroy_go(Obj comp) { if (u_alive(comp)) { Obj g = u_go(comp); if (g) F(0x50FC8F8, void (*)(Obj, void *))(g, NULL); } }   /* Object.Destroy */
+/* the language changed on the title: our title clones go (rebuilt by title_sync on this frame, in the new language and fonts) */
+static void title_teardown(void) {
+    Obj v = title_view();
+    if (v && stock_hidden) { for (int off = 0x30; off <= 0x60; off += 8) u_active(AT(v, off, Obj), true); }
+    stock_hidden = 0;
+    for (int i = 0; i < NT; i++) destroy_go(tb(title_ids[i]));                /* column rows (their arrows / rows go with the panels) */
+    destroy_go(u_gc_get(h_rw_root)); destroy_go(u_gc_get(rp_title.root)); destroy_go(u_gc_get(rp_fe.root)); destroy_go(u_gc_get(h_cp_root));
+    destroy_go(u_gc_get(h_field)); destroy_go(u_gc_get(h_namefield));
+    for (int i = 0; i < MPB_COUNT; i++) { u_gc_free(h_tb[i]); h_tb[i] = 0; }
+    u_gc_free(h_title_built); h_title_built = 0;
+    destroy_go(u_gc_get(h_lf_tog)); destroy_go(u_gc_get(h_lf_box)); u_gc_free(h_lf_tog); u_gc_free(h_lf_box); h_lf_tog = h_lf_box = 0;   /* load list toggle */
+    for (int i = 0; i < TAG_ROWS; i++) if (tcase[i].rm) { destroy_go(u_gc_get(tcase[i].rm)); u_gc_free(tcase[i].rm); tcase[i].rm = 0; }   /* "Remove tag" (rows redo it) */
+    cp_drawn = 0;
+}
+/* our own placeholder host choice (Custom Modes registers the same id with its start: then it is theirs); again on a language change */
+static void own_choice_register(void) {
+    for (int k = 0; k < hcl.n; k++) if (!strcmp(hcl.c[k].id, "foreign-expedition") && (hcl.c[k].v2 || hcl.c[k].on_start)) return;   /* the mod's own */
+    mpmenu_register_host_choice("foreign-expedition", TR("Foreign Expedition"), TR("Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home."), NULL, NULL);
+}
+static void lang_poll(void) {
+    if (!ls_ready() || !ls_lang_mi) return;                                 /* before il2cpp / the class: English */
+    int v = MCALL(ls_lang_mi, int32_t, const void *)(ls_lang_mi);
+    if (!dsi_set_lang(v)) return;
+    rig_log("mpmenu: i18n: game language %d = %s (%d texts, %d dropped as unsafe)", v, dsi_code(), dsi_loaded(), dsi_dropped());
+    own_choice_register();
+    if (scene() == 1 && h_title_built) title_teardown();
+}
+
 void mpmenu_frame(void) {
     fog_poll();
     frames++;
     fv_input_frame();
     { static int was; int t = teams_modal(); if (was && !t) teams_close_frames = 3; else if (teams_close_frames > 0) teams_close_frames--; was = t; }   /* the Escape that closed Teams stays ours */
     if (!mf) return;
+    lang_poll();                                                            /* i18n: the game's language (title Options) */
     join_poll();
     assets_scan();                                                          /* every 300 frames until all are found */
     mpm_obs o; observe(&o);
@@ -3108,6 +3486,7 @@ void mpmenu_frame(void) {
     for (int k = 0; k < nhooks; k++) if (hooks[k].frame_late) hooks[k].frame_late(&o);
     if (nescb) escb_frame(&o);
     if (!o.role && !conn && !mp_game_session() && joined_how[0] && M.state != MPM_GUEST_JOINING && M.state != MPM_GUEST_LOADING) { joined_how[0] = 0; joined_steamid = 0; }   /* session over */
+    fit_frame();                                                            /* last: every text of this frame is set and placed */
 }
 
 int mpmenu_gear_mode(void) { return mp_game_session() ? M.set.gear : -1; }
@@ -3117,6 +3496,7 @@ __attribute__((visibility("default"))) int mpmenu_lobby_open(void) { return M.st
 void mpmenu_install(void) {
     mp_fog_install();                   /* per-player fog hooks (core next 2026-10-15) */
     mpm_init(&M);
+    lang_dir_init(); mpm_set_word_fn(game_word);                           /* i18n: English until the game's language is read */
     prefs_load();
     int bad = rig_hook(0xF2DC30, (void *)h_esc_press, (void **)&o_esc_press, "mpmenu SubUI_SystemMenuButton.OnPressButton");
     bad |= rig_hook(0xE6FF20, (void *)h_title_click, (void **)&o_title_click, "mpmenu SubUI_TitleMenuButton.OnPointerClick");
@@ -3131,7 +3511,7 @@ void mpmenu_install(void) {
         bad |= rig_hook(0x518AFE0, (void *)h_clip_set, (void **)&o_clip_set, "mpmenu GUIUtility.set_systemCopyBuffer (test: file)");
     }
     /* until the split (M4) the Foreign Expedition code is in this dylib: it takes the third host choice itself */
-    mpmenu_register_host_choice("foreign-expedition", "Foreign Expedition", "Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home.", NULL, NULL);
+    own_choice_register();
     rig_log("mpmenu: installed (%s)%s", bad ? "HOOK FAILED" : "ok", test_mode() ? ", clipboard -> clipboard.txt" : "");
 }
 
@@ -3580,6 +3960,8 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         mpm_obs o; observe(&o); o.role = 2; snprintf(o.host_name, sizeof o.host_name, "%s", host);
         if (M.state != MPM_GUEST_JOINING) mpm_step(&M, &o, MPB_NONE);
         o.role = 0; o.failed = 1; snprintf(o.msg, sizeof o.msg, "%s", why);
+        o.end = !strcmp(why, "The host left the game") ? MPM_END_HOST_LEFT : !strcmp(why, "Connection to the host lost") ? MPM_END_LINK_LOST   /* test input: English */
+              : !strcmp(why, "The host turned spectators off") ? MPM_END_SPECT_OFF : !strncmp(why, "Could not", 9) ? MPM_END_REFUSED : MPM_END_OTHER;
         int a = mpm_step(&M, &o, MPB_NONE); (void)a;
         Buf b = {0}; bput(&b, "{\"ok\":true,\"state\":\"%s\"}", state_name(M.state)); return b.p;
     }

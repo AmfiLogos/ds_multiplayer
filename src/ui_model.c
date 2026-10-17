@@ -1,5 +1,6 @@
 /* ui_model - pure logic of the multiplayer interface. See ui_model.h. */
 #include "ui_model.h"
+#include "ds_i18n.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,8 +10,8 @@
 /* ---------------------------------------------------------------- players */
 const char *ui_player_label(const ui_players *p, int player, char out[40]) {
     if (p && player >= 0 && player < UI_MAX_PLAYERS && p->name[player][0]) snprintf(out, 40, "%s", p->name[player]);
-    else if (player == 0) snprintf(out, 40, "Host");
-    else snprintf(out, 40, "Player %d", player + 1);
+    else if (player == 0) snprintf(out, 40, "%s", TR("Host"));
+    else snprintf(out, 40, TR("Player %d"), player + 1);
     return out;
 }
 
@@ -19,9 +20,9 @@ const char *ui_player_label(const ui_players *p, int player, char out[40]) {
    simulation + CIEDE2000; slots 1-4 stay 13.3+ apart in every vision; no red / orange / green / teal / purple hue,
    L* 60+, 10+ from the cream body text #ccbeb8 and the away grey #8a8088). Slot order = join order. */
 static const char *const colors[UI_PALETTE_N] = { "#FFEE88", "#44AAFF", "#DD66BB", "#EEF6FF", "#AA9988", "#DDAA00", "#BBBBCC", "#AACCFF" };
-static const char *const color_names[UI_PALETTE_N] = { "Yellow", "Blue", "Pink", "White", "Taupe", "Gold", "Silver", "Light blue" };
+static const char *const color_names[UI_PALETTE_N] = { TR_NOOP("Yellow"), TR_NOOP("Blue"), TR_NOOP("Pink"), TR_NOOP("White"), TR_NOOP("Taupe"), TR_NOOP("Gold"), TR_NOOP("Silver"), TR_NOOP("Light blue") };
 const char *ui_palette_color(int i) { return colors[(unsigned)i % UI_PALETTE_N]; }
-const char *ui_palette_name(int i) { return color_names[(unsigned)i % UI_PALETTE_N]; }
+const char *ui_palette_name(int i) { return TR(color_names[(unsigned)i % UI_PALETTE_N]); }
 /* slot -> stable player uid -> colour (owner 2026-10-14: a rejoin into another slot keeps the colour). The glue sets
    ui_color_resolver to the dsnet table (dsnet_player_color); unset or unknown slot: by slot. lan_v10: a viewer's own
    choice for that player (ui_color_override) comes first; it is local to this screen. */
@@ -102,7 +103,7 @@ int ui_pause_voters(const ui_votes *v, const ui_players *p, char *out, size_t ca
     for (int i = 0; i < UI_MAX_PLAYERS; i++) {
         if (!(v->present >> i & 1u) || !v->pause[i]) continue;
         char nm[40]; ui_player_label(p, i, nm);
-        if (len < cap) len += (size_t)snprintf(out + len, cap - len, "%s%s", n ? ", " : "", nm);
+        if (len < cap) len += (size_t)snprintf(out + len, cap - len, "%s%s", n ? TR(", ") : "", nm);
         n++;
     }
     return n;
@@ -112,12 +113,12 @@ void ui_pause_text(const ui_votes *v, const ui_players *p, char *out, size_t cap
     char who[256], nm[40];
     if (!cap) return;
     int n = v->allow_pause ? ui_pause_voters(v, p, who, sizeof who) : 0;
-    if (v->story_pause & v->present) snprintf(out, cap, n ? "Paused for a story event (and by %s)" : "Paused for a story event", who);
-    else if (n) snprintf(out, cap, "Paused by %s", who);
-    else if (v->pause_by1 > 0) snprintf(out, cap, "Paused by %s", ui_player_label(p, v->pause_by1 - 1, nm));
-    else snprintf(out, cap, "Paused");
+    if (v->story_pause & v->present) snprintf(out, cap, n ? TR("Paused for a story event (and by %s)") : TR("Paused for a story event"), who);
+    else if (n) snprintf(out, cap, TR("Paused by %s"), who);
+    else if (v->pause_by1 > 0) snprintf(out, cap, TR("Paused by %s"), ui_player_label(p, v->pause_by1 - 1, nm));
+    else snprintf(out, cap, "%s", TR("Paused"));
 }
-const char *ui_speed_text(int s) { return s >= 2 ? "Fast" : "Normal"; }
+const char *ui_speed_text(int s) { return s >= 2 ? TR("Fast") : TR("Normal"); }
 
 /* ---------------------------------------------------------------- status line */
 /* comma list of present players (except `skip`) whose speed vote is (above ? > : ==) eff */
@@ -128,32 +129,35 @@ static int speed_names(const ui_votes *v, const ui_players *p, int eff, int abov
         int s = v->speed[i] ? v->speed[i] : 1;
         if (!(v->present >> i & 1u) || i == skip || (above ? s <= eff : s != eff)) continue;
         char nm[40];
-        len += (size_t)snprintf(out + len, cap - len, "%s%s", n++ ? ", " : "", ui_player_label(p, i, nm));
+        len += (size_t)snprintf(out + len, cap - len, "%s%s", n++ ? TR(", ") : "", ui_player_label(p, i, nm));
     }
     return n;
 }
 
+static int status_agree;
+int ui_status_line_agree(void) { return status_agree; }
 void ui_status_line(ui_net_state st, const ui_votes *v, const ui_players *p, int me, char *out, size_t cap) {
+    status_agree = 0;
     if (!cap) return;
     out[0] = 0;
     switch (st) {
     case UI_NET_OFF: return;
-    case UI_NET_CONNECTING: snprintf(out, cap, "Connecting to host..."); return;
-    case UI_NET_WAITING: snprintf(out, cap, "Waiting for the host's game..."); return;
-    case UI_NET_DESYNC: snprintf(out, cap, "Catching up with the host..."); return;
-    case UI_NET_LOADING: snprintf(out, cap, "Catching up with the host... (loading)"); return;
-    case UI_NET_LOST: snprintf(out, cap, "Connection to host lost"); return;
+    case UI_NET_CONNECTING: snprintf(out, cap, "%s", TR("Connecting to host...")); return;
+    case UI_NET_WAITING: snprintf(out, cap, "%s", TR("Waiting for the host's game...")); return;
+    case UI_NET_DESYNC: snprintf(out, cap, "%s", TR("Catching up with the host...")); return;
+    case UI_NET_LOADING: snprintf(out, cap, "%s", TR("Catching up with the host... (loading)")); return;
+    case UI_NET_LOST: snprintf(out, cap, "%s", TR("Connection to host lost")); return;
     case UI_NET_PLAYING: break;
     }
     if (v->busy & v->present & ~(1u << ((unsigned)me & 31))) {   /* transitions barrier: someone still loads */
-        size_t len = (size_t)snprintf(out, cap, "Waiting for ");
+        char names[400] = ""; size_t len = 0;
         int n = 0;
-        for (int i = 0; i < UI_MAX_PLAYERS && len < cap; i++) {
+        for (int i = 0; i < UI_MAX_PLAYERS && len < sizeof names; i++) {
             if (i == me || !(v->busy & v->present & 1u << i)) continue;
             char nm[40];
-            len += (size_t)snprintf(out + len, cap - len, "%s%s", n++ ? ", " : "", ui_player_label(p, i, nm));
+            len += (size_t)snprintf(names + len, sizeof names - len, "%s%s", n++ ? TR(", ") : "", ui_player_label(p, i, nm));
         }
-        if (len < cap) snprintf(out + len, cap - len, " (loading)");
+        snprintf(out, cap, TR("Waiting for %s (loading)"), names);
         return;
     }
     if (ui_is_paused(v) || v->paused_ext) { ui_pause_text(v, p, out, cap); return; }
@@ -166,10 +170,11 @@ void ui_status_line(ui_net_state st, const ui_votes *v, const ui_players *p, int
     int mine = me >= 0 && me < UI_MAX_PLAYERS && (v->present >> me & 1u) && v->speed[me] > eff;
     if (mine) {
         speed_names(v, p, eff, 0, me, names, sizeof names);
-        snprintf(out, cap, "You want %s \u00B7 waiting for %s", ui_speed_text(want), names);
+        snprintf(out, cap, TR("You want %s · waiting for %s"), ui_speed_text(want), names);
     } else {
         int n = speed_names(v, p, eff, 1, -1, names, sizeof names);
-        snprintf(out, cap, "%s %s %s \u00B7 press >> to agree", names, n > 1 ? "want" : "wants", ui_speed_text(want));
+        snprintf(out, cap, TRN("%s wants %s · press >> to agree", "%s want %s · press >> to agree", n), names, ui_speed_text(want));
+        status_agree = 1;
     }
 }
 
@@ -262,21 +267,22 @@ void ui_story_line(const ui_story *s, const ui_players *p, int me, int chooser, 
                    char *out, size_t cap) {
     char nm[40], hn[40], tail[96] = "";
     ui_player_label(p, 0, hn);
-    if (s && s->decided >= 0) { snprintf(out, cap, "Chosen"); return; }
+    if (s && s->decided >= 0) { snprintf(out, cap, "%s", TR("Chosen")); return; }
     if (s && s->handover) {
-        if (me == 0) snprintf(out, cap, "You decide (no answer in 60 s)");
-        else snprintf(out, cap, "%s decides (no answer in 60 s)", hn);
+        if (me == 0) snprintf(out, cap, "%s", TR("You decide (no answer in 60 s)"));
+        else snprintf(out, cap, TR("%s decides (no answer in 60 s)"), hn);
         return;
     }
     if (left_s >= 0) {
-        if (chooser == UI_STORY_VOTE) snprintf(tail, sizeof tail, " \u00B7 %d s, then the votes decide", left_s);
-        else snprintf(tail, sizeof tail, " \u00B7 %d s, then %s decide%s", left_s, me == 0 ? "you" : hn, me == 0 ? "" : "s");
+        if (chooser == UI_STORY_VOTE) snprintf(tail, sizeof tail, TR(" · %d s, then the votes decide"), left_s);
+        else if (me == 0) snprintf(tail, sizeof tail, TR(" · %d s, then you decide"), left_s);
+        else snprintf(tail, sizeof tail, TR(" · %d s, then %s decides"), left_s, hn);
     }
     if (chooser >= 0) {
-        if (chooser == me) snprintf(out, cap, "You choose%s", tail);
-        else snprintf(out, cap, "%s chooses%s", ui_player_label(p, chooser, nm), tail);
-    } else if (chooser == UI_STORY_FIRST) snprintf(out, cap, "The first answer decides%s", tail);
-    else snprintf(out, cap, "Vote \u00B7 %d of %d \u00B7 host breaks ties%s", votes_in, voters, tail);
+        if (chooser == me) snprintf(out, cap, TR("You choose%s"), tail);
+        else snprintf(out, cap, TR("%s chooses%s"), ui_player_label(p, chooser, nm), tail);
+    } else if (chooser == UI_STORY_FIRST) snprintf(out, cap, TR("The first answer decides%s"), tail);
+    else snprintf(out, cap, TR("Vote · %d of %d · host breaks ties%s"), votes_in, voters, tail);
 }
 int ui_story_votes_in(const ui_story *s, uint32_t present) {
     int n = 0;
@@ -341,43 +347,43 @@ int ui_mapvote_vote(ui_mapvote *m, int player, uint32_t id, int accept, uint32_t
 int ui_mapvote_recheck(ui_mapvote *m, uint32_t present) { return map_tally(m, present); }
 const char *ui_map_kind_text(int kind) {
     switch (kind) {
-    case UI_MAP_ENTER_DUNGEON: return "enter the dungeon";
-    case UI_MAP_RETURN_BASE: return "return to the settlement";
-    case UI_MAP_NEXT_FLOOR: return "go down to the next floor";
-    default: return "change the map";
+    case UI_MAP_ENTER_DUNGEON: return TR("enter the dungeon");
+    case UI_MAP_RETURN_BASE: return TR("return to the settlement");
+    case UI_MAP_NEXT_FLOOR: return TR("go down to the next floor");
+    default: return TR("change the map");
     }
 }
 const char *ui_map_kind_text_floor(int kind, int next_floor, char *out, size_t cap) {
-    if (kind == UI_MAP_NEXT_FLOOR && next_floor >= 1) snprintf(out, cap, "go down to floor %d", next_floor);
+    if (kind == UI_MAP_NEXT_FLOOR && next_floor >= 1) snprintf(out, cap, TR("go down to floor %d"), next_floor);
     else snprintf(out, cap, "%s", ui_map_kind_text(kind));
     return out;
 }
 int ui_mapvote_wait_line(const ui_mapvote *m, const ui_players *p, int me, uint32_t present, char *out, size_t cap) {
     if (cap) out[0] = 0;
     if (!ui_mapvote_open(m) || m->proposer != me) return 0;
-    size_t len = (size_t)snprintf(out, cap, "Waiting for ");
+    char names[400] = ""; size_t len = 0;
     int n = 0, yes = 0, all = 0;
     for (int i = 0; i < UI_MAX_PLAYERS; i++) {
         if (!(present >> i & 1u)) continue;
         all++;
         if (m->vote[i] == 1) yes++;
-        if (m->vote[i] >= 0 || len >= cap) continue;
+        if (m->vote[i] >= 0 || len >= sizeof names) continue;
         char nm[40];
-        len += (size_t)snprintf(out + len, cap - len, "%s%s", n++ ? ", " : "", ui_player_label(p, i, nm));
+        len += (size_t)snprintf(names + len, sizeof names - len, "%s%s", n++ ? TR(", ") : "", ui_player_label(p, i, nm));
     }
-    if (len < cap) snprintf(out + len, cap - len, " (%d of %d agree)", yes, all);
+    snprintf(out, cap, TR("Waiting for %s (%d of %d agree)"), names, yes, all);
     return 1;
 }
 const char *ui_map_question(int kind, int next_floor, char *out, size_t cap) {
-    if (kind == UI_MAP_NEXT_FLOOR && next_floor >= 1) snprintf(out, cap, "Go down to floor %d?", next_floor);
-    else if (kind == UI_MAP_NEXT_FLOOR) snprintf(out, cap, "Go down to the next floor?");
-    else if (kind == UI_MAP_RETURN_BASE) snprintf(out, cap, "Return to the settlement?");
-    else if (kind == UI_MAP_ENTER_DUNGEON) snprintf(out, cap, "Enter the dungeon?");
-    else snprintf(out, cap, "Change the map?");
+    if (kind == UI_MAP_NEXT_FLOOR && next_floor >= 1) snprintf(out, cap, TR("Go down to floor %d?"), next_floor);
+    else if (kind == UI_MAP_NEXT_FLOOR) snprintf(out, cap, "%s", TR("Go down to the next floor?"));
+    else if (kind == UI_MAP_RETURN_BASE) snprintf(out, cap, "%s", TR("Return to the settlement?"));
+    else if (kind == UI_MAP_ENTER_DUNGEON) snprintf(out, cap, "%s", TR("Enter the dungeon?"));
+    else snprintf(out, cap, "%s", TR("Change the map?"));
     return out;
 }
 const char *ui_map_short(int kind) {
-    return kind == UI_MAP_NEXT_FLOOR ? "go down" : kind == UI_MAP_RETURN_BASE ? "return to the settlement" : kind == UI_MAP_ENTER_DUNGEON ? "enter the dungeon" : "change the map";
+    return kind == UI_MAP_NEXT_FLOOR ? TR("go down") : kind == UI_MAP_RETURN_BASE ? TR("return to the settlement") : kind == UI_MAP_ENTER_DUNGEON ? TR("enter the dungeon") : TR("change the map");
 }
 void ui_mapvote_marks(const ui_mapvote *m, const ui_players *p, uint32_t present, const char *ok, char *out, size_t cap) {
     size_t n = 0; int k = 0;
@@ -385,7 +391,7 @@ void ui_mapvote_marks(const ui_mapvote *m, const ui_players *p, uint32_t present
     for (int i = 0; i < UI_MAX_PLAYERS && n < cap; i++) {
         if (!(present >> i & 1u)) continue;
         char nm[40];
-        const char *mk = m->vote[i] == 1 ? ok : m->vote[i] == 0 ? "<color=#f16071>no</color>" : "\u2026";
+        const char *mk = m->vote[i] == 1 ? ok : m->vote[i] == 0 ? TR("<color=#f16071>no</color>") : "\u2026";
         n += (size_t)snprintf(out + n, cap - n, "%s<color=%s>%s</color> %s", k++ ? "   " : "", ui_player_color(i), ui_player_label(p, i, nm),
                               m->vote[i] == 1 ? "" : mk);
         if (m->vote[i] == 1 && n < cap) n += (size_t)snprintf(out + n, cap - n, "<color=#71ab40>%s</color>", ok);
@@ -393,25 +399,25 @@ void ui_mapvote_marks(const ui_mapvote *m, const ui_players *p, uint32_t present
 }
 void ui_mapvote_result(const ui_mapvote *m, const ui_players *p, uint32_t present, int cur_floor_no, char *out, size_t cap) {
     char nm[40];
-    if (m->cancelled == UI_MAP_CANCEL) { snprintf(out, cap, "No answer in %d s: the vote was cancelled", UI_MAP_TIMEOUT_S); return; }
-    if (m->cancelled == UI_MAP_CANCEL_USER) { snprintf(out, cap, "%s cancelled the vote", ui_player_label(p, m->proposer, nm)); return; }
+    if (m->cancelled == UI_MAP_CANCEL) { snprintf(out, cap, TR("No answer in %d s: the vote was cancelled"), UI_MAP_TIMEOUT_S); return; }
+    if (m->cancelled == UI_MAP_CANCEL_USER) { snprintf(out, cap, TR("%s cancelled the vote"), ui_player_label(p, m->proposer, nm)); return; }
     if (m->decided == 1) {
         int yes = 0, all = 0;
         for (int i = 0; i < UI_MAX_PLAYERS; i++) if (present >> i & 1u) { all++; yes += m->vote[i] == 1; }
-        const char *what = m->kind == UI_MAP_NEXT_FLOOR ? "going down" : m->kind == UI_MAP_RETURN_BASE ? "returning to the settlement"
-                         : m->kind == UI_MAP_ENTER_DUNGEON ? "entering the dungeon" : "changing the map";
-        if (yes >= all) snprintf(out, cap, "Everyone agreed: %s", what);
-        else snprintf(out, cap, "Agreed (%d of %d): %s", yes, all, what);
+        const char *what = m->kind == UI_MAP_NEXT_FLOOR ? TR("going down") : m->kind == UI_MAP_RETURN_BASE ? TR("returning to the settlement")
+                         : m->kind == UI_MAP_ENTER_DUNGEON ? TR("entering the dungeon") : TR("changing the map");
+        if (yes >= all) snprintf(out, cap, TR("Everyone agreed: %s"), what);
+        else snprintf(out, cap, TR("Agreed (%d of %d): %s"), yes, all, what);
         return;
     }
-    size_t n = 0; int k = 0;
-    for (int i = 0; i < UI_MAX_PLAYERS && n < cap; i++)
-        if ((present >> i & 1u) && m->vote[i] == 0) n += (size_t)snprintf(out + n, cap - n, "%s%s", k++ ? ", " : "", ui_player_label(p, i, nm));
-    if (!k) n = (size_t)snprintf(out, cap, "The vote");
-    if (n < cap) {
-        if (m->kind == UI_MAP_NEXT_FLOOR && cur_floor_no >= 1) snprintf(out + n, cap - n, " said no: staying on floor %d", cur_floor_no);
-        else snprintf(out + n, cap - n, " said no: staying here");
-    }
+    char names[400] = ""; size_t n = 0; int k = 0;
+    for (int i = 0; i < UI_MAX_PLAYERS && n < sizeof names; i++)
+        if ((present >> i & 1u) && m->vote[i] == 0) n += (size_t)snprintf(names + n, sizeof names - n, "%s%s", k++ ? TR(", ") : "", ui_player_label(p, i, nm));
+    if (m->kind == UI_MAP_NEXT_FLOOR && cur_floor_no >= 1) {
+        if (k) snprintf(out, cap, TR("%s said no: staying on floor %d"), names, cur_floor_no);
+        else snprintf(out, cap, TR("The vote said no: staying on floor %d"), cur_floor_no);
+    } else if (k) snprintf(out, cap, TR("%s said no: staying here"), names);
+    else snprintf(out, cap, "%s", TR("The vote said no: staying here"));
 }
 size_t ui_map_propose_write(uint8_t *o, size_t cap, uint32_t id, int kind, const uint8_t *order, size_t len) {
     if (len > UI_MAP_MAX_ORDER || cap < 7 + len) return 0;
@@ -450,8 +456,8 @@ int ui_local_order(const int *owner, int n, int me, int *out) {
 void ui_resync_text(const ui_players *p, int who, int me, char *out, size_t cap) {
     char nm[40], hn[40];
     ui_player_label(p, 0, hn);
-    if (who == me) snprintf(out, cap, "Your game went out of sync. Everyone reloads %s's save", hn);
-    else snprintf(out, cap, "%s's game went out of sync. Everyone reloads %s's save", ui_player_label(p, who, nm), hn);
+    if (who == me) snprintf(out, cap, TR("Your game went out of sync. Everyone reloads %s's save"), hn);
+    else snprintf(out, cap, TR("%s's game went out of sync. Everyone reloads %s's save"), ui_player_label(p, who, nm), hn);
 }
 void ui_owner_tag_world(const ui_players *p, int owner, const char *dot, char *out, size_t cap) {
     if (!cap) return;
@@ -462,16 +468,16 @@ void ui_owner_tag_world(const ui_players *p, int owner, const char *dot, char *o
 }
 void ui_pause_line(const ui_players *p, int by, int story, char *out, size_t cap) {
     char nm[40];
-    if (by >= 0) snprintf(out, cap, "Paused by %s", ui_player_label(p, by, nm));
-    else if (story) snprintf(out, cap, "Paused for a story event");
-    else snprintf(out, cap, "Paused");
+    if (by >= 0) snprintf(out, cap, TR("Paused by %s"), ui_player_label(p, by, nm));
+    else if (story) snprintf(out, cap, "%s", TR("Paused for a story event"));
+    else snprintf(out, cap, "%s", TR("Paused"));
 }
 void ui_player_row(const ui_players *p, int player, int me, int ping_ms, int state, char *out, size_t cap) {
     char nm[40], ping[16];
-    if (ping_ms >= 0) snprintf(ping, sizeof ping, "%d ms", ping_ms); else snprintf(ping, sizeof ping, "-");
-    const char *st = state == 0 ? "in sync" : state == 1 ? "loading" : state == 2 ? "<color=#f16071>out of sync</color>" : "";
+    if (ping_ms >= 0) snprintf(ping, sizeof ping, TR("%d ms"), ping_ms); else snprintf(ping, sizeof ping, "-");
+    const char *st = state == 0 ? TR("in sync") : state == 1 ? TR("loading") : state == 2 ? TR("<color=#f16071>out of sync</color>") : "";
     snprintf(out, cap, "<color=%s>\u25CF</color> %s%s  %s  %s", ui_player_color(player), ui_player_label(p, player, nm),
-             player == me ? " (you)" : "", player == me ? "" : ping, st);
+             player == me ? TR(" (you)") : "", player == me ? "" : ping, st);
 }
 
 /* ---------------------------------------------------------------- live-test settings */
@@ -566,7 +572,7 @@ void ui_settings_color_set(ui_settings *s, const char *u, int idx) {
 /* ---------------------------------------------------------------- spectator mini overview */
 float ui_mini_width(int size) { return size == UI_MINI_SMALL ? 260.0f : size == UI_MINI_LARGE ? 440.0f : 340.0f; }
 float ui_mini_height(int size) { return ui_mini_width(size) * 240.0f / 340.0f; }
-const char *ui_mini_size_text(int size) { return size == UI_MINI_SMALL ? "Small" : size == UI_MINI_LARGE ? "Large" : "Medium"; }
+const char *ui_mini_size_text(int size) { return size == UI_MINI_SMALL ? TR("Small") : size == UI_MINI_LARGE ? TR("Large") : TR("Medium"); }
 void ui_mini_frame(int minx, int maxx, int miny, int maxy, float aspect, ui_mini_view *v) {
     if (maxx < minx) { int t = minx; minx = maxx; maxx = t; }
     if (maxy < miny) { int t = miny; miny = maxy; maxy = t; }
@@ -593,10 +599,10 @@ int ui_mini_rect(const ui_mini_view *v, float w, float h, float cx, float cy, fl
     out[0] = x0; out[1] = y0; out[2] = x1 - x0; out[3] = y1 - y0;
     return 1;
 }
-const char *ui_outline_text(int m) { return m == UI_OUTLINE_OWN ? "Your units" : m == UI_OUTLINE_FRIENDS ? "Friends' units" : m == UI_OUTLINE_BOTH ? "Both" : "Off"; }
+const char *ui_outline_text(int m) { return m == UI_OUTLINE_OWN ? TR("Your units") : m == UI_OUTLINE_FRIENDS ? TR("Friends' units") : m == UI_OUTLINE_BOTH ? TR("Both") : TR("Off"); }
 int ui_see_through_next(int v) { return v <= 0 ? UI_SEE_THROUGH_MIN : v < 50 ? 50 : v < 70 ? 70 : v < 90 ? 90 : 0; }
 int ui_see_through_prev(int v) { return v <= 0 ? 90 : v > 70 ? 70 : v > 50 ? 50 : v > UI_SEE_THROUGH_MIN ? UI_SEE_THROUGH_MIN : 0; }
-const char *ui_names_text(int m) { return m == UI_NAMES_ALL ? "All" : m == UI_NAMES_OFF ? "Off" : "Others"; }
+const char *ui_names_text(int m) { return m == UI_NAMES_ALL ? TR("All") : m == UI_NAMES_OFF ? TR("Off") : TR("Others"); }
 int ui_name_tag_visible(int mode, int owner, int me) {
     if (owner < 0 || mode == UI_NAMES_OFF) return 0;
     return mode == UI_NAMES_ALL || owner != me;
@@ -615,9 +621,9 @@ void ui_player_row2(const ui_players *p, int player, int me, int ping_ms, int st
     char nm[40];
     ui_player_label(p, player, nm);
     if (player == me) { snprintf(out, cap, "<color=%s>%s</color>", ui_player_color(player), nm); return; }
-    if (state == 2) snprintf(out, cap, "<color=%s>%s</color>  <color=#f16071>out of sync</color>", ui_player_color(player), nm);
-    else if (state == 1) snprintf(out, cap, "<color=%s>%s</color>  loading", ui_player_color(player), nm);
-    else if (ping_ms >= 0) snprintf(out, cap, "<color=%s>%s</color>  %d ms", ui_player_color(player), nm, ping_ms);
+    if (state == 2) snprintf(out, cap, TR("<color=%s>%s</color>  <color=#f16071>out of sync</color>"), ui_player_color(player), nm);
+    else if (state == 1) snprintf(out, cap, TR("<color=%s>%s</color>  loading"), ui_player_color(player), nm);
+    else if (ping_ms >= 0) snprintf(out, cap, TR("<color=%s>%s</color>  %d ms"), ui_player_color(player), nm, ping_ms);
     else snprintf(out, cap, "<color=%s>%s</color>", ui_player_color(player), nm);
 }
 int ui_signal_bars(int ping, int state) {
@@ -644,9 +650,9 @@ void ui_player_cols(const ui_players *p, int player, int me, int ping_ms, int st
     snprintf(left, lcap, "<color=%s>%s</color> %s", ui_player_color(player), dot && dot[0] ? dot : "\u2022", ui_player_label(p, player, nm));
     if (!rcap) return;
     right[0] = 0;
-    if (state == 2) { snprintf(right, rcap, "<color=#f16071>out of sync</color>"); return; }
-    if (state == 1) { snprintf(right, rcap, "loading"); return; }
-    if (player == 0) { snprintf(right, rcap, "host"); return; }
+    if (state == 2) { snprintf(right, rcap, "%s", TR("<color=#f16071>out of sync</color>")); return; }
+    if (state == 1) { snprintf(right, rcap, "%s", TR("loading")); return; }
+    if (player == 0) { snprintf(right, rcap, "%s", TR("host")); return; }
     (void)me; (void)ping_ms;
 }
 int ui_conn_level(int ping, int behind, int state) {
@@ -657,7 +663,7 @@ int ui_conn_level(int ping, int behind, int state) {
     return 3;
 }
 const char *ui_conn_color(int level) { return level >= 3 ? "#71ab40" : level == 2 ? "#ea9f3d" : level == 1 ? "#c82e48" : "#4a4550"; }
-void ui_list_header(int n, int open, char *out, size_t cap) { (void)open; snprintf(out, cap, "Players (%d)", n); }   /* open / shut: the stock arrow image (design 2026-10-13) */
+void ui_list_header(int n, int open, char *out, size_t cap) { (void)open; snprintf(out, cap, TR("Players (%d)"), n); }   /* open / shut: the stock arrow image (design 2026-10-13) */
 
 /* ---------------------------------------------------------------- lobby */
 int ui_parse_address(const char *in, char *host, size_t hcap, uint16_t *port, uint16_t def_port) {

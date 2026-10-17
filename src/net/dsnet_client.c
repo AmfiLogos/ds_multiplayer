@@ -2,6 +2,7 @@
  * Client/Desyncs/SyncCoordinator.cs). A network thread receives into a queue; the game thread
  * steps the timer through dsnet_can_run_tick / dsnet_take_cmds_for_tick. */
 #include "dsnet_internal.h"
+#include "../ds_i18n.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <fenv.h>
@@ -162,7 +163,7 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
             const uint8_t *e = p + 4 + 36 * i;
             if (e[0] >= DSNET_MAX_PLAYERS) continue;
             now[e[0]] = 1;
-            char nm[32]; memcpy(nm, e + 4, 31); nm[31] = 0;
+            char nm[32]; memcpy(nm, e + 4, 31); nm[31] = 0; dsi_utf8_fix_end(nm);
             if (c->sp_seen && (!c->sp[e[0]].set || strcmp(c->sp[e[0]].name, nm)) && e[0] != c->player) chat_local(c, e[0], DSNET_CHAT_WATCHING, nm);
             c->sp[e[0]].set = 1; c->sp[e[0]].state = e[1]; c->sp[e[0]].ping = get16(e + 2); memcpy(c->sp[e[0]].name, nm, 32);
         }
@@ -177,7 +178,7 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
         if (n >= 34) {
             dsnet_chat_msg *m = &c->chat[c->chat_tail++ % 128];
             if (c->chat_tail - c->chat_head > 128) c->chat_head = c->chat_tail - 128;   /* full: drop the oldest */
-            m->player = p[1]; m->kind = DSNET_CHAT_TEXT; memcpy(m->name, p + 2, 31); m->name[31] = 0;
+            m->player = p[1]; m->kind = DSNET_CHAT_TEXT; memcpy(m->name, p + 2, 31); m->name[31] = 0; dsi_utf8_fix_end(m->name);
             m->watching = p[1] < DSNET_MAX_PLAYERS && c->sp[p[1]].set;
             uint32_t tl = n - 34 > DSNET_CHAT_MAX ? DSNET_CHAT_MAX : n - 34; memcpy(m->text, p + 34, tl); m->text[tl] = 0;
             if (p[1] < DSNET_MAX_PLAYERS) c->typing_until[p[1]] = 0;          /* the line arrived: no longer typing */
@@ -240,7 +241,7 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
         c->sim.rules[4] = n >= 21 && p[20] <= DSNET_EVENT_MAJORITY ? p[20] : DSNET_EVENT_OWNER;
         c->sim.rules[5] = n >= 22 && p[21] <= DSNET_POP_MULTIPLIED ? p[21] : DSNET_POP_SHARED;
         c->sim.rules[6] = n >= 72 && p[71] == 1;                       /* shared fog (proto 2) */
-        if (n >= 71 && p[22]) { c->has_world = 1; memcpy(c->world_id, p + 23, 16); memcpy(c->world_name, p + 39, 32); c->world_name[31] = 0; }
+        if (n >= 71 && p[22]) { c->has_world = 1; memcpy(c->world_id, p + 23, 16); memcpy(c->world_name, p + 39, 32); c->world_name[31] = 0; dsi_utf8_fix_end(c->world_name); }
         c->spectator = n >= 73 && p[72]; c->sp_allow = n >= 74 ? p[73] : 1; c->sp_max = n >= 75 ? p[74] : DSNET_SPECTATORS_MAX;   /* after shared fog (proto 3) */
         c->welcomed = 1;
         pthread_cond_broadcast(&c->cv);
@@ -395,7 +396,7 @@ static dsnet_client *client_new(int fd, const char *name, int want_host, int rol
     c->player = -1; c->exec_player = -1; c->fp_interval = 30; c->tpt_ms = 1000.0f / 60; c->role = role;
     /* fixed part 28 + build (u8 len) + rule + modset (u8 len) + lines (u16 len) + role + name: every field bounded */
     uint8_t b[28 + 1 + sizeof dsnet_build_id + 2 + sizeof dsnet_modset + 2 + DSNET_MODLINES_MAX + 1 + 32], *p = b;
-    size_t nl = name ? strlen(name) : 0; if (nl > 31) nl = 31;
+    size_t nl = name ? utf8_len31(name) : 0;                        /* at most 31 bytes, whole characters */
     size_t bl = strnlen(dsnet_build_id, sizeof dsnet_build_id - 1), ml = strnlen(dsnet_modset, sizeof dsnet_modset - 1),
            dl = strnlen(dsnet_mod_lines, DSNET_MODLINES_MAX - 1);
     p = put8(p, P_HELLO); p = put16(p, DSNET_PROTO); p = put8(p, want_host);
@@ -569,18 +570,20 @@ int dsnet_wait_welcome(dsnet_client *c, int timeout_ms) {
     return r;
 }
 
+/* the reason in the player's language (main thread). DSNET_REJ_MODSET: the host's own words (sent in English) only when this
+   copy is in English; the game side builds its own detailed text from the host's mod lines anyway (mp_game_modset_text). */
 const char *dsnet_reject_text(int why) {
     switch (why) {
-    case DSNET_REJ_PROTO: return "your Multiplayer mod is a different version from the host's: both players need the same version";
-    case DSNET_REJ_BUILD: return "your game version is different from the host's: update both games";
-    case DSNET_REJ_MOD: return "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version";
-    case DSNET_REJ_ROUNDING: return "your computer does the game's math differently from the host's, so the two games would not stay the same";
-    case DSNET_REJ_FULL: return "the game is full";
-    case DSNET_REJ_DUP_ID: return "you are already in this game (same Steam account or same copy of the game)";
-    case DSNET_REJ_OTHER_WORLD: return "the host is playing another world now";
-    case DSNET_REJ_MODSET: return dsnet_reject_detail[0] ? dsnet_reject_detail : "your gameplay mods are different from the host's: start the game from the launcher with the host's mods";
-    case DSNET_REJ_NO_SPECTATORS: return "this world does not allow spectators";
-    case DSNET_REJ_SPECTATORS_FULL: return "this world already has the most spectators it allows";
+    case DSNET_REJ_PROTO: return TR("your Multiplayer mod is a different version from the host's: both players need the same version");
+    case DSNET_REJ_BUILD: return TR("your game version is different from the host's: update both games");
+    case DSNET_REJ_MOD: return TR("your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version");
+    case DSNET_REJ_ROUNDING: return TR("your computer does the game's math differently from the host's, so the two games would not stay the same");
+    case DSNET_REJ_FULL: return TR("the game is full");
+    case DSNET_REJ_DUP_ID: return TR("you are already in this game (same Steam account or same copy of the game)");
+    case DSNET_REJ_OTHER_WORLD: return TR("the host is playing another world now");
+    case DSNET_REJ_MODSET: return dsnet_reject_detail[0] && !dsi_lang() ? dsnet_reject_detail : TR("your gameplay mods are different from the host's: start the game from the launcher with the host's mods");
+    case DSNET_REJ_NO_SPECTATORS: return TR("this world does not allow spectators");
+    case DSNET_REJ_SPECTATORS_FULL: return TR("this world already has the most spectators it allows");
     default: return "";
     }
 }
@@ -1017,7 +1020,7 @@ static void chat_system(dsnet_client *c, const dsnet_cmd *cmd) {
     m->player = cmd->player; m->text[0] = 0; m->watching = 0;
     if (cmd->type == DSNET_PLAYER_JOIN) {
         int nl = cmd->len > 16 ? cmd->len - 16 : 0; if (nl > 31) nl = 31;
-        memcpy(m->name, cmd->payload + 16, nl); m->name[nl] = 0;
+        memcpy(m->name, cmd->payload + 16, nl); m->name[nl] = 0; dsi_utf8_fix_end(m->name);
         m->kind = cmd->len >= 16 && reg_of_uid(&c->sim, cmd->payload, 0) >= 0 ? DSNET_CHAT_RECONNECTED : DSNET_CHAT_JOINED;
     } else { memcpy(m->name, c->sim.name[cmd->player], 31); m->name[31] = 0; m->kind = DSNET_CHAT_LEFT; }
     c->chat_tail++;
@@ -1042,7 +1045,7 @@ int dsnet_chat_typing(dsnet_client *c, int on) {
 int dsnet_set_world(dsnet_client *c, const uint8_t id[16], const char *name) {
     if (!c || !c->is_host) return -1;
     uint8_t b[49]; b[0] = P_WORLD; memcpy(b + 1, id, 16); memset(b + 17, 0, 32);
-    if (name) memcpy(b + 17, name, strnlen(name, 31));
+    if (name) memcpy(b + 17, name, utf8_len31(name));
     pthread_mutex_lock(&c->mu); c->has_world = 1; memcpy(c->world_id, id, 16); memcpy(c->world_name, b + 17, 32); pthread_mutex_unlock(&c->mu);
     return dsnet_link_send(&c->link, b, 49) ? -1 : 0;
 }

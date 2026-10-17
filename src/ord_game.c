@@ -11,6 +11,8 @@
  * Tier B: MoveOrder / WaypointOrder / ActionOrder / UseSkillMode.UseSkill / ChangeAutoSkillData skip the
  * original while in_interface and become orders; replay calls the original under `executing`. */
 #include "rig.h"
+#include "ds_i18n.h"
+#include <stdio.h>
 #include "ord_api.h"
 #include "ord_core.h"
 #include <stdlib.h>
@@ -611,7 +613,7 @@ static int gear_ok(const ord_evdef *d, Obj ev) {
             rig_log("ord: %s refused by the gear mode", d->name);
             static void (*why)(const uint8_t *, char *, size_t); static int looked;
             if (!looked) { looked = 1; why = (void (*)(const uint8_t *, char *, size_t))dlsym(RTLD_DEFAULT, "mp_gear_refusal_text"); }
-            char t[160] = "The host's Gear rule does not let you equip this unit";
+            char t[160]; snprintf(t, sizeof t, "%s", TR("The host's Gear rule does not let you equip this unit"));
             if (why) why(g.b, t, sizeof t);
             if (ui_notice) ui_notice(t);
             return 0;

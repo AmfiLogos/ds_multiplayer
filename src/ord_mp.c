@@ -5,6 +5,7 @@
 #include "ord_api.h"
 #include "mp.h"
 #include "rig.h"
+#include "ds_i18n.h"
 #include <dlfcn.h>
 #include <stdio.h>
 #include <string.h>
@@ -28,8 +29,8 @@ static int is_recruit(const uint8_t *p, size_t n) {
     size_t off = 13 + 16u * p[12];
     return off + 2 <= n && (p[off] | p[off + 1] << 8) == ORD_EV_CANDIDATE_RECRUIT;
 }
-static const char *pop_mode_name(int m) {
-    return m == DSNET_POP_PER_PLAYER ? "Per player" : m == DSNET_POP_SPLIT ? "Split equally" : m == DSNET_POP_MULTIPLIED ? "Multiplied" : "Shared";
+static const char *pop_mode_name(int m) {              /* English: logs; the player's notice takes TR() of it (the Rules values) */
+    return m == DSNET_POP_PER_PLAYER ? TR_NOOP("Per player") : m == DSNET_POP_SPLIT ? TR_NOOP("Split equally") : m == DSNET_POP_MULTIPLIED ? TR_NOOP("Multiplied") : TR_NOOP("Shared");
 }
 static int handler(mp_session *s, int player, const uint8_t guid[16], const uint8_t *args, uint16_t len) {
     (void)guid;
@@ -48,9 +49,11 @@ static int handler(mp_session *s, int player, const uint8_t guid[16], const uint
         rig_log("ord: recruit by player %d refused (%d): population %s %d/%d (rule %s), owns %d", player, why, pool ? "clan" : "own", pool ? count : own, cap, pop_mode_name(r.population), own);
         if (player == dsnet_player_id(c) && ui_notice) {
             char t[160];
-            if (why == DSNET_RECRUIT_UNITS_FULL) snprintf(t, sizeof t, "You already have %d units: host rule Units per player", own);
-            else if (pool) snprintf(t, sizeof t, "Population full (%d/%d): host rule %s", count, cap, pop_mode_name(r.population));
-            else snprintf(t, sizeof t, "Population full for you (%d/%d): host rule %s", own, cap, pop_mode_name(r.population));
+            char t2[240];
+            if (why == DSNET_RECRUIT_UNITS_FULL) snprintf(t2, sizeof t2, TRN("You already have %d unit: host rule Units per player", "You already have %d units: host rule Units per player", own), own);
+            else if (pool) snprintf(t2, sizeof t2, TR("Population full (%d/%d): host rule %s"), count, cap, TR(pop_mode_name(r.population)));
+            else snprintf(t2, sizeof t2, TR("Population full for you (%d/%d): host rule %s"), own, cap, TR(pop_mode_name(r.population)));
+            snprintf(t, sizeof t, "%s", t2); dsi_utf8_fix_end(t);
             ui_notice(t);
         }
         return 0;                                      /* consumed: same on every peer */
@@ -82,7 +85,7 @@ static int it_may_use(int player, const uint8_t item[16]) {
     if (!ok && player == it_me() && ui_notice) {
         int o = dsnet_item_owner(c, item);
         const char *n = o >= 0 ? dsnet_player_name(c, o) : NULL;
-        char t[96]; snprintf(t, sizeof t, "This item belongs to %s", n && n[0] ? n : "another player");
+        char t[160]; snprintf(t, sizeof t, TR("This item belongs to %s"), n && n[0] ? n : TR("another player")); dsi_utf8_fix_end(t);
         ui_notice(t);
     }
     return ok;

@@ -17,6 +17,8 @@
 #include <string.h>
 #include <time.h>
 #include <dlfcn.h>
+#include "ds_i18n.h"
+#include "ui_utf8.h"
 
 /* ---------------------------------------------------------------- what we need from other lanes (weak) */
 #ifndef DSNET_EXPEDITION_READY
@@ -33,7 +35,7 @@ typedef struct { float x, y; } V2;
 typedef struct { float x, y, z; } V3;
 typedef struct { float x, y, w, h; } R4;
 typedef struct { float r, g, b, a; } C4;
-static inline Obj u_str(const char *s) { return F(0x6F9738, Obj (*)(const char *))(s); }
+static inline Obj u_str(const char *s) { return (Obj)ui_str_new(F(0x6F9738, void *(*)(const char *)), s); }   /* i18n: cut UTF-8 never blanks a label */
 static inline uintptr_t u_gc_new(Obj o) { return o ? F(0x6F9540, uintptr_t (*)(Obj, bool))(o, false) : 0; }
 static inline Obj u_gc_get(uintptr_t h) { return h ? F(0x6F9598, Obj (*)(uintptr_t))(h) : NULL; }
 static inline void u_gc_free(uintptr_t h) { if (h) F(0x6F95E4, void (*)(uintptr_t))(h); }
@@ -101,22 +103,31 @@ static Obj tmp_get(Obj t) {                                  /* TMP_Text.text: v
     void *k = *(void **)t;
     return (*(Obj (**)(Obj, void *))((char *)k + 0x548))(t, *(void **)((char *)k + 0x550));
 }
+void txt_fit(Obj t, float size, int wrap);               /* mpmenu.c: a text too long for its rect auto-sizes (ext/i18n/CJK_FIT.md) */
+void txt_fit_text(Obj t, const char *s);
 static void tmp_set(Obj t, const char *s) {
     if (!tm_is(t, K_TMP)) return;
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str(s), *(void **)((char *)k + 0x560));
+    txt_fit_text(t, s);
 }
-static void str_utf8(Obj s, char *out, size_t cap) {         /* il2cpp String -> UTF-8 (BMP is enough here) */
+static void str_utf8(Obj s, char *out, size_t cap) {         /* il2cpp String -> UTF-8: whole code points, surrogate pairs too */
     size_t n = 0;
     if (cap) out[0] = 0;
     if (!s || !cap) return;
     int32_t len = AT(s, 0x10, int32_t);
     const uint16_t *c = (const uint16_t *)((char *)s + 0x14);
-    for (int32_t i = 0; i < len && n + 4 < cap; i++) {
+    for (int32_t i = 0; i < len; i++) {
         uint32_t u = c[i];
-        if (u < 0x80) out[n++] = (char)u;
-        else if (u < 0x800) { out[n++] = (char)(0xC0 | u >> 6); out[n++] = (char)(0x80 | (u & 63)); }
-        else { out[n++] = (char)(0xE0 | u >> 12); out[n++] = (char)(0x80 | (u >> 6 & 63)); out[n++] = (char)(0x80 | (u & 63)); }
+        if (u >= 0xD800 && u < 0xDC00 && i + 1 < len && c[i + 1] >= 0xDC00 && c[i + 1] < 0xE000) { u = 0x10000 + ((u - 0xD800) << 10) + (c[i + 1] - 0xDC00u); i++; }
+        else if (u >= 0xD800 && u < 0xE000) u = 0xFFFD;      /* a lone surrogate: never written as bytes */
+        char b[4]; size_t m;
+        if (u < 0x80) { b[0] = (char)u; m = 1; }
+        else if (u < 0x800) { b[0] = (char)(0xC0 | u >> 6); b[1] = (char)(0x80 | (u & 63)); m = 2; }
+        else if (u < 0x10000) { b[0] = (char)(0xE0 | u >> 12); b[1] = (char)(0x80 | (u >> 6 & 63)); b[2] = (char)(0x80 | (u & 63)); m = 3; }
+        else { b[0] = (char)(0xF0 | u >> 18); b[1] = (char)(0x80 | (u >> 12 & 63)); b[2] = (char)(0x80 | (u >> 6 & 63)); b[3] = (char)(0x80 | (u & 63)); m = 4; }
+        if (n + m >= cap) break;
+        memcpy(out + n, b, m); n += m;
     }
     out[n] = 0;
 }
@@ -144,10 +155,36 @@ static int spect(void) { mp_session *s = sess(); return s && mp_is_spectator(s);
 static uintptr_t h_help;
 static void notice(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void notice(const char *fmt, ...) {
-    char b[256]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap);
+    char b[256]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap); dsi_utf8_fix_end(b);
     rig_log("teams: %s", b);
     Obj v = find_view(&h_help, "Refactor", "HelpNoticeView");
     if (v) F(0xFDC9FC, void (*)(Obj, Obj, void *))(v, u_str(b), NULL);   /* HelpNoticeView.Show */
+}
+/* i18n: colour tags stay out of the translated text (8 rotating buffers: enough for one statement) */
+static const char *ui_col(const char *hex, const char *text) {
+    static char b[8][512]; static unsigned k; char *o = b[k++ & 7];
+    snprintf(o, 512, "<color=%s>%s</color>", hex, text ? text : ""); dsi_utf8_fix_end(o);
+    return o;
+}
+static const char *ui_colf(const char *hex, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static const char *ui_colf(const char *hex, const char *fmt, ...) {
+    char in[480]; va_list ap; va_start(ap, fmt); vsnprintf(in, sizeof in, fmt, ap); va_end(ap); dsi_utf8_fix_end(in);
+    return ui_col(hex, in);
+}
+static void str_utf8(Obj s, char *out, size_t cap);
+/* i18n: a game text by TEXTKEY (Refactor.TextKeyExtensions.GetText, Mac 0x80EBAC; Windows by name through win_map),
+   kept until the language changes (dsi_generation); our English (TR) when the key is missing. Main thread, campaign. */
+static const char *game_text(const char *key, const char *en, char *buf, size_t cap, unsigned *gen) {
+    if (*gen == dsi_generation() + 1u && buf[0]) return buf;
+    Obj s = F(0x80EBAC, Obj (*)(Obj, void *))(u_str(key), NULL);
+    str_utf8(s, buf, cap);
+    if (!buf[0] || !strncmp(buf, "TextKey not found", 17)) { buf[0] = 0; return TR(en); }
+    *gen = dsi_generation() + 1u;
+    return buf;
+}
+static const char *next_text(void) {                         /* the stock expedition window's own "Next" (SubUI_ExpeditionPlanLowerPanel) */
+    static char b[96]; static unsigned g;
+    return game_text("TEXTKEY_Shared_Next", TR_NOOP("Next"), b, sizeof b, &g);
 }
 static void player_name(int p, char out[40]) {
     dsnet_client *c = cli();
@@ -215,10 +252,17 @@ static void model_refresh(void) {
 }
 
 /* ---------------------------------------------------------------- regions (the proposer picks: stock panel, or the clan's last) */
+/* i18n: the game's names, TEXTKEY_ExpeditionPlanUI_<DungeonRegion>_NAME (DungeonRegion 0..6, dump.cs); n[] is the
+   fallback when a key is missing */
 static const char *region_name(int r) {
-    static const char *n[] = { "Veil of Silence", "Festering Burrow", "Abandoned Mine", "Forgotten Abyss", "Dead Swamp",
-                               "Tower of Apocalypse", "Abyss" };
-    return r >= 0 && r < (int)(sizeof n / sizeof n[0]) ? n[r] : "(none)";
+    static const char *n[] = { TR_NOOP("Veil of Silence"), TR_NOOP("Festering Burrow"), TR_NOOP("Abandoned Mine"), TR_NOOP("Forgotten Abyss"),
+                               TR_NOOP("Dead Swamp"), TR_NOOP("Tower of Apocalypse"), TR_NOOP("Abyss") };
+    static const char *const key[] = { "TEXTKEY_ExpeditionPlanUI_VeilSilence_NAME", "TEXTKEY_ExpeditionPlanUI_FesteringBurrow_NAME",
+        "TEXTKEY_ExpeditionPlanUI_AbandonedMine_NAME", "TEXTKEY_ExpeditionPlanUI_ForgottenAbyss_NAME", "TEXTKEY_ExpeditionPlanUI_DeadSwamp_NAME",
+        "TEXTKEY_ExpeditionPlanUI_TowerApocalypse_NAME", "TEXTKEY_ExpeditionPlanUI_Abyss_NAME" };
+    static char got[7][128]; static unsigned gen[7];
+    if (r < 0 || r >= (int)(sizeof n / sizeof n[0])) return TR("(none)");
+    return game_text(key[r], n[r], got[r], sizeof got[r], &gen[r]);
 }
 static Obj clan(void) { Obj c = cdc(); return c ? AT(c, 0x50, Obj) : NULL; }
 static int avail_regions(int *out, int max) {               /* ClanDataContainer.GetAvailableExpeditionRegions */
@@ -242,7 +286,7 @@ static tm_prop prop;
 static mp_session *prop_sess;
 static double prop_t0;                                       /* local clock at the start (host: the 60 s timeout) */
 static int prop_timeout_sent, start_region = -1;
-static char prop_event[200];                                 /* the last "proposal ended" message (state / tests) */
+static char prop_event[256];                                 /* the last "proposal ended" message (state / tests) */
 static int prop_folded;                                      /* the side panel shows only its title and one line */
 /* this player's step in the open proposal (owner 2026-10-13): the receivers first get the stock supplies step
    (titled "Expedition Proposal", their own going units), Next -> the summary; the proposer goes to the summary */
@@ -258,18 +302,19 @@ static void center_msg(const char *t) {
 static double now_s(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + t.tv_nsec / 1e9; }
 static uint32_t present_now(void) { dsnet_client *c = cli(); return c && dsnet_present_mask ? dsnet_present_mask(c) : 0; }
 static void send_marks(int ready, const uint8_t (*marks)[16], int n);
-static void pname(int p, char out[40]) { player_name(p, out); if (!out[0]) snprintf(out, 40, p == 0 ? "the host" : "Player %d", p + 1); }
+static void pname(int p, char out[40]) { player_name(p, out); if (!out[0]) snprintf(out, 40, p == 0 ? TR("the host") : TR("Player %d"), p + 1); }
 static void prop_end(tm_pevent e, int player, uint32_t mask) {
     char nm[40]; pname(player, nm);
-    if (e == TM_PE_DECLINED) snprintf(prop_event, sizeof prop_event, "%s declined the expedition", nm);
-    else if (e == TM_PE_CANCELLED) snprintf(prop_event, sizeof prop_event, "%s cancelled the expedition", nm);
-    else if (e == TM_PE_PROPOSER_LEFT) snprintf(prop_event, sizeof prop_event, "%s left: the expedition proposal is cancelled", nm);
+    if (e == TM_PE_DECLINED) snprintf(prop_event, sizeof prop_event, TR("%s declined the expedition"), nm);
+    else if (e == TM_PE_CANCELLED) snprintf(prop_event, sizeof prop_event, TR("%s cancelled the expedition"), nm);
+    else if (e == TM_PE_PROPOSER_LEFT) snprintf(prop_event, sizeof prop_event, TR("%s left: the expedition proposal is cancelled"), nm);
     else if (e == TM_PE_TIMEOUT) {
-        size_t l = (size_t)snprintf(prop_event, sizeof prop_event, "No answer from");
-        for (int p = 0; p < TM_MAX_PLAYERS && l < sizeof prop_event - 44; p++)
-            if (mask >> p & 1u) { char n2[40]; pname(p, n2); l += (size_t)snprintf(prop_event + l, sizeof prop_event - l, "%s %s", l > 14 ? "," : "", n2); }
-        snprintf(prop_event + l, sizeof prop_event - l, ": expedition cancelled");
+        char who[160] = ""; size_t l = 0;
+        for (int p = 0; p < TM_MAX_PLAYERS && l < sizeof who - 44; p++)
+            if (mask >> p & 1u) { char n2[40]; pname(p, n2); l += (size_t)snprintf(who + l, sizeof who - l, "%s%s", l ? TR(", ") : "", n2); }
+        snprintf(prop_event, sizeof prop_event, TR("No answer from %s: expedition cancelled"), who);
     }
+    dsi_utf8_fix_end(prop_event);
     center_msg(prop_event);
     if (pstage == ST_SUPPLIES) close_stock = 1;
     pstage = ST_NONE;
@@ -294,7 +339,7 @@ static int propose_order(mp_session *s, int player, const uint8_t guid[16], cons
     if (e == TM_PE_STARTED) { prop_t0 = now_s(); prop_timeout_sent = 0; prop_event[0] = 0; prop_folded = 0; pstage = player == me() ? ST_SUMMARY : ST_SUPPLIES_PENDING; close_teams = 1; }
     if (e == TM_PE_STARTED && spect()) {                     /* a spectator approves nothing: no supplies, no summary panel */
         pstage = ST_NONE; close_teams = 0;
-        char pn_[40]; pname(player, pn_); char m[160]; snprintf(m, sizeof m, "%s proposes an expedition to %s", pn_, region_name(r)); center_msg(m);
+        char pn_[40]; pname(player, pn_); char m[300]; snprintf(m, sizeof m, TR("%s proposes an expedition to %s"), pn_, region_name(r)); center_msg(m);
     }
     rig_log("teams: proposal from player %d, region %d (%s): %s", player, r, region_name(r),
             e == TM_PE_STARTED ? "started" : e == TM_PE_UPDATED ? "region updated" : "ignored (another proposal is open)");
@@ -335,16 +380,16 @@ static int my_part(uint8_t (*out)[16]) { return st.me < 0 ? 0 : tm_party_of(&st,
 /* Propose (owner lan_v7: the party may hold allies' units; each owner approves his own): the stock panel's list ->
    claims for free units, the PROPOSE order, then Ready with my part (same sender, in order). 0 = sent. */
 static int propose(int region, const uint8_t (*panel)[16], int np) {
-    if (prop.active && prop.proposer != st.me) { char pn_[40]; pname(prop.proposer, pn_); notice("%s's proposal is open: approve or decline it first", pn_); return -1; }
+    if (prop.active && prop.proposer != st.me) { char pn_[40]; pname(prop.proposer, pn_); notice(TR("%s's proposal is open: approve or decline it first"), pn_); return -1; }
     tm_prop_res r; tm_proposal_party(&st, panel, np, &r);
-    if (r.err == 3) { notice("Choose at least one unit for the expedition"); return -1; }
-    if (r.err == 1) { notice("At most %d units can go on an expedition (now %d)", TM_PARTY_CAP, r.n); return -1; }
-    if (r.err == 2) { char nm[40]; pname(r.err_player, nm); notice("Max %d units per player: %s has more", tm_mark_limit(&st), nm); return -1; }
+    if (r.err == 3) { notice("%s", TR("Choose at least one unit for the expedition")); return -1; }
+    if (r.err == 1) { notice(TR("At most %d units can go on an expedition (now %d)"), TM_PARTY_CAP, r.n); return -1; }
+    if (r.err == 2) { char nm[40]; pname(r.err_player, nm); notice(TR("Max %d units per player: %s has more"), tm_mark_limit(&st), nm); return -1; }
     mp_session *s = sess();
     for (int k = 0; s && k < r.nclaim; k++) mp_claim(s, r.claim[k]);
     uint8_t b[5 + 16 * TM_PARTY_MAXN]; int32_t rg = region >= 0 && region < 7 ? region : region_default();
     memcpy(b, &rg, 4); b[4] = (uint8_t)r.n; memcpy(b + 5, r.party, (size_t)r.n * 16);
-    if (send_order(TM_ORDER_PROPOSE, b, (uint16_t)(5 + 16 * r.n))) { notice("The proposal could not be sent"); return -1; }
+    if (send_order(TM_ORDER_PROPOSE, b, (uint16_t)(5 + 16 * r.n))) { notice("%s", TR("The proposal could not be sent")); return -1; }
     uint8_t mine[TM_MAX_MARK][16]; int k = tm_party_of(&st, (const uint8_t (*)[16])r.party, r.n, st.me, st.me, mine);
     send_marks(1, (const uint8_t (*)[16])mine, k);
     rig_log("teams: proposal sent: region %d, %d units (%d mine, %d claimed, %d skipped)", rg, r.n, k, r.nclaim, r.skipped);
@@ -380,6 +425,7 @@ static uintptr_t h_ready_txt, h_region_txt, h_info, h_band, h_empty[3];
    world is clickable and the game's keys and Escape work (not modal). Remembered in mp_teams_button.json "folded". */
 static uintptr_t h_tfold, h_fbar, h_fshow, h_fclose;
 static int tfold;
+static float win_dx, win_k = 1;                              /* the window's shift (root units) and scale now (win_place) */
 #define FBAR_W 320.0f
 #define FBAR_H 56.0f
 static void fbar_build(Obj rt);
@@ -506,6 +552,15 @@ static void tmp_plain(Obj t) {
     void *k = *(void **)t;                                    /* TMP_Text.fontSharedMaterial setter: vtable slot 68 */
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x578))(t, m, *(void **)((char *)k + 0x580));
 }
+/* i18n: LanguageSetting.GetFont(FontStyleType: EasyRead 0, VeryDecorative 2), Mac 0x898A28 (Windows by name through
+   win_map): the font the game's own texts use in the current language (CJK: its own faces). The templates come from
+   prefab assets, whose serialized Lora / Cinzel never change with the language. Template font when it gives nothing. */
+static Obj lang_font(int style) { Obj f = F(0x898A28, Obj (*)(int32_t, void *))(style, NULL); return u_alive(f) && tm_is(f, K_FA) ? f : NULL; }
+static Obj font_title(void) { Obj f = lang_font(2); return f ? f : u_gc_get(h_font_title); }
+static Obj font_body(void) {
+    Obj f = lang_font(0);
+    return f ? f : (tm_is(tmp_of(u_gc_get(h_tpl_text)), K_TMP) ? F(0x4F0A59C, Obj (*)(Obj, void *))(tmp_of(u_gc_get(h_tpl_text)), NULL) : NULL);
+}
 static void tmp_font(Obj t, Obj f) {                         /* TMP_Text.font, with that font's own material */
     if (u_alive(t) && u_alive(f)) (tm_is(t, K_TMP) ? F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL) : (void)0);
     tmp_plain(t);
@@ -603,7 +658,7 @@ static int build_root(void) {
     /* the window: the panel with its frame; keep the title, the close button and the info icon */
     Obj w = u_instantiate(u_gc_get(h_tpl_panel), rt);
     if (!u_alive(w)) { rig_log("teams: window clone failed"); return -1; }
-    centre_anchor(w); rt_pos(w, 0, 0); tr_scale(w, 1.0f);
+    centre_anchor(w); rt_pos(w, 0, 0); tr_scale(w, 1.0f); win_dx = 0; win_k = 1;
     int n = (tm_is(w, K_TR) ? F(0x510EAE4, int (*)(Obj, void *))(w, NULL) : 0);
     for (int i = 0; i < n; i++) {
         Obj c = (tm_is(w, K_TR) ? F(0x510FC60, Obj (*)(Obj, int, void *))(w, i, NULL) : NULL);
@@ -690,9 +745,9 @@ static void reserved_names(const tm_column *c, char *out, size_t cap) {
         int dup = 0; for (int k = 0; k < ns; k++) if (!strcmp(seen[k], nm)) dup = 1;
         if (dup || ns >= 8) continue;
         snprintf(seen[ns++], 32, "%s", nm);
-        l += (size_t)snprintf(out + l, cap > l ? cap - l : 0, "%s%s", l ? ", " : "", nm);
+        l += (size_t)snprintf(out + l, cap > l ? cap - l : 0, "%s%s", l ? TR(", ") : "", nm);
     }
-    if (!out[0]) snprintf(out, cap, "a player who is away");
+    if (!out[0]) snprintf(out, cap, "%s", TR("a player who is away"));
 }
 static int admin_mode(void) {                                /* host admin mode: dsnet session state (DSNET_ADMIN_MODE 14) */
     dsnet_client *c = cli();
@@ -742,9 +797,10 @@ static void set_text(Obj o, float lx, float cy, float w, float h, float size, in
     if (!u_alive(o)) return;
     Obj t = u_tr(o);
     centre_anchor(t); rt_size(t, w, h); rt_pos(t, lx + w / 2, cy);
-    tmp_font(o, cinzel ? u_gc_get(h_font_title) : (tm_is(tmp_of(u_gc_get(h_tpl_text)), K_TMP) ? F(0x4F0A59C, Obj (*)(Obj, void *))(tmp_of(u_gc_get(h_tpl_text)), NULL) : NULL));
+    tmp_font(o, cinzel ? font_title() : font_body());
     (tm_is(o, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(o, size, NULL) : (void)0);
     (tm_is(o, K_TMP) ? F(0x4F0B7BC, void (*)(Obj, int, void *))(o, align, NULL) : (void)0);
+    txt_fit(o, size, 1);                                                    /* new_text wraps; too long for w x h: auto size */
     tmp_set(o, txt); u_active(o, true); u_last_sibling(t);
 }
 static Obj p_text(float lx, float cy, float w, float h, float size, int align, int cinzel, const char *txt) {
@@ -782,10 +838,10 @@ static void fbar_build(Obj rt) {
         Obj fi = img_of(fb); if (u_alive(fi)) g_raycast(fi, true);
         Obj fill = new_rect(fb, 0, 0, 1, 1, -16, -16, (C4){0.133f, 0.125f, 0.145f, 1});
         if (fill) (tm_is(u_tr(fill), K_TR) ? F(0x510EC94, void (*)(Obj, void *))(u_tr(fill), NULL) : (void)0);   /* SetAsFirstSibling */
-        set_text(new_text(fb, 150, 30, 20, AL_LEFT), -FBAR_W / 2 + 20, 0, 150, 30, 20, AL_LEFT, 1, "<color=" C_MAIN ">Teams</color>");
+        set_text(new_text(fb, 150, 30, 20, AL_LEFT), -FBAR_W / 2 + 20, 0, 150, 30, 20, AL_LEFT, 1, ui_col(C_MAIN, TR("Teams")));
         Obj t1 = new_text(fb, 56, 26, 14, AL_RIGHT), t2 = new_text(fb, 56, 26, 14, AL_RIGHT);
-        set_text(t1, FBAR_W / 2 - 18 - 56 - 12 - 56, 0, 56, 26, 14, AL_RIGHT, 0, "<color=" C_ACC ">Show</color>");
-        set_text(t2, FBAR_W / 2 - 18 - 56, 0, 56, 26, 14, AL_RIGHT, 0, "<color=" C_ACC ">Close</color>");
+        set_text(t1, FBAR_W / 2 - 18 - 56 - 12 - 56, 0, 56, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Show")));
+        set_text(t2, FBAR_W / 2 - 18 - 56, 0, 56, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Close")));
         if (u_alive(t1)) g_raycast(t1, true);
         if (u_alive(t2)) g_raycast(t2, true);
         h_fbar = u_gc_new(fb); h_fshow = u_gc_new(t1); h_fclose = u_gc_new(t2);
@@ -829,9 +885,9 @@ static void chip_draw(int u, float x, float top, float cw, int owner) {
     if (nchip >= NCHIP || !mp_running()) return;
     int lt = lent[u];
     char t[120], nm[40];
-    if (owner == st.me && lt < 0) snprintf(t, sizeof t, "<color=" C_ACC ">Lend</color>");
-    else if (owner == st.me) { pname(lt, nm); snprintf(t, sizeof t, "<color=" C_ACC ">Lent: </color><color=%s>%s</color>", ui_player_color(lt), nm); }
-    else if (lt == st.me && owner >= 0) { pname(owner, nm); snprintf(t, sizeof t, "<color=" C_ACC ">From </color><color=%s>%s</color>", ui_player_color(owner), nm); }
+    if (owner == st.me && lt < 0) snprintf(t, sizeof t, "%s", ui_col(C_ACC, TR("Lend")));
+    else if (owner == st.me) { pname(lt, nm); snprintf(t, sizeof t, "<color=" C_ACC ">%s </color><color=%s>%s</color>", TR("Lent:"), ui_player_color(lt), nm); }
+    else if (lt == st.me && owner >= 0) { pname(owner, nm); snprintf(t, sizeof t, "<color=" C_ACC ">%s </color><color=%s>%s</color>", TR("From"), ui_player_color(owner), nm); }
     else return;
     if (lt >= 0) p_rect(x, top - 1.5f, cw - 4, 3, hexc(ui_player_color(lt), 1), NULL, 0);   /* lent: the controller's colour */
     float w = owner == st.me && lt < 0 ? 50 : 92;               /* inside the card's top edge, left */
@@ -849,10 +905,10 @@ static void lpop_draw(void) {                                /* the menu of the 
     char lab[8][80];
     if (owner == st.me && lt < 0) {
         for (int p = 0; p < TM_MAX_PLAYERS && nlrow < 8; p++) if ((st.present >> p & 1u) && p != st.me) {
-            char nm[40]; pname(p, nm); snprintf(lab[nlrow], 80, "Lend control to %s", nm); lrow_act[nlrow] = LA_LEND; lrow_arg[nlrow++] = p; }
-        if (!nlrow) { snprintf(lab[0], 80, "No other player"); lrow_act[0] = 0; nlrow = 1; }
-    } else if (owner == st.me) { snprintf(lab[0], 80, "Take back control"); lrow_act[0] = LA_TAKE; nlrow = 1; }
-    else { snprintf(lab[0], 80, "Give back"); lrow_act[0] = LA_GIVE; nlrow = 1; }
+            char nm[40]; pname(p, nm); snprintf(lab[nlrow], 80, TR("Lend control to %s"), nm); lrow_act[nlrow] = LA_LEND; lrow_arg[nlrow++] = p; }
+        if (!nlrow) { snprintf(lab[0], 80, "%s", TR("No other player")); lrow_act[0] = 0; nlrow = 1; }
+    } else if (owner == st.me) { snprintf(lab[0], 80, "%s", TR("Take back control")); lrow_act[0] = LA_TAKE; nlrow = 1; }
+    else { snprintf(lab[0], 80, "%s", TR("Give back")); lrow_act[0] = LA_GIVE; nlrow = 1; }
     size_t l = 0;
     for (int i = 0; i < nlrow; i++) {
         float y = ap.y - 26 - i * 30;
@@ -892,7 +948,7 @@ static int unit_card(int u, float x, float y, float s, float alpha, int clickabl
         if (!run_) card_style(pp, alpha * 0.45f, hsel.picked == u);
         float cw = card_w * s, by = y - card_h * s / 2 + 11;
         p_rect(x, by, cw - 6, 18, hexc("#2d2a31", 0.92f), NULL, 0);
-        p_text(x - cw / 2 + 3, by, cw - 6, 18, 12, AL_CENTER, 0, run_ ? "<color=" C_ACC ">On the run</color>" : "<color=" C_SEC ">At the settlement</color>");
+        p_text(x - cw / 2 + 3, by, cw - 6, 18, 12, AL_CENTER, 0, run_ ? ui_col(C_ACC, TR("On the run")) : ui_col(C_SEC, TR("At the settlement")));
     }
     chip_draw(u, x, y + card_h * s / 2, card_w * s, owner);
     return 1;
@@ -932,11 +988,11 @@ static void layout(void) {
     int nh = 0;
     /* zone 1: your units */
     int mine = kme >= 0 ? cols[kme].n : 0, rdy_me = st.me >= 0 && (st.ready >> st.me & 1u);
-    section_header(nh++, st.me, LX + 10, 304, 220, 34, 24, 1, "<color=" C_MAIN ">Your units</color>");
+    section_header(nh++, st.me, LX + 10, 304, 220, 34, 24, 1, ui_col(C_MAIN, TR("Your units")));
     /* owner rule (lan_v8): Teams only allocates units (take / free / lend); expeditions go through the game's
        own expedition window. No marks, no Ready, no Go here. */
     (void)rdy_me;
-    snprintf(t, sizeof t, "<color=" C_SEC ">%d unit%s \xC2\xB7 max %d</color>", mine, mine == 1 ? "" : "s", st.max_mark > 0 ? st.max_mark : 3);
+    snprintf(t, sizeof t, "%s", ui_colf(C_SEC, TRN("%d unit \xC2\xB7 max %d", "%d units \xC2\xB7 max %d", mine), mine, st.max_mark > 0 ? st.max_mark : 3));
     p_text(LX + 10, 272, 220, 24, 14, AL_LEFT, 0, t);
     float step = 100, s1 = 1.0f;
     if (mine > 10) { step = mine > 12 ? 1030.0f / mine : 86; s1 = step / 100 * (mine > 12 ? 0.95f : 1.0f); if (s1 > 0.85f) s1 = 0.85f; }
@@ -954,7 +1010,7 @@ static void layout(void) {
         }
         if (u_alive(es)) { rt_pos(u_tr(es), -350 + e * 100, 271); u_go_active(u_go(es), true); }
     }
-    if (!mine) p_text(-190, 271, 420, 30, 14, AL_LEFT, 0, "<color=" C_SEC ">Take a free unit below (left-click).</color>");
+    if (!mine) p_text(-190, 271, 420, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("Take a free unit below (left-click).")));
     /* zones 2 and 3: fit above y -372, cards never below 0.75 (free) / 0.6 (others) */
     float sf = 1.0f, so = 0.75f;
     for (int it = 0; it < 8 && lower_h(order, no, sf, so) > 196 + 372; it++) { if (sf > 0.75f) sf -= 0.05f; else if (so > 0.6f) so -= 0.05f; }
@@ -970,13 +1026,13 @@ static void layout(void) {
                 u_gc_free(h_band); h_band = u_gc_new(band);
             }
             if (u_alive(band)) { rt_size(band, 556, 44); rt_pos(band, LX + 278, y - 22); u_go_active(u_go(band), true); }
-            section_header(nh++, TM_FREE, LX + 24, y - 22, 400, 44, 24, 1, "<color=" C_MAIN ">Free units</color>");
-            p_text(LX + 570, y - 22, 300, 30, 14, AL_LEFT, 0, "<color=" C_SEC ">Left-click to take</color>");
+            section_header(nh++, TM_FREE, LX + 24, y - 22, 400, 44, 24, 1, ui_col(C_MAIN, TR("Free units")));
+            p_text(LX + 570, y - 22, 300, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("Left-click to take")));
             y -= 46;
             int per = (int)(ROW_W / (100 * sf)); if (per < 1) per = 1;
             float rh = c->n ? rows_h(c->n, per, sf) + 8 : 44;
             p_rect(LX + ROW_W / 2, y - rh / 2, ROW_W, rh, hexc("#36323a", 1), NULL, 1);   /* Slot1 */
-            if (!c->n) p_text(LX + 20, y - 22, 400, 30, 14, AL_LEFT, 0, "<color=" C_SEC ">No free units</color>");
+            if (!c->n) p_text(LX + 20, y - 22, 400, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("No free units")));
             for (int j = 0; j < c->n; j++)
                 unit_card(c->unit[j], LX + 60 * sf + (j % per) * 100 * sf, y - 8 - card_h * sf / 2 - (j / per) * (card_h * sf + 8), sf, 1.0f, !st.in_dungeon, TM_FREE);
             y -= rh + 16;
@@ -990,7 +1046,7 @@ static void layout(void) {
         float alpha = host_admin ? 1.0f : pl == TM_RESERVED ? 0.35f : 0.45f;
         if (pl == TM_RESERVED) {
             char rn[200]; reserved_names(c, rn, sizeof rn);
-            snprintf(hd, sizeof hd, "<color=" C_SEC ">Reserved for %s (away)</color>", rn);
+            snprintf(hd, sizeof hd, "%s", ui_colf(C_SEC, TR("Reserved for %s (away)"), rn));
             section_header(nh++, pl, LX + 16, y - 15, 900, 28, 16, 0, hd);
         } else {
             player_name(pl, nm); snprintf(pls.name[pl], 32, "%s", nm);
@@ -1011,7 +1067,8 @@ static void layout(void) {
                     p_rect(LX + ROW_W - 30 + b_ * 7, y - 22 + hb / 2, 4, hb, hexc(lv >= b_ + 1 ? ui_conn_color(lv) : "#5d5860", 1), NULL, 0);
                 }
             }
-            snprintf(hd, sizeof hd, "<color=" C_SEC ">%s's units%s</color>", ui_player_label(&pls, pl, lb), !here ? "  <size=88%>left the game</size>" : "");
+            char un_[160]; snprintf(un_, sizeof un_, TR("%s's units"), ui_player_label(&pls, pl, lb)); dsi_utf8_fix_end(un_);
+            snprintf(hd, sizeof hd, "<color=" C_SEC ">%s%s%s%s</color>", un_, !here ? "  <size=88%>" : "", !here ? TR("left the game") : "", !here ? "</size>" : "");
             (void)rdy;
             section_header(nh++, pl, LX + 32, y - 15, 900, 28, 16, 0, hd);
         }
@@ -1025,7 +1082,7 @@ static void layout(void) {
         if (por[i].card && !por[i].used) { u_destroy(u_go(u_gc_get(por[i].card))); u_gc_free(por[i].card); u_gc_free(por[i].mark); por[i].card = por[i].mark = 0; }
     Obj o;
     if ((o = u_gc_get(h_title))) {
-        tmp_set(o, spect() ? "Teams (watching)" : "Teams");
+        tmp_set(o, spect() ? TR("Teams (watching)") : TR("Teams"));
         int np_ = 0, nr_ = 0;                                 /* "Ready n / m" in the title band (approved mockup Teams A) */
         for (int p = 0; p < TM_MAX_PLAYERS; p++) if (st.present >> p & 1u) { np_++; nr_ += st.ready >> p & 1u; }
         (void)nr_; (void)np_;                                 /* no "Ready n / m": Teams has no Ready (owner lan_v8) */
@@ -1040,16 +1097,16 @@ static void layout(void) {
     if ((o = u_gc_get(h_ready))) u_active(o, false);        /* no Go / Ready in Teams (owner lan_v8) */
     if ((o = u_gc_get(h_hint))) {
         char stl[300] = "";
-        if (!mp_running()) snprintf(stl, sizeof stl, "<color=" C_WARN ">Multiplayer is not running yet: changes here are not applied.</color>");
-        else if (st.in_dungeon) snprintf(stl, sizeof stl, "In a dungeon only lending works: use Lend on your units.");
-        else if (host_admin && hsel.picked >= 0) snprintf(stl, sizeof stl, "Host: click a section name to move the picked unit there.");
+        if (!mp_running()) snprintf(stl, sizeof stl, "%s", ui_col(C_WARN, TR("Multiplayer is not running yet: changes here are not applied.")));
+        else if (st.in_dungeon) snprintf(stl, sizeof stl, "%s", TR("In a dungeon only lending works: use Lend on your units."));
+        else if (host_admin && hsel.picked >= 0) snprintf(stl, sizeof stl, "%s", TR("Host: click a section name to move the picked unit there."));
         else if (st.me == 0 && hsel.target != TM_NO_TARGET) {
             char nm[40], lb[40]; ui_players pls; memset(&pls, 0, sizeof pls);
             if (hsel.target >= 0) { player_name(hsel.target, nm); snprintf(pls.name[hsel.target], 32, "%s", nm); }
-            snprintf(stl, sizeof stl, "Host: units you click go to %s.", hsel.target == TM_FREE ? "Free units" : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
+            snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
         }
-        else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "Next: take a free unit (left-click).");
-        else if (st.me >= 0) snprintf(stl, sizeof stl, "To start an expedition, use the game's Go to dungeon.");
+        else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "%s", TR("Next: take a free unit (left-click)."));
+        else if (st.me >= 0) snprintf(stl, sizeof stl, "%s", TR("To start an expedition, use the game's Enter Dungeon."));
         snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>", stl);
         set_text(o, -10, -405, 390, 40, 14, AL_CENTER, 0, t);
     }
@@ -1059,7 +1116,7 @@ static void layout(void) {
             float k = sw_[2] / wr.w;
             cx = (sc_[0] - (sw_[0] + sw_[2] / 2)) / k - 10 - 64; cy = (sc_[1] + sc_[3] / 2 - (sw_[1] + sw_[3] / 2)) / k;
         }
-        set_text(o, cx, cy, 64, 28, 14, AL_RIGHT, 0, "<color=" C_ACC ">Hide</color>");
+        set_text(o, cx, cy, 64, 28, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Hide")));
         g_raycast(o, true);
     }
     lpop_draw();
@@ -1148,7 +1205,7 @@ static Obj pcard(int k, int unit) {                          /* small stock card
 }
 static int unit_of_guid(const uint8_t g[16]) { for (int i = 0; i < st.nunits; i++) if (!memcmp(st.guid[i], g, 16)) return i; return -1; }
 static int prop_secs_left(void) { int l = TM_PROPOSAL_SECONDS - (int)(now_s() - prop_t0); return l < 0 ? 0 : l; }
-static char prop_ok_s[40], prop_no_s[40], prop_wait_s[200], prop_time_s[120];
+static char prop_ok_s[120], prop_no_s[120], prop_wait_s[400], prop_time_s[120];
 static int scr_rect(Obj comp, float out[4]);
 static float prop_top_frac = 0.05f;                          /* panel top: this fraction of the screen height above the middle (under the game's alerts) */
 static void prop_layout(void) {
@@ -1162,9 +1219,13 @@ static void prop_layout(void) {
     if (st.present >> prop.proposer & 1u) order[no++] = prop.proposer;
     for (int p = 0; p < TM_MAX_PLAYERS; p++) if ((st.present >> p & 1u) && p != prop.proposer) order[no++] = p;
     uint32_t wm = tm_prop_waiting(&prop, &st);
-    size_t l = (size_t)snprintf(prop_wait_s, sizeof prop_wait_s, wm ? "Waiting for" : "Everyone approved");
-    for (int p = 0; p < TM_MAX_PLAYERS && l < sizeof prop_wait_s - 44; p++)
-        if (wm >> p & 1u) { char nm[40]; pname(p, nm); l += (size_t)snprintf(prop_wait_s + l, sizeof prop_wait_s - l, "%s %s", l > 11 ? "," : ":", p == st.me ? "you" : nm); }
+    if (!wm) snprintf(prop_wait_s, sizeof prop_wait_s, "%s", TR("Everyone approved"));
+    else {
+        char who[300] = ""; size_t l = 0;
+        for (int p = 0; p < TM_MAX_PLAYERS && l < sizeof who - 44; p++)
+            if (wm >> p & 1u) { char nm[40]; pname(p, nm); l += (size_t)snprintf(who + l, sizeof who - l, "%s%s", l ? TR(", ") : "", p == st.me ? TR("you") : nm); }
+        snprintf(prop_wait_s, sizeof prop_wait_s, TR("Waiting for: %s"), who); dsi_utf8_fix_end(prop_wait_s);
+    }
     float rh = no > 2 ? 62.0f : 74.0f, cs = no > 2 ? 0.36f : 0.42f, lx = -PW / 2 + 22, tw = PW - 44;
     float H = prop_folded ? 96.0f : 108 + no * rh + 112, top = H / 2, yb = -H / 2;
     rt_size(w, PW, H);
@@ -1174,19 +1235,19 @@ static void prop_layout(void) {
       float sr[4], dx = 0, sw = (float)F(0x5092C94, int (*)(void *))(NULL);   /* Screen.width */
       if (r && rr.w > 0 && scr_rect(r, sr) && sr[2] > 0 && sw > 0) dx = (sr[0] + sr[2] - sw) / (sr[2] / rr.w);
       rt_pos(w, -16 - (dx > 0 ? dx : 0), rr.h > 0 ? rr.h * prop_top_frac : 0); }
-    p_text(lx, top - 30, tw - 64, 30, 20, AL_LEFT, 1, "<color=" C_MAIN ">Expedition proposal</color>");
-    set_text(u_gc_get(h_pfold), PW / 2 - 22 - 64, top - 30, 64, 24, 14, AL_RIGHT, 0, prop_folded ? "<color=" C_ACC ">Show</color>" : "<color=" C_ACC ">Hide</color>");
-    snprintf(prop_time_s, sizeof prop_time_s, "%d s left", left);
+    p_text(lx, top - 30, tw - 64, 30, 20, AL_LEFT, 1, ui_col(C_MAIN, TR("Expedition proposal")));
+    set_text(u_gc_get(h_pfold), PW / 2 - 22 - 64, top - 30, 64, 24, 14, AL_RIGHT, 0, prop_folded ? ui_col(C_ACC, TR("Show")) : ui_col(C_ACC, TR("Hide")));
+    snprintf(prop_time_s, sizeof prop_time_s, TR("%d s left"), left);
     if (prop_folded) {                                        /* one line: the time and who is still to answer */
         snprintf(t, sizeof t, "<color=%s>%s</color><color=" C_SEC "> \xC2\xB7 %s</color>", tc, prop_time_s, prop_wait_s);
         p_text(lx, top - 64, tw, 26, 15, AL_LEFT, 0, t); h_ptip[2] = pool_prop.t[pool_prop.ut - 1]; h_ptip[1] = h_ptip[2]; h_ptip[0] = 0;
         nprow = 0;
     } else {
-        if (mine_prop) snprintf(t, sizeof t, "<color=" C_SEC ">Proposed by you \xC2\xB7 </color><color=%s>%s</color>", tc, prop_time_s);
-        else snprintf(t, sizeof t, "<color=" C_SEC ">Proposed by </color><color=%s>%s</color><color=" C_SEC "> \xC2\xB7 </color><color=%s>%s</color>",
+        if (mine_prop) snprintf(t, sizeof t, "<color=" C_SEC ">%s \xC2\xB7 </color><color=%s>%s</color>", TR("Proposed by you"), tc, prop_time_s);
+        else snprintf(t, sizeof t, "<color=" C_SEC ">%s </color><color=%s>%s</color><color=" C_SEC "> \xC2\xB7 </color><color=%s>%s</color>", TR("Proposed by"),
                       ui_player_color(prop.proposer), pn_, tc, prop_time_s);   /* one colour per player everywhere */
         p_text(lx, top - 58, tw, 24, 15, AL_LEFT, 0, t); h_ptip[2] = pool_prop.t[pool_prop.ut - 1];
-        snprintf(t, sizeof t, "<color=" C_SEC ">Region</color>  <color=" C_MAIN ">%s</color>", region_name(prop.region));
+        snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>  <color=" C_MAIN ">%s</color>", TR("Region"), region_name(prop.region));
         p_text(lx, top - 84, tw, 26, 17, AL_LEFT, 0, t); h_ptip[0] = pool_prop.t[pool_prop.ut - 1];
         float y = top - 104;
         nprow = 0;
@@ -1196,11 +1257,11 @@ static void prop_layout(void) {
             char nm[40], lb[40]; ui_players pls; memset(&pls, 0, sizeof pls); pname(p, nm); snprintf(pls.name[p], 32, "%s", nm);
             p_rect(0, y - rh / 2, PW - 28, rh - 6, hexc("#2b282f", 1), NULL, 1);
             p_rect(-(PW - 28) / 2 + 2, y - rh / 2, 4, rh - 6, hexc(ui_player_color(p), 1), NULL, 0);
-            snprintf(t, sizeof t, "<color=" C_MAIN ">%s%s</color>  <color=%s>%s</color>", ui_player_label(&pls, p, lb), p == st.me ? " (you)" : "",
-                     rd ? C_ACC : C_SEC, p == prop.proposer ? (rd ? "proposes" : "proposes (not ready)") : rd ? "approved" : "waiting");
+            snprintf(t, sizeof t, "<color=" C_MAIN ">%s%s</color>  <color=%s>%s</color>", ui_player_label(&pls, p, lb), p == st.me ? TR(" (you)") : "",
+                     rd ? C_ACC : C_SEC, p == prop.proposer ? (rd ? TR("proposes") : TR("proposes (not ready)")) : rd ? TR("approved") : TR("waiting"));
             p_text(lx, y - 14, tw - 90, 24, 16, AL_LEFT, 0, t);
             if (nprow < TM_MAX_PLAYERS) { h_prow[nprow] = pool_prop.t[pool_prop.ut - 1]; prow_pl[nprow] = p; prow_going[nprow] = going; nprow++; }
-            if (stays) { snprintf(t, sizeof t, "<color=" C_SEC ">%d at home</color>", stays); p_text(PW / 2 - 22 - 90, y - 14, 90, 24, 13, AL_RIGHT, 0, t); }
+            if (stays) { snprintf(t, sizeof t, "%s", ui_colf(C_SEC, TR("%d at home"), stays)); p_text(PW / 2 - 22 - 90, y - 14, 90, 24, 13, AL_RIGHT, 0, t); }
             int g = 0;
             for (int u = 0; u < st.nunits; u++) {
                 if (!goes_for(u, p)) continue;
@@ -1208,10 +1269,10 @@ static void prop_layout(void) {
                 if (pc) { rt_pos(u_tr(pc), lx + card_w * cs / 2 + g * (card_w * cs + 5), y - 26 - card_h * cs / 2); tr_scale(u_tr(pc), cs); u_last_sibling(u_tr(pc)); }
                 g++;
             }
-            if (!going) p_text(lx, y - 26 - card_h * cs / 2, tw, 24, 14, AL_LEFT, 0, "<color=" C_SEC ">No units: watches the expedition</color>");
+            if (!going) p_text(lx, y - 26 - card_h * cs / 2, tw, 24, 14, AL_LEFT, 0, ui_col(C_SEC, TR("No units: watches the expedition")));
             y -= rh;
         }
-        snprintf(t, sizeof t, "<color=%s>%d / %d members</color>", prop_np > TM_PARTY_CAP ? C_WARN : C_MAIN, prop_np, TM_PARTY_CAP);
+        snprintf(t, sizeof t, "%s", ui_colf(prop_np > TM_PARTY_CAP ? C_WARN : C_MAIN, TR("%d / %d members"), prop_np, TM_PARTY_CAP));
         p_text(lx, yb + 90, tw, 22, 15, AL_CENTER, 0, t);
         snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>", prop_wait_s);
         p_text(lx, yb + 68, tw, 22, 14, AL_CENTER, 0, t); h_ptip[1] = pool_prop.t[pool_prop.ut - 1];
@@ -1219,8 +1280,8 @@ static void prop_layout(void) {
     for (int i = k; i < PCARDS; i++) { Obj pc = u_gc_get(h_pcard[i]); if (u_alive(pc)) u_go_active(u_go(pc), false); }
     /* buttons (not while folded) */
     int show_ok = !prop_folded && !mine_prop && !rdy_me, show_no = !prop_folded;
-    snprintf(prop_ok_s, sizeof prop_ok_s, "%s", show_ok ? "Approve" : "");
-    snprintf(prop_no_s, sizeof prop_no_s, "%s", show_no ? (mine_prop ? "Cancel" : "Decline") : "");
+    snprintf(prop_ok_s, sizeof prop_ok_s, "%s", show_ok ? TR("Approve") : "");
+    snprintf(prop_no_s, sizeof prop_no_s, "%s", show_no ? (mine_prop ? TR("Cancel") : TR("Decline")) : "");
     Obj o;
     if ((o = u_gc_get(h_p_ok))) { u_active(o, show_ok); rt_size(u_tr(o), 168, 38); rt_pos(u_tr(o), 86, yb + 30); u_last_sibling(u_tr(o)); }
     if ((o = u_gc_get(h_p_ok_txt))) { snprintf(t, sizeof t, "<color=" C_MAIN ">%s</color>", prop_ok_s); tmp_set(o, t); }
@@ -1293,20 +1354,20 @@ static void send_marks(int ready, const uint8_t (*marks)[16], int n) {
     dsnet_client *c = cli();
     if (!have_ready_api() || !c) {                           /* local only until netcore has EXPEDITION_READY */
         local_marks_n = n; memcpy(local_marks, marks, (size_t)n * 16);
-        if (ready) notice("Ready does not work with this Multiplayer version. Update the mod");
+        if (ready) notice("%s", TR("Ready does not work with this Multiplayer version. Update the mod"));
         return;
     }
-    if (dsnet_expedition_ready(c, ready, marks, n)) notice("Your team could not be sent");
+    if (dsnet_expedition_ready(c, ready, marks, n)) notice("%s", TR("Your team could not be sent"));
 }
 static void unit_label(int u, char out[64]) {
     out[0] = 0;
     if (u >= 0 && u < st.nunits && st_unit[u]) str_utf8(F(0xFA467C, Obj (*)(Obj, void *))(st_unit[u], NULL), out, 64);   /* GetDisplayName */
-    if (!out[0]) snprintf(out, 64, "this unit");
+    if (!out[0]) snprintf(out, 64, "%s", TR("this unit"));
 }
 static void run(tm_action a) {
     mp_session *s = sess();
     if (!mp_running() && a.kind != TM_NONE && a.kind != TM_PICK && a.kind != TM_UNPICK && a.kind != TM_TARGET && a.kind < TM_DENY_LOCKED) {
-        notice("Multiplayer is not running yet: this change cannot be applied");
+        notice("%s", TR("Multiplayer is not running yet: this change cannot be applied"));
         rig_log("teams: action %d refused: session not running (det lock off)", (int)a.kind);
         return;
     }
@@ -1318,23 +1379,23 @@ static void run(tm_action a) {
     case TM_RELEASE: if (s) mp_release(s, st.guid[a.unit]); break;
     case TM_ASSIGN:
         if (s) mp_assign(s, st.guid[a.unit], a.target == TM_FREE ? DSNET_NO_PLAYER : a.target);
-        if (a.target == TM_FREE) notice("%s is free", un); else notice("%s goes to %s", un, ui_player_label(&pl, a.target, lb));
+        if (a.target == TM_FREE) notice(TR("%s is free"), un); else notice(TR("%s goes to %s"), un, ui_player_label(&pl, a.target, lb));
         break;
     case TM_MARKS: send_marks(0, (const uint8_t (*)[16])a.marks, a.nmarks); break;
     case TM_READY:                                           /* Go: the stock window (step 2) to pack, then propose; or approve */
-        if (!prop.active) { if (stock_open(1)) notice("The expedition window could not be opened"); }
+        if (!prop.active) { if (stock_open(1)) notice("%s", TR("The expedition window could not be opened")); }
         else approve();
         break;
     case TM_UNREADY: if (prop.active) prop_decline(); else send_marks(0, (const uint8_t (*)[16])a.marks, a.nmarks); break;
-    case TM_DENY_LOCKED: notice("In a dungeon you can only lend units (Lend on a portrait)"); break;
+    case TM_DENY_LOCKED: notice("%s", TR("In a dungeon you can only lend units (Lend on a portrait)")); break;
     case TM_DENY_OWNED:
-        if (a.target == TM_RESERVED) notice("%s is kept for a player who is away", un);
-        else notice("%s belongs to %s", un, ui_player_label(&pl, a.target, lb));
+        if (a.target == TM_RESERVED) notice(TR("%s is kept for a player who is away"), un);
+        else notice(TR("%s belongs to %s"), un, ui_player_label(&pl, a.target, lb));
         break;
-    case TM_DENY_FULL: notice("You already marked %d units for the run", TM_MAX_MARK); break;
+    case TM_DENY_FULL: notice(TR("You already marked %d units for the run"), TM_MAX_MARK); break;
     case TM_DENY_NO_MARKS:
-        if (prop.active && prop.proposer != st.me) { approve(); break; } notice("Right-click 1 to %d of your units to mark them for the run first", TM_MAX_MARK); break;
-    case TM_DENY_NOT_OWN: notice("You can only mark your own units"); break;
+        if (prop.active && prop.proposer != st.me) { approve(); break; } notice(TR("Right-click 1 to %d of your units to mark them for the run first"), TM_MAX_MARK); break;
+    case TM_DENY_NOT_OWN: notice("%s", TR("You can only mark your own units")); break;
     default: break;
     }
     rig_log("teams: action %d unit %d target %d marks %d", (int)a.kind, a.unit, a.target, a.nmarks);
@@ -1372,7 +1433,7 @@ static int click_at(V2 m, int button) {
     if (prop_click(m, button)) return 1;                     /* the proposal side panel (only clicks on it) */
     Obj hud = u_gc_get(h_hud);
     if (!opened) {
-        if (hit(hud, m, cam_for(hud))) { if (button == 0 && open_screen()) notice("The Teams screen is not available here"); return 1; }
+        if (hit(hud, m, cam_for(hud))) { if (button == 0 && open_screen()) notice("%s", TR("The Teams screen is not available here")); return 1; }
         return 0;
     }
     Obj cam = cam_for(root());
@@ -1387,7 +1448,7 @@ static int click_at(V2 m, int button) {
     if (hit(u_gc_get(h_close), m, cam)) { close_screen(); return 1; }
     if (button == 0 && hit(u_gc_get(h_tfold), m, cam)) { fold_set(1); return 1; }
     if (button == 0 && hit(u_gc_get(h_info), m, cam)) return 1;   /* the info icon: hover shows "How Teams Work" */
-    if (spect()) { if (button == 0) notice("You are watching: spectators cannot change teams"); return 1; }   /* read only */
+    if (spect()) { if (button == 0) notice("%s", TR("You are watching: spectators cannot change teams")); return 1; }   /* read only */
     model_refresh();
     if (button == 0 && lend_click(m, cam)) return 1;          /* lending chips / menu (also in a dungeon) */
     model_refresh();
@@ -1510,7 +1571,8 @@ static void hud_place(void) {
         Obj tx = ch ? tmp_of(ch) : NULL;
         if (!ch) continue;
         if (!tx) { rt_size(ch, H, H); Obj ic = img_of(tr_find(ch, "Img_ExitIcon")); if (u_alive(ic)) rt_size(u_tr(ic), H * 0.7f, H * 0.6f); }
-        else { rt_size(ch, W - H - 6, H); rt_pos(ch, H + 6, 0); (tm_is(tx, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0); }
+        else { rt_size(ch, W - H - 6, H); rt_pos(ch, H + 6, 0); (tm_is(tx, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0);
+               (tm_is(tx, K_TMP) ? F(0x4F0B68C, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0); }   /* fontSizeMax: auto size stays at most this */
     }
 }
 static void hud_move(float dx, float dy) {                   /* screen pixels -> canvas units */
@@ -1569,7 +1631,12 @@ static void hud_frame(void) {
     }
     Obj t = new_text(rt, HUD_W - lx, HUD_H, 22, AL_LEFT);
     if (t) { rt_anchor(u_tr(t), 0, 0.5f, 0, 0.5f); rt_pivot(u_tr(t), 0, 0.5f); rt_pos(u_tr(t), lx, 0);
-             tmp_font(t, u_gc_get(h_font_title)); tmp_set(t, "Teams"); }
+             tmp_font(t, font_title()); tmp_set(t, TR("Teams"));
+             /* one line that shrinks to fit: a longer word ("Команды", "Équipes") wrapped into two cut lines */
+             (tm_is(t, K_TMP) ? F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, false, NULL) : (void)0);     /* no word wrap */
+             (tm_is(t, K_TMP) ? F(0x4F0B634, void (*)(Obj, float, void *))(t, 9.0f, NULL) : (void)0);     /* fontSizeMin */
+             (tm_is(t, K_TMP) ? F(0x4F0B68C, void (*)(Obj, float, void *))(t, 22.0f, NULL) : (void)0);    /* fontSizeMax (hud_place sets it) */
+             (tm_is(t, K_TMP) ? F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL) : (void)0); }    /* auto size */
     u_last_sibling(rt);
     { Obj cty = type_object("UnityEngine", "Canvas"), gty = type_object("UnityEngine.UI", "GraphicRaycaster");
       Obj cv = cty ? (tm_is(u_go(rt), K_GO) ? F(0x50F2B90, Obj (*)(Obj, Obj, void *))(u_go(rt), cty, NULL) : NULL) : NULL;
@@ -1593,7 +1660,7 @@ static void hud_frame(void) {
    mode 2 = receiver: the same with the proposal's region, title "Expedition Proposal", no Back, Next -> summary,
    and a side list of the other players' going units. */
 static uintptr_t h_pres, h_title_orig, h_side, h_side_time;
-static char side_time_s[160];                                /* the Going block's time line (state / tests) */
+static char side_time_s[320];                                /* the Going block's time line (state / tests) */
 static int stock_mode, stock_req;
 static void (*o_pact)(Obj, void *), (*o_pnext)(Obj, void *), (*o_pdeact)(Obj, void *);
 static int show_popup(int type);
@@ -1633,11 +1700,11 @@ static void stock_side_block(Obj view) {
     u_gc_free(h_side); h_side = u_gc_new(blk);
     float top = pr.h / 2, w = pr.w;
     Obj t = new_text(bt, w - 20, 34, 22, AL_CENTER);
-    if (t) { tmp_font(t, u_gc_get(h_font_title)); rt_pos(u_tr(t), 0, top - 26); tmp_set(t, "<color=" C_MAIN ">Going</color>"); }
+    if (t) { tmp_font(t, font_title()); rt_pos(u_tr(t), 0, top - 26); tmp_set(t, ui_col(C_MAIN, TR("Going"))); }
     model_refresh();
     char pn_[40]; pname(prop.proposer, pn_);
     Obj t2 = new_text(bt, w - 20, 24, 14, AL_CENTER);
-    char tx[300]; snprintf(tx, sizeof tx, "<color=" C_SEC ">%s \xC2\xB7 proposed by </color><color=%s>%s</color>", region_name(prop.region), ui_player_color(prop.proposer), pn_);
+    char tx[300]; snprintf(tx, sizeof tx, "<color=" C_SEC ">%s \xC2\xB7 %s </color><color=%s>%s</color>", region_name(prop.region), TR("proposed by"), ui_player_color(prop.proposer), pn_);
     if (t2) { rt_pos(u_tr(t2), 0, top - 52); tmp_set(t2, tx); }
     Obj t3 = new_text(bt, w - 20, 26, 17, AL_CENTER);          /* the time left (ux_flow F5), set once a second by stock_countdown */
     u_gc_free(h_side_time); h_side_time = t3 ? u_gc_new(t3) : 0;
@@ -1666,7 +1733,7 @@ static void stock_side_block(Obj view) {
             sl += (size_t)snprintf(side_s + sl, sizeof side_s - sl, "%s %s", k ? "," : "", un);
             k++;
         }
-        if (!k) { Obj tv = new_text(bt, w - 24, 24, 14, AL_LEFT); if (tv) { rt_pos(u_tr(tv), 0, y - 44); tmp_set(tv, "<color=" C_SEC ">No units: watches</color>"); }
+        if (!k) { Obj tv = new_text(bt, w - 24, 24, 14, AL_LEFT); if (tv) { rt_pos(u_tr(tv), 0, y - 44); tmp_set(tv, ui_col(C_SEC, TR("No units: watches"))); }
                   sl += (size_t)snprintf(side_s + sl, sizeof side_s - sl, " no units"); }
         y -= 30 + card_h * cs + 14;
     }
@@ -1703,10 +1770,10 @@ static void stock_setup(Obj pres, int mode) {
     Obj view = AT(pres, 0x10, Obj);
     if (mode == 2) {
         Obj tt = stock_title(view);
-        if (tt) { u_gc_free(h_title_orig); h_title_orig = u_gc_new(tmp_get(tt)); tmp_set(tt, "Expedition Proposal"); }
+        if (tt) { u_gc_free(h_title_orig); h_title_orig = u_gc_new(tmp_get(tt)); tmp_set(tt, TR("Expedition Proposal")); }
         Obj lp = view ? AT(view, 0x68, Obj) : NULL, bb = lp ? AT(lp, 0x20, Obj) : NULL;
         if (u_alive(bb)) u_active(bb, false);
-        Obj nl = next_label(view); if (nl) tmp_set(nl, "Next");
+        Obj nl = next_label(view); if (nl) tmp_set(nl, next_text());
         stock_side_block(view);
         stock_countdown();
     }
@@ -1719,7 +1786,9 @@ static void stock_countdown(void) {
     Obj t = u_gc_get(h_side_time);
     if (stock_mode != 2 || !u_alive(t)) return;
     int l = prop_secs_left();
-    snprintf(side_time_s, sizeof side_time_s, "<color=%s>%d s left</color><color=" C_SEC "> to pack and answer</color>", l <= 10 ? C_WARN : C_ACC, l);
+    char n_[64]; snprintf(n_, sizeof n_, TR("%d s left"), l); dsi_utf8_fix_end(n_);
+    snprintf(side_time_s, sizeof side_time_s, "<color=%s>%s</color><color=" C_SEC "> %s</color>", l <= 10 ? C_WARN : C_ACC, n_, TR("to pack and answer"));
+    dsi_utf8_fix_end(side_time_s);
     tmp_set(t, side_time_s);
 }
 static void stock_restore(void) {                            /* the view is pooled: put the stock look back */
@@ -1811,16 +1880,17 @@ static void stock_gear_frame(void) {
         char key[80] = ""; str_utf8(AT(nv, 0x90, Obj), key, sizeof key);
         Obj tx = AT(nv, 0x30, Obj);
         if (!strcmp(key, "TEXTKEY_ExpeditionPlan_CriticalConfirm") && u_alive(tx)) {
-            char cur[120] = ""; str_utf8(tmp_get(tx), cur, sizeof cur);
-            if (strcmp(cur, "Send the proposal to your friends anyway?")) tmp_set(tx, "Send the proposal to your friends anyway?");
+            char cur[400] = ""; str_utf8(tmp_get(tx), cur, sizeof cur);
+            const char *ask = TR("Send the proposal to your friends anyway?");
+            if (strcmp(cur, ask)) tmp_set(tx, ask);
         }
     }
     if (!u_alive(v) || !c || !F(0x50F3724, bool (*)(Obj, void *))(u_go(v), NULL)) return;
     /* owner lan_v7: the last button says what it does in multiplayer */
     Obj pr = u_gc_get(h_pres);
     if (pr && AT(pr, 0x38, int32_t) == 1) {
-        Obj nl = next_label(v); const char *want = stock_mode == 2 ? "Next" : "Send to friends";
-        char cur[40] = ""; if (nl) str_utf8(tmp_get(nl), cur, sizeof cur);
+        Obj nl = next_label(v); const char *want = stock_mode == 2 ? next_text() : TR("Send to friends");
+        char cur[160] = ""; if (nl) str_utf8(tmp_get(nl), cur, sizeof cur);
         if (nl && strcmp(cur, want)) tmp_set(nl, want);
     }
     if (!dsnet_may_use_item) return;
@@ -1848,6 +1918,47 @@ static void stock_gear_frame(void) {
 /* the proposal side panel is not modal (lan_v10): the player panel, hotkeys and Escape stay as without it */
 /* viewui: the folded Teams window is not modal (the bar only) */
 __attribute__((visibility("default"))) int ui_teams_modal_open(void) { return (opened && !folded()) || stock_mode == 2; }
+/* i18n game test (all languages): the Players panel, drawn above the open window (viewui), covered its "Your units" row.
+   Side by side instead, as the game lays out its panels: while our window is up (not folded) ui_game puts the panel at
+   the screen's left edge (dlsym ui_teams_window_shown) and the window moves right of the panel and of the Teams button
+   when it snaps to it: as far as the screen's right margin, then smaller (never under WIN_MIN_K). Centred again after. */
+__attribute__((visibility("default"))) int ui_teams_window_shown(void) { return opened && !folded() && win(); }
+#define WIN_GAP 12.0f                                        /* canvas units between the panel and the window, and to the screen edge */
+#define WIN_MIN_K 0.8f
+static void win_place(void) {
+    Obj w = win();
+    if (!w || !opened || folded()) return;
+    float r[4];
+    if (!scr_rect(w, r) || r[2] < 1) return;
+    float rw = rt_rect(w).w; if (rw < 1) rw = WIN_W;
+    float wpx = r[2] / win_k, ppu = wpx / rw;                /* the window's width at scale 1, pixels per root unit */
+    float home = r[0] + r[2] / 2 - win_dx * ppu, hx0 = home - wpx / 2, hx1 = home + wpx / 2;
+    float cs = canvas_scale(w); if (cs <= 0) cs = 1;
+    float gap = WIN_GAP * cs, sw = (float)F(0x5092C94, int (*)(void *))(NULL);   /* Screen.width */
+    float R = -1, a, b, bx, by, bw, bh;
+    static int (*ppx)(float *, float *); static unsigned tries;
+    if (!ppx && tries++ % 60 == 0) ppx = (int (*)(float *, float *))dlsym(RTLD_DEFAULT, "ui_panel_px");
+    float mv = 0;                                            /* the panel is still on its way to the left edge (ui_game docks it */
+    if (ppx && ppx(&a, &b) && a < home) { mv = a - gap; R = b - mv; }   /* every 3rd frame): its place there, so no step */
+    if (R >= 0 && !hud_dragged && ui_teams_button_rect(&bx, &by, &bw, &bh) && bx < home && bx - mv + bw > R) R = bx - mv + bw;
+    float dx = 0, k = 1;
+    if (R >= 0 && R + gap > hx0) {
+        float need = R + gap - hx0, room = sw - gap - hx1;
+        if (need <= room) dx = need;
+        else {
+            float left = R + gap, right = sw - gap;
+            k = (right - left) / wpx; if (k > 1) k = 1; if (k < WIN_MIN_K) k = WIN_MIN_K;
+            float c = left + wpx * k / 2; if (c + wpx * k / 2 > right) c = right - wpx * k / 2;
+            dx = c - home;
+        }
+    }
+    dx /= ppu;
+    float ddx = dx - win_dx, dk = k - win_k;
+    if (ddx < 0.5f && ddx > -0.5f && dk < 0.002f && dk > -0.002f) return;
+    rt_pos(w, dx, 0); tr_scale(w, k);
+    rig_log("teams: window %s (shift %.0f, scale %.2f; panel group right %.0f px, screen %.0f px)", dx || k < 1 ? "beside the Players panel" : "centred", dx, k, R, sw);
+    win_dx = dx; win_k = k;
+}
 /* viewui: the player panel draws above the open window; its clicks and tooltips are ui_game's (ui_panel_hit, dlsym) */
 static int panel_hit(V2 m) {
     static int (*fn)(float, float); static unsigned tries;
@@ -1874,7 +1985,7 @@ static void (*o_accept)(Obj, int, Obj, void *);
 static void accept_core(Obj view, int region, const uint8_t (*pn)[16], int np);
 static void hk_accept(Obj view, int region, Obj units, void *mi) {
     if (!sess()) { o_accept(view, region, units, mi); return; }   /* single player: stock */
-    if (spect()) { notice("You are watching: only players plan expeditions"); if (u_alive(view)) F(0xEE3384, void (*)(Obj, void *))(view, NULL); return; }
+    if (spect()) { notice("%s", TR("You are watching: only players plan expeditions")); if (u_alive(view)) F(0xEE3384, void (*)(Obj, void *))(view, NULL); return; }
     if (stock_mode == 2) { if (u_alive(view)) F(0xEE3384, void (*)(Obj, void *))(view, NULL); if (pstage == ST_SUPPLIES) pstage = ST_SUMMARY; return; }
     model_refresh();
     if (st.in_dungeon) { o_accept(view, region, units, mi); return; }
@@ -1888,10 +1999,10 @@ static void hk_accept(Obj view, int region, Obj units, void *mi) {
 static void accept_core(Obj view, int region, const uint8_t (*pn)[16], int np) {
     model_refresh();
     /* owner bug 2026-10-13: never start the map change from here in multiplayer, even before the session runs */
-    if (!mp_running()) { notice("Multiplayer is not running yet: the expedition cannot start"); return; }
+    if (!mp_running()) { notice("%s", TR("Multiplayer is not running yet: the expedition cannot start")); return; }
     rig_log("teams: Go to dungeon pressed (region %d, panel %d units)", region, np);
     if (draft_n) { pn = (const uint8_t (*)[16])draft; np = draft_n; }   /* the whole step-1 party (allies too) */
-    if (!propose(region, pn, np)) notice("Expedition proposed: every player must approve.");
+    if (!propose(region, pn, np)) notice("%s", TR("Expedition proposed: every player must approve."));
     draft_n = 0;
     if (u_alive(view)) F(0xEE3384, void (*)(Obj, void *))(view, NULL);   /* ExpeditionPlanView.Close */
 }
@@ -1963,7 +2074,7 @@ static int debug_accept(int region) {
 void game_tip_show_rect(const char *title, const char *body, void *rect_transform) __attribute__((weak_import));
 void game_tip_show(const char *title, const char *body) __attribute__((weak_import));
 void game_tip_frame(void) __attribute__((weak_import));
-static char tip_last[80], tip_body_last[400];
+static char tip_last[200], tip_body_last[900];
 static uintptr_t h_tip_comp;                                  /* the element of the last tooltip (tests keep it shown) */
 /* ui_tip.c says when its game addresses are right for this build (int game_tip_ready(void)); until then no calls:
    its first RVAs (0xC5xxxx) were not this build's TooltipUI (0xF4xxxx) and crashed two copies (2026-10-14 01:09-01:17) */
@@ -1981,71 +2092,71 @@ static int tip_on(Obj comp, const char *title, const char *body) {
     return 1;
 }
 static const char *conn_body(int lv) {
-    return lv >= 3 ? "Good connection. In sync." : lv == 2 ? "Slow connection, or catching up with the game."
-         : lv == 1 ? "Slow connection, or the game is loading or catching up." : "Disconnected. The game waits, or the host keeps playing their units.";
+    return lv >= 3 ? TR("Good connection. In sync.") : lv == 2 ? TR("Slow connection, or catching up with the game.")
+         : lv == 1 ? TR("Slow connection, or the game is loading or catching up.") : TR("Disconnected. The game waits, or the host keeps playing their units.");
 }
 static int tip_card(Obj card, int u) {
     char nm[64], t[64]; unit_label(u, nm);
-    if (st.in_dungeon && st_map[u] == 1) return tip_on(card, "On the Run", "This unit is in the dungeon now. The others stay at the settlement.");
-    if (st.owner[u] == st.me) { snprintf(t, sizeof t, "%s", nm); return tip_on(card, t, "Left-click: free this unit. Use Lend to give control to another player."); }
-    if (st.owner[u] == TM_FREE) { snprintf(t, sizeof t, "%s", nm); return tip_on(card, t, "Left-click: take this unit."); }
+    if (st.in_dungeon && st_map[u] == 1) return tip_on(card, TR("On the Run"), TR("This unit is in the dungeon now. The others stay at the settlement."));
+    if (st.owner[u] == st.me) { snprintf(t, sizeof t, "%s", nm); return tip_on(card, t, TR("Left-click: free this unit. Use Lend to give control to another player.")); }
+    if (st.owner[u] == TM_FREE) { snprintf(t, sizeof t, "%s", nm); return tip_on(card, t, TR("Left-click: take this unit.")); }
     return 0;
 }
 static int tip_header(Obj h, int p) {
-    char t[80], b[200], nm[40];
-    if (st.me == 0 && st.admin) return tip_on(h, "Move Units", "Click a section name, then units: they go to that player, or back to Free units.");
-    if (p == st.me) return tip_on(h, "Your Units", "The units you control. Only you can give them orders.");
-    if (p == TM_FREE) return tip_on(h, "Free Units", "Nobody controls these units. Left-click one to take it. The host orders them until someone takes them.");
-    if (p == TM_RESERVED) return tip_on(h, "Reserved", "This player is not here. These units wait and go back to them when they rejoin. With Admin Mode, the host can release them.");
-    pname(p, nm); snprintf(t, sizeof t, "%s's Units", nm);
-    snprintf(b, sizeof b, "Units %s controls. You cannot order them unless %s lends you one.", nm, nm);
+    char t[160], b[600], nm[40];
+    if (st.me == 0 && st.admin) return tip_on(h, TR("Move Units"), TR("Click a section name, then units: they go to that player, or back to Free units."));
+    if (p == st.me) return tip_on(h, TR("Your Units"), TR("The units you control. Only you can give them orders."));
+    if (p == TM_FREE) return tip_on(h, TR("Free Units"), TR("Nobody controls these units. Left-click one to take it. The host orders them until someone takes them."));
+    if (p == TM_RESERVED) return tip_on(h, TR("Reserved"), TR("This player is not here. These units wait and go back to them when they rejoin. With Admin Mode, the host can release them."));
+    pname(p, nm); snprintf(t, sizeof t, TR("%s's Units"), nm);
+    snprintf(b, sizeof b, TR("Units %s controls. You cannot order them unless %s lends you one."), nm, nm);
     return tip_on(h, t, b);
 }
 static int tip_chip(Obj c, int u) {
-    char t[80], b[200], nm[40]; int lt = lent[u], owner = st.owner[u];
-    if (owner == st.me && lt < 0) return tip_on(c, "Lend Control", "Lets another player order this unit, in the dungeon too. It stays your unit; take it back any time.");
-    if (owner == st.me) { pname(lt, nm); snprintf(t, sizeof t, "Lent to %s", nm); snprintf(b, sizeof b, "%s orders this unit now. Click to take back control.", nm); return tip_on(c, t, b); }
-    pname(owner, nm); snprintf(t, sizeof t, "Lent by %s", nm);
-    snprintf(b, sizeof b, "%s lent you this unit. You order it fully (move and skills). Click to give it back.", nm);
+    char t[160], b[600], nm[40]; int lt = lent[u], owner = st.owner[u];
+    if (owner == st.me && lt < 0) return tip_on(c, TR("Lend Control"), TR("Lets another player order this unit, in the dungeon too. It stays your unit; take it back any time."));
+    if (owner == st.me) { pname(lt, nm); snprintf(t, sizeof t, TR("Lent to %s"), nm); snprintf(b, sizeof b, TR("%s orders this unit now. Click to take back control."), nm); return tip_on(c, t, b); }
+    pname(owner, nm); snprintf(t, sizeof t, TR("Lent by %s"), nm);
+    snprintf(b, sizeof b, TR("%s lent you this unit. You order it fully (move and skills). Click to give it back."), nm);
     return tip_on(c, t, b);
 }
 static int tip_lrow(Obj r, int i) {
-    char t[80], b[200], nm[40];
-    if (lrow_act[i] == LA_LEND) { pname(lrow_arg[i], nm); snprintf(t, sizeof t, "Lend Control to %s", nm);
-        snprintf(b, sizeof b, "%s orders this unit until you take it back. It stays your unit.", nm); return tip_on(r, t, b); }
-    if (lrow_act[i] == LA_TAKE) return tip_on(r, "Take Back Control", "You order this unit again.");
-    if (lrow_act[i] == LA_GIVE) return tip_on(r, "Give Back", "Returns control of this unit to its owner.");
+    char t[160], b[600], nm[40];
+    if (lrow_act[i] == LA_LEND) { pname(lrow_arg[i], nm); snprintf(t, sizeof t, TR("Lend Control to %s"), nm);
+        snprintf(b, sizeof b, TR("%s orders this unit until you take it back. It stays your unit."), nm); return tip_on(r, t, b); }
+    if (lrow_act[i] == LA_TAKE) return tip_on(r, TR("Take Back Control"), TR("You order this unit again."));
+    if (lrow_act[i] == LA_GIVE) return tip_on(r, TR("Give Back"), TR("Returns control of this unit to its owner."));
     return 0;
 }
 static int tip_bar(int i) { char nm[40]; pname(bar_pl[i], nm); return tip_on(u_gc_get(bar_h[i]), nm, conn_body(bar_lv[i])); }
-static int tip_hud(void) { return tip_on(u_gc_get(h_hud), "Teams", "Who controls which units. Take free units, and lend yours to another player. Right-click and drag to move this button."); }
+static int tip_hud(void) { return tip_on(u_gc_get(h_hud), TR("Teams"), TR("Who controls which units. Take free units, and lend yours to another player. Right-click and drag to move this button.")); }
 static int tip_info(void) {
-    return tip_on(u_gc_get(h_info), "How Teams Work", "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. "
-                                                    "To start an expedition, use the game's Go to dungeon; every player approves it.");
+    return tip_on(u_gc_get(h_info), TR("How Teams Work"), TR("Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. "
+                                                    "To start an expedition, use the game's Enter Dungeon; every player approves it."));
 }
 static int tip_prop(int what) {   /* the proposal panel: 0 region, 1 waiting, 2 approve, 3 decline / cancel, 4 Hide / Show, 5 time left, 6+i player row i */
-    if (what == 0) return tip_on(u_gc_get(h_ptip[0]), "Region", "Where the expedition goes. Chosen by the player who proposed it.");
-    if (what == 1) return tip_on(u_gc_get(h_ptip[1]), "Waiting", "Players who have not answered yet. With no answer in 60 seconds, the expedition is cancelled.");
-    if (what == 2) return tip_on(u_gc_get(h_p_ok), "Approve", "You agree to go. When every player approves, everyone leaves together. The panel then folds to one line.");
-    if (what == 3 && prop.proposer == st.me) return tip_on(u_gc_get(h_p_no), "Cancel Proposal", "Withdraws your proposal. Nobody leaves.");
-    if (what == 3) return tip_on(u_gc_get(h_p_no), "Decline", "Cancels the expedition for everyone.");
-    if (what == 4 && prop_folded) return tip_on(u_gc_get(h_pfold), "Show", "Shows the whole proposal again: who goes, who approved, and the buttons.");
-    if (what == 4) return tip_on(u_gc_get(h_pfold), "Hide", "Folds the proposal to one line so it covers less of the map. Escape folds it too. The game keeps running either way.");
-    if (what == 5) return tip_on(u_gc_get(h_ptip[2]), "Time Left", "The proposal closes when the time runs out. Every player who has not answered by then cancels the expedition.");
+    if (what == 0) return tip_on(u_gc_get(h_ptip[0]), TR("Region"), TR("Where the expedition goes. Chosen by the player who proposed it."));
+    if (what == 1) return tip_on(u_gc_get(h_ptip[1]), TR("Waiting"), TR("Players who have not answered yet. With no answer in 60 seconds, the expedition is cancelled."));
+    if (what == 2) return tip_on(u_gc_get(h_p_ok), TR("Approve"), TR("You agree to go. When every player approves, everyone leaves together. The panel then folds to one line."));
+    if (what == 3 && prop.proposer == st.me) return tip_on(u_gc_get(h_p_no), TR("Cancel Proposal"), TR("Withdraws your proposal. Nobody leaves."));
+    if (what == 3) return tip_on(u_gc_get(h_p_no), TR("Decline"), TR("Cancels the expedition for everyone."));
+    if (what == 4 && prop_folded) return tip_on(u_gc_get(h_pfold), TR("Show"), TR("Shows the whole proposal again: who goes, who approved, and the buttons."));
+    if (what == 4) return tip_on(u_gc_get(h_pfold), TR("Hide"), TR("Folds the proposal to one line so it covers less of the map. Escape folds it too. The game keeps running either way."));
+    if (what == 5) return tip_on(u_gc_get(h_ptip[2]), TR("Time Left"), TR("The proposal closes when the time runs out. Every player who has not answered by then cancels the expedition."));
     int i = what - 6;
     if (i < 0 || i >= nprow) return 0;
-    char t[80], b[300], nm[40]; int p = prow_pl[i], rd = st.ready >> p & 1u; pname(p, nm);
-    snprintf(t, sizeof t, "%s%s", nm, p == st.me ? " (You)" : "");
-    snprintf(b, sizeof b, "%s %s", p == prop.proposer ? "Proposed this expedition." : rd ? "Approved: ready to go." : "Has not answered yet.",
-             prow_going[i] ? "The cards are the units that go. The other units stay at the settlement and keep working." : "No unit of theirs goes: they watch the expedition.");
+    char t[160], b[900], nm[40]; int p = prow_pl[i], rd = st.ready >> p & 1u; pname(p, nm);
+    snprintf(t, sizeof t, "%s%s", nm, p == st.me ? TR(" (You)") : "");
+    snprintf(b, sizeof b, "%s %s", p == prop.proposer ? TR("Proposed this expedition.") : rd ? TR("Approved: ready to go.") : TR("Has not answered yet."),
+             prow_going[i] ? TR("The cards are the units that go. The other units stay at the settlement and keep working.") : TR("No unit of theirs goes: they watch the expedition."));
     return tip_on(u_gc_get(h_prow[i]), t, b);
 }
 static int tip_stock(int what) {                             /* the stock window: 0 "Send to friends" button, 1 the receiver's title, 2 its time line */
     Obj v = pres_view(); if (!u_alive(v)) return 0;
-    if (what == 2) return tip_on(u_gc_get(h_side_time), "Time Left", "Time to pack and answer the proposal. When it runs out, the expedition is cancelled for everyone. Next shows the proposal with Approve and Decline.");
-    if (what == 1) return tip_on(stock_title(v), "Pack Supplies", "Pack supplies for your own units on this run, from the settlement storage. Other players pack for their own units. The time left is in the Going list: when it runs out, the expedition is cancelled.");
+    if (what == 2) return tip_on(u_gc_get(h_side_time), TR("Time Left"), TR("Time to pack and answer the proposal. When it runs out, the expedition is cancelled for everyone. Next shows the proposal with Approve and Decline."));
+    if (what == 1) return tip_on(stock_title(v), TR("Pack Supplies"), TR("Pack supplies for your own units on this run, from the settlement storage. Other players pack for their own units. The time left is in the Going list: when it runs out, the expedition is cancelled."));
     Obj lp = AT(v, 0x68, Obj), nb = lp ? AT(lp, 0x28, Obj) : NULL;
-    return tip_on(nb ? img_of(u_tr(nb)) : NULL, "Send to Friends", "Sends this region and these units to every player as a proposal. The expedition starts only when everyone approves.");
+    return tip_on(nb ? img_of(u_tr(nb)) : NULL, TR("Send to Friends"), TR("Sends this region and these units to every player as a proposal. The expedition starts only when everyone approves."));
 }
 static double tip_test_until;                                /* a test asked for a tooltip: hover off for a moment */
 static void tips_frame(void) {
@@ -2082,12 +2193,12 @@ static void tips_frame(void) {
     if (!opened || !root()) return;
     Obj cam = cam_for(root());
     if (folded()) {                                          /* viewui: the bar */
-        if (hit(u_gc_get(h_fshow), m, cam)) tip_on(u_gc_get(h_fshow), "Show", "Opens the whole Teams window again.");
-        else if (hit(u_gc_get(h_fclose), m, cam)) tip_on(u_gc_get(h_fclose), "Close", "Closes the Teams window.");
+        if (hit(u_gc_get(h_fshow), m, cam)) tip_on(u_gc_get(h_fshow), TR("Show"), TR("Opens the whole Teams window again."));
+        else if (hit(u_gc_get(h_fclose), m, cam)) tip_on(u_gc_get(h_fclose), TR("Close"), TR("Closes the Teams window."));
         return;
     }
     if (panel_hit(m)) return;                                /* viewui: the Players panel's own tooltips */
-    if (hit(u_gc_get(h_tfold), m, cam)) { tip_on(u_gc_get(h_tfold), "Hide", "Folds the Teams window to a small bar at the top, so you can see and play the game. Show opens it again."); return; }
+    if (hit(u_gc_get(h_tfold), m, cam)) { tip_on(u_gc_get(h_tfold), TR("Hide"), TR("Folds the Teams window to a small bar at the top, so you can see and play the game. Show opens it again.")); return; }
     for (int i = 0; lpop_unit >= 0 && i < nlrow; i++) if (hit(u_gc_get(lrow_h[i]), m, cam)) { tip_lrow(u_gc_get(lrow_h[i]), i); return; }
     for (int i = 0; i < nchip; i++) if (hit(u_gc_get(chip_h[i]), m, cam)) { tip_chip(u_gc_get(chip_h[i]), chip_u[i]); return; }
     for (int i = 0; i < nbar; i++) if (hit(u_gc_get(bar_h[i]), m, cam)) { tip_bar(i); return; }
@@ -2118,6 +2229,7 @@ void ui_teams_frame(void) {
     start_frame();
     if (n % 30 == 1) hud_frame();
     hud_place();
+    win_place();
     hud_input();
     for (int b = 0; b < 2; b++)
         if (F(0x51ACDD0, bool (*)(int, void *))(b, NULL)) {   /* Input.GetMouseButtonDown */
@@ -2175,7 +2287,7 @@ int ui_teams_expedition_start(const uint8_t *p, size_t len) {
     rig_log("teams: expedition start: %d players, %d units in the party%s", p[0], n, c && dsnet_is_host(c) ? " (host sends the map change)" : "");
     if (c && dsnet_is_host(c) && n > 0) start_pending = 1;   /* send from the frame, not inside command apply */
     if (opened) close_screen();
-    { char m_[120]; snprintf(m_, sizeof m_, n ? "Everyone approved: leaving for %s" : "Everyone approved, but nobody marked a unit", region_name(start_region)); center_msg(m_); }
+    { char m_[300]; snprintf(m_, sizeof m_, n ? TR("Everyone approved: leaving for %s") : TR("Everyone approved, but nobody marked a unit"), region_name(start_region)); center_msg(m_); }
     if (pstage == ST_SUPPLIES) close_stock = 1;
     pstage = ST_NONE;
     return 0;
@@ -2208,7 +2320,7 @@ static void start_frame(void) {
     size_t len = build_change_map(buf, sizeof buf, region, skip, (const uint8_t (*)[16])start_party, start_n);
     int rc = !len ? -2 : trn_submit_map_change ? trn_submit_map_change(buf, len) : -3;
     rig_log("teams: expedition map change sent (region %d, skip %d, %d units, %zu bytes, rc %d)", region, skip, start_n, len, rc);
-    if (rc) notice("The expedition could not be started");
+    if (rc) notice("%s", TR("The expedition could not be started"));
 }
 
 /* ---------------------------------------------------------------- expedition gate (transitions / mpui) */

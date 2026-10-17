@@ -11,6 +11,15 @@
 #include <stdio.h>
 #include <string.h>
 
+/* i18n: the multiplayer mod defines DSMC_TR as TR (ds_i18n.h) before the include, so the guest text is in the player's
+ * language; any other user of this header gets English. TR_NOOP marks the keys for the extractor. */
+#ifndef DSMC_TR
+#define DSMC_TR(s) (s)
+#endif
+#ifndef TR_NOOP
+#define TR_NOOP(s) (s)
+#endif
+
 enum { DSMC_MAX_MODS = 64 };
 
 typedef struct {
@@ -78,8 +87,8 @@ static int dsmc_list(dsmc_buf *b, int kind, const dsmc_mod *h, int nh, const dsm
                 : (o && !strcmp(o->ver, src[i].ver) && strcmp(o->rest, src[i].rest));
         if (!hit) continue;
         dsmc_name_of(names, src[i].id, nm, sizeof nm);
-        if (c++) dsmc_put(b, ", ");
-        if (kind == DSMC_K_VERSION && with_versions_pair) dsmc_put(b, "%s (host %s, you %s)", nm, src[i].ver, o->ver);
+        if (c++) dsmc_put(b, "%s", DSMC_TR(TR_NOOP(", ")));
+        if (kind == DSMC_K_VERSION && with_versions_pair) dsmc_put(b, DSMC_TR(TR_NOOP("%s (host %s, you %s)")), nm, src[i].ver, o->ver);
         else if (kind == DSMC_K_VERSION) dsmc_put(b, "%s (host %s, player %s)", nm, src[i].ver, o->ver);
         else dsmc_put(b, "%s%s%s", nm, *src[i].ver ? " " : "", src[i].ver);
     }
@@ -103,16 +112,16 @@ __attribute__((unused)) static int dsmc_guest_text(const char *host_lines, const
     int total = c.missing + c.extra + c.version + c.files;
     if (!total || !n) return total;
     if (vanilla) {
-        dsmc_put(&b, "This host allows no gameplay mods. Turn off: ");
-        dsmc_list(&b, DSMC_K_EXTRA, h, nh, g, ng, names, 1);
-        dsmc_put(&b, ". Client mods (comfort mods) are fine.");
+        char l[1000]; dsmc_buf lb = {l, sizeof l, 0}; l[0] = 0;               /* the list goes inside one sentence (word order) */
+        dsmc_list(&lb, DSMC_K_EXTRA, h, nh, g, ng, names, 1);
+        dsmc_put(&b, DSMC_TR(TR_NOOP("This host allows no gameplay mods. Turn off: %s. Client mods (comfort mods) are fine.")), l);
     } else {
-        dsmc_put(&b, "Your gameplay mods are not the same as the host's.");
-        if (c.missing) { dsmc_put(&b, "\nMissing (the host uses them): "); dsmc_list(&b, DSMC_K_MISSING, h, nh, g, ng, names, 1); }
-        if (c.extra) { dsmc_put(&b, "\nExtra (the host does not use them): "); dsmc_list(&b, DSMC_K_EXTRA, h, nh, g, ng, names, 1); }
-        if (c.version) { dsmc_put(&b, "\nOther version: "); dsmc_list(&b, DSMC_K_VERSION, h, nh, g, ng, names, 1); }
-        if (c.files) { dsmc_put(&b, "\nSame version, different files (reinstall): "); dsmc_list(&b, DSMC_K_FILES, h, nh, g, ng, names, 1); }
-        dsmc_put(&b, "\nJoin from the launcher: it gets the host's mods for this game.");
+        dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("Your gameplay mods are not the same as the host's.")));
+        if (c.missing) { dsmc_put(&b, "\n%s ", DSMC_TR(TR_NOOP("Missing (the host uses them):"))); dsmc_list(&b, DSMC_K_MISSING, h, nh, g, ng, names, 1); }
+        if (c.extra) { dsmc_put(&b, "\n%s ", DSMC_TR(TR_NOOP("Extra (the host does not use them):"))); dsmc_list(&b, DSMC_K_EXTRA, h, nh, g, ng, names, 1); }
+        if (c.version) { dsmc_put(&b, "\n%s ", DSMC_TR(TR_NOOP("Other version:"))); dsmc_list(&b, DSMC_K_VERSION, h, nh, g, ng, names, 1); }
+        if (c.files) { dsmc_put(&b, "\n%s ", DSMC_TR(TR_NOOP("Same version, different files (reinstall):"))); dsmc_list(&b, DSMC_K_FILES, h, nh, g, ng, names, 1); }
+        dsmc_put(&b, "\n%s", DSMC_TR(TR_NOOP("Join from the launcher: it gets the host's mods for this game.")));
     }
     return total;
 }

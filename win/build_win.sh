@@ -49,7 +49,10 @@ CM_SOLO=(); CM_MP=(); while read k f; do if [[ $k == solo ]]; then CM_SOLO+=(bui
 NET=()
 O=build/obj; [[ $TARGET == module ]] && O=build/obj_module
 mkdir -p $O build/old_obj; olds=($O/*.o(N)); (( ${#olds} )) && mv -f $olds build/old_obj/
-for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do nice -n 5 $TC $CF -fwrapv $CEMB $INC -include dswin.h -include port/cm/xm_bsd_win.h -c $f -o $O/${f:t:r}.o; done
+# i18n: three string tables in the rig DLL (multiplayer, Custom Modes solo, Custom Modes mp; each has its own
+# DSI_IMPLEMENTATION): -DDSI_PREFIX renames the Custom Modes ones (cms_tr ..., cmm_tr ...). The module target has one per DLL.
+dsi_pfx() { DP=(); [[ $TARGET == module ]] && return; (( ${CM_MP[(Ie)$1]} )) && DP=(-DDSI_PREFIX=cmm_); (( ${CM_SOLO[(Ie)$1]} )) && DP=(-DDSI_PREFIX=cms_); return 0; }
+for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do dsi_pfx $f; nice -n 5 $TC $CF $DP -fwrapv $CEMB $INC -include dswin.h -include port/cm/xm_bsd_win.h -c $f -o $O/${f:t:r}.o; done
 for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $ZL/zutil.c; do nice -n 5 $TC $PM -O2 -w -c $f -o $O/zl_${f:t:r}.o; done
 if [[ $TARGET == module ]]; then
 nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o
@@ -77,22 +80,26 @@ echo "built build/custom-modes.dll (${#CM_SOLO} files) + build/custom-modes-mp.d
 M=build/mods/multiplayer; mkdir -p $M
 cp build/multiplayer.dll $M/multiplayer.dll.tmp && mv -f $M/multiplayer.dll.tmp $M/multiplayer.dll
 cp build/det_ranges_win.tsv $M/det_ranges_win.tsv.tmp && mv -f $M/det_ranges_win.tsv.tmp $M/det_ranges_win.tsv
+# i18n: the language files (repo lang/*.json) in lang/ beside the dll. Not in mod.json's files list (not hashed: a translation fix
+# never stops players from joining each other)
+if [[ -d $DSMP_ROOT/lang ]]; then mkdir -p $M/lang; for f in $DSMP_ROOT/lang/*.json(N); do cp $f $M/lang/${f:t}.tmp && mv -f $M/lang/${f:t}.tmp $M/lang/${f:t}; done; fi
 python3 - ${DSL_MODJSON:-~/ds_launcher/loader/modules/multiplayer/mod.json} $M <<'PY'
 import hashlib, json, os, sys
 m = json.load(open(sys.argv[1])); d = sys.argv[2]
 files = {f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest() for f in ("multiplayer.dll", "det_ranges_win.tsv")}
 m.setdefault("platforms", {})["win-x64"] = {"entry": "multiplayer.dll", "files": files}
-json.dump(m, open(os.path.join(d, "mod.json"), "w"), indent=1)
+json.dump(m, open(os.path.join(d, "mod.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
 print("module folder", d, files["multiplayer.dll"][:16])
 PY
 M=build/mods/custom-modes; mkdir -p $M
 for f in custom-modes.dll custom-modes-mp.dll; do cp build/$f $M/$f.tmp && mv -f $M/$f.tmp $M/$f; done
+if [[ -d $C/lang ]]; then mkdir -p $M/lang; for f in $C/lang/*.json(N); do cp $f $M/lang/${f:t}.tmp && mv -f $M/lang/${f:t}.tmp $M/lang/${f:t}; done; fi   # its translations, not hashed
 python3 - ${CM_MODJSON:-$C/mod.json} $M <<'PY'
 import hashlib, json, os, sys
 m = json.load(open(sys.argv[1])); d = sys.argv[2]
 files = {f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest() for f in ("custom-modes.dll", "custom-modes-mp.dll")}
 m.setdefault("platforms", {})["win-x64"] = {"entry": "custom-modes.dll", "files": files}
-json.dump(m, open(os.path.join(d, "mod.json"), "w"), indent=1)
+json.dump(m, open(os.path.join(d, "mod.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
 print("module folder", d, files["custom-modes.dll"][:16], files["custom-modes-mp.dll"][:16])
 PY
 else

@@ -37,3 +37,5 @@ int  mp_steam_join(uint64_t lobby);                 /* join a lobby (friend list
 void mp_steam_leave(void);
 void mp_steam_state(mp_steam_info *out);
 void mp_steam_ack(void);                            /* menu showed the ENDED message: back to IDLE */
+int  mp_steam_end_code(void);                       /* MP_STEAM_ENDED: what msg says (MPM_END_* of mpmenu.h); msg is translated */
+const char *mp_steam_end_text(void);               /* MP_STEAM_ENDED: msg in full (msg keeps 159 bytes: the struct size stays) */

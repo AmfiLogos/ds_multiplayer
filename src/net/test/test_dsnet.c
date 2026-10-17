@@ -1965,6 +1965,48 @@ static void test_hello_max(void) {
            ok ? "PASS" : "FAIL", strlen(lines), (now_ms() - t0) / 1000);
 }
 
+/* ---- i18n: a name longer than the 32-byte name field (11 CJK characters = 33 bytes) is cut at a whole character, never
+ * inside one: the game turns a cut UTF-8 string into an EMPTY label (il2cpp_string_new), so the name would show blank. The
+ * HELLO, the join command every peer stores and the chat line all carry the 30-byte (10-character) name. ---- */
+static int utf8_valid(const char *s) {
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p) {
+        int n = *p < 0x80 ? 0 : (*p & 0xE0) == 0xC0 ? 1 : (*p & 0xF0) == 0xE0 ? 2 : (*p & 0xF8) == 0xF0 ? 3 : -1;
+        if (n < 0) return 0;
+        p++;
+        for (int i = 0; i < n; i++, p++) if ((*p & 0xC0) != 0x80) return 0;
+    }
+    return 1;
+}
+static void test_utf8_names(void) {
+    int ok = 1; double t0 = now_ms();
+    char cjk[40] = "", want[40] = "";
+    for (int i = 0; i < 11; i++) strcat(cjk, "\xE6\xB5\x8B");                 /* U+6D4B x 11 */
+    memcpy(want, cjk, 30); want[30] = 0;
+    dsnet_cfg cfg = test_cfg(2);
+    dsnet_server *srv = dsnet_server_start(&cfg);
+    peer *h = peer_new("host", connect_as(srv, "host", 0xE0, 1), 200); dsnet_wait_welcome(h->c, 2000);
+    peer *g = peer_new("g", connect_as(srv, cjk, 0xE1, 0), 200);        dsnet_wait_welcome(g->c, 2000);
+    peer_go(h); peer_go(g);
+    int sent = 0;
+    while (!(h->done && g->done)) {
+        if (!sent && h->timer >= 20) { dsnet_chat_send(g->c, "hi"); sent = 1; }
+        sleep_ms(2);
+        if (now_ms() - t0 > 20000) { CHECK(0, "timeout"); break; }
+    }
+    sleep_ms(100);
+    for (int k = 0; k < 2; k++) {
+        const char *nm = dsnet_player_name(k ? g->c : h->c, 1);
+        CHECK(nm && utf8_valid(nm) && !strcmp(nm, want), "%s sees the name as %zu bytes, valid %d", k ? "guest" : "host", nm ? strlen(nm) : 0, nm ? utf8_valid(nm) : -1);
+    }
+    dsnet_chat_msg m[16]; int n = chat_drain(h->c, m, 16), line = 0;
+    for (int i = 0; i < n; i++) if (m[i].kind == DSNET_CHAT_TEXT && m[i].player == 1) line = utf8_valid(m[i].name) && !strcmp(m[i].name, want);
+    CHECK(line, "the chat line's name is not the whole-character cut");
+    peer *ps[2] = { h, g };
+    stop_all(ps, 2, srv);
+    printf("%s utf8_names: a 33-byte CJK name is cut to 10 whole characters (HELLO, every peer, chat) (%.1fs)\n", ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
+}
+
 static void test_chat(void) {
     int ok = 1; double t0 = now_ms();
     dsnet_cfg cfg = test_cfg(3);
@@ -2450,6 +2492,7 @@ int main(int argc, char **argv) {
     RUN("big_cmd", test_big_cmd());
     RUN("full_big", test_full_big());
     RUN("hello_max", test_hello_max());
+    RUN("utf8_names", test_utf8_names());
     RUN("fe_stale", test_fe_stale());
     RUN("save_fail", (test_save_fail(1), test_save_fail(2)));
     RUN("identity", test_identity());

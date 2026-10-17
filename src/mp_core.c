@@ -1,6 +1,7 @@
 /* mp core: session, tick gate, command dispatch, fingerprint, resync, speed/pause votes.
  * Game access only through mp_game_api. See mp.h and MP_NOTES.md. */
 #include "mp_api.h"
+#include "ds_i18n.h"
 #include "mp_dlsym.h"
 #include "mp.h"
 #include <stdarg.h>
@@ -274,7 +275,7 @@ int mp_left_players(mp_session *s, int *ids, char (*names)[32], int max) {
         int reason; uint8_t uid[16]; char nm[32] = "";
         if (dsnet_hold_get(s->c, i, &reason, uid, nm) < 0 || reason != DSNET_HOLD_PLAYER_LEFT) continue;
         if (ids) ids[n] = i;
-        if (names) snprintf(names[n], 32, "%s", nm[0] ? nm : "A player");
+        if (names) { snprintf(names[n], 32, "%s", nm[0] ? nm : TR("A player")); dsi_utf8_fix_end(names[n]); }
         n++;
     }
     return n;
