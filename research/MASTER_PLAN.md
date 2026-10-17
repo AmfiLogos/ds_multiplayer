@@ -316,4 +316,4 @@ it" list checked against the build. Nothing ships until all is green.
 - Mac: not possible today (no arm64 BepInEx/MelonLoader for IL2CPP, research/bepinex_compat.md). Told the owner.
 
 ## Open for M4 SPLIT (lead 2026-10-15 19:45)
-- The multiplayer mod must report "busy" to the loader while a session runs (Apply / soft restart disabled in MP). Put it in mp_api.h / the loader SDK busy flag (loader/src/dsl_menu.h, l1-core 885069d).
+- The multiplayer mod must report "busy" to the loader while a session runs (Apply / soft restart disabled in MP). Put it in mp_api.h / the loader SDK busy flag (loader/src/dsl_menu.h, l1-core 7d41f93).

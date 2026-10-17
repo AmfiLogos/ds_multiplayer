@@ -387,7 +387,7 @@ multiplayer tag next to the name of the save and then just put the players that 
   loader does (DSRIG_CUSTOM=0 = multiplayer alone). dsrig install name = @rpath/multiplayer.dylib. .gitignore: !/custom/, !/sdk/.
 - Windows: Custom Modes is compiled into the same DLL (-DCM_SAME_IMAGE; separate custom-modes.dll left to L3). Found: in the v11 DLL,
   fe_menu.inc / pvp_ui.inc were #included raw, so the FE / PvP windows called Mac RVAs on Windows. Now they are translated.
-- Loader busy flag: ds_launcher branch m4-busy 4c1687c (pushed, not merged): mp_module.c -> dsl_set_session_busy while a game runs or
+- Loader busy flag: ds_launcher branch m4-busy 37f25a0 (pushed, not merged): mp_module.c -> dsl_set_session_busy while a game runs or
   starts; loader build.sh archives custom/ + sdk/ and builds mods/custom-modes.
 - RELEASE TOOLS NOT CHANGED: release_gate.sh / release_all.sh / make_mp_app.sh ship dsrig.dylib only. Without custom-modes*.dylib
   next to it, a kit has no FE / PvP. The release gate must add them.
@@ -399,7 +399,7 @@ multiplayer tag next to the name of the save and then just put the players that 
 ## v12-mvp released (ship12, 2026-10-15 23:14-23:53)
 - Release: https://github.com/AmfiLogos/ds_multiplayer/releases/tag/v12-mvp (Latest). Tags: ds_multiplayer `v12-mvp` = 6d7f471
   (9719313 + gen_port fix: a bare `(float, float)` own-C call, ui_panel_hit, no longer stops the Windows module build;
-  win_map.tsv regenerated), ds_launcher `v12-mvp` = 0f1d66a. Mac module pinned to 9719313 (src identical to 6d7f471).
+  win_map.tsv regenerated), ds_launcher `v12-mvp` = d14859a. Mac module pinned to 9719313 (src identical to 6d7f471).
   Pre-M4 split: FE / PvP are inside multiplayer, as in v11.
 - Dungeon-Settlers-Modded-Mac.zip sha256 f0b3fb7df0ff1c0b014ead35302f0806730b3587bba9cc32df22c4eff46f9d22 (no custom-modes, no modmenu)
 - Dungeon-Settlers-Modded-Windows.zip sha256 36ebb3dcc7465bbd42262012d7f4c5aca649fcc72eb6c679d8fed76a2550d3c6
@@ -438,9 +438,9 @@ multiplayer tag next to the name of the save and then just put the players that 
 - builder13 650b148 (+ main = 534fb68) -> c57872a (build/merge_builder13, my build replaced the lane's own folder of that name):
   run_eq 300/300 equal to node (0 save/link failures); unit ALL PASS; smoke 3/3; mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL;
   builder_test 32/32 (copy R); tf_check 25 saves, 0 errors, 0 problems, QuickJS == node 51/51; prefs identical.
-- LD (ds_modloader): loaderui 4ff268b -> 5a3cd2e: run_tests 31/31, l1_test 13/13, l1_v13_test 18/18 x2 (one more run 17/18:
+- LD (ds_modloader): loaderui d11c70b -> 4ecd34b: run_tests 31/31, l1_test 13/13, l1_v13_test 18/18 x2 (one more run 17/18:
   "world: still in the world, no new process" failed once right after the refused other-mods load; flake, reruns pass).
-  melon 53c5e4e (+ main, dsl_reg.c conflict resolved by melon's own recorded resolution) -> 7430f1a: run_tests 31/31,
+  melon 5a23cb3 (+ main, dsl_reg.c conflict resolved by melon's own recorded resolution) -> 7024af9: run_tests 31/31,
   l1_test 13/13, l1_v13_test 18/18, l1_ml_test 17/17, l1_bie_test 14/14. MP melon (ext/melon, ext/bepinexmac) -> 25b804a
   (no dylib change; its untracked copies in the main checkout were identical, moved to old/melon_untracked_*).
 - fights13 1570470 (+ main = 158037a) -> 59e511b (build/merge_fights13full; disjoint from fepvp, merged before it): run_eq 64/64,
@@ -450,13 +450,13 @@ multiplayer tag next to the name of the save and then just put the players that 
 - fepvp13 c84c965 (+ main = 773d137) -> merged (build/merge_fepvp13): unit ALL PASS, pvp_test 597, FE guard ALL PASS; smoke 3/3;
   mp2 19 PASS 0 FAIL; left_prompt 16 PASS 0 FAIL; hub_smoke 5/5; PvP v1 via menu 11/11; hub dive (Death Off, save units) 25/25;
   PvP from the hub 13/13; PvP m4_van / m4_bring / m4_ui PASS; prefs identical. Open for gate13: hub dive with one My Units unit.
-- LD crossmods f2a8d33 (+ main) -> 468dcbb: build green, run_tests 31/31, l1_test 13/13, l1_v13_test 18/18, mod.json valid
+- LD crossmods 97c01d5 (+ main) -> 3dcca07: build green, run_tests 31/31, l1_test 13/13, l1_v13_test 18/18, mod.json valid
   (no wine run here; the lane ran the kit 12/12 and Mac host + Windows guest mp2 19/19).
 - MP crossmods13 f340e5e (+ main) -> 56eb78b: win/ build_win.sh green on the final tree (baselib.dll; DSMP_TARGET=module:
   multiplayer.dll, custom-modes.dll 40 files + custom-modes-mp.dll 10 files); win_map.tsv regenerated on the merged tree
   (30cceb1; status counts as the lane's). Mac dylibs byte-identical to 1cefa2a. The main checkout's uncommitted
   win/inline_audit.tsv (a build output) saved to old/inline_audit_uncommitted_*.tsv before the merge.
-- ALL v13 lanes merged (MP 56eb78b, LD 468dcbb). Next: gate13.
+- ALL v13 lanes merged (MP 56eb78b, LD 3dcca07). Next: gate13.
 - mpfix aea50bc (gate13 fix, already on main 86558bd) -> 48acd78: src/mpmenu.c world/save row table 64 -> 512. Merge build
   build/merge_mpfix79 (+ _mouse): unit ALL PASS (pvp 597, FE guard). Game tests (smoke, mp2, menu_pair, choice2) left to
   gate13's G2 rerun first, then run 06:22-06:35 (DSRIG_RELEASE=1, lead ok): smoke 3/3, mp2 19/0, choice2 8/8,
@@ -464,7 +464,7 @@ multiplayer tag next to the name of the save and then just put the players that 
 
 ## v13 released (gate13, 2026-10-16 05:25-12:25)
 - Release: https://github.com/AmfiLogos/ds_multiplayer/releases/tag/v13 (Latest). Tags: ds_multiplayer `v13` = 29f0fa6,
-  ds_modloader (folder ~/ds_launcher) `v13` = 942ab7f (loader/mp_pin.txt = 29f0fa6).
+  ds_modloader (folder ~/ds_launcher) `v13` = 0c59f80 (loader/mp_pin.txt = 29f0fa6).
 - Dungeon-Settlers-Modded-Mac.zip sha256 c1db5ddce7d4f3836fb9c74d8c1c8184d2150d609f650a21483b0c7d63578035
 - Dungeon-Settlers-Modded-Windows.zip sha256 104e3022a514d22a865b1fcb12c104f9e133e8e14a365fc60f3ebf10bb6e0211
 - Mods (both kits, from loader/build/mods_all, build_mods.sh --check OK): multiplayer, custom-modes, gcd-cdr, hell-difficulty.

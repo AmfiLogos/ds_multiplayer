@@ -27,4 +27,4 @@ the PvP match path (units + rng sections), not in normal cross-play.
 run) and W_rig.log (the Windows guest's rig log with the DESYNC lines). Command:
 `cd ~/ds_multiplayer/win && python3 xplay_run.py <pair> ~/ds_mp_gate13/ext/fepvp13/tests/pvp_v1_pair.py --math --dylib <dsrig.dylib> --tag x`
 (with the gated baselib.dll in C:\DSW and the wine lock; rig/gate13/g11.sh function pvpx does all of it).
-Build: MP main 29f0fa6 (dsrig.dylib sha256 ddf76a8b...), LD 942ab7f.
+Build: MP main 29f0fa6 (dsrig.dylib sha256 ddf76a8b...), LD 0c59f80.

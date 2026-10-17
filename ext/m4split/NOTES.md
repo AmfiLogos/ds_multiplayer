@@ -43,13 +43,13 @@ ext/m4split/tools/kit_unstatic.py does the mpmenu.c part (re-run it if mpmenu.c 
   go into custom-modes.dylib.
 - The rig hosts it like the loader does: rig_main.c dlopens custom-modes.dylib (RTLD_LOCAL) from next to the running dsrig.dylib
   (DSRIG_CUSTOM=<path>, DSRIG_CUSTOM=0 = none) and calls dsl_module_load + dsl_module_early with a small DSLHost (hook_rva -> rig_hook,
-  module_loaded("multiplayer") = 1). sdk/dsl_sdk.h = copy of ds_launcher 0f1d66a loader/sdk/dsl_sdk.h.
+  module_loaded("multiplayer") = 1). sdk/dsl_sdk.h = copy of ds_launcher d14859a loader/sdk/dsl_sdk.h.
 - pvp_units fe_reads_mail used dlsym(RTLD_DEFAULT, "fe_poll"). That fails for an RTLD_LOCAL image and would give 2 mailbox readers,
   so it is now a weak reference in the same image. pvp_game's dlsym(RTLD_DEFAULT, "ui_center_message") is unchanged: it works in the
   rig (dsrig inserted = global) and did not work in loader mode before either.
 - custom/mod.json: id custom-modes, scope gameplay, api 3, no "requires" on multiplayer (works alone).
 
-## Loader (ds_launcher branch m4-busy 4c1687c, pushed, NOT merged: L1 owns loader/)
+## Loader (ds_launcher branch m4-busy 37f25a0, pushed, NOT merged: L1 owns loader/)
 - The SDK already had `set_session_busy`. modules/multiplayer/mp_module.c polls mp_session_busy_reason() each frame, finds it with
   dlsym(RTLD_SELF) so older pins still link, and calls dsl_set_session_busy when it changes. Busy = a session exists, or the menu is in
   HOST_LOADING / LOBBY / PLAYING / GUEST_JOINING / GUEST_LOADING / GUEST_LOBBY.

@@ -61,7 +61,7 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
   hidden). The loader copies enabled bepinex mods to BepInEx\plugins\<id>\ and lists them in modset_lines (HELLO).
 
 ## Mac host with BepInEx (2026-10-15 21:30, pair GH, run with `--mac-bie`)
-- Mac host started the way the l1-core launcher does it (`tools/mac_bie_host.py`): l1-core loader (l1-core 8d29c78,
+- Mac host started the way the l1-core launcher does it (`tools/mac_bie_host.py`): l1-core loader (l1-core 35a26b4,
   built in l1/loader with MP_PIN = this branch) + multiplayer.dylib module (RTLD_LOCAL) + Doorstop + bepinex-mac 0.1.1
   + DsmpBridge + demo via BEPINEX_PLUGIN_DIRS. First start (interop generation) took 130 s to the title.
 - DsmpBridge on Mac: RTLD_LOCAL module is not in RTLD_DEFAULT, so the plugin scans the loaded images for
