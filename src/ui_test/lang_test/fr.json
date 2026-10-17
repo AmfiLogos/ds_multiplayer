@@ -1,0 +1,6 @@
+{
+ "_note": "test only (test_ui.c test_i18n): two keys in French; the real files are made by the translation pass",
+ "Host": "Hôte",
+ "%s wants %s · press >> to agree||%s want %s · press >> to agree": ["%s veut %s · appuyez sur >> pour accepter", "%s veulent %s · appuyez sur >> pour accepter"],
+ "Fast": "Rapide"
+}
