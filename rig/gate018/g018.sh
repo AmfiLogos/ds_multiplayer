@@ -24,7 +24,7 @@ trap "verdict ${0:A}" EXIT
 # held wine lock (Windows section): python tests via held_lock_run.py, wine_lease.py users (shell tests) on a private lock
 WH=($H/held_lock_run.py); WE=(WINE_LEASE_LOCK=$HOME/ds_multiplayer/rig/wine.lock.gate13-inner)
 LR=$H/ld_run.py
-chk g018_host_tests '== 0 failure|ALL PASS|[0-9]+/[0-9]+ pass' $LD zsh loader/test/run_tests.sh
+chk g018_host_tests '== ([0-9]+) passed, 0 failed' $LD zsh loader/test/run_tests.sh
 # ---- release files: names, bytes, saves, licenses
 scan() { local M=$(mktemp -d); hdiutil attach -nobrowse -readonly -noautoopen -mountpoint $M $REL/*.dmg >/dev/null || return 1
   python3 $H/banscan.py $M $REL/* $LD/loader/build/win/kit; local rc=$?; hdiutil detach $M -quiet; (( rc == 0 )) && echo "SCAN ALL PASS"; return $rc; }
