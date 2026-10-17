@@ -90,7 +90,7 @@ static int tips_on(void) {
 }
 
 /* ---------------------------------------------------------------- the hook */
-static char cur_title[160], cur_body[700];
+static char cur_title[160], cur_body[2048];
 static void (*o_etc_show)(Obj, Obj, void *);
 static uintptr_t h_last_tip;                                 /* last Tooltip_ETC we filled (probe) */
 static void hk_etc_show(Obj self, Obj key, void *mi) {

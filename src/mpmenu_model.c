@@ -181,6 +181,7 @@ void mpm_page_started(mpm_model *m, int rc, const char *err) {
     if (m->state != MPM_TITLE_HOST) return;
     if (rc == 0) { m->msg[0] = 0; m->closed_frames = 0; go(m, MPM_HOST_LOADING); return; }   /* waits like "Your save" */
     snprintf(m->msg, sizeof m->msg, "%s", err && err[0] ? err : TR("This mode could not start."));
+    dsi_utf8_fix_end(m->msg);                                               /* a mod's text may end inside a character */
 }
 static const mpm_obs *cur;
 /* a failed start or join (lan_v10, ux_flow F8): the reason goes to the stock notice box (game side), not in small type

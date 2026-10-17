@@ -51,10 +51,14 @@ static Obj tmp_get(Obj t) {
     void *k = *(void **)t;
     return (*(Obj (**)(Obj, void *))((char *)k + 0x548))(t, *(void **)((char *)k + 0x550));
 }
+void txt_fit(Obj t, float size, int wrap);               /* mpmenu.c: a text too long for its rect auto-sizes (ext/i18n/CJK_FIT.md) */
+void txt_fit_text(Obj t, const char *s);
+void txt_fit_stock(Obj t);                                 /* the stock notice box text: auto size while ours is up */
 static void tmp_set(Obj t, const char *s) {
     if (!ui_is(t, K_TMP)) return;
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str(s), *(void **)((char *)k + 0x560));
+    txt_fit_text(t, s);
 }
 /* class name of an object (Il2CppClass.name at +0x10) */
 static const char *cls_name(Obj o) { return o ? *(const char **)((char *)*(void **)o + 0x10) : ""; }
@@ -188,7 +192,7 @@ static void reserved_name(const uint8_t g[16], char *out, size_t cap) {   /* "Re
 }
 static void owner_tag_for(const uint8_t g[16], int o, char *tag, size_t cap) {
     ui_players p; players(&p);
-    if (o == UI_RESERVED) { char nm[32]; reserved_name(g, nm, sizeof nm); char aw[64]; snprintf(aw, sizeof aw, TR("%s, away"), nm); snprintf(tag, cap, " <color=#8a8088>[%s]</color>", aw); dsi_utf8_fix_end(tag); }
+    if (o == UI_RESERVED) { char nm[64]; reserved_name(g, nm, sizeof nm); char aw[128]; snprintf(aw, sizeof aw, TR("%s, away"), nm); snprintf(tag, cap, " <color=#8a8088>[%s]</color>", aw); dsi_utf8_fix_end(tag); }
     else ui_owner_tag(&p, o, tag, cap);
 }
 /* lan_v10 (owner 01:40): each viewer may choose other players' colours for their own screen (cog rows, mp_ui.json
@@ -267,8 +271,8 @@ static Obj find_view(uintptr_t *h, const char *ns, const char *name) {
 static uintptr_t h_help;
 static void notice(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 static void notice(const char *fmt, ...) {
-    static char last[256]; static double last_t;
-    char b[256]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap); dsi_utf8_fix_end(b);
+    static char last[512]; static double last_t;
+    char b[512]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap); dsi_utf8_fix_end(b);
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
     double t = ts.tv_sec + ts.tv_nsec / 1e9;
     if (!strcmp(b, last) && t - last_t < 1.5) return;        /* no spam on repeated clicks */
@@ -538,7 +542,7 @@ static void hk_sc_click(Obj parts, Obj ev, void *mi) {
         if (a.target < 0) notice(TR("%s is free"), un); else notice(TR("%s goes to %s"), un, ui_player_label(&p, a.target, pn));
         break;
     case UI_ACT_DENY_OWNED:
-        if (a.target == UI_RESERVED) { char rn[32]; reserved_name(g, rn, sizeof rn); notice(TR("%s is reserved for %s"), un, rn); }
+        if (a.target == UI_RESERVED) { char rn[64]; reserved_name(g, rn, sizeof rn); notice(TR("%s is reserved for %s"), un, rn); }
         else if (me() == 0) notice(TR("%s belongs to %s (Admin mode lets the host take it)"), un, ui_player_label(&p, a.target, pn));
         else notice(TR("%s belongs to %s"), un, ui_player_label(&p, a.target, pn));
         break;
@@ -641,7 +645,7 @@ static void (*o_hud_init)(Obj, Obj, void *);
 static void hud_apply(int i) {
     Obj h = u_gc_get(hud[i].hud);
     if (!u_alive(h)) return;
-    char tag[96], full[200]; ui_players p; players(&p);
+    char tag[256], full[512]; ui_players p; players(&p);
     int o = owner_of_guid(hud[i].guid), e = eff_of_guid(hud[i].guid);
     if (o != UI_RESERVED && e >= 0) o = e;                   /* lan_v9 colour rule: a lent unit shows its CONTROLLER */
     settings_load();
@@ -657,7 +661,7 @@ static void hud_apply(int i) {
         rig_log("ui: world name dot glyph: %s", dot[0] ? dot : "(none in the font)");
     }
     if (ui_name_tag_visible(uiset.names, o == UI_RESERVED ? 99 : o, me())) {
-        if (o == UI_RESERVED) { char nm[32]; reserved_name(hud[i].guid, nm, sizeof nm); char aw[64]; snprintf(aw, sizeof aw, TR("%s, away"), nm); snprintf(tag, sizeof tag, " <color=#8a8088>%s%s%s</color>", dot ? dot : "", dot && dot[0] ? " " : "", aw); dsi_utf8_fix_end(tag); }
+        if (o == UI_RESERVED) { char nm[64]; reserved_name(hud[i].guid, nm, sizeof nm); char aw[128]; snprintf(aw, sizeof aw, TR("%s, away"), nm); snprintf(tag, sizeof tag, " <color=#8a8088>%s%s%s</color>", dot ? dot : "", dot && dot[0] ? " " : "", aw); dsi_utf8_fix_end(tag); }
         else ui_owner_tag_world(&p, o, dot, tag, sizeof tag);
     }
     { char pt[96]; size_t tl = strlen(tag); if (mpx_unit_tag(hud[i].guid, pt, sizeof pt) > 0 && tl + strlen(pt) < sizeof tag) strcat(tag, pt); }
@@ -751,7 +755,7 @@ static void not_mine_text(const uint8_t g[16], char *out, size_t cap) {
     dsnet_client *c = cli(); int o = owner_of_guid(g), lent = c ? dsnet_lent_to(c, g) : -1;
     ui_players p; players(&p); char pn[40];
     if (o == me() && lent >= 0) snprintf(out, cap, TR("Lent to %s: take it back to control it"), ui_player_label(&p, lent, pn));
-    else if (o == UI_RESERVED) { char rn[32]; reserved_name(g, rn, sizeof rn); snprintf(out, cap, TR("Not your unit (%s)"), rn); }
+    else if (o == UI_RESERVED) { char rn[64]; reserved_name(g, rn, sizeof rn); snprintf(out, cap, TR("Not your unit (%s)"), rn); }
     else if (o >= 0) snprintf(out, cap, TR("Not your unit (owned by %s)"), ui_player_label(&p, o, pn));
     else snprintf(out, cap, "%s", TR("Not your unit (free: only the host orders it)"));
 }
@@ -779,7 +783,7 @@ int ui_check_order(const uint8_t g[16]) {
     if (c ? dsnet_may_order(c, me(), g) : may_order(o)) return 1;   /* own, free->host, reserved->host admin/temp, admin */
     Guid gg; memcpy(&gg, g, 16);
     Obj u = find_unit(cur_map(), gg);
-    char un[64], why[96];
+    char un[64], why[256];
     unit_name(u, un, sizeof un); not_mine_text(g, why, sizeof why);
     if (o < 0 && o != UI_RESERVED) notice(TR("%s: %s. Right-click its portrait to take it."), un, why);
     else notice("%s: %s", un, why);
@@ -995,6 +999,7 @@ static void box_style(Obj v, const char *msg) {
     if (u_alive(nt)) {
         (ui_is(nt, K_TMP) ? F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL) : (void)0);                            /* Center */
         tmp_set(nt, msg);
+        txt_fit_stock(nt);
     }
 }
 /* layout v2 §5a body: title + red X, what happens, a waiting clock, what Keep playing means */
@@ -1053,7 +1058,7 @@ static const char *ok_glyph(Obj tmp) {                       /* a check mark the
 }
 static int next_floor_no(void) { int f = cur_floor(); return f >= 0 ? f + 2 : 0; }   /* 0-based index: 1F = 0 */
 static void prompt_text(Obj v, char *txt, size_t cap) {
-    char q[64], nm[96], marks[256]; ui_players p; players(&p);
+    char q[64], nm[96], marks[1024]; ui_players p; players(&p);
     int left = UI_MAP_TIMEOUT_S - (int)(now_s() - prompt_t0); if (left < 0) left = 0;
     ui_mapvote_marks(&mapv, &p, p.present, ok_glyph(AT(v, 0x30, Obj)), marks, sizeof marks);
     snprintf(txt, cap, TR("<size=150%%>%s</size>\n%s wants to %s.\n<size=88%%><color=#a69085>%s      %d s left</color></size>"),
@@ -1061,7 +1066,7 @@ static void prompt_text(Obj v, char *txt, size_t cap) {
 }
 static void prompt_show(void) {
     Obj v = find_view(&h_notice, "Refactor.UI", "CommonNoticeView");
-    char txt[512];
+    char txt[2048];
     prompt_t0 = now_s();
     if (!u_alive(v)) { notice("%s", TR("A map change vote (counted as yes)")); prompt_id = mapv.id; map_vote_send(1); return; }
     prompt_text(v, txt, sizeof txt);
@@ -1071,6 +1076,7 @@ static void prompt_show(void) {
     Obj nt = AT(v, 0x30, Obj);
     (ui_is(nt, K_TMP) ? F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL) : (void)0);          /* Center */
     u_go_active(u_go(v), true);
+    txt_fit_stock(nt);
 }
 /* layout v2 §5b, proposer: a strip at the top centre under the pause banner (dark plate, Lora 16 cream), "Go down to
    floor 3? Waiting for Ben (1 of 2 agree) · 52 s" and a stock BottomButton "Cancel" (120x30) */
@@ -1211,7 +1217,7 @@ static void map_frame(void) {
         for (int i = 0; i < UI_MAX_PLAYERS; i++) nv += mapv.vote[i] >= 0;
         int s2 = (int)(now_s() - prompt_t0) * 64 + nv;
         Obj v = u_gc_get(h_notice);
-        if (s2 != last && u_alive(v)) { last = s2; char txt[512]; prompt_text(v, txt, sizeof txt); tmp_set(AT(v, 0x30, Obj), txt); }
+        if (s2 != last && u_alive(v)) { last = s2; char txt[2048]; prompt_text(v, txt, sizeof txt); tmp_set(AT(v, 0x30, Obj), txt); }
     }
     strip_frame();
     if (map_report >= 0) {                                   /* layout v2 §5b: one result toast on every peer */
@@ -2195,6 +2201,7 @@ static void tmp_style(Obj t, Obj font, float size, int align) {
     F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, false, NULL);                         /* no wrapping */
     F(0x4F0B7BC, void (*)(Obj, int, void *))(t, align, NULL);                          /* alignment */
     tmp_plain(t);
+    txt_fit(t, size, 0);                                                                /* too long for its rect: auto size */
 }
 static void rt_top_left(Obj rt) {                            /* anchor top centre of the canvas, pivot top-left */
     if (!ui_is(rt, K_RT)) return;
@@ -2540,7 +2547,7 @@ static void plist_frame(void) {
           snprintf(row, sizeof row, "<color=%s>%s</color>", ui_player_color(arg2[k]), ov >= 0 ? ui_palette_name(ov) : TR("Auto")); plist_set(val2[k], row);
       } }
     /* review #25: after "Keep playing" the host controls an absent player's units */
-    char note[256] = ""; size_t nn = 0;
+    char note[1024] = ""; size_t nn = 0;
     if (host) {
         uint8_t seen[8][16]; int ns = 0;
         for (int i = 0; i < MAX_SC && ns < 8; i++) {
@@ -2557,7 +2564,7 @@ static void plist_frame(void) {
             if (nn >= sizeof note) break;
         }
     }
-    { char nt[300]; snprintf(nt, sizeof nt, note[0] ? "<color=#d9be8f>%s</color>" : "%s", note); plist_set(PL_NOTE, nt); }
+    { char nt[2048]; snprintf(nt, sizeof nt, note[0] ? "<color=#d9be8f>%s</color>" : "%s", note); plist_set(PL_NOTE, nt); }
     { char st2[300]; snprintf(st2, sizeof st2, status_text[0] ? "<color=#d9be8f>%s</color>" : "%s", status_text); plist_set(PL_STATUS, st2); }
     if (pl_anchor_bar) {
         Obj cv = F(0x5260544, Obj (*)(Obj, void *))(u_gc_get(h_pl[PL_HDR]), NULL);
@@ -4743,7 +4750,7 @@ static int qs_selected_foreign(Obj v, char *who, size_t cap) {
 }
 static void quick_frame(void) {
     Obj v = find_view(&h_quick, "Refactor.UI", "QuickSlotUI");
-    char who[96] = "";
+    char who[256] = "";
     int f = qs_selected_foreign(v, who, sizeof who);
     Obj l = u_gc_get(h_qs_line);
     if (f) {
@@ -4764,7 +4771,7 @@ static void quick_frame(void) {
 /* the bar's clicks: QuickSlotUI.OnSelect_SkillSlot / OnInteract_SkillSlot / OnClick_AmmoSlot (int) and
    OnClick_ItemQuickSlot (): nothing happens on a foreign unit (a short notice says why) */
 static void (*o_qs_sel)(Obj, int, void *), (*o_qs_int)(Obj, int, void *), (*o_qs_ammo)(Obj, int, void *), (*o_qs_item)(Obj, void *);
-static int qs_refuse(Obj v) { char who[96]; if (!qs_selected_foreign(v, who, sizeof who)) return 0; notice("%s", who); return 1; }
+static int qs_refuse(Obj v) { char who[256]; if (!qs_selected_foreign(v, who, sizeof who)) return 0; notice("%s", who); return 1; }
 static void hk_qs_sel(Obj v, int i, void *mi) { if (!qs_refuse(v)) o_qs_sel(v, i, mi); }
 static void hk_qs_int(Obj v, int i, void *mi) { if (!qs_refuse(v)) o_qs_int(v, i, mi); }
 static void hk_qs_ammo(Obj v, int i, void *mi) { if (!qs_refuse(v)) o_qs_ammo(v, i, mi); }
@@ -5063,7 +5070,7 @@ static void tips_frame(void) {
     game_tip_frame();
     tip_done = 0; tip_shown_title[0] = 0;
     if (!on() || !game_tip_ready()) return;
-    ui_players p; players(&p); char nm[40], t[160], b[300];
+    ui_players p; players(&p); char nm[40], t[160], b[1024];
     /* 3.9 lend menu (on top of the panel) */
     for (int i = 0; i < lmenu_n && i < LM_ROWS; i++) {
         Obj r = u_gc_get(h_lrow[i]);
@@ -5156,7 +5163,7 @@ static void tips_frame(void) {
     tip_at(u_gc_get(h_hdrbg), TR("Players"), TR("Everyone in this world and their connection. Right-click and drag to move this panel."));
     tip_at(u_gc_get(h_pl[PL_NOTE]), TR("Temporary Control"), TR("A player disconnected and you chose Keep playing. You order their units until they come back; they stay theirs."));
     /* 3.9 skill bar of a unit that is not mine */
-    if (qs_foreign) { char who[96] = ""; Obj v = u_gc_get(h_quick); qs_selected_foreign(v, who, sizeof who);
+    if (qs_foreign) { char who[256] = ""; Obj v = u_gc_get(h_quick); qs_selected_foreign(v, who, sizeof who);
         if (spect()) tip_at(u_gc_get(h_qs_line), TR("Spectator"), TR("You are watching. You can look at every unit's details, but spectators give no orders."));
         else { snprintf(b, sizeof b, TR("%s. You can look at its details, but only its controller gives it orders. Ask them to lend it to you."), who);
                tip_at(u_gc_get(h_qs_line), TR("Not Your Unit"), b); } }

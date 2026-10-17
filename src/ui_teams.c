@@ -103,10 +103,13 @@ static Obj tmp_get(Obj t) {                                  /* TMP_Text.text: v
     void *k = *(void **)t;
     return (*(Obj (**)(Obj, void *))((char *)k + 0x548))(t, *(void **)((char *)k + 0x550));
 }
+void txt_fit(Obj t, float size, int wrap);               /* mpmenu.c: a text too long for its rect auto-sizes (ext/i18n/CJK_FIT.md) */
+void txt_fit_text(Obj t, const char *s);
 static void tmp_set(Obj t, const char *s) {
     if (!tm_is(t, K_TMP)) return;
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str(s), *(void **)((char *)k + 0x560));
+    txt_fit_text(t, s);
 }
 static void str_utf8(Obj s, char *out, size_t cap) {         /* il2cpp String -> UTF-8: whole code points, surrogate pairs too */
     size_t n = 0;
@@ -283,7 +286,7 @@ static tm_prop prop;
 static mp_session *prop_sess;
 static double prop_t0;                                       /* local clock at the start (host: the 60 s timeout) */
 static int prop_timeout_sent, start_region = -1;
-static char prop_event[200];                                 /* the last "proposal ended" message (state / tests) */
+static char prop_event[256];                                 /* the last "proposal ended" message (state / tests) */
 static int prop_folded;                                      /* the side panel shows only its title and one line */
 /* this player's step in the open proposal (owner 2026-10-13): the receivers first get the stock supplies step
    (titled "Expedition Proposal", their own going units), Next -> the summary; the proposer goes to the summary */
@@ -796,6 +799,7 @@ static void set_text(Obj o, float lx, float cy, float w, float h, float size, in
     tmp_font(o, cinzel ? font_title() : font_body());
     (tm_is(o, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(o, size, NULL) : (void)0);
     (tm_is(o, K_TMP) ? F(0x4F0B7BC, void (*)(Obj, int, void *))(o, align, NULL) : (void)0);
+    txt_fit(o, size, 1);                                                    /* new_text wraps; too long for w x h: auto size */
     tmp_set(o, txt); u_active(o, true); u_last_sibling(t);
 }
 static Obj p_text(float lx, float cy, float w, float h, float size, int align, int cinzel, const char *txt) {

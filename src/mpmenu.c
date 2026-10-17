@@ -79,16 +79,21 @@ static Obj u_str_ok(const char *s) {
     if (b != sb) free(b);
     return r;
 }
+static void fit_text(Obj t, const char *s);
+static void fit_dirty(Obj t);
+static void fit_style(Obj t, float size, int wrap);
 void tmp_set(Obj t, const char *s) {
     if (!u_alive(t) || !mm_is(t, K_TMP)) return;
     if (!strcmp(cls_name(t), "DASText")) AT(t, 0x7C0, bool) = false;     /* DASText._useTextKey: keep our raw text */
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str_ok(s), *(void **)((char *)k + 0x560));
+    fit_text(t, s);
 }
 static void tmp_set_obj(Obj t, Obj s) {                                     /* the same, with an il2cpp string as is */
     if (!u_alive(t) || !mm_is(t, K_TMP)) return;
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, s, *(void **)((char *)k + 0x560));
+    fit_dirty(t);
 }
 void utf16_to_utf8(Obj s, char *out, size_t cap);
 /* copy of an il2cpp string (read-back). i18n: whole UTF-8 characters (it was ASCII with '?': a translated stock label or a
@@ -408,8 +413,120 @@ void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
     F(0x4F0BB74, void (*)(Obj, int, void *))(t, 0, NULL);
     F(0x4F0C254, void (*)(Obj, bool, void *))(t, true, NULL);
     F(0x5260348, void (*)(Obj, bool, void *))(t, false, NULL);             /* raycastTarget off */
+    fit_style(t, size, wrap);                                               /* too long for its rect: auto size (text fit) */
 }
 void txt_color(Obj t, Col c) { if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(t, c, NULL); }
+/* ---------------------------------------------------------------- text fit (ext/i18n/CJK_FIT.md)
+ * How the game fits text: short labels and buttons in a fixed box use TMP auto size (min about 0.75 x max, small buttons
+ * down to 8-18); long text keeps its size and its box grows (ContentSizeFitter, preferred height). It never changes the
+ * size per language. Here: every text styled by txt_style keeps its design size. At the end of the menu frame, a text
+ * whose content or rect changed is measured at that size (TMP preferredWidth / preferredHeight). It fits: as before,
+ * no auto size (so English that fits looks exactly as before). It does not fit: auto size from the design size down
+ * to fit_min(), and a one-line label wraps when its rect holds two lines. */
+#define FIT_N 2048                                                           /* open addressing by object address */
+typedef struct { Obj t; uintptr_t h; float size, w, h_; uint32_t hash; uint8_t wrap, on, dirty, multi, stock; } fit_e;
+typedef struct { float x, y, w, h; } fit_rect;
+static fit_e fit_tab[FIT_N];
+static int fit_count;
+static void *m_fit_pw, *m_fit_ph, *m_fit_rect, *m_fit_live;
+static float fit_min(float size) { float m = size * 0.6f; m = (float)(int)(m + 0.5f); return m < 8 ? (size < 8 ? size : 8) : m; }
+static fit_e *fit_find(Obj t, int add) {
+    if (!t) return NULL;
+    size_t i = ((uintptr_t)t >> 4) * 2654435761u % FIT_N, tomb = (size_t)-1;
+    for (int n = 0; n < FIT_N; n++, i = (i + 1) % FIT_N) {
+        fit_e *e = &fit_tab[i];
+        if (e->t == t) return e;
+        if (e->t == (Obj)1) { if (tomb == (size_t)-1) tomb = i; continue; }
+        if (!e->t) {
+            if (!add) return NULL;
+            if (fit_count >= FIT_N * 3 / 4) return NULL;                     /* full: that text keeps the old way (no fit) */
+            if (tomb != (size_t)-1) e = &fit_tab[tomb];
+            memset(e, 0, sizeof *e); e->t = t; e->h = u_gc_new(t); fit_count++;
+            return e;
+        }
+    }
+    return NULL;
+}
+static void fit_drop(fit_e *e) { u_gc_free(e->h); memset(e, 0, sizeof *e); e->t = (Obj)1; fit_count--; }
+static uint32_t fit_hash(const char *s) { uint32_t h = 2166136261u; for (; s && *s; s++) h = (h ^ (uint8_t)*s) * 16777619u; return h; }
+/* txt_style: design size + wrap of this text; a text styled again the same way keeps its current fit (no flicker) */
+static void fit_style(Obj t, float size, int wrap) {
+    fit_e *e = fit_find(t, 1); if (!e) return;
+    F(0x4F0B68C, void (*)(Obj, float, void *))(t, size, NULL);              /* fontSizeMax: the design size */
+    F(0x4F0B634, void (*)(Obj, float, void *))(t, fit_min(size), NULL);     /* fontSizeMin */
+    if (e->size == size && e->wrap == (wrap != 0) && e->on) {
+        F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
+        if (e->on == 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, 1, NULL);
+        return;
+    }
+    e->size = size; e->wrap = wrap != 0; e->on = 0; e->dirty = 1;
+}
+static void fit_dirty(Obj t) { fit_e *e = fit_find(t, 0); if (e) e->dirty = 1; }
+static void fit_text(Obj t, const char *s) {
+    fit_e *e = fit_find(t, 0); if (!e) return;
+    uint32_t h = fit_hash(s); if (h != e->hash) { e->hash = h; e->dirty = 1; e->multi = s && strchr(s, '\n') != NULL; }
+}
+static void fit_one(fit_e *e, Obj t, float w, float h) {
+    if (w < 4 || h < 4) return;                                              /* not placed yet */
+    if (e->on) { F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, false, NULL); F(0x4F0B340, void (*)(Obj, float, void *))(t, e->size, NULL);
+                 F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->wrap, NULL); }   /* measure as styled */
+    int over;
+    if (!e->wrap) over = MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw) > w + 1;
+    else over = MCALL(m_fit_ph, float, Obj, const void *)(t, m_fit_ph) > h * 1.1f + 2;
+    e->on = 0;
+    if (over) {
+        float mn = fit_min(e->size);
+        e->on = !e->wrap && !e->multi && h >= 2.7f * mn ? 2 : 1;             /* 2: a one-line label that may use two lines */
+        F(0x4F0B634, void (*)(Obj, float, void *))(t, mn, NULL);
+        F(0x4F0B68C, void (*)(Obj, float, void *))(t, e->size, NULL);
+        if (e->on == 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, 1, NULL);
+        F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
+    }
+}
+/* once per frame (end of mpmenu_frame): changed texts now; every text's rect every 15 frames (a later layout change) */
+static void fit_frame(void) {
+    if (!fit_count) return;
+    if (!m_fit_pw) { m_fit_pw = mth("TMPro", "TMP_Text", "get_preferredWidth", 0); m_fit_ph = mth("TMPro", "TMP_Text", "get_preferredHeight", 0);
+                     m_fit_rect = mth("UnityEngine", "RectTransform", "get_rect", 0); m_fit_live = mth("UnityEngine", "GameObject", "get_activeInHierarchy", 0); }
+    if (!m_fit_pw || !m_fit_ph || !m_fit_rect || !m_fit_live) return;
+    int all = frames % 15 == 0;
+    for (int i = 0; i < FIT_N; i++) {
+        fit_e *e = &fit_tab[i];
+        if (!e->t || e->t == (Obj)1 || (!e->dirty && !all)) continue;
+        Obj t = u_gc_get(e->h);
+        if (!u_alive(t)) { fit_drop(e); continue; }
+        Obj g = u_go(t);
+        if (!g || !MCALL(m_fit_live, bool, Obj, const void *)(g, m_fit_live)) {                         /* measured once it shows */
+            if (e->stock) {                                                  /* a stock box closed: its own settings again */
+                if (e->on) { F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, false, NULL); F(0x4F0B340, void (*)(Obj, float, void *))(t, e->size, NULL);
+                             F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->wrap, NULL); }
+                fit_drop(e);
+            }
+            continue;
+        }
+        Obj rt = u_tr(t); if (!mm_is(rt, K_RT)) continue;
+        fit_rect r = MCALL(m_fit_rect, fit_rect, Obj, const void *)(rt, m_fit_rect);
+        if (!e->dirty && !e->stock && r.w == e->w && r.h == e->h_) continue;   /* a stock text: the game may set it too */
+        int first = e->dirty; e->w = first ? -1 : r.w; e->h_ = r.h; e->dirty = 0;   /* -1: measured again at the next full pass
+                                                                                    (TMP may see a new rect one frame late) */
+        fit_one(e, t, r.w, r.h);
+    }
+}
+/* for the game-side files (ui_game.c, ui_teams.c) and Custom Modes texts styled their own way: same fit */
+void txt_fit(Obj t, float size, int wrap) { if (mm_is(t, K_TMP)) fit_style(t, size, wrap); }
+void txt_fit_text(Obj t, const char *s) { fit_text(t, s); }
+/* the stock notice box text (CommonNoticeView Txt_Notice: Lora 16 in a fixed 520 x 109 rect; the game never sizes it):
+   while our text is up it auto-sizes when too long; when the box closes, its stock settings come back */
+void txt_fit_stock(Obj t) {
+    if (!mm_is(t, K_TMP)) return;
+    fit_e *e = fit_find(t, 0);
+    if (e) { e->dirty = 1; return; }
+    if (F(0x4F0B5D4, bool (*)(Obj, void *))(t, NULL)) return;                /* the game auto-sizes it already */
+    float fs = F(0x4F0B338, float (*)(Obj, void *))(t, NULL);
+    if (fs < 4) return;
+    fit_style(t, fs, 1);
+    e = fit_find(t, 0); if (e) e->stock = 1;
+}
 /* new image / text under parent_tr, from a template (an Image without children, a TMP label) */
 Obj mk_img(Obj tpl_img, Obj parent_tr, int sprite, Col c, float x, float y, float w, float h) {
     if (!u_alive(tpl_img) || !u_alive(parent_tr)) return NULL;
@@ -518,7 +635,7 @@ static void observe(mpm_obs *o) {
     Obj ev = o->scene == 2 ? esc_view() : NULL;
     o->esc_open = ev && u_on(ev);
     mp_steam_info in; mp_steam_state(&in);
-    if (in.state == MP_STEAM_ENDED) { o->failed = 1; snprintf(o->msg, sizeof o->msg, "%s", in.msg); o->end = mp_steam_end_code(); modset_notice(); }   /* Steam join refused for mods */
+    if (in.state == MP_STEAM_ENDED) { o->failed = 1; snprintf(o->msg, sizeof o->msg, "%s", mp_steam_end_text()); o->end = mp_steam_end_code(); modset_notice(); }   /* Steam join refused for mods */
     else if (in.is_host) o->role = 1;
     else if (in.state == MP_STEAM_JOINING || in.state == MP_STEAM_IN_GAME) {
         o->role = 2;
@@ -912,7 +1029,7 @@ static void title_sync(const mpm_obs *o) {
         Obj b = tb(title_ids[i]); if (!b) continue;
         int on = title_ids[i] < 64 ? (int)((vis >> title_ids[i]) & 1) : mpm_is_visible(&M, o, title_ids[i]);   /* Watch: id 68 */
         u_active(b, on);
-        if (on) { char l[160]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
+        if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
     }
     if (M.state == MPM_TITLE_HOST) {                                        /* Rules box: closed = button + summary (mockup A), open = button (B) */
         int open = M.settings_open; Obj b = tb(MPB_SETTINGS), l = b ? AT(b, 0x130, Obj) : NULL;
@@ -922,7 +1039,7 @@ static void title_sync(const mpm_obs *o) {
         Obj cg = u_gc_get(h_title_cog); if (u_alive(cg)) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); place(cg, -108, yb, 22, 22); }
         Obj pc = u_gc_get(h_title_pcog); if (u_alive(pc)) { u_active(pc, spr(S_COG) == NULL); place(pc, -108, yb, 22, 22); }   /* stock not loaded: pixel cog */
         Obj mo = u_gc_get(h_title_more); if (u_alive(mo)) { place(mo, 113, yb, 20, 30); txt_color(mo, open ? C_GOLD : C_SUB); }
-        Obj sm = u_gc_get(h_title_sum); if (u_alive(sm)) { char t[200]; mpm_settings_summary(&M.set, t, sizeof t); tmp_set(sm, t); u_active(sm, !open); }
+        Obj sm = u_gc_get(h_title_sum); if (u_alive(sm)) { char t[512]; mpm_settings_summary(&M.set, t, sizeof t); tmp_set(sm, t); u_active(sm, !open); }
         Obj bx = u_gc_get(h_title_box); if (u_alive(bx) && mm_is(bx, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(bx, open ? (Col){ 1.25f, 1.2f, 1.2f, 1 } : C_WHITE, NULL);   /* open: lighter */
         if (bx && mm_is(bx, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bx, true, NULL);
     }
@@ -1160,7 +1277,7 @@ static void esc_sync(const mpm_obs *o) {
         Obj b = eb(esc_ids[i]); if (!b) continue;
         int on = (vis >> esc_ids[i]) & 1;
         u_active(b, on);
-        if (on) { char l[160]; mpm_label(&M, esc_ids[i], l, sizeof l); tmp_set(AT(b, 0x28, Obj), l); }
+        if (on) { char l[512]; mpm_label(&M, esc_ids[i], l, sizeof l); tmp_set(AT(b, 0x28, Obj), l); }
     }
     /* in game: our buttons grow the menu downward; the stock seed lines (Txt_CampaignSeed +0x88, Txt_DungeonSeed +0x90)
      * move down by as many button steps as we added, so they never sit between buttons */
@@ -1788,6 +1905,7 @@ static void notice_frame(const mpm_obs *o) {
     }
     (mm_is(v, K_CNV) ? F(0xF65498, void (*)(Obj, Obj, Obj, void *))(v, u_str_ok(M.notice), NULL, NULL) : (void)0);   /* Show_Confirm */
     tmp_set(AT(v, 0x30, Obj), M.notice);                                   /* raw text (not a text key) */
+    txt_fit_stock(AT(v, 0x30, Obj));                                        /* a long text auto-sizes in the stock box */
     tmp_set(AT(v, 0x40, Obj), TR("OK"));
     u_go_active(u_go(v), true);
     rig_log("mpmenu: notice box: %s", M.notice);
@@ -1833,6 +1951,7 @@ static void leave_box_show(void) {
     int others = leave_box_text(lbox_text, sizeof lbox_text);
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str_ok(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
     tmp_set(AT(v, 0x30, Obj), lbox_text);
+    txt_fit_stock(AT(v, 0x30, Obj));
     tmp_set(AT(v, 0x40, Obj), others ? TR("End for everyone") : TR("Leave"));          /* from the box's own case, not its text */
     tmp_set(AT(v, 0x50, Obj), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }   /* centred, as the ui lane's boxes */
@@ -1876,6 +1995,7 @@ static void box_show(int kind, const char *text, const char *yes, const char *no
     if (no) F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str_ok(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
     else F(0xF65498, void (*)(Obj, Obj, Obj, void *))(v, u_str_ok(lbox_text), NULL, NULL);                            /* Show_Confirm: one button */
     tmp_set(AT(v, 0x30, Obj), lbox_text);
+    txt_fit_stock(AT(v, 0x30, Obj));
     tmp_set(AT(v, 0x40, Obj), yes);
     if (no) tmp_set(AT(v, 0x50, Obj), no);
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }
@@ -2594,7 +2714,7 @@ static void run_actions(int a, const mpm_obs *o) {
     if (a & MPA_JOIN_ADDR) join_by_address();
     if ((a & MPA_JOIN_CANCEL) && conn) { dsnet_connect_free(conn); conn = NULL; rig_log("mpmenu: connect cancelled"); }
     if (a & MPA_FE_START) {                                                 /* build the hub with the Expedition Rules, then start */
-        char err[200] = "";
+        char err[512] = "";
         mpm_choice *hc = cur_choice();                                       /* the old-API choice this session was hosted from */
         for (int k = 0; (!hc || !hc->on_start) && k < hcl.n; k++) if (!hcl.c[k].v2 && hcl.c[k].on_start) hc = &hcl.c[k];   /* else the first one that can */
         int rc = hc && hc->on_start ? hc->on_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, sizeof err) : -1;   /* the registered start (Custom Modes: Foreign Expedition); 0 = started */
@@ -2604,7 +2724,7 @@ static void run_actions(int a, const mpm_obs *o) {
         else if (ui_notice) ui_notice(err);
     }
     if (a & MPA_CHOICE_PAGE) {                                              /* host page Start of a register_host_choice2 choice */
-        char err[200] = ""; mpm_choice *hc = cur_choice();
+        char err[512] = ""; mpm_choice *hc = cur_choice();
         int rc = hc && hc->page_start ? hc->page_start(err, sizeof err) : -1;
         if (!hc || !hc->page_start) snprintf(err, sizeof err, "%s", TR("No mod offers this choice."));
         rig_log("mpmenu: host choice \"%s\" page start rc %d %s", hc ? hc->id : "?", rc, err);
@@ -2612,7 +2732,7 @@ static void run_actions(int a, const mpm_obs *o) {
         mpm_page_started(&M, rc, err);                                        /* 0: wait for the load like Your save (HOST_LOADING -> LOBBY) */
     }
     if (a & MPA_CHOICE_LOBBY) {                                             /* lobby Start of a session hosted from such a choice */
-        char err[200] = ""; mpm_choice *hc = cur_choice();
+        char err[512] = ""; mpm_choice *hc = cur_choice();
         int rc = hc && hc->lobby_start ? hc->lobby_start(err, sizeof err) : -1;
         if (!hc || !hc->lobby_start) snprintf(err, sizeof err, "%s", TR("No mod offers this choice."));
         rig_log("mpmenu: host choice \"%s\" lobby start rc %d %s", hc ? hc->id : "?", rc, err);
@@ -2731,7 +2851,7 @@ static void tips_frame(const mpm_obs *o) {
     TIP(tb(MPB_HOST_START), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Prepares the world for this mode and opens the lobby. Friends join you there."));
     TIP(tb(MPB_JOIN_ADDR), TR("Join by Address"), TR("Join a friend's world with their address. Use it without Steam, or on the same home network."));
     TIP(tb(MPB_JOIN_FRIEND), TR("Join a Friend on Steam"), TR("Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."));
-    for (int i = 0; i < 6; i++) { char t[64];                                 /* the friend's name from the model (not read out of the label) */
+    for (int i = 0; i < 6; i++) { char t[256];                                 /* the friend's name from the model (not read out of the label) */
         if (i < M.nfriends && M.friends[i][0]) snprintf(t, sizeof t, TR("Join %s's World"), M.friends[i]); else snprintf(t, sizeof t, "%s", TR("Join a Friend's World"));
         dsi_utf8_fix_end(t);
         TIP(tb(MPB_FRIEND0 + i), t, TR("Joins this friend's world through Steam. The world loads from the host; your own saves are not touched.")); }
@@ -3197,6 +3317,7 @@ void mpmenu_frame(void) {
     for (int k = 0; k < nhooks; k++) if (hooks[k].frame_late) hooks[k].frame_late(&o);
     if (nescb) escb_frame(&o);
     if (!o.role && !conn && !mp_game_session() && joined_how[0] && M.state != MPM_GUEST_JOINING && M.state != MPM_GUEST_LOADING) { joined_how[0] = 0; joined_steamid = 0; }   /* session over */
+    fit_frame();                                                            /* last: every text of this frame is set and placed */
 }
 
 int mpmenu_gear_mode(void) { return mp_game_session() ? M.set.gear : -1; }

@@ -52,7 +52,7 @@ static double steam_next_try;
 static int ended, quit_pending;           /* ended: MP_STEAM_ENDED until mp_steam_ack */
 static int played;                        /* this session reached a running campaign (stock quit = leave) */
 static double mono_ms(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
-static char ended_msg[160]; static int ended_code;   /* ended_code: MPM_END_* (the text is in the player's language) */
+static char ended_msg[512]; static int ended_code;   /* ended_code: MPM_END_* (the text is in the player's language) */
 static uint64_t join_lobby_id;
 static dsnet_steam_host *steam_host;
 static dsnet_steam_join *steam_join;      /* joiner: waiting for the Steam bridge's local port */
@@ -896,7 +896,7 @@ __attribute__((visibility("default"))) int mp_game_modset_text(char *out, size_t
     modset_unshown = 0;
     static char host[DSNET_MODLINES_MAX]; int rule = 0;
     if (dsnet_reject_host_mods(&rule, host, sizeof host) != 0) host[0] = 0;
-    char body[600];
+    char body[1024];
     if (!dsmc_guest_text(host, dsnet_my_mod_lines(), rule == 1, NULL, body, sizeof body, NULL))
         snprintf(body, sizeof body, "%s", dsnet_reject_text(DSNET_REJ_MODSET));   /* same lines, other hash: the host's words */
     else {                                     /* loader releases differ: say so first (the host's words already do) */
@@ -1166,6 +1166,7 @@ void mp_steam_leave(void) {
 }
 void mp_steam_ack(void) { ended = 0; ended_msg[0] = 0; ended_code = MPM_END_OTHER; }
 int mp_steam_end_code(void) { return ended ? ended_code : MPM_END_OTHER; }
+const char *mp_steam_end_text(void) { return ended ? ended_msg : ""; }
 /* mpmenu (lan_v8 owner feedback): a guest's "Leave multiplayer" leaves the session and goes to the title at once (the
    world on screen is the host's); the same no-autosave quit as when the host leaves. */
 __attribute__((visibility("default"))) void mp_game_leave_to_title(void) {
@@ -1180,7 +1181,7 @@ void mp_steam_state(mp_steam_info *o) {
     o->is_host = (S && cfg.host) || steam_host;
     o->lobby = steam_host ? dsnet_steam_host_lobby(steam_host) : join_lobby_id;
     if (o->lobby == ~0ull) o->lobby = 0;
-    if (ended && !S && !steam_join) { o->state = MP_STEAM_ENDED; o->phase = MP_PH_FAILED; snprintf(o->msg, sizeof o->msg, "%s", ended_msg); return; }
+    if (ended && !S && !steam_join) { o->state = MP_STEAM_ENDED; o->phase = MP_PH_FAILED; snprintf(o->msg, sizeof o->msg, "%s", ended_msg); dsi_utf8_fix_end(o->msg); return; }
     if (!S) { o->state = steam_join ? MP_STEAM_JOINING : MP_STEAM_IDLE; o->phase = steam_join ? MP_PH_CONNECTING : MP_PH_IDLE; return; }
     dsnet_client *dc = mp_client(S);
     o->player = dsnet_player_id(dc);

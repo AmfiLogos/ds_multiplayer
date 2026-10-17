@@ -89,8 +89,9 @@ typedef struct mpm_obs {
     int edited;             /* title: the address or name field text changed since the last frame */
     int spectator;          /* this copy's session (or the join that runs) watches */
     char host_name[64];     /* guest: the host's name ("" unknown) */
-    char msg[160];          /* why the session ended / failed (mp_steam_state), "" none; display text (translated) */
+    char msg_v1[160];       /* layout only: the text is msg, appended at the end */
     int end;                /* MPM_END_*: what msg says, for the logic (msg is in the player's language) */
+    char msg[512];          /* why the session ended / failed (mp_steam_state), "" none; display text (translated). Appended (i18n) */
 } mpm_obs;
 /* why a session ended (mpm_obs.end; mp_game's mp_steam_end_code): the logic switches on this, never on the text */
 enum { MPM_END_OTHER = 0,       /* msg is shown as is (or: a failed join) */
@@ -130,9 +131,9 @@ enum {
 typedef struct mpm_model {
     int state;
     mpm_settings set;
-    char msg[128];          /* last error / status for the title */
+    char msg_v1[128];       /* layout only (Custom Modes reads fields after it): the text is msg, appended at the end */
     char connecting[96];    /* join page: "ip:port" being connected (set by the game side), "" none */
-    char notice[640];         /* session ended (host left...): text for the stock notice box on the title, "" none */
+    char notice_v1[640];    /* layout only: the text is notice, appended at the end */
     char host[64];          /* guest: host name for the Joining line */
     char direct[96];        /* host: "192.168.1.20:47777" (LAN) for the lobby, set by the game side */
     char internet[96];      /* host: public ip:port as Steam sees it, "" unknown */
@@ -159,6 +160,9 @@ typedef struct mpm_model {
     int choice_v2[4];       /* register_host_choice2: host page = Start + Back (page_start), lobby Start = lobby_start */
     int choice_rules[4];    /* the menu's own Expedition Rules panel shows open on its host page (old API, or draw_page NULL) */
     int choice;             /* 1..4: the choice whose host page shows or whose session runs; 0 none */
+    /* appended (i18n: a whole Chinese / Japanese / Russian sentence did not fit the old slots, which keep the layout) */
+    char msg[512];          /* last error / status for the title */
+    char notice[1280];      /* session ended (host left...): text for the stock notice box on the title, "" none */
 } mpm_model;
 void mpm_init(mpm_model *m);
 /* one frame: `click` = enum mpm_button or MPB_NONE. Returns MPA_* actions to run now. */
