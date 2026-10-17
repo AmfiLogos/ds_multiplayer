@@ -22,6 +22,7 @@ void ui_teams_install(void);
 #include <pthread.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include "rig_quiet.inc"     /* test copies: no window but the game's, no outgoing open (here only: never in the module) */
 
 uintptr_t ds_base;
 char rig_dir[1024];
@@ -162,5 +163,6 @@ __attribute__((constructor)) static void rig_init(void) {
     else if (getenv("DSRIG_HIDEWIN") || getenv("DSRIG_BATCH")) rig_win_install();   /* batchmode copies check in with AppKit too */
     else if (getenv("DSRIG_SPACE")) rig_win_space_install();
     if (!getenv("DSRIG_LIVE") && !getenv("DSRIG_SPACE") && !getenv("DSRIG_SHOWWIN")) rig_noact_install();   /* every other copy */
+    if (!getenv("DSRIG_LIVE")) rig_quiet_install();
     _dyld_register_func_for_add_image(on_image);
 }
