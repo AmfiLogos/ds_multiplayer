@@ -481,6 +481,7 @@ void ui_settings_default(ui_settings *s) {
     s->pings = 1; s->ping_sound = 1; s->ping_chat = 1; s->views = 1; s->offscreen = 0; s->outline = UI_OUTLINE_OFF;
     s->teams_button = 1;
     s->mini = 1; s->mini_size = UI_MINI_MEDIUM;
+    s->fast_join = 1;                  /* owner 2026-10-17: on by default */
 }
 static int jint(const char *j, const char *key, int *out) {
     char k[48]; snprintf(k, sizeof k, "\"%s\"", key);
@@ -517,7 +518,7 @@ void ui_settings_parse(const char *j, ui_settings *s) {
     if (jint(j, "mini_pos_set", &v)) s->mini_pos_set = v != 0;
     if (jint(j, "mini_x", &v) && v > -5000 && v < 5000) s->mini_x = v;
     if (jint(j, "mini_y", &v) && v > -5000 && v <= 0) s->mini_y = v;
-    if (jint(j, "fast_join", &v)) s->fast_join = v != 0;
+    if (jint(j, "fast_join_on", &v)) s->fast_join = v != 0;   /* new key 2026-10-17: an old "fast_join":0 (the old default) is ignored */
     /* "colors":"<uid 32 hex>:<idx>,..." */
     const char *c = strstr(j, "\"colors\"");
     if (c && (c = strchr(c + 8, ':')) && (c = strchr(c, '"'))) {
@@ -535,7 +536,7 @@ void ui_settings_parse(const char *j, ui_settings *s) {
 int ui_settings_format(const ui_settings *s, char *out, size_t cap) {
     int n = snprintf(out, cap, "{\"see_through\":%d,\"names\":%d,\"list_open\":%d,\"pos_set\":%d,\"pos_x\":%d,\"pos_y\":%d,\"tooltips\":%d,\"compact\":%d,"
                      "\"pings\":%d,\"ping_sound\":%d,\"ping_chat\":%d,\"views\":%d,\"offscreen\":%d,\"outline\":%d,\"teams_button\":%d,"
-                     "\"mini\":%d,\"mini_size\":%d,\"mini_pos_set\":%d,\"mini_x\":%d,\"mini_y\":%d,\"fast_join\":%d,\"colors\":\"",
+                     "\"mini\":%d,\"mini_size\":%d,\"mini_pos_set\":%d,\"mini_x\":%d,\"mini_y\":%d,\"fast_join_on\":%d,\"colors\":\"",
                      s->see_through, s->names, s->list_open, s->pos_set, s->pos_x, s->pos_y, s->tooltips, s->compact,
                      s->pings, s->ping_sound, s->ping_chat, s->views, s->offscreen, s->outline, s->teams_button,
                      s->mini, s->mini_size, s->mini_pos_set, s->mini_x, s->mini_y, s->fast_join);

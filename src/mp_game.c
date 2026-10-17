@@ -263,7 +263,7 @@ static void h_delete(Obj ld, Obj name, void *mi) {
    the EventQueue coroutine runs), and its frame count already differs per machine, so ending it at once changes
    nothing a peer can see. The world is the same; only the view gets its first heavy frames without the delay.
    Only during an mp load (join point, guest load, resync, host reload): sync_file_pending, and only when this player turned
-   on "Fast join" (cog row, mp_ui.json; owner 2026-10-15: default Off = stock wait). Per player: each copy waits or not
+   on "Fast join" (cog row, mp_ui.json; on by default since owner 2026-10-17, Off = stock wait). Per player: each copy waits or not
    for its own load only; mp_ready / the resume vote already wait for the slowest peer. DSRIG_JOIN_FAST=0 / 1 forces it.
    The map-loading poll (while MapLoadingChecker.IsLoading: WaitForDefaultTicks = WaitForSecondsRealtime(3 x tick))
    polls every frame instead during an mp load. */
@@ -277,7 +277,7 @@ static int fast_opt(void) {          /* this player's "Fast join" (ui_game.c, dl
     if (e && (e[0] == '0' || e[0] == '1')) return e[0] == '1';
     static int (*get)(void); static int looked;
     if (!looked) { looked = 1; get = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_fast_join"); }
-    return get ? get() != 0 : 0;
+    return get ? get() != 0 : 1;   /* no UI: the default (on) */
 }
 static int fast_on(void) { return sync_file_pending && fast_opt(); }
 static void (*o_checkpoint)(Obj, Obj, Obj, bool, void *);
