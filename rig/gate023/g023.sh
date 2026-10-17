@@ -71,7 +71,7 @@ hell() {   # Hell on (copy Z): 20/20 patches + table half loaded from the delta,
   local a=$(command grep -c "Hell tables: the game loads" $L) b=$(command grep -c "no delta" $L); echo "Hell tables lines $a, no-delta lines $b"
   (( a >= 1 && b == 0 )) && echo "HELL TABLES PASS"; }
 chk g023_hell 'HELL TABLES PASS' $WT hell
-chk g023_notch '(^| )4 PASS 0 FAIL' $LD/loader python3 test/notch_test.py build/mods_all/mac
+chk g023_notch '(^| )[4-9] PASS 0 FAIL' $LD/loader python3 test/notch_test.py build/mods_all/mac
 nthrow() { local B=$OUT/g023_notch_throw_bin; clang -fobjc-arc -framework AppKit -I$LD/loader/src $LD/loader/test/notch_throw_test.m $LD/loader/start/mac/dsl_notch_mac.m -o $B || return 1; $B; }
 chk g023_notch_throw '^PASS window borderless' $WT nthrow
 chk g023_l1_world '([0-9]+)/\1 checks, violations 0' $LD/loader python3 $LR l1_world_test.py $OUT/g023_l1_world
