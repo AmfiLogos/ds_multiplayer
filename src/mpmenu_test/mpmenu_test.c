@@ -1,6 +1,7 @@
 // mpmenu_test.c - tests for the Multiplayer menu state machine (mpmenu_model.c). make -C mpmenu_test test
 #define MPM_NO_GAME
 #include "../mpmenu.h"
+#include "../ds_i18n.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -156,13 +157,13 @@ int main(void) {
     mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_PLAYING);                  /* mp.json session */
     /* host left (ux #9): a notice box text, nothing in the Multiplayer button */
     strcpy(m.host, "Alex");
-    o.role = 0; strcpy(o.msg, "The host left the game"); mpm_step(&m, &o, MPB_NONE);
+    o.role = 0; strcpy(o.msg, "The host left the game"); o.end = MPM_END_HOST_LEFT; mpm_step(&m, &o, MPB_NONE);
     CHECK(m.state == MPM_IDLE && !m.msg[0] && !strcmp(m.notice, "<size=150%>Alex left the game</size>\nThe world is saved on Alex's computer. To play again, Alex hosts it and invites you."));
-    mpm_label(&m, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer")); o.msg[0] = 0;
+    mpm_label(&m, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer")); o.msg[0] = 0; o.end = 0;
     /* lan_v10: a join started from the player's own world and refused (F9 / F17): the reason box, shown in the world */
     { mpm_model q; mpm_init(&q); mpm_obs t2 = title(); t2.scene = 2; t2.campaign_ready = 1; t2.role = 2; strcpy(t2.host_name, "Alex");
       mpm_step(&q, &t2, MPB_NONE); mpm_step(&q, &t2, MPB_NONE); CHECK(q.state == MPM_PLAYING);
-      t2.role = 0; strcpy(t2.msg, "Could not join: the host is playing another world now (Old World)"); mpm_step(&q, &t2, MPB_NONE);
+      t2.role = 0; strcpy(t2.msg, "Could not join: the host is playing another world now (Old World)"); t2.end = MPM_END_REFUSED; mpm_step(&q, &t2, MPB_NONE);
       CHECK(q.state == MPM_FAILED && strstr(q.notice, "Could not join Alex's game</size>\nThe host is playing another world now (Old World).")); }
     /* host start failed in the lobby */
     mpm_init(&m); m.state = MPM_LOBBY; o.failed = 1;
@@ -187,10 +188,10 @@ int main(void) {
       CHECK(!strcmp(tl, "In Alex's lobby") && strstr(gt, "The game starts when Alex presses Start.") && strstr(gt, "\xC2\xB7 Alex (host)\n\xC2\xB7 Ben") && !strstr(gt, "Pause:") && !strstr(gt, "<b>")); }
     o.host_lobby = 0; a = mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_PLAYING && (a & MPA_LOBBY_HIDE));
     o.host_lobby = 1; mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_GUEST_LOBBY);
-    { mpm_model m2 = m; mpm_obs o2 = o; o2.role = 0; strcpy(o2.msg, "Connection to the host lost"); mpm_step(&m2, &o2, MPB_NONE);   /* own link lost */
+    { mpm_model m2 = m; mpm_obs o2 = o; o2.role = 0; strcpy(o2.msg, "Connection to the host lost"); o2.end = MPM_END_LINK_LOST; mpm_step(&m2, &o2, MPB_NONE);   /* own link lost */
       CHECK(m2.state == MPM_IDLE && strstr(m2.notice, "Connection to Alex lost</size>") && strstr(m2.notice, "Alex is waiting for you: rejoin from Recent worlds.")); }
-    o.role = 0; strcpy(o.msg, "The host left the game"); a = mpm_step(&m, &o, MPB_NONE);
-    CHECK(m.state == MPM_IDLE && (a & MPA_LOBBY_HIDE) && strstr(m.notice, "Alex left the game</size>")); o.msg[0] = 0; o.role = 2; o.host_lobby = 0;
+    o.role = 0; strcpy(o.msg, "The host left the game"); o.end = MPM_END_HOST_LEFT; a = mpm_step(&m, &o, MPB_NONE);
+    CHECK(m.state == MPM_IDLE && (a & MPA_LOBBY_HIDE) && strstr(m.notice, "Alex left the game</size>")); o.msg[0] = 0; o.end = 0; o.role = 2; o.host_lobby = 0;
     /* guest cancel and guest failure */
     mpm_init(&m); o = title(); o.role = 2; mpm_step(&m, &o, MPB_NONE);
     a = mpm_step(&m, &o, MPB_CANCEL_JOIN); CHECK(m.state == MPM_IDLE && (a & MPA_LEAVE));
@@ -204,10 +205,10 @@ int main(void) {
     CHECK(m.state == MPM_TITLE_MENU && (a & MPA_JOIN_CANCEL) && !m.connecting[0]);
     mpm_init(&m); o = title(); o.role = 2; mpm_step(&m, &o, MPB_NONE);
     strcpy(o.host_name, "Alex"); mpm_step(&m, &o, MPB_NONE); o.host_name[0] = 0;
-    o.role = 0; o.failed = 1; strcpy(o.msg, "Could not join: your game version is different from the host's: update both games"); mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_FAILED);
+    o.role = 0; o.failed = 1; strcpy(o.msg, "Could not join: your game version is different from the host's: update both games"); o.end = MPM_END_REFUSED; mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_FAILED);
     /* lan_v10 (ux_flow F8): the reason in the notice box, the Multiplayer button plain */
     CHECK(!strcmp(m.notice, "<size=150%>Could not join Alex's game</size>\nYour game version is different from the host's: update both games."));
-    mpm_label(&m, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer")); o.msg[0] = 0;
+    mpm_label(&m, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer")); o.msg[0] = 0; o.end = 0;
     o.failed = 0; mpm_step(&m, &o, MPB_MULTIPLAYER); CHECK(m.state == MPM_TITLE_MENU && !m.msg[0]);
     /* lobby text */
     const char *names[] = { "Alex", "Ben" }; char t[512];
@@ -235,9 +236,9 @@ int main(void) {
     CHECK((mpm_step(&m, &o, MPB_CONNECT) & MPA_JOIN_ADDR) && m.watch == 0);
     o.role = 2; o.spectator = 1; strcpy(o.host_name, "Alex"); mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_GUEST_JOINING);
     mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "Joining Alex's game as a spectator...") != NULL);
-    o.role = 0; strcpy(o.msg, "The host turned spectators off"); o.failed = 1; mpm_step(&m, &o, MPB_NONE);
+    o.role = 0; strcpy(o.msg, "The host turned spectators off"); o.end = MPM_END_SPECT_OFF; o.failed = 1; mpm_step(&m, &o, MPB_NONE);
     CHECK(m.state == MPM_IDLE && strstr(m.notice, "Alex turned spectators off") && strstr(m.notice, "You can no longer watch this world."));
-    { mpm_model q; mpm_init(&q); mpm_obs po = title(); strcpy(q.host, "Ana"); q.state = MPM_PLAYING; po.scene = 2; po.role = 0; strcpy(po.msg, "The host turned spectators off");
+    { mpm_model q; mpm_init(&q); mpm_obs po = title(); strcpy(q.host, "Ana"); q.state = MPM_PLAYING; po.scene = 2; po.role = 0; strcpy(po.msg, "The host turned spectators off"); po.end = MPM_END_SPECT_OFF;
       mpm_step(&q, &po, MPB_NONE); CHECK(q.state == MPM_IDLE && strstr(q.notice, "Ana turned spectators off")); }
     mpm_init(&m); o = title(); mpm_step(&m, &o, MPB_MULTIPLAYER); m.nhist = 8; m.hist_page = 1;
     CHECK((mpm_step(&m, &o, MPB_HISTW1) & MPA_HIST_JOIN) && m.hist_pick == 7 && m.watch == 1);
@@ -387,6 +388,24 @@ int main(void) {
         const char *many[20]; char mb[20][8]; for (int i = 0; i < 20; i++) { snprintf(mb[i], 8, "p%d", i); many[i] = mb[i]; }
         mpm_tag_add(tp, "g3", many, 20); CHECK(mpm_tag_get(tp, "g3", nm, MPM_TAG_NAMES) == MPM_TAG_NAMES);
         CHECK(mpm_tag_get("./no_such_dir/x.txt", "g1", nm, 4) == -1 && mpm_tag_add("./no_such_dir/x.txt", "g1", c1, 1) == 0);
+    }
+    {   /* i18n (ds_i18n.h): a session end in another language. The logic follows the code (mpm_obs.end), never the text,
+           and the "Could not join: " start is dropped in the translated form too. A bad entry (other %-conversions) is dropped. */
+        char dir[512]; const char *td = getenv("TMPDIR"); snprintf(dir, sizeof dir, "%s/mpm_i18n_%d", td && *td ? td : "/tmp", (int)getpid());
+        char cmd[600]; snprintf(cmd, sizeof cmd, "mkdir -p '%s'", dir); CHECK(system(cmd) == 0);
+        char fp[600]; snprintf(fp, sizeof fp, "%s/fr.json", dir); FILE *z = fopen(fp, "w");
+        if (z) { fputs("{\"Could not join: %s\": \"Impossible de rejoindre : %s\",\n \"%s left the game\": \"%s a quitt\xC3\xA9 la partie\",\n"
+                       " \"Could not join %s's game\": \"Impossible de rejoindre la partie de %s\",\n"
+                       " \"Multiplayer\": \"Multijoueur %d\"}\n", z); fclose(z); }   /* the last one: wrong conversions, dropped */
+        dsi_set_dir(dir); CHECK(dsi_set_lang(2) == 1 && dsi_loaded() == 3 && dsi_dropped() == 1);
+        mpm_model q; mpm_init(&q); mpm_obs po = title(); strcpy(q.host, "Alex"); q.state = MPM_PLAYING; po.scene = 2; po.role = 0;
+        strcpy(po.msg, "Der Host ist weg"); po.end = MPM_END_HOST_LEFT; mpm_step(&q, &po, MPB_NONE);   /* any text: the code decides */
+        CHECK(q.state == MPM_IDLE && strstr(q.notice, "<size=150%>Alex a quitt\xC3\xA9 la partie</size>"));
+        mpm_init(&q); po = title(); po.role = 2; strcpy(po.host_name, "Alex"); mpm_step(&q, &po, MPB_NONE); CHECK(q.state == MPM_GUEST_JOINING);
+        po.role = 0; po.failed = 1; strcpy(po.msg, "Impossible de rejoindre : la partie est pleine"); po.end = MPM_END_REFUSED; mpm_step(&q, &po, MPB_NONE);
+        CHECK(q.state == MPM_FAILED && !strcmp(q.notice, "<size=150%>Impossible de rejoindre la partie de Alex</size>\nLa partie est pleine."));
+        mpm_label(&q, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer"));   /* the dropped entry: English */
+        CHECK(dsi_set_lang(0) == 1); mpm_label(&q, MPB_BACK, l, sizeof l); CHECK(!strcmp(l, "Back"));
     }
     printf(fails ? "mpmenu_test: %d FAILED\n" : "mpmenu_test: all passed%.0d\n", fails);
     return fails != 0;

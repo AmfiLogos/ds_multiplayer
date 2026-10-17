@@ -7,6 +7,7 @@
 #include "mp_game.h"
 #include "net/dsnet.h"
 #include "rig.h"
+#include "ds_i18n.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,10 +33,10 @@ static int a_players(mp_player *out, int max) {
     return n;
 }
 const char *mp_session_busy_reason(void) {
-    if (mp_game_session()) return "a multiplayer game is running";
+    if (mp_game_session()) return TR("a multiplayer game is running");      /* shown by the loader (same process, same language) */
     switch (M.state) {
     case MPM_HOST_LOADING: case MPM_LOBBY: case MPM_PLAYING: case MPM_GUEST_JOINING: case MPM_GUEST_LOADING: case MPM_GUEST_LOBBY:
-        return "a multiplayer game is starting";
+        return TR("a multiplayer game is starting");
     default: return NULL;
     }
 }

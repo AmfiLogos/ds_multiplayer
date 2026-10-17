@@ -1,102 +1,120 @@
 // mpmenu_model.c - Multiplayer menu state machine, no game code (tests: mpmenu_test/).
+// i18n: every text goes through TR / TRN (ds_i18n.h); the logic never compares a translated text (session ends: mpm_obs.end).
 #define MPM_NO_GAME
 #include "mpmenu.h"
+#include "ds_i18n.h"
 #include <stdio.h>
 #include <string.h>
 _Static_assert(MPB_FE_RESLIST < 64 && MPB_POP_NEXT < 80, "mpm_visible: title / lobby buttons need a bit below 64");
 
+/* game words (mpmenu.h): the game side's lookup, else our English through TR */
+static mpm_word_fn word_fn;
+void mpm_set_word_fn(mpm_word_fn fn) { word_fn = fn; }
+const char *mpm_word(const char *textkey, const char *english) {
+    const char *w = word_fn && textkey ? word_fn(textkey, english) : NULL;
+    return w && w[0] ? w : TR(english);
+}
+static const char *on_off(int v) { return v ? TR("on") : TR("off"); }
+static const char *On_Off(int v) { return v ? TR("On") : TR("Off"); }
+
 /* short labels (ux #17): at the stock button size 22 (design #8) the host page buttons fit on one line at 960 and 1512 */
 void mpm_settings_summary(const mpm_settings *s, char *out, size_t cap) {
     if (s->fe) {
-        snprintf(out, cap, "Foreign Expedition \xC2\xB7 Death: %s \xC2\xB7 Experience: %s \xC2\xB7 Dungeon loot: %s \xC2\xB7 Units: %d \xC2\xB7 Recruiting: %s",
-                 s->fe_death ? "permanent" : "not permanent", s->fe_xp ? "counts" : "does not count", s->fe_loot ? "comes back" : "stays",
-                 s->units, s->fe_recruit ? "on" : "off");
+        snprintf(out, cap, TR("Foreign Expedition \xC2\xB7 Death: %s \xC2\xB7 Experience: %s \xC2\xB7 Dungeon loot: %s \xC2\xB7 Units: %d \xC2\xB7 Recruiting: %s"),
+                 s->fe_death ? TR("permanent") : TR("not permanent"), s->fe_xp ? TR("counts") : TR("does not count"), s->fe_loot ? TR("comes back") : TR("stays"),
+                 s->units, on_off(s->fe_recruit));
         return;
     }
-    static const char *ev[] = { "owner", "host", "first", "majority" }, *po[] = { "shared", "per player", "split", "multiplied" };
-    snprintf(out, cap, "Pause: %s \xC2\xB7 Speed-up: %s \xC2\xB7 Gear: %s \xC2\xB7 Units: %d \xC2\xB7 Population: %s \xC2\xB7 Events: %s \xC2\xB7 Admin: %s \xC2\xB7 Shared fog: %s \xC2\xB7 Spectators: %s", mpm_pause_text(s->pause_mode),
-             s->speedup ? "on" : "off", mpm_gear_text(s->gear), s->units, po[s->population >= 0 && s->population < 4 ? s->population : 0],
-             ev[s->events >= 0 && s->events < 4 ? s->events : 0], s->admin ? "on" : "off", s->fog ? "on" : "off", s->spectators ? "on" : "off");
+    static const char *ev[] = { TR_NOOP("owner"), TR_NOOP("host"), TR_NOOP("first"), TR_NOOP("majority") },
+                      *po[] = { TR_NOOP("shared"), TR_NOOP("per player"), TR_NOOP("split"), TR_NOOP("multiplied") };
+    snprintf(out, cap, TR("Pause: %s \xC2\xB7 Speed-up: %s \xC2\xB7 Gear: %s \xC2\xB7 Units: %d \xC2\xB7 Population: %s \xC2\xB7 Events: %s \xC2\xB7 Admin: %s \xC2\xB7 Shared fog: %s \xC2\xB7 Spectators: %s"), mpm_pause_text(s->pause_mode),
+             on_off(s->speedup), mpm_gear_text(s->gear), s->units, TR(po[s->population >= 0 && s->population < 4 ? s->population : 0]),
+             TR(ev[s->events >= 0 && s->events < 4 ? s->events : 0]), on_off(s->admin), on_off(s->fog), on_off(s->spectators));
 }
 const char *mpm_population_desc(int mode) {           /* owner's wording (lead 2026-10-13) */
-    return mode == 1 ? "Each player can recruit up to the full clan limit"
-         : mode == 2 ? "The clan limit is divided between the players"
-         : mode == 3 ? "Clan limit x players connected, shared by all" : "One clan limit for everyone, first come";
+    return mode == 1 ? TR("Each player can recruit up to the full clan limit")
+         : mode == 2 ? TR("The clan limit is divided between the players")
+         : mode == 3 ? TR("Clan limit x players connected, shared by all") : TR("One clan limit for everyone, first come");
 }
 const char *mpm_rule_tip(int row) {                     /* tooltip bodies (research/tooltips_v9.md 3.3, uxdesign) */
     static const char *t[MPM_RULE_ROWS] = {
-        "Who can pause the game. Anyone can pause: one player pauses it for everyone. Pause by vote: it pauses only when every player votes for it. No pause: nobody can pause it. Events, the Portal screen and a lost player still pause in every mode.",
-        "On: players can play at Fast speed when every player asks for it. Off: the game stays at normal speed for everyone.",
-        "Who may change gear. Shared, own units: everyone uses the settlement storage, and each player equips only their own units. Shared, any unit: anyone equips any unit. Own storage: each player has their own items.",
-        "The most units each player can control at the same time (1, 2, 3, 4 or 6). The host can change it during play.",
-        "How the clan's population limit is shared. Shared: one limit for everyone, first come. Per player: each player has the full limit. Split equally: the limit is divided between players. Multiplied: limit times players, shared. A hire needs room here and under Units per Player.",
-        "Who answers an event. Owner of the unit: the player who controls the unit in the event. Host only. First to answer. Majority vote: the host breaks a tie.",
-        "On: the host can order every unit and release the units of absent players. Off: the host is a normal player for other players' units.",
-        "Off: each player sees only what their own units see; places explored by others stay dark until a reload. On: everyone sees what any unit has revealed. The world is the same for everyone either way.",
-        "Allowed: anyone you invite can join to watch (at most 8). They see everything, can chat and ping, own no units, and cannot pause or vote. Not allowed: nobody can watch; turning it off during play removes the spectators." };
-    return row >= 0 && row < MPM_RULE_ROWS ? t[row] : "";
+        TR_NOOP("Who can pause the game. Anyone can pause: one player pauses it for everyone. Pause by vote: it pauses only when every player votes for it. No pause: nobody can pause it. Events, the Portal screen and a lost player still pause in every mode."),
+        TR_NOOP("On: players can play at Fast speed when every player asks for it. Off: the game stays at normal speed for everyone."),
+        TR_NOOP("Who may change gear. Shared, own units: everyone uses the settlement storage, and each player equips only their own units. Shared, any unit: anyone equips any unit. Own storage: each player has their own items."),
+        TR_NOOP("The most units each player can control at the same time (1, 2, 3, 4 or 6). The host can change it during play."),
+        TR_NOOP("How the clan's population limit is shared. Shared: one limit for everyone, first come. Per player: each player has the full limit. Split equally: the limit is divided between players. Multiplied: limit times players, shared. A hire needs room here and under Units per Player."),
+        TR_NOOP("Who answers an event. Owner of the unit: the player who controls the unit in the event. Host only. First to answer. Majority vote: the host breaks a tie."),
+        TR_NOOP("On: the host can order every unit and release the units of absent players. Off: the host is a normal player for other players' units."),
+        TR_NOOP("Off: each player sees only what their own units see; places explored by others stay dark until a reload. On: everyone sees what any unit has revealed. The world is the same for everyone either way."),
+        TR_NOOP("Allowed: anyone you invite can join to watch (at most 8). They see everything, can chat and ping, own no units, and cannot pause or vote. Not allowed: nobody can watch; turning it off during play removes the spectators.") };
+    return row >= 0 && row < MPM_RULE_ROWS ? TR(t[row]) : "";
 }
+/* row 4 "Population" is the game's own word (TEXTKEY_Shared_Population_NAME) */
 const char *mpm_rule_tip_title(int row) {
-    static const char *t[MPM_RULE_ROWS] = { "Pause", "Speed-up", "Gear", "Units per Player", "Population", "Event Choices", "Admin Mode", "Shared Fog of War", "Spectators" };
-    return row >= 0 && row < MPM_RULE_ROWS ? t[row] : "";
+    static const char *t[MPM_RULE_ROWS] = { TR_NOOP("Pause"), TR_NOOP("Speed-up"), TR_NOOP("Gear"), TR_NOOP("Units per Player"), "Population", TR_NOOP("Event Choices"), TR_NOOP("Admin Mode"), TR_NOOP("Shared Fog of War"), TR_NOOP("Spectators") };
+    if (row == MPM_RULE_POP) return mpm_word("TEXTKEY_Shared_Population_NAME", "Population");
+    return row >= 0 && row < MPM_RULE_ROWS ? TR(t[row]) : "";
 }
 const char *mpm_rule_label(int row) {
-    static const char *l[MPM_RULE_ROWS] = { "Pause", "Speed-up", "Gear", "Units per player", "Population", "Event choices", "Admin mode", "Shared fog", "Spectators" };
-    return row >= 0 && row < MPM_RULE_ROWS ? l[row] : "";
+    static const char *l[MPM_RULE_ROWS] = { TR_NOOP("Pause"), TR_NOOP("Speed-up"), TR_NOOP("Gear"), TR_NOOP("Units per player"), "Population", TR_NOOP("Event choices"), TR_NOOP("Admin mode"), TR_NOOP("Shared fog"), TR_NOOP("Spectators") };
+    if (row == MPM_RULE_POP) return mpm_word("TEXTKEY_Shared_Population_NAME", "Population");
+    return row >= 0 && row < MPM_RULE_ROWS ? TR(l[row]) : "";
 }
 void mpm_rule_value(const mpm_settings *s, int row, char *out, size_t cap) {
     switch (row) {
-    case 0: snprintf(out, cap, "%s", s->pause_mode == MPM_PAUSE_NONE ? "No pause" : s->pause_mode == MPM_PAUSE_ALL_VOTE ? "Pause by vote" : "Anyone can pause"); break;
-    case 1: snprintf(out, cap, "%s", s->speedup ? "On" : "Off"); break;
-    case 2: snprintf(out, cap, "%s", s->gear == MPM_GEAR_SHARED_ANY ? "Shared, any unit" : s->gear == MPM_GEAR_OWN_STORAGE ? "Own storage" : "Shared, own units"); break;
+    case 0: snprintf(out, cap, "%s", s->pause_mode == MPM_PAUSE_NONE ? TR("No pause") : s->pause_mode == MPM_PAUSE_ALL_VOTE ? TR("Pause by vote") : TR("Anyone can pause")); break;
+    case 1: snprintf(out, cap, "%s", On_Off(s->speedup)); break;
+    case 2: snprintf(out, cap, "%s", s->gear == MPM_GEAR_SHARED_ANY ? TR("Shared, any unit") : s->gear == MPM_GEAR_OWN_STORAGE ? TR("Own storage") : TR("Shared, own units")); break;
     case 3: snprintf(out, cap, "%d", s->units); break;
-    case 4: snprintf(out, cap, "%s", s->population == 1 ? "Per player" : s->population == 2 ? "Split equally" : s->population == 3 ? "Multiplied" : "Shared"); break;
-    case 5: snprintf(out, cap, "%s", s->events == 1 ? "Host only" : s->events == 2 ? "First to answer" : s->events == 3 ? "Majority vote" : "Owner of the unit"); break;
-    case 6: snprintf(out, cap, "%s", s->admin ? "On" : "Off"); break;
-    case 7: snprintf(out, cap, "%s", s->fog ? "On" : "Off"); break;
+    case 4: snprintf(out, cap, "%s", s->population == 1 ? TR("Per player") : s->population == 2 ? TR("Split equally") : s->population == 3 ? TR("Multiplied") : TR("Shared")); break;
+    case 5: snprintf(out, cap, "%s", s->events == 1 ? TR("Host only") : s->events == 2 ? TR("First to answer") : s->events == 3 ? TR("Majority vote") : TR("Owner of the unit")); break;
+    case 6: snprintf(out, cap, "%s", On_Off(s->admin)); break;
+    case 7: snprintf(out, cap, "%s", On_Off(s->fog)); break;
     case 8:
-        if (s->spectators && s->watching > 0) snprintf(out, cap, "Allowed \xC2\xB7 %d watching", s->watching);
-        else snprintf(out, cap, "%s", s->spectators ? "Allowed" : "Not allowed");
+        if (s->spectators && s->watching > 0) snprintf(out, cap, TRN("Allowed \xC2\xB7 %d watching", "Allowed \xC2\xB7 %d watching", s->watching), s->watching);
+        else snprintf(out, cap, "%s", s->spectators ? TR("Allowed") : TR("Not allowed"));
         break;
     default: out[0] = 0;
     }
 }
-/* Foreign Expedition rules (owner 2026-10-14: death, XP, dungeon loot only; recruiting in the hub is a host option, default Off) */
+/* Foreign Expedition rules (owner 2026-10-14: death, XP, dungeon loot only; recruiting in the hub is a host option, default Off).
+   Row 1 "Experience" is the game's own word (TEXTKEY_Shared_EXP_NAME). */
 const char *mpm_fe_label(int row) {
-    static const char *l[MPM_FE_ROWS] = { "Death", "Experience", "Dungeon loot", "Units per player", "Gear", "Recruiting" };
-    return row >= 0 && row < MPM_FE_ROWS ? l[row] : "";
+    static const char *l[MPM_FE_ROWS] = { TR_NOOP("Death"), "Experience", TR_NOOP("Dungeon loot"), TR_NOOP("Units per player"), TR_NOOP("Gear"), TR_NOOP("Recruiting") };
+    if (row == 1) return mpm_word("TEXTKEY_Shared_EXP_NAME", "Experience");
+    return row >= 0 && row < MPM_FE_ROWS ? TR(l[row]) : "";
 }
 void mpm_fe_value(const mpm_settings *s, int row, char *out, size_t cap) {
     switch (row) {
-    case 0: snprintf(out, cap, "%s", s->fe_death ? "Permanent" : "Not permanent"); break;
-    case 1: snprintf(out, cap, "%s", s->fe_xp ? "Counts" : "Does not count"); break;
-    case 2: snprintf(out, cap, "%s", s->fe_loot ? "Comes back" : "Stays in the hub"); break;
+    case 0: snprintf(out, cap, "%s", s->fe_death ? TR("Permanent") : TR("Not permanent")); break;
+    case 1: snprintf(out, cap, "%s", s->fe_xp ? TR("Counts") : TR("Does not count")); break;
+    case 2: snprintf(out, cap, "%s", s->fe_loot ? TR("Comes back") : TR("Stays in the hub")); break;
     case 3: snprintf(out, cap, "%d", s->units); break;
-    case 4: snprintf(out, cap, "Own storage"); break;
-    case 5: snprintf(out, cap, "%s", s->fe_recruit ? "On" : "Off"); break;
+    case 4: snprintf(out, cap, "%s", TR("Own storage")); break;
+    case 5: snprintf(out, cap, "%s", On_Off(s->fe_recruit)); break;
     default: out[0] = 0;
     }
 }
 const char *mpm_fe_desc(const mpm_settings *s, int row) {
     switch (row) {
-    case 0: return s->fe_death ? "A unit that dies is removed at home, with its gear." : "A unit that dies goes home as it was at the last save.";
-    case 1: return s->fe_xp ? "XP and levels gained here go home." : "Units go home as they left.";
-    case 2: return s->fe_loot ? "Items found in dungeons go home. Hub stock stays." : "Everything found stays in the hub.";
-    case 3: return "Units each player may bring.";
-    case 4: return "Fixed in this mode: items must know their owner.";
-    case 5: return s->fe_recruit ? "Recruits belong to the recruiter and stay in the hub." : "Recruiting is not offered in the hub.";
+    case 0: return s->fe_death ? TR("A unit that dies is removed at home, with its gear.") : TR("A unit that dies goes home as it was at the last save.");
+    case 1: return s->fe_xp ? TR("XP and levels gained here go home.") : TR("Units go home as they left.");
+    case 2: return s->fe_loot ? TR("Items found in dungeons go home. Hub stock stays.") : TR("Everything found stays in the hub.");
+    case 3: return TR("Units each player may bring.");
+    case 4: return TR("Fixed in this mode: items must know their owner.");
+    case 5: return s->fe_recruit ? TR("Recruits belong to the recruiter and stay in the hub.") : TR("Recruiting is not offered in the hub.");
     }
     return "";
 }
 const char *mpm_fe_tip(int row) {
     static const char *t[MPM_FE_ROWS] = {
-        "Permanent: a unit that dies in the expedition is removed from its home save, with the gear it wears at home. Not permanent: it goes home in its state from the last multiplayer save where it was alive.",
-        "Counts: levels, skills and experience gained in the hub go home. Does not count: units go home exactly as they left.",
-        "Comes back: items your units find in dungeons go into your home storage. Items made from the hub's stock always stay in the hub.",
-        "How many units each player may bring into the hub (1, 2, 3, 4 or 6). Up to 4 units go into each dive.",
-        "Fixed in a Foreign Expedition: each player has their own storage, so every item knows its owner when results go home.",
-        "Off: recruiting is not offered in the hub. On: players can recruit in the hub; recruits belong to the player who hired them and stay in the hub (they never go home)." };
-    return row >= 0 && row < MPM_FE_ROWS ? t[row] : "";
+        TR_NOOP("Permanent: a unit that dies in the expedition is removed from its home save, with the gear it wears at home. Not permanent: it goes home in its state from the last multiplayer save where it was alive."),
+        TR_NOOP("Counts: levels, skills and experience gained in the hub go home. Does not count: units go home exactly as they left."),
+        TR_NOOP("Comes back: items your units find in dungeons go into your home storage. Items made from the hub's stock always stay in the hub."),
+        TR_NOOP("How many units each player may bring into the hub (1, 2, 3, 4 or 6). Up to 4 units go into each dive."),
+        TR_NOOP("Fixed in a Foreign Expedition: each player has their own storage, so every item knows its owner when results go home."),
+        TR_NOOP("Off: recruiting is not offered in the hub. On: players can recruit in the hub; recruits belong to the player who hired them and stay in the hub (they never go home).") };
+    return row >= 0 && row < MPM_FE_ROWS ? TR(t[row]) : "";
 }
 static int fe_arrow(mpm_model *m, int c) {
     switch (c) {
@@ -108,14 +126,14 @@ static int fe_arrow(mpm_model *m, int c) {
     return 0;
 }
 const char *mpm_sel_value(const mpm_model *m, int sel) {
-    return sel == MPB_SEL_PAUSE ? mpm_pause_text(m->set.pause_mode) : sel == MPB_SEL_SPEED ? (m->set.speedup ? "on" : "off")
+    return sel == MPB_SEL_PAUSE ? mpm_pause_text(m->set.pause_mode) : sel == MPB_SEL_SPEED ? on_off(m->set.speedup)
          : sel == MPB_SEL_GEAR ? mpm_gear_text(m->set.gear) : sel == MPB_SEL_UNITS ? (const char *[]){ "?", "1", "2", "3", "4", "?", "6" }[m->set.units >= 1 && m->set.units <= 6 ? m->set.units : 0] : "";
 }
 const char *mpm_pause_text(int mode) {
-    return mode == MPM_PAUSE_NONE ? "off" : mode == MPM_PAUSE_ALL_VOTE ? "by vote" : "anyone";
+    return mode == MPM_PAUSE_NONE ? TR("off") : mode == MPM_PAUSE_ALL_VOTE ? TR("by vote") : TR("anyone");
 }
 const char *mpm_gear_text(int gear) {
-    return gear == MPM_GEAR_SHARED_ANY ? "any unit" : gear == MPM_GEAR_OWN_STORAGE ? "own storage" : "own units";
+    return gear == MPM_GEAR_SHARED_ANY ? TR("any unit") : gear == MPM_GEAR_OWN_STORAGE ? TR("own storage") : TR("own units");
 }
 
 void mpm_init(mpm_model *m) {
@@ -162,36 +180,49 @@ const char *mpm_choice_now(const mpm_choices *l, const mpm_model *m) { return m-
 void mpm_page_started(mpm_model *m, int rc, const char *err) {
     if (m->state != MPM_TITLE_HOST) return;
     if (rc == 0) { m->msg[0] = 0; m->closed_frames = 0; go(m, MPM_HOST_LOADING); return; }   /* waits like "Your save" */
-    snprintf(m->msg, sizeof m->msg, "%s", err && err[0] ? err : "This mode could not start.");
+    snprintf(m->msg, sizeof m->msg, "%s", err && err[0] ? err : TR("This mode could not start."));
 }
 static const mpm_obs *cur;
 /* a failed start or join (lan_v10, ux_flow F8): the reason goes to the stock notice box (game side), not in small type
- * in brackets on the Multiplayer button; the button stays plain */
+ * in brackets on the Multiplayer button; the button stays plain. head and why: already translated. */
 static int fail(mpm_model *m, const char *head, const char *why) {
     char r[200]; snprintf(r, sizeof r, "%s", cur && cur->msg[0] ? cur->msg : why);
-    if (!strncmp(r, "Could not join: ", 16)) memmove(r, r + 16, strlen(r + 16) + 1);   /* the title line says it already */
+    /* the title line says "Could not join" already: drop that start of a refusal. Both texts come from the same
+       TR("Could not join: %s") (mp_game), so this compares one translated text with itself, in any language */
+    const char *f = TR("Could not join: %s"), *ps = strstr(f, "%s");
+    size_t pl = ps ? (size_t)(ps - f) : 0;
+    if (pl && !strncmp(r, f, pl)) memmove(r, r + pl, strlen(r + pl) + 1);
     if (r[0] >= 'a' && r[0] <= 'z') r[0] = (char)(r[0] - 32);
     m->msg[0] = 0;
-    snprintf(m->notice, sizeof m->notice, "<size=150%%>%s</size>\n%s%s", head, r, r[0] && r[strlen(r) - 1] != '.' ? "." : "");
+    size_t rl = strlen(r);
+    int dot = rl && r[rl - 1] != '.' && (unsigned char)r[rl - 1] < 0x80;          /* "." only after a Latin letter ("。" ends CJK) */
+    snprintf(m->notice, sizeof m->notice, "<size=150%%>%s</size>\n%s%s", head, r, dot ? "." : "");
     return go(m, MPM_FAILED);
 }
 static int join_failed(mpm_model *m) {
-    char h[96]; snprintf(h, sizeof h, "Could not join %s's game", m->host[0] ? m->host : "the host");
-    if (!m->host[0]) snprintf(h, sizeof h, "Could not join the game");
-    return fail(m, h, "The connection to the host failed. Try again, or ask the host to invite you again");
+    char h[160];
+    if (m->host[0]) snprintf(h, sizeof h, TR("Could not join %s's game"), m->host);
+    else snprintf(h, sizeof h, "%s", TR("Could not join the game"));
+    return fail(m, h, TR("The connection to the host failed. Try again, or ask the host to invite you again"));
 }
-/* the session ended without our own Leave: a stock notice box on the title says why (ux #9), not the button line */
+/* the session ended without our own Leave: a stock notice box on the title says why (ux #9), not the button line.
+ * Which case it is comes from o->end (MPM_END_*), never from the text. */
 static int ended(mpm_model *m, const mpm_obs *o) {
+    char a[200], b[400]; const char *h = m->host;
     m->msg[0] = 0;
-    if (!strcmp(o->msg, "The host left the game")) {
-        const char *h = m->host[0] ? m->host : "The host";
-        if (m->host[0]) snprintf(m->notice, sizeof m->notice, "<size=150%%>%s left the game</size>\nThe world is saved on %s's computer. To play again, %s hosts it and invites you.", h, h, h);
-        else snprintf(m->notice, sizeof m->notice, "<size=150%%>The host left the game</size>\nThe world is saved on the host's computer. To play again, the host hosts it and invites you.");
-    } else if (!strcmp(o->msg, "The host turned spectators off")) {          /* a spectator dropped by the host's rule */
-        snprintf(m->notice, sizeof m->notice, "<size=150%%>%s turned spectators off</size>\nYou can no longer watch this world.", m->host[0] ? m->host : "The host");
-    } else if (!strcmp(o->msg, "Connection to the host lost")) {           /* our own link dropped (no host BYE): the host waits */
-        if (m->host[0]) snprintf(m->notice, sizeof m->notice, "<size=150%%>Connection to %s lost</size>\n%s is waiting for you: rejoin from Recent worlds.", m->host, m->host);
-        else snprintf(m->notice, sizeof m->notice, "<size=150%%>Connection to the host lost</size>\nThe host is waiting for you: rejoin from Recent worlds.");
+    if (o->end == MPM_END_HOST_LEFT) {
+        if (h[0]) { snprintf(a, sizeof a, TR("%s left the game"), h);
+                    snprintf(b, sizeof b, TR("The world is saved on %s's computer. To play again, %s hosts it and invites you."), h, h); }
+        else { snprintf(a, sizeof a, "%s", TR("The host left the game"));
+               snprintf(b, sizeof b, "%s", TR("The world is saved on the host's computer. To play again, the host hosts it and invites you.")); }
+        snprintf(m->notice, sizeof m->notice, "<size=150%%>%s</size>\n%s", a, b);
+    } else if (o->end == MPM_END_SPECT_OFF) {                                 /* a spectator dropped by the host's rule */
+        if (h[0]) snprintf(a, sizeof a, TR("%s turned spectators off"), h); else snprintf(a, sizeof a, "%s", TR("The host turned spectators off"));
+        snprintf(m->notice, sizeof m->notice, "<size=150%%>%s</size>\n%s", a, TR("You can no longer watch this world."));
+    } else if (o->end == MPM_END_LINK_LOST) {                                 /* our own link dropped (no host BYE): the host waits */
+        if (h[0]) { snprintf(a, sizeof a, TR("Connection to %s lost"), h); snprintf(b, sizeof b, TR("%s is waiting for you: rejoin from Recent worlds."), h); }
+        else { snprintf(a, sizeof a, "%s", TR("Connection to the host lost")); snprintf(b, sizeof b, "%s", TR("The host is waiting for you: rejoin from Recent worlds.")); }
+        snprintf(m->notice, sizeof m->notice, "<size=150%%>%s</size>\n%s", a, b);
     } else snprintf(m->notice, sizeof m->notice, "%s", o->msg);
     return go(m, MPM_IDLE);
 }
@@ -303,13 +334,13 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         break;
     case MPM_HOST_LOADING:
         if (o->campaign_ready) { m->closed_frames = 0; return go(m, MPM_LOBBY) | MPA_HOST_START | MPA_LOBBY_SHOW; }
-        if (o->scene == 1 && o->title_visible && !o->loading && ++m->closed_frames > 300) return fail(m, "Multiplayer could not start", "Loading the campaign failed");
+        if (o->scene == 1 && o->title_visible && !o->loading && ++m->closed_frames > 300) return fail(m, TR("Multiplayer could not start"), TR("Loading the campaign failed"));
         break;
     case MPM_LOBBY:
         if (o->scene == 1 && o->title_visible && !o->loading) {              /* back on the title (quit): end the session */
             if (++m->closed_frames > 90) { m->closed_frames = 0; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE; }
         } else m->closed_frames = 0;
-        if (o->failed) return fail(m, "Multiplayer could not start", "The world stays open as a single-player game") | MPA_LOBBY_HIDE | (m->confirm_leave ? MPA_LEAVE_BOX_CLOSE : 0);
+        if (o->failed) return fail(m, TR("Multiplayer could not start"), TR("The world stays open as a single-player game")) | MPA_LOBBY_HIDE | (m->confirm_leave ? MPA_LEAVE_BOX_CLOSE : 0);
         if (o->role == 0 && c == MPB_NONE) { snprintf(m->msg, sizeof m->msg, "%s", o->msg); return go(m, MPM_IDLE) | MPA_LOBBY_HIDE; }
         if (c == MPB_INVITE) return o->steam ? MPA_INVITE : 0;            /* LAN app: greyed "Needs the Steam version" */
         if (c == MPB_COPY_ADDR) return MPA_COPY_ADDR;
@@ -338,7 +369,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (o->role == 0 && m->confirm_leave) a |= MPA_LEAVE_BOX_CLOSE;    /* the session ended under the box */
         if (o->role == 0) {                                                  /* steamnet's reason ("The host left the game"); own quit: none */
             if (!o->msg[0]) { m->msg[0] = 0; return go(m, MPM_IDLE) | a; }
-            if (!strncmp(o->msg, "Could not", 9)) return join_failed(m) | a;   /* a join from the player's own world was refused (F9, F17) */
+            if (o->end == MPM_END_REFUSED) return join_failed(m) | a;        /* a join from the player's own world was refused (F9, F17) */
             return ended(m, o) | a;
         }
         if (o->role == 2 && o->host_lobby && o->campaign_ready) return go(m, MPM_GUEST_LOBBY) | MPA_LOBBY_SHOW;
@@ -355,7 +386,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
     case MPM_GUEST_JOINING: case MPM_GUEST_LOADING:
         if (c == MPB_CANCEL_JOIN) return go(m, MPM_IDLE) | MPA_LEAVE;
         if (o->failed || o->role == 0) {
-            if (!strcmp(o->msg, "The host left the game") || !strcmp(o->msg, "Connection to the host lost") || !strcmp(o->msg, "The host turned spectators off")) return ended(m, o);
+            if (o->end == MPM_END_HOST_LEFT || o->end == MPM_END_LINK_LOST || o->end == MPM_END_SPECT_OFF) return ended(m, o);
             return join_failed(m);
         }
         if (o->guest_loading && m->state == MPM_GUEST_JOINING) a |= go(m, MPM_GUEST_LOADING);
@@ -405,62 +436,74 @@ uint64_t mpm_visible(const mpm_model *m, const mpm_obs *o) {
 }
 
 void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
+    char tmp[200];
     switch (b) {
     case MPB_MULTIPLAYER:
-        if (m->msg[0]) snprintf(out, cap, "Multiplayer <size=60%%>(%s)</size>", m->msg);
-        else snprintf(out, cap, "Multiplayer");
+        if (m->msg[0]) snprintf(out, cap, "%s <size=60%%>(%s)</size>", TR("Multiplayer"), m->msg);
+        else snprintf(out, cap, "%s", TR("Multiplayer"));
         break;
-    case MPB_LABEL_ADDR: snprintf(out, cap, "Host address"); break;
+    case MPB_LABEL_ADDR: snprintf(out, cap, "%s", TR("Host address")); break;
     case MPB_HEADER:
-        if (m->state == MPM_TITLE_HOST && cur_v2(m)) { snprintf(out, cap, "Host: %s", m->choice_label[m->choice - 1]); break; }
-        snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? "Join a multiplayer world" : m->state == MPM_TITLE_FRIENDS ? "Join a friend on Steam"
-                                          : m->set.fe ? "Host a Foreign Expedition" : m->host_new ? "Host a new save" : "Host your save"); break;
-    case MPB_JOIN_FRIEND: snprintf(out, cap, "%s", m->steam ? "Join a friend on Steam" : "<color=#A69085><line-height=80%>Join a friend on Steam\n<size=65%>Needs the Steam version</size></line-height></color>"); break;
+        if (m->state == MPM_TITLE_HOST && cur_v2(m)) { snprintf(out, cap, TR("Host: %s"), m->choice_label[m->choice - 1]); break; }
+        snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? TR("Join a multiplayer world") : m->state == MPM_TITLE_FRIENDS ? TR("Join a friend on Steam")
+                                          : m->set.fe ? TR("Host a Foreign Expedition") : m->host_new ? TR("Host a new save") : TR("Host your save")); break;
+    case MPB_JOIN_FRIEND:
+        if (m->steam) snprintf(out, cap, "%s", TR("Join a friend on Steam"));
+        else snprintf(out, cap, "<color=#A69085><line-height=80%%>%s\n<size=65%%>%s</size></line-height></color>", TR("Join a friend on Steam"), TR("Needs the Steam version"));
+        break;
     case MPB_FRIEND0: case MPB_FRIEND1: case MPB_FRIEND2: case MPB_FRIEND3: case MPB_FRIEND4: case MPB_FRIEND5:
-        snprintf(out, cap, "Join %s's world", m->friends[b - MPB_FRIEND0][0] ? m->friends[b - MPB_FRIEND0] : "a friend"); break;
-    case MPB_SETTINGS: snprintf(out, cap, "Rules"); break;                  /* cog left, "›" right, summary under it */
+        if (m->friends[b - MPB_FRIEND0][0]) snprintf(out, cap, TR("Join %s's world"), m->friends[b - MPB_FRIEND0]);
+        else snprintf(out, cap, "%s", TR("Join a friend's world"));
+        break;
+    case MPB_SETTINGS: snprintf(out, cap, "%s", TR("Rules")); break;        /* cog left, "›" right, summary under it */
     case MPB_SUMMARY: mpm_settings_summary(&m->set, out, cap); break;
-    case MPB_SEL_PAUSE: snprintf(out, cap, "Pause"); break;
-    case MPB_SEL_SPEED: snprintf(out, cap, "Speed-up"); break;
-    case MPB_SEL_GEAR: snprintf(out, cap, "Gear"); break;
-    case MPB_SEL_UNITS: snprintf(out, cap, "Units per player"); break;
+    case MPB_SEL_PAUSE: snprintf(out, cap, "%s", TR("Pause")); break;
+    case MPB_SEL_SPEED: snprintf(out, cap, "%s", TR("Speed-up")); break;
+    case MPB_SEL_GEAR: snprintf(out, cap, "%s", TR("Gear")); break;
+    case MPB_SEL_UNITS: snprintf(out, cap, "%s", TR("Units per player")); break;
     case MPB_UNITS_PREV: case MPB_UNITS_NEXT: out[0] = 0; break;
     case MPB_DIVIDER: case MPB_PAUSE_PREV: case MPB_PAUSE_NEXT: case MPB_SPEED_PREV: case MPB_SPEED_NEXT:
     case MPB_GEAR_PREV: case MPB_GEAR_NEXT: out[0] = 0; break;
-    case MPB_LABEL_NAME: snprintf(out, cap, "Your name"); break;
+    case MPB_LABEL_NAME: snprintf(out, cap, "%s", TR("Your name")); break;
     case MPB_INFO:                                                          /* small type, errors in red */
         if (m->state == MPM_TITLE_FRIENDS)
-            snprintf(out, cap, "%s", m->msg[0] ? m->msg : m->nfriends ? "Friends hosting a world now:" : "No Steam friend is hosting right now. Ask them to host, or use Join by address.");
-        else if (m->state == MPM_GUEST_JOINING || m->state == MPM_GUEST_LOADING)
-            snprintf(out, cap, "<size=75%%>Joining %s's game%s...%s</size>", m->host[0] ? m->host : "the host", m->spect ? " as a spectator" : "", m->state == MPM_GUEST_LOADING ? " loading" : "");
-        else if (m->connecting[0]) snprintf(out, cap, "<size=70%%>Connecting to %s%s...</size>", m->connecting, m->watch ? " to watch" : "");
+            snprintf(out, cap, "%s", m->msg[0] ? m->msg : m->nfriends ? TR("Friends hosting a world now:") : TR("No Steam friend is hosting right now. Ask them to host, or use Join by address."));
+        else if (m->state == MPM_GUEST_JOINING || m->state == MPM_GUEST_LOADING) {
+            const char *f = m->spect ? (m->state == MPM_GUEST_LOADING ? TR("Joining %s's game as a spectator... loading") : TR("Joining %s's game as a spectator..."))
+                                     : (m->state == MPM_GUEST_LOADING ? TR("Joining %s's game... loading") : TR("Joining %s's game..."));
+            snprintf(tmp, sizeof tmp, f, m->host[0] ? m->host : TR("the host"));
+            snprintf(out, cap, "<size=75%%>%s</size>", tmp);
+        }
+        else if (m->connecting[0]) { snprintf(tmp, sizeof tmp, m->watch ? TR("Connecting to %s to watch...") : TR("Connecting to %s..."), m->connecting);
+                                     snprintf(out, cap, "<size=70%%>%s</size>", tmp); }
         else if (m->msg[0]) snprintf(out, cap, "<color=#F16071>%s</color>", m->msg);   /* Lora 14 (game side) */
-        else if (m->no_field) snprintf(out, cap, "<size=60%%>Copy the host's address, then press Connect</size>");
+        else if (m->no_field) snprintf(out, cap, "<size=60%%>%s</size>", TR("Copy the host's address, then press Connect"));
         else out[0] = 0;
         break;
-    case MPB_HOST: snprintf(out, cap, "Host a game"); break;
-    case MPB_JOIN_HDR: snprintf(out, cap, "Join a game"); break;
+    case MPB_HOST: snprintf(out, cap, "%s", TR("Host a game")); break;
+    case MPB_JOIN_HDR: snprintf(out, cap, "%s", TR("Join a game")); break;
     case MPB_JOIN_DIV: out[0] = 0; break;
-    case MPB_HOST_SAVE: snprintf(out, cap, "Your save"); break;
-    case MPB_HOST_NEW: snprintf(out, cap, "New save"); break;
-    case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : "Foreign Expedition"); break;
+    case MPB_HOST_SAVE: snprintf(out, cap, "%s", TR("Your save")); break;
+    case MPB_HOST_NEW: snprintf(out, cap, "%s", TR("New save")); break;
+    /* host choices: the registering mod's own text (Custom Modes registers it translated, again on a language change) */
+    case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : TR("Foreign Expedition")); break;
     case MPB_HOST_C1: case MPB_HOST_C2: case MPB_HOST_C3: snprintf(out, cap, "%s", m->choice_label[mpm_choice_of_btn(b)]); break;
-    case MPB_HOST_START: snprintf(out, cap, "Start"); break;
-    case MPB_FE_RESLIST: snprintf(out, cap, "Expedition results"); break;
-    case MPB_BACK: snprintf(out, cap, "Back"); break;
-    case MPB_PAUSE_MODE: snprintf(out, cap, "Pause: %s", mpm_pause_text(m->set.pause_mode)); break;
-    case MPB_SPEEDUP: snprintf(out, cap, "Speed-up: %s", m->set.speedup ? "on" : "off"); break;
-    case MPB_GEAR: snprintf(out, cap, "Gear: %s", mpm_gear_text(m->set.gear)); break;
-    case MPB_LOAD_SAVE: snprintf(out, cap, "Host from a save"); break;
-    case MPB_NEW_CAMPAIGN: snprintf(out, cap, "Host a new campaign"); break;
-    case MPB_INVITE: case MPB_ESC_INVITE: snprintf(out, cap, "Steam invite"); break;
-    case MPB_JOIN_ADDR: snprintf(out, cap, "Join by address"); break;
-    case MPB_CONNECT: snprintf(out, cap, "%s", m->no_field ? "Connect with the copied address" : "Connect"); break;
-    case MPB_COPY_ADDR: snprintf(out, cap, "Copy direct address"); break;
-    case MPB_START: snprintf(out, cap, "Start"); break;
-    case MPB_LEAVE: snprintf(out, cap, "Leave multiplayer"); break;
-    case MPB_CANCEL_JOIN: snprintf(out, cap, "Cancel"); break;
-    case MPB_WATCH: case MPB_HISTW0: case MPB_HISTW1: case MPB_HISTW2: case MPB_HISTW3: case MPB_HISTW4: case MPB_HISTW5: snprintf(out, cap, "Watch"); break;
+    case MPB_HOST_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", "Start")); break;
+    case MPB_FE_RESLIST: snprintf(out, cap, "%s", TR("Expedition results")); break;
+    case MPB_BACK: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Back", "Back")); break;
+    case MPB_PAUSE_MODE: snprintf(out, cap, TR("Pause: %s"), mpm_pause_text(m->set.pause_mode)); break;
+    case MPB_SPEEDUP: snprintf(out, cap, TR("Speed-up: %s"), on_off(m->set.speedup)); break;
+    case MPB_GEAR: snprintf(out, cap, TR("Gear: %s"), mpm_gear_text(m->set.gear)); break;
+    case MPB_LOAD_SAVE: snprintf(out, cap, "%s", TR("Host from a save")); break;
+    case MPB_NEW_CAMPAIGN: snprintf(out, cap, "%s", TR("Host a new campaign")); break;
+    case MPB_INVITE: case MPB_ESC_INVITE: snprintf(out, cap, "%s", TR("Steam invite")); break;
+    case MPB_JOIN_ADDR: snprintf(out, cap, "%s", TR("Join by address")); break;
+    case MPB_CONNECT: snprintf(out, cap, "%s", m->no_field ? TR("Connect with the copied address") : TR("Connect")); break;
+    case MPB_COPY_ADDR: snprintf(out, cap, "%s", TR("Copy direct address")); break;
+    case MPB_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", "Start")); break;
+    case MPB_LEAVE: snprintf(out, cap, "%s", TR("Leave multiplayer")); break;
+    case MPB_CANCEL_JOIN: snprintf(out, cap, "%s", mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel")); break;
+    case MPB_WATCH: case MPB_HISTW0: case MPB_HISTW1: case MPB_HISTW2: case MPB_HISTW3: case MPB_HISTW4: case MPB_HISTW5: snprintf(out, cap, "%s", TR("Watch")); break;
     case MPB_SPECT_PREV: case MPB_SPECT_NEXT: out[0] = 0; break;
     default: snprintf(out, cap, "?"); break;
     }
@@ -469,27 +512,34 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
 /* lobby panel (design #6): a title line (Cinzel, set by the game side) and a body: next step, one line per player ("· name": Lora has no U+25CF),
  * settings in the secondary colour, addresses. No <b> (TMP swaps in a font that is not the game's). */
 void mpm_lobby_title(const mpm_model *m, char *out, size_t cap) {
-    if (m->state == MPM_GUEST_LOBBY) snprintf(out, cap, "In %s's lobby", m->host[0] ? m->host : "the host");
-    else snprintf(out, cap, "Multiplayer lobby");
+    if (m->state == MPM_GUEST_LOBBY) snprintf(out, cap, TR("In %s's lobby"), m->host[0] ? m->host : TR("the host"));
+    else snprintf(out, cap, "%s", TR("Multiplayer lobby"));
 }
 void mpm_lobby_text(const mpm_model *m, const char *const *names, int n, char *out, size_t cap) {
     size_t o;
     if (m->state == MPM_GUEST_LOBBY) {                                     /* guest waiting panel */
-        const char *h = m->host[0] ? m->host : "the host";
-        o = (size_t)snprintf(out, cap, "The game starts when %s presses Start.", h);
-    } else o = (size_t)snprintf(out, cap, "Share your address, then press Start when everyone is in.");
-    if (n <= 0 && o < cap) o += (size_t)snprintf(out + o, cap - o, "\n\xC2\xB7 You (host)");
-    for (int i = 0; i < n && o < cap; i++)
-        o += (size_t)snprintf(out + o, cap - o, "\n\xC2\xB7 %s%s", names[i] && names[i][0] ? names[i] : "Player", i == 0 ? " (host)" : "");
+        const char *h = m->host[0] ? m->host : TR("the host");
+        o = (size_t)snprintf(out, cap, TR("The game starts when %s presses Start."), h);
+    } else o = (size_t)snprintf(out, cap, "%s", TR("Share your address, then press Start when everyone is in."));
+    if (n <= 0 && o < cap) o += (size_t)snprintf(out + o, cap - o, "\n\xC2\xB7 %s", TR("You (host)"));
+    for (int i = 0; i < n && o < cap; i++) {
+        const char *nm = names[i] && names[i][0] ? names[i] : TR("Player");
+        if (i == 0) o += (size_t)snprintf(out + o, cap - o, "\n\xC2\xB7 ");
+        if (i == 0 && o < cap) o += (size_t)snprintf(out + o, cap - o, TR("%s (host)"), nm);
+        else if (i) o += (size_t)snprintf(out + o, cap - o, "\n\xC2\xB7 %s", nm);
+    }
     /* guest: no settings line (m->set holds this copy's own host settings, not the host's) */
-    if (o < cap && m->state != MPM_GUEST_LOBBY)
-        o += (size_t)snprintf(out + o, cap - o, "\n<size=87%%><color=#A69085>Pause: %s  \xC2\xB7  Speed-up: %s  \xC2\xB7  Gear: %s</color></size>",
-                              mpm_pause_text(m->set.pause_mode), m->set.speedup ? "on" : "off", mpm_gear_text(m->set.gear));
+    if (o < cap && m->state != MPM_GUEST_LOBBY) {
+        char s[200]; snprintf(s, sizeof s, TR("Pause: %s  \xC2\xB7  Speed-up: %s  \xC2\xB7  Gear: %s"), mpm_pause_text(m->set.pause_mode), on_off(m->set.speedup), mpm_gear_text(m->set.gear));
+        o += (size_t)snprintf(out + o, cap - o, "\n<size=87%%><color=#A69085>%s</color></size>", s);
+    }
     if (o < cap && m->direct[0] && m->state != MPM_GUEST_LOBBY) {
         const char *port = strrchr(m->direct, ':');
-        o += (size_t)snprintf(out + o, cap - o, "\nLocal: %s", m->direct);
-        if (o < cap && m->internet[0]) o += (size_t)snprintf(out + o, cap - o, "\nInternet: %s", m->internet);
-        if (o < cap) snprintf(out + o, cap - o, "\nFriends outside your home: open port %s on your router, or use Steam invite", port ? port + 1 : "47777");
+        o += (size_t)snprintf(out + o, cap - o, "\n");
+        if (o < cap) o += (size_t)snprintf(out + o, cap - o, TR("Local: %s"), m->direct);
+        if (o < cap && m->internet[0]) { o += (size_t)snprintf(out + o, cap - o, "\n"); if (o < cap) o += (size_t)snprintf(out + o, cap - o, TR("Internet: %s"), m->internet); }
+        if (o < cap) o += (size_t)snprintf(out + o, cap - o, "\n");
+        if (o < cap) snprintf(out + o, cap - o, TR("Friends outside your home: open port %s on your router, or use Steam invite"), port ? port + 1 : "47777");
     }
 }
 
@@ -503,7 +553,7 @@ int mpm_list_show(int mode, int show_other, int tagged, int current) {
     return mode == MPM_LIST_MP ? tagged != 0 : tagged == 0;
 }
 const char *mpm_list_toggle_label(int mode) {
-    return mode == MPM_LIST_MP ? "Show single-player worlds" : mode == MPM_LIST_SOLO ? "Show multiplayer worlds" : "";
+    return mode == MPM_LIST_MP ? TR("Show single-player worlds") : mode == MPM_LIST_SOLO ? TR("Show multiplayer worlds") : "";
 }
 
 /* ---------------------------------------------------------------- Multiplayer world tag (mp_tags.txt) */
@@ -565,9 +615,14 @@ int mpm_tag_remove(const char *path, const char *guid) {
     int had; return tag_write(path, guid, NULL, 0, &had) == 0 && had;
 }
 void mpm_tag_names(char names[][32], int n, int shown, char *out, size_t cap) {
-    size_t o = 0; if (cap) out[0] = 0;
-    int k = n < shown ? n : shown;
-    for (int i = 0; i < k; i++)
-        o += (size_t)snprintf(out + o, o < cap ? cap - o : 0, "%s%s", i == 0 ? "" : (i == k - 1 && n == k) ? " and " : ", ", names[i]);
-    if (n > k) snprintf(out + (o < cap ? o : cap), o < cap ? cap - o : 0, " +%d", n - k);
+    if (!cap) return;
+    out[0] = 0;
+    int k = n < shown ? n : shown, last_and = n == k && k >= 2;               /* "A, B and C" / "A, B +2" */
+    char head[MPM_TAG_NAMES * 40]; size_t o = 0; head[0] = 0;
+    for (int i = 0; i < (last_and ? k - 1 : k) && o < sizeof head; i++)
+        o += (size_t)snprintf(head + o, sizeof head - o, "%s%s", i ? TR(", ") : "", names[i]);
+    if (last_and) snprintf(out, cap, TR("%s and %s"), head, names[k - 1]);
+    else snprintf(out, cap, "%s", head);
+    size_t l = strlen(out);
+    if (n > k && l < cap) snprintf(out + l, cap - l, " +%d", n - k);
 }

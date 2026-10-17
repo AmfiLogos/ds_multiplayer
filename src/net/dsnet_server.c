@@ -2,6 +2,7 @@
  * Runs on its own thread. Stamps commands with its timer, logs and broadcasts them in order,
  * sends time control at net_ms, holds/slows the timer for peers that fall behind. */
 #include "dsnet_internal.h"
+#include "../ds_i18n.h"
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <fenv.h>
@@ -256,7 +257,7 @@ static int modset_refused(dsnet_server *s, const sconn *c, char *why, size_t n) 
     }
     if (strcmp(eff_modset(c), eff_modset(h))) {
         char rel[96]; size_t k = 0;
-        if (dsnet_release_text(h->release, c->release, rel, sizeof rel)) k = (size_t)snprintf(why, n, "%s ", rel);
+        if (dsnet_release_text_en(h->release, c->release, rel, sizeof rel)) k = (size_t)snprintf(why, n, "%s ", rel);   /* wire words: English */
         if (k >= n) return 1;
         why += k; n -= k;
         snprintf(why, n, "your gameplay mods are different from the host's (host: %s; you: %s). Join from the launcher to get the host's mods",
@@ -314,6 +315,7 @@ static void on_hello(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
     if (id < 0) { uint8_t r[2] = { P_REJECT, DSNET_REJ_FULL }; dsnet_link_send(&c->link, r, 2); c->closing = 1; return; }
     c->id = id; c->is_host = want_host; c->spectator = spect;
     snprintf(c->name, sizeof c->name, "%.*s", (int)(n - name_at - 1), (const char *)p + name_at + 1);
+    dsi_utf8_fix_end(c->name);                     /* a name cut inside a character would show blank (il2cpp_string_new) */
     memcpy(c->uid, p + 12, 16);
     int late = s->started;
     uint8_t b[96], *q = b;
@@ -480,7 +482,7 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         if (n < 2) return;
         uint32_t tl = n - 1 > DSNET_CHAT_MAX ? DSNET_CHAT_MAX : n - 1;
         uint8_t b[2 + 32 + DSNET_CHAT_MAX];
-        b[0] = P_CHAT; b[1] = (uint8_t)c->id; memset(b + 2, 0, 32); memcpy(b + 2, c->name, strnlen(c->name, 31));
+        b[0] = P_CHAT; b[1] = (uint8_t)c->id; memset(b + 2, 0, 32); memcpy(b + 2, c->name, utf8_len31(c->name));
         memcpy(b + 34, p + 1, tl);
         for (int i = 0; i < MAX_CONNS; i++) if (s->conn[i] && s->conn[i]->id >= 0 && !s->conn[i]->closing) dsnet_link_send(&s->conn[i]->link, b, 34 + tl);
         break;
@@ -668,7 +670,7 @@ static void send_players(dsnet_server *s, int ping) {
             if (c->closing) continue;
             int st = c->status == ST_PLAYING ? DSNET_NET_IN_SYNC : c->status == ST_DESYNCED || c->resync ? DSNET_NET_RESYNCING : DSNET_NET_LOADING;
             q = put8(q, c->id); q = put8(q, st); q = put16(q, c->ping_ms > 65535 ? 65535 : c->ping_ms);
-            memset(q, 0, 32); memcpy(q, c->name, strnlen(c->name, 31)); q += 32;
+            memset(q, 0, 32); memcpy(q, c->name, utf8_len31(c->name)); q += 32;
             scnt++;
             continue;
         }

@@ -69,6 +69,7 @@ dsnet_steam_join *dsnet_steam_join_host(uint64_t host_steamid);   /* no lobby, c
 /* 1 ready (connect dsnet to 127.0.0.1:*port), 0 pending, -1 failed (dsnet_steam_join_error). */
 int         dsnet_steam_join_poll(dsnet_steam_join *j, uint16_t *port);
 const char *dsnet_steam_join_error(dsnet_steam_join *j);
+const char *dsnet_steam_join_error_text(dsnet_steam_join *j, char *out, size_t n);   /* the same in the player's language (main thread) */
 void        dsnet_steam_join_close(dsnet_steam_join *j);
 
 /* Lobby to join from "+connect_lobby <id>" in argv or the Steam launch command line, or from an

@@ -3,6 +3,7 @@
 # rig + determinism (rig_*), multiplayer glue (mp_*), dsnet (net/, net/steam/), orders (ord_*), UI (ui_*).
 # ord_test/ord_smoke.c only adds the ord_inject / ord_select / ord_hover / ord_stats test commands.
 # Multiplayer menu (mpmenu*).
+# i18n (ds_i18n.c = the one DSI_IMPLEMENTATION; language files lang/<code>.json next to the dylib, see mpmenu.c lang_dir_init).
 # Transitions (trn_*): floor seeds, flow barrier, host-only autosave.
 # Multiplayer API (mp_api.c / mp_api.h, MASTER_PLAN 2.2 B) + the menu kit (mpmenu_kit.h) for Custom Modes.
 # Custom Modes (Foreign Expedition, PvP, units) is its OWN dylib since the M4 split and its own repo since post-v13
@@ -21,7 +22,7 @@ nice -n 19 clang -arch arm64 -mmacosx-version-min=12.0 -O2 -Wall -Wno-unused-fun
   net/dsnet_link.c net/dsnet_server.c net/dsnet_client.c net/steam/dsnet_steam.c \
   ord_core.c ord_game.c ord_mp.c ord_test/ord_smoke.c \
   ui_game.c ui_model.c ui_tip.c ui_teams.c ui_teams_model.c mpmenu.c mpmenu_model.c \
-  trn_logic.c trn_game.c trn_mp.c \
+  trn_logic.c trn_game.c trn_mp.c ds_i18n.c \
   ../win/math/math_mac.c -I../win/math -DDSMATH_DEFAULT_ON=1 ../win/math/build/libdsmath_arm64.a -lz
 codesign -f -s - $OUT/dsrig.dylib.tmp 2>/dev/null
 mv -f $OUT/dsrig.dylib.tmp $OUT/dsrig.dylib     # new inode: never overwrite a mapped dylib

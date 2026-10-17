@@ -4,6 +4,7 @@
 #include "dsnet.h"
 #include "dsnet_steam.h"
 #include <stddef.h>
+#include <stdio.h>
 
 static const char *E = "Steam bridge not ported to Windows yet";
 int dsnet_steam_load(const char *path) { (void)path; return -1; }
@@ -25,6 +26,7 @@ dsnet_steam_join *dsnet_steam_join_lobby(uint64_t l, const char *b, uint32_t m) 
 dsnet_steam_join *dsnet_steam_join_host(uint64_t id) { (void)id; return NULL; }
 int dsnet_steam_join_poll(dsnet_steam_join *j, uint16_t *port) { (void)j; (void)port; return -1; }
 const char *dsnet_steam_join_error(dsnet_steam_join *j) { (void)j; return E; }
+const char *dsnet_steam_join_error_text(dsnet_steam_join *j, char *out, size_t n) { (void)j; snprintf(out, n, "%s", E); return out; }
 void dsnet_steam_join_close(dsnet_steam_join *j) { (void)j; }
 uint64_t dsnet_steam_take_join_request(void) { return 0; }
 int dsnet_steam_friends_in_game(dsnet_steam_friend *out, int max) { (void)out; (void)max; return 0; }
