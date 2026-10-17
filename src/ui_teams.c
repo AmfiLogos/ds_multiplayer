@@ -1101,7 +1101,7 @@ static void layout(void) {
             snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
         }
         else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "%s", TR("Next: take a free unit (left-click)."));
-        else if (st.me >= 0) snprintf(stl, sizeof stl, "%s", TR("To start an expedition, use the game's Go to dungeon."));
+        else if (st.me >= 0) snprintf(stl, sizeof stl, "%s", TR("To start an expedition, use the game's Enter Dungeon."));
         snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>", stl);
         set_text(o, -10, -405, 390, 40, 14, AL_CENTER, 0, t);
     }
@@ -2080,7 +2080,7 @@ static int tip_bar(int i) { char nm[40]; pname(bar_pl[i], nm); return tip_on(u_g
 static int tip_hud(void) { return tip_on(u_gc_get(h_hud), TR("Teams"), TR("Who controls which units. Take free units, and lend yours to another player. Right-click and drag to move this button.")); }
 static int tip_info(void) {
     return tip_on(u_gc_get(h_info), TR("How Teams Work"), TR("Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. "
-                                                    "To start an expedition, use the game's Go to dungeon; every player approves it."));
+                                                    "To start an expedition, use the game's Enter Dungeon; every player approves it."));
 }
 static int tip_prop(int what) {   /* the proposal panel: 0 region, 1 waiting, 2 approve, 3 decline / cancel, 4 Hide / Show, 5 time left, 6+i player row i */
     if (what == 0) return tip_on(u_gc_get(h_ptip[0]), TR("Region"), TR("Where the expedition goes. Chosen by the player who proposed it."));

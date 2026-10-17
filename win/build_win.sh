@@ -88,17 +88,18 @@ import hashlib, json, os, sys
 m = json.load(open(sys.argv[1])); d = sys.argv[2]
 files = {f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest() for f in ("multiplayer.dll", "det_ranges_win.tsv")}
 m.setdefault("platforms", {})["win-x64"] = {"entry": "multiplayer.dll", "files": files}
-json.dump(m, open(os.path.join(d, "mod.json"), "w"), indent=1)
+json.dump(m, open(os.path.join(d, "mod.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
 print("module folder", d, files["multiplayer.dll"][:16])
 PY
 M=build/mods/custom-modes; mkdir -p $M
 for f in custom-modes.dll custom-modes-mp.dll; do cp build/$f $M/$f.tmp && mv -f $M/$f.tmp $M/$f; done
+if [[ -d $C/lang ]]; then mkdir -p $M/lang; for f in $C/lang/*.json(N); do cp $f $M/lang/${f:t}.tmp && mv -f $M/lang/${f:t}.tmp $M/lang/${f:t}; done; fi   # its translations, not hashed
 python3 - ${CM_MODJSON:-$C/mod.json} $M <<'PY'
 import hashlib, json, os, sys
 m = json.load(open(sys.argv[1])); d = sys.argv[2]
 files = {f: hashlib.sha256(open(os.path.join(d, f), "rb").read()).hexdigest() for f in ("custom-modes.dll", "custom-modes-mp.dll")}
 m.setdefault("platforms", {})["win-x64"] = {"entry": "custom-modes.dll", "files": files}
-json.dump(m, open(os.path.join(d, "mod.json"), "w"), indent=1)
+json.dump(m, open(os.path.join(d, "mod.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
 print("module folder", d, files["custom-modes.dll"][:16], files["custom-modes-mp.dll"][:16])
 PY
 else

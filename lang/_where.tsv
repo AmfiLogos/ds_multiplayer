@@ -208,7 +208,7 @@
 "Could not join %s's game"	mpmenu_model.c:204
 "Could not join %s's world (Steam). Try again, or use Join by address."	mpmenu.c:2656
 "Could not join the game"	mpmenu_model.c:205
-"Could not join: %s"	mp_game.c:833 mp_game.c:1086 mpmenu.c:1681 mpmenu_model.c:191 mpmenu_model.c:192
+"Could not join: %s"	mp_game.c:833 mp_game.c:1086 mpmenu.c:1681 mpmenu_model.c:192
 "Could not join: your gameplay mods are not the same as the host's"	mp_game.c:831 mpmenu.c:1680
 "Could not save your game"	mpmenu.c:1924
 "Counts"	mpmenu_model.c:90
@@ -288,7 +288,7 @@
 "Has not answered yet."	ui_teams.c:2098
 "Hide"	ui_game.c:2510 ui_game.c:2531 ui_teams.c:1114 ui_teams.c:1234 ui_teams.c:2092 ui_teams.c:2149
 "Hide %s's pings and their sound on your screen. %s is not told."	ui_game.c:5071
-"Host"	mpmenu.c:1362 mpmenu.c:2040 mpmenu.c:2040 ui_model.c:13
+"Host"	mpmenu.c:1362 ui_model.c:13
 "Host Address"	mpmenu.c:2742
 "Host a Foreign Expedition"	mpmenu_model.c:449
 "Host a New Campaign"	mpmenu.c:2740
@@ -351,7 +351,7 @@
 "Leave multiplayer to load another world"	mpmenu.c:1136
 "Leave multiplayer to load another world."	mpmenu.c:2714
 "Leave multiplayer?"	mpmenu.c:1823
-"Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Go to dungeon; every player approves it."	ui_teams.c:2082
+"Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it."	ui_teams.c:2082
 "Left-click to take"	ui_teams.c:1025
 "Left-click: free this unit. Use Lend to give control to another player."	ui_teams.c:2049
 "Left-click: take this unit."	ui_teams.c:2050
@@ -662,7 +662,7 @@
 "This world was joined through Steam: needs the Steam version."	mpmenu.c:2157
 "Time Left"	ui_teams.c:2093 ui_teams.c:2104
 "Time to pack and answer the proposal. When it runs out, the expedition is cancelled for everyone. Next shows the proposal with Approve and Decline."	ui_teams.c:2104
-"To start an expedition, use the game's Go to dungeon."	ui_teams.c:1104
+"To start an expedition, use the game's Enter Dungeon."	ui_teams.c:1104
 "Tower of Apocalypse"	ui_teams.c:256
 "Turns the chat on or off on your screen."	ui_game.c:5097
 "Unit Outline"	ui_game.c:5085
@@ -840,6 +840,7 @@
 "this world already has the most spectators it allows"	net/dsnet_client.c:586
 "this world does not allow spectators"	net/dsnet_client.c:585
 "to pack and answer"	ui_teams.c:1779
+"verb\u0004Host"	mpmenu.c:2040 mpmenu.c:2040
 "waiting"	ui_teams.c:1256
 "with %s"	mpmenu.c:2842
 "yes"	ui_game.c:1052

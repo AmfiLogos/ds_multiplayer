@@ -2037,7 +2037,7 @@ static void pick_frame(const mpm_obs *o) {
             pick_on = 1; rig_log("mpmenu: load list retitled (was \"%s\" / \"%s\")", pick_title0, pick_btn0);
         }
         char cur[128] = ""; str_utf8(tmp_get(t), cur, sizeof cur); if (strcmp(cur, TR("Host a world"))) tmp_set(t, TR("Host a world"));   /* our own text read back */
-        if (bt) { str_utf8(tmp_get(bt), cur, sizeof cur); if (strcmp(cur, TR("Host"))) tmp_set(bt, TR("Host")); }
+        if (bt) { str_utf8(tmp_get(bt), cur, sizeof cur); if (strcmp(cur, TRC("verb", "Host"))) tmp_set(bt, TRC("verb", "Host")); }
     } else if (!want && pick_on) {
         Obj t = u_gc_get(h_pick_title), bt = u_gc_get(h_pick_btn);
         if (u_alive(t)) { tmp_set(t, pick_title0); if (pick_key0[0]) AT(t, 0x7C0, bool) = true; }

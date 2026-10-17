@@ -91,7 +91,7 @@ export	il2cpp_assembly_get_image	0x6f8bbc	0x48a740	ok		src/mpmenu.c:111,src/ord_
 export	il2cpp_class_is_assignable_from	0x6f8be0	0x4435a0	ok		src/mpmenu.c:32,src/mpmenu.c:56,src/ui_game.c:242,src/ui_game.c:28,src/ui_teams.c:45,src/ui_teams.c:62,+1
 export	il2cpp_class_from_name	0x6f8bf4	0x49d360	ok		src/mpmenu.c:112,src/ord_game.c:76,src/ord_test/OFFSETS.md:140
 export	il2cpp_class_get_field_from_name	0x6f8c14	0x49d3d0	ok		src/mpmenu.c:347
-export	il2cpp_class_get_method_from_name	0x6f8c1c	0x49d410	ok		custom/cm_mp.c:133,src/mpmenu.c:155,src/mpmenu.c:160,src/mpmenu.c:337,src/mpmenu.c:338
+export	il2cpp_class_get_method_from_name	0x6f8c1c	0x49d410	ok		custom/cm_mp.c:134,src/mpmenu.c:155,src/mpmenu.c:160,src/mpmenu.c:337,src/mpmenu.c:338
 export	il2cpp_class_get_name	0x6f8c20	0x49d430	ok		src/mp_fog.c:40,src/ord_game.c:77,src/ord_test/OFFSETS.md:141,src/trn_game.c:32
 export	il2cpp_class_get_type	0x6f8c9c	0x45a690	ok		custom/pvp/pvp_ui.c:196,custom/pvp/pvp_ui.c:541,src/mp_game.c:857,src/mpmenu.c:102,src/mpmenu.c:1113,src/mpmenu.c:122,+11
 export	il2cpp_domain_get	0x6f91f4	0x49d6a0	ok		src/mpmenu.c:107,src/ord_game.c:73,src/ord_test/OFFSETS.md:137
@@ -129,7 +129,7 @@ code-inside	Refactor.SubUI_ResearchProgressBar$$SetProgressGage+0x42	0x800e42		C
 code-inside	Refactor.Tooltip_Choice$$SetActionTooltip+0x10	0x803040		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:9
 method	Refactor.VectorExtensions$$ToWorldPosition	0x80c458	0x5a6a00	ok		research/rig_access_spec.md:116
 method	Refactor.VectorExtensions$$ToLogicalPosition	0x80c474	0x5a67f0	ok		research/rig_access_spec.md:116
-method	Refactor.TextKeyExtensions$$GetText	0x80ebac	0x5a3490	ok		custom/cm_mp.c:155,custom/fe/fe_menu.c:35,custom/pvp/pvp_ui.c:226,custom/pvp/pvp_ui.c:395,src/ui_game.c:105,src/ui_game.c:115,+2
+method	Refactor.TextKeyExtensions$$GetText	0x80ebac	0x5a3490	ok		custom/cm_mp.c:156,custom/fe/fe_menu.c:35,custom/pvp/pvp_ui.c:226,custom/pvp/pvp_ui.c:395,src/ui_game.c:105,src/ui_game.c:115,+2
 method	Refactor.CampaignSaveLoader$$TryRefreshSave	0x812ab8	0x58c970	ok		research/rig_access_spec.md:171,src/MP_NOTES.md:163,src/mp_game.c:133
 method	Refactor.CampaignSaveLoader$$TryLoad	0x8143cc	0x58c4b0	ok		research/plan_foreign_expedition_spectator.md:125,research/rig_access_spec.md:179
 method	Refactor.CampaignSaveLoader$$IsValidLoadData	0x814718	0x589b50	ok		research/plan_foreign_expedition_spectator.md:125,research/rig_access_spec.md:164
