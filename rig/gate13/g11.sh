@@ -29,11 +29,11 @@ chk g11_melon 'WML PASS' $WT wml
 # PvP v1 on the base map, Mac host + Windows guest W (C:\DSW, gated rig baselib.dll): checks 1, 4, 7 (fepvp's pvp_v1_pair
 # through win/xplay_run.py; first run of this pairing, no lane ran it before)
 pvpx() {
-  local DSW="$HOME/Library/Application Support/CrossOver/Bottles/DSMP/drive_c/DSW" R=$HOME/ds_multiplayer/rig/rig.py LOCK=$HOME/ds_multiplayer/rig/wine.lock t=$(date +%Y%m%d-%H%M%S)
+  local DSW="$HOME/Library/Application Support/CrossOver/Bottles/DSMP/drive_c/DSW" R=$HOME/ds_multiplayer/rig/rig.py t=$(date +%Y%m%d-%H%M%S)
   [[ -f $WT/win/build/baselib.dll ]] || (cd $WT/win && nice -n 19 zsh build_win.sh > $OUT/g11_build_win.log 2>&1) || return 1
   mkdir -p "$DSW/old_gate13"; for f in baselib.dll det_ranges_win.tsv; do mv "$DSW/$f" "$DSW/old_gate13/$f.$t"; cp $WT/win/build/$f "$DSW/$f"; done
-  [[ -z $(ps -axo etime=,comm= | command grep -iE 'wine|\.exe$' | command grep -ve '-[0-9][0-9]:') ]] && mkdir $LOCK || { echo "wine busy / locked"; return 1; }
-  echo gate13 > $LOCK/owner; local P=$(python3 $R lease gate13 --pid $$ | tail -1) rc=1
+  python3 $HOME/ds_multiplayer/rig/wine_lease.py take gate13 --pid $$ || { echo "wine busy / locked"; return 1; }
+  local P=$(python3 $R lease gate13 --pid $$ | tail -1) rc=1
   if [[ $P == [A-J][A-J] ]]; then
     local XL=$OUT/g11_pvp_xplay_raw.log
     (cd $HOME/ds_multiplayer/win && python3 xplay_run.py $P $WT/ext/fepvp13/tests/pvp_v1_pair.py --math --dylib $D --tag gate13_xv1) > $XL 2>&1
@@ -43,7 +43,7 @@ pvpx() {
     command grep -q 'PASS 1 ' $XL && command grep -q 'PASS 4 ' $XL && command grep -q 'PASS 7 ' $XL && { echo "XPV PASS checks 1 4 7"; rc=0; } || echo "XPV FAIL"
     python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P gate13 >/dev/null
   fi
-  mkdir -p $HOME/ds_multiplayer/rig/old; mv $LOCK/owner $HOME/ds_multiplayer/rig/old/wine.lock.owner.gate13.$(date +%s); rmdir $LOCK; return $rc
+  python3 $HOME/ds_multiplayer/rig/wine_lease.py release gate13 >/dev/null; return $rc
 }
 chk g11_pvp_v1_xplay 'XPV PASS' $WT pvpx
 # Windows My Units: checks 1, 2, 5, 6 (3/4 need the Mac-only units-driver fake mouse; the dive itself is proven by

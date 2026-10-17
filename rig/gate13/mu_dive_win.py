@@ -29,7 +29,7 @@ TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.js
 CM = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')   # Custom Modes' own repo (post-v13)
 LIBFIX = os.path.join(CM, 'units/test/data/launcher_library.json')
 BTN = json.loads(os.popen(f'python3 {WT}/ext/fepvp13/tools/mpm_ids.py {WT}').read())
-LOCK = f'{H}/ds_multiplayer/rig/wine.lock'
+WL = f'{H}/ds_multiplayer/rig/wine_lease.py'
 LOGF = open(os.path.join(OUT, 'test.log'), 'a'); results = []
 IMPOSSIBLE = ('impossible with the existing test hooks on Windows: ticking a card in Bring Units needs the units-driver fake mouse, '
               'which is Mac only (ext/units13/driver/mod.json: platforms mac-arm64; NSWindow events), and no rig command picks a '
@@ -44,12 +44,6 @@ def check(name, ok, info=''):
     results.append((name, bool(ok)))
     s = ('PASS ' if ok else 'FAIL ') + name + (f'  [{str(info)[:500]}]' if info != '' else '')
     print(s, flush=True); LOGF.write(time.strftime('%H:%M:%S ') + s + '\n'); LOGF.flush()
-
-
-def wine_busy():
-    """the brief's rule: ps -axo etime=,comm= | grep -iE 'wine|\\.exe$' | grep -ve '-[0-9][0-9]:' must be empty"""
-    out = subprocess.run(['ps', '-axo', 'etime=,comm='], capture_output=True, text=True).stdout
-    return [l for l in out.splitlines() if re.search(r'wine|\.exe$', l, re.I) and not re.search(r'-[0-9][0-9]:', l)]
 
 
 def kit_facts():
@@ -86,14 +80,7 @@ def main():
             check('1 Bring Units window opens in the hub lobby (Windows)', False, why)
         else:
             pair = M.lease(LANE, os.getpid()); log('lease', pair)
-            t_w = time.time()
-            while not have_lock and time.time() - t_w < 3600:
-                if not wine_busy():
-                    try:
-                        os.mkdir(LOCK); have_lock = True; open(os.path.join(LOCK, 'owner'), 'w').write('gate13_mu\n')
-                    except FileExistsError:
-                        pass
-                if not have_lock: log('wine busy / wine.lock held: waiting'); time.sleep(20)
+            have_lock = subprocess.run([sys.executable, WL, 'take', 'gate13_mu', '--pid', str(os.getpid()), '--wait', '3600']).returncode == 0
             if not have_lock: raise RuntimeError('no wine lock in 1 h')
             if '--no-install' not in A: log('kit install rc', w.install(KIT))
             md = os.path.join(w.PROF, 'data', 'Mods'); os.makedirs(md, exist_ok=True)
@@ -118,9 +105,7 @@ def main():
                 if os.path.exists(p): shutil.copy2(p, os.path.join(OUT, 'win_' + f))
             log('left:', w.dsmp_pids())
         if have_lock:
-            os.makedirs(f'{H}/ds_multiplayer/rig/old', exist_ok=True)
-            if os.path.exists(os.path.join(LOCK, 'owner')): os.replace(os.path.join(LOCK, 'owner'), f'{H}/ds_multiplayer/rig/old/wine.lock.owner.gate13_mu.{int(time.time())}')
-            os.rmdir(LOCK)
+            subprocess.run([sys.executable, WL, 'release', 'gate13_mu'])
         if pair: log('released', M.release(pair, LANE))
         check('3 a My Units unit + a save unit go into a hub dive (Death Off) and it plays (Windows)', False, IMPOSSIBLE)
         check("4 after the dive the save unit's result applied, the My Units unit's not (Windows)", False, IMPOSSIBLE)

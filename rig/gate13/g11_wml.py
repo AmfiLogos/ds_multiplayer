@@ -5,16 +5,13 @@ through install.bat in the DSMP bottle. Wine lock owner 'gate13' (wml_test's own
 import os, shutil, subprocess, sys, time
 H = os.path.expanduser('~'); sys.path.insert(0, f'{H}/ds_multiplayer/ext/melon/tools'); sys.path.insert(0, f'{H}/ds_multiplayer/win')
 import wml_test as t
-LOCK = f'{H}/ds_multiplayer/rig/wine.lock'
-t.owned = lambda: os.path.exists(f'{LOCK}/owner') and open(f'{LOCK}/owner').read().strip() == 'gate13'
+LOCK, WL = f'{H}/ds_multiplayer/rig/wine.lock', f'{H}/ds_multiplayer/rig/wine_lease.py'
+t.owned = lambda: os.path.exists(f'{LOCK}/owner') and open(f'{LOCK}/owner').read().split('\n')[0].strip() == 'gate13'
 def lock():
-    busy = subprocess.run(['/bin/sh', '-c', "ps -axo etime=,comm= | grep -iE 'wine|\\.exe$' | grep -ve '-[0-9][0-9]:'"], capture_output=True, text=True).stdout.strip()
-    if busy: sys.exit('wine busy: ' + busy)
-    os.mkdir(LOCK); open(f'{LOCK}/owner', 'w').write('gate13\n'); print('wine lock taken', flush=True)
+    if subprocess.run([sys.executable, WL, 'take', 'gate13', '--pid', str(os.getppid())]).returncode: sys.exit('wine busy / locked')
 def unlock():
     if t.owned():
-        os.makedirs(f'{H}/ds_multiplayer/rig/old', exist_ok=True)
-        os.replace(f'{LOCK}/owner', f'{H}/ds_multiplayer/rig/old/wine.lock.owner.gate13.{int(time.time())}'); os.rmdir(LOCK); print('wine lock released')
+        subprocess.run([sys.executable, WL, 'release', 'gate13'])
 def install():
     assert t.owned()
     k = f'{H}/ds_mp_gate13/ext/gate13/out/wml_kit'
