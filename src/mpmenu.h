@@ -89,8 +89,15 @@ typedef struct mpm_obs {
     int edited;             /* title: the address or name field text changed since the last frame */
     int spectator;          /* this copy's session (or the join that runs) watches */
     char host_name[64];     /* guest: the host's name ("" unknown) */
-    char msg[160];          /* why the session ended / failed (mp_steam_state), "" none */
+    char msg[160];          /* why the session ended / failed (mp_steam_state), "" none; display text (translated) */
+    int end;                /* MPM_END_*: what msg says, for the logic (msg is in the player's language) */
 } mpm_obs;
+/* why a session ended (mpm_obs.end; mp_game's mp_steam_end_code): the logic switches on this, never on the text */
+enum { MPM_END_OTHER = 0,       /* msg is shown as is (or: a failed join) */
+       MPM_END_HOST_LEFT = 1,   /* "The host left the game" */
+       MPM_END_LINK_LOST = 2,   /* "Connection to the host lost" (our own link dropped; the host waits) */
+       MPM_END_SPECT_OFF = 3,   /* "The host turned spectators off" */
+       MPM_END_REFUSED = 4 };   /* "Could not join: ..." / "Could not connect to the host": a refused join */
 /* actions for the game side (bit mask) */
 enum {
     MPA_OPEN_LOAD_LIST = 1 << 0,   /* TitleMenuView.OnLoadCampaignPressed */
@@ -223,6 +230,12 @@ const char *mpm_choice_now(const mpm_choices *l, const mpm_model *m);    /* id o
 int  mpm_choice_btn(int k);                                              /* button of choice k (0..3) */
 int  mpm_choice_of_btn(int button);                                      /* its choice index, -1 not a choice button */
 void mpm_page_started(mpm_model *m, int rc, const char *err);            /* after page_start: 0 = wait for the load, else err on the page */
+
+/* Game words (i18n): a label that is a game term comes from the game's own text table in the game's language. The game side
+ * sets the lookup (TextKeyExtensions.GetText, cached per language); without one (tests) it is TR(english). */
+typedef const char *(*mpm_word_fn)(const char *textkey, const char *english);
+void mpm_set_word_fn(mpm_word_fn fn);
+const char *mpm_word(const char *textkey, const char *english);
 
 /* ---------------------------------------------------------------- game side (dylib only) */
 #ifndef MPM_NO_GAME

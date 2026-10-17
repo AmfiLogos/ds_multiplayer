@@ -1,5 +1,6 @@
 /* Framed byte-stream link, fd transport, blob fragments, logging. */
 #include "dsnet_internal.h"
+#include "../ds_i18n.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
@@ -58,11 +59,19 @@ const char *dsnet_my_release(void) {
     return my_rel;
 }
 const char *dsnet_reject_host_release(void) { return dsnet_reject_host_rel; }
-int dsnet_release_text(const char *host, const char *mine, char *out, size_t n) {
+/* i18n: dsnet_release_text is for display (main thread: the player's language); the server's refusal words on the wire
+   stay English (dsnet_release_text_en, server thread) and the receiver shows its own text (dsnet_reject_text) */
+static int release_text(const char *fmt, const char *host, const char *mine, char *out, size_t n) {
     if (n) out[0] = 0;
     if (!host || !mine || !*host || !*mine || !strcmp(host, mine)) return 0;
-    snprintf(out, n, "Host has v%s, you have v%s: update and try again.", host, mine);
+    snprintf(out, n, fmt, host, mine);
     return 1;
+}
+int dsnet_release_text_en(const char *host, const char *mine, char *out, size_t n) {
+    return release_text("Host has v%s, you have v%s: update and try again.", host, mine, out, n);
+}
+int dsnet_release_text(const char *host, const char *mine, char *out, size_t n) {
+    return release_text(TR("Host has v%s, you have v%s: update and try again."), host, mine, out, n);
 }
 int dsnet_reject_host_mods(int *host_rule, char *lines, size_t n) {
     if (!dsnet_reject_has_host) return -1;

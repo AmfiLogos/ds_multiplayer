@@ -2,7 +2,7 @@
 CC      ?= cc
 CFLAGS  ?= -O2 -g -Wall -Wextra -Wno-unused-parameter -std=c11 -D_DARWIN_C_SOURCE
 NET      = ../net/dsnet_link.c ../net/dsnet_server.c ../net/dsnet_client.c
-MP       = ../mp_core.c ../mp_config.c
+MP       = ../mp_core.c ../mp_config.c ../ds_i18n.c
 HDR      = ../mp.h ../net/dsnet.h ../net/dsnet_internal.h
 
 all: build/test_mp

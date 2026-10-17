@@ -1,12 +1,16 @@
 CC      ?= cc
 CFLAGS  ?= -O2 -g -Wall -Wextra -Wno-unused-parameter -std=c11 -D_DARWIN_C_SOURCE -arch arm64
 CORE     = ../dsnet_link.c ../dsnet_server.c ../dsnet_client.c
-OBJ      = $(CORE:../%.c=build/%.o) build/dsnet_steam.o
+OBJ      = $(CORE:../%.c=build/%.o) build/dsnet_steam.o build/ds_i18n.o
 HDR      = ../dsnet.h ../dsnet_internal.h dsnet_steam.h
 
 all: build/libdsnet_steam.a build/steam_check
 
 build/%.o: ../%.c $(HDR)
+	@mkdir -p build
+	nice -n 19 $(CC) $(CFLAGS) -c $< -o $@
+
+build/ds_i18n.o: ../../ds_i18n.c ../../ds_i18n.h
 	@mkdir -p build
 	nice -n 19 $(CC) $(CFLAGS) -c $< -o $@
 

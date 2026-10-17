@@ -1,6 +1,7 @@
 /* Steam P2P transport + lobby for dsnet. See dsnet_steam.h. Flat API of Steamworks SDK 1.62
  * (Steamworks.NET 2025.162.1 in the game), resolved with dlsym from the game's libsteam_api. */
 #include "dsnet_steam.h"
+#include "../../ds_i18n.h"                              /* TR_NOOP keys; the text is translated on the main thread (join_error_text) */
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -336,6 +337,7 @@ struct dsnet_steam_host {
 enum { J_LOBBY, J_CONNECTING, J_READY, J_FAILED };
 struct dsnet_steam_join {
     int state; char err[128];
+    const char *efmt; char ea[48], eb[48];      /* err = efmt (an English text key, 0-2 %s) with ea, eb: translated by dsnet_steam_join_error_text */
     uint64_t call, lobby, host_id;
     char build[32]; uint32_t mod;
     uint16_t port;
@@ -363,6 +365,12 @@ static void g_init(void) {
 #define LOCK()   (pthread_once(&G_once, g_init), pthread_mutex_lock(&G_mu))
 #define UNLOCK() pthread_mutex_unlock(&G_mu)
 
+/* a failed join: English err (logs, dsnet_steam_join_error) + its key and arguments (any thread; no lookup here) */
+static void jfail(dsnet_steam_join *j, const char *fmt, const char *a, const char *b) {
+    j->state = J_FAILED; j->efmt = fmt;
+    snprintf(j->ea, sizeof j->ea, "%s", a ? a : ""); snprintf(j->eb, sizeof j->eb, "%s", b ? b : "");
+    snprintf(j->err, sizeof j->err, fmt, j->ea, j->eb);
+}
 static void bridge_close(bridge *b) {
     if (!b->used) return;
     if (b->fd >= 0) close(b->fd);
@@ -371,7 +379,7 @@ static void bridge_close(bridge *b) {
     free(b->to_steam.b); free(b->to_fd.b);
     if (b->join) {
         b->join->br = NULL;
-        if (b->join->state != J_FAILED) { b->join->state = J_FAILED; snprintf(b->join->err, sizeof b->join->err, "Steam connection closed"); }
+        if (b->join->state != J_FAILED) jfail(b->join, TR_NOOP("Steam connection closed"), NULL, NULL);
     }
     memset(b, 0, sizeof *b);
 }
@@ -516,20 +524,20 @@ static void join_on_enter(dsnet_steam_join *j, const uint8_t *r, int cub, bool f
     uint32_t resp = 0;
     if (!failed && cub >= 20) memcpy(&resp, r + 16, 4);         /* LobbyEnter_t.m_EChatRoomEnterResponse */
     if (resp != k_EChatRoomEnterResponseSuccess) {
-        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "could not enter the host's Steam lobby");
+        jfail(j, TR_NOOP("could not enter the host's Steam lobby"), NULL, NULL);
         dsnet_logf("steam: could not enter lobby (response %u)", resp); return;
     }
     I mm = S.SteamMatchmaking();
     const char *b = S.GetLobbyData(mm, j->lobby, "dsmp_build"), *m = S.GetLobbyData(mm, j->lobby, "dsmp_mod");
     if (j->build[0] && b && *b && strcmp(b, j->build)) {
-        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "host runs game build %s, you run %s", b, j->build); return;
+        jfail(j, TR_NOOP("host runs game build %s, you run %s"), b, j->build); return;
     }
     if (j->mod && m && *m && strtoul(m, NULL, 10) != j->mod) {
-        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "host runs mod version %s, you run %u", m, j->mod); return;
+        char mine[16]; snprintf(mine, sizeof mine, "%u", j->mod); jfail(j, TR_NOOP("host runs mod version %s, you run %s"), m, mine); return;
     }
     j->host_id = S.GetLobbyOwner(mm, j->lobby);
     if (!j->host_id || j->host_id == dsnet_steam_my_id()) {
-        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "the host left the Steam lobby"); return;
+        jfail(j, TR_NOOP("the host left the Steam lobby"), NULL, NULL); return;
     }
 }
 
@@ -578,7 +586,7 @@ static void join_step(dsnet_steam_join *j) {
         if (st == k_StateConnected) { j->state = J_READY; dsnet_logf("steam: connected to host"); }
         else if (state_dead(st) || dsnet_now_ms() - j->t_connect > CONNECT_TIMEOUT_MS) {
             if (j->br) bridge_close(j->br);
-            j->state = J_FAILED; snprintf(j->err, sizeof j->err, "could not reach the host through Steam");
+            jfail(j, TR_NOOP("could not reach the host through Steam"), NULL, NULL);
             dsnet_logf("steam: could not reach the host (state %d)", st);
         }
         return;
@@ -596,7 +604,7 @@ static void join_step(dsnet_steam_join *j) {
     if (!b) {
         if (lfd >= 0) close(lfd);
         if (conn) S.CloseConnection(S.SNS(), conn, 0, NULL, false);
-        j->state = J_FAILED; snprintf(j->err, sizeof j->err, "Steam could not connect you to the host"); return;
+        jfail(j, TR_NOOP("Steam could not connect you to the host"), NULL, NULL); return;
     }
     b->join = j; j->br = b; j->port = port; j->state = J_CONNECTING; j->t_connect = dsnet_now_ms();
     dsnet_logf("steam: connecting to %llu, dsnet on 127.0.0.1:%u", (unsigned long long)j->host_id, port);
@@ -757,7 +765,7 @@ dsnet_steam_join *dsnet_steam_join_lobby(uint64_t lobby, const char *build_id, u
     snprintf(j->build, sizeof j->build, "%s", build_id ? build_id : dsnet_build_id);
     j->mod = mod_version ? mod_version : dsnet_mod_version;
     j->call = S.JoinLobby(G_mm, lobby);
-    if (!j->call) { j->state = J_FAILED; snprintf(j->err, sizeof j->err, "Steam could not open the host's lobby"); }
+    if (!j->call) jfail(j, TR_NOOP("Steam could not open the host's lobby"), NULL, NULL);
     UNLOCK();
     return j;
 }
@@ -776,7 +784,7 @@ dsnet_steam_join *dsnet_steam_join_adopt(uint32_t hconn) {
     int lfd = loopback_listen(&port);
     bridge *b = lfd >= 0 ? bridge_new(hconn, -1, lfd) : NULL;
     if (b) { b->join = j; j->br = b; j->port = port; j->state = J_READY; }
-    else { if (lfd >= 0) close(lfd); j->state = J_FAILED; snprintf(j->err, sizeof j->err, "the connection could not be set up on this computer"); }
+    else { if (lfd >= 0) close(lfd); jfail(j, TR_NOOP("the connection could not be set up on this computer"), NULL, NULL); }
     UNLOCK();
     return j;
 }
@@ -789,6 +797,13 @@ int dsnet_steam_join_poll(dsnet_steam_join *j, uint16_t *port) {
     return r;
 }
 const char *dsnet_steam_join_error(dsnet_steam_join *j) { return j->err; }
+const char *dsnet_steam_join_error_text(dsnet_steam_join *j, char *out, size_t n) {   /* main thread: TR of the key */
+    LOCK();
+    if (j->efmt) snprintf(out, n, TR(j->efmt), j->ea, j->eb); else snprintf(out, n, "%s", j->err);
+    UNLOCK();
+    dsi_utf8_fix_end(out);
+    return out;
+}
 
 void dsnet_steam_join_close(dsnet_steam_join *j) {
     if (!j) return;

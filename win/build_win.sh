@@ -77,6 +77,9 @@ echo "built build/custom-modes.dll (${#CM_SOLO} files) + build/custom-modes-mp.d
 M=build/mods/multiplayer; mkdir -p $M
 cp build/multiplayer.dll $M/multiplayer.dll.tmp && mv -f $M/multiplayer.dll.tmp $M/multiplayer.dll
 cp build/det_ranges_win.tsv $M/det_ranges_win.tsv.tmp && mv -f $M/det_ranges_win.tsv.tmp $M/det_ranges_win.tsv
+# i18n: the language files (repo lang/*.json) in lang/ beside the dll. Not in mod.json's files list (not hashed: a translation fix
+# never stops players from joining each other)
+if [[ -d $DSMP_ROOT/lang ]]; then mkdir -p $M/lang; for f in $DSMP_ROOT/lang/*.json(N); do cp $f $M/lang/${f:t}.tmp && mv -f $M/lang/${f:t}.tmp $M/lang/${f:t}; done; fi
 python3 - ${DSL_MODJSON:-~/ds_launcher/loader/modules/multiplayer/mod.json} $M <<'PY'
 import hashlib, json, os, sys
 m = json.load(open(sys.argv[1])); d = sys.argv[2]

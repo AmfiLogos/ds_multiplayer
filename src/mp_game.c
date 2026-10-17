@@ -8,7 +8,10 @@
 #include "ord_api.h"
 #include "trn.h"
 #include "mp_steam.h"
+#include "ds_i18n.h"
+#define DSMC_TR(s) TR(s)                             /* ds_modcheck.h: the guest's mod-mismatch text in the player's language */
 #include "net/ds_modcheck.h"                         /* wrong-modset text (launcher lane, header only) */
+#include "mpmenu.h"                                  /* MPM_END_* (why a session ended, for the menu's logic) */
 #include <time.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -49,7 +52,7 @@ static double steam_next_try;
 static int ended, quit_pending;           /* ended: MP_STEAM_ENDED until mp_steam_ack */
 static int played;                        /* this session reached a running campaign (stock quit = leave) */
 static double mono_ms(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
-static char ended_msg[160];
+static char ended_msg[160]; static int ended_code;   /* ended_code: MPM_END_* (the text is in the player's language) */
 static uint64_t join_lobby_id;
 static dsnet_steam_host *steam_host;
 static dsnet_steam_join *steam_join;      /* joiner: waiting for the Steam bridge's local port */
@@ -811,22 +814,23 @@ static int steam_ready(void) {
     return ok;
 }
 
-static void end_session(const char *why) {
-    rig_log("mp: session ended: %s", why);
-    snprintf(ended_msg, sizeof ended_msg, "%s", why); ended = 1;
+static void end_session_c(int code, const char *why) {
+    rig_log("mp: session ended (%d): %s", code, why);
+    snprintf(ended_msg, sizeof ended_msg, "%s", why); dsi_utf8_fix_end(ended_msg); ended = 1; ended_code = code;
     if (S) { ord_mp_attach(NULL); mp_bridge_attach(NULL); mp_stop(S); S = NULL; }
     if (steam_join) { dsnet_steam_join_close(steam_join); steam_join = NULL; }
     if (steam_host) { dsnet_steam_host_stop(steam_host); steam_host = NULL; }
     cfg_ok = 0; start_failed = 0; host_reload = 0; join_lobby_id = 0; played = 0; owners_restored = 0;
 }
 
-static const char *reject_text(int why) {                  /* one wording for every refusal: dsnet_reject_text (ux #22) */
-    static char t[200];
+static void end_session(const char *why) { end_session_c(MPM_END_OTHER, why); }
+static const char *reject_text(int why) {                  /* one wording for every refusal: dsnet_reject_text (ux #22); a MPM_END_REFUSED text */
+    static char t[300], x[240];
     const char *w = dsnet_reject_text(why);
-    if (!*w) return "Could not connect to the host";
-    if (why == DSNET_REJ_MODSET) return "Could not join: your gameplay mods are not the same as the host's";   /* details: mp_game_modset_text */
-    if (why == DSNET_REJ_OTHER_WORLD && mp_last_other_world()[0]) snprintf(t, sizeof t, "Could not join: %s (%s)", w, mp_last_other_world());
-    else snprintf(t, sizeof t, "Could not join: %s", w);
+    if (!*w) return TR("Could not connect to the host");
+    if (why == DSNET_REJ_MODSET) return TR("Could not join: your gameplay mods are not the same as the host's");   /* details: mp_game_modset_text */
+    if (why == DSNET_REJ_OTHER_WORLD && mp_last_other_world()[0]) { snprintf(x, sizeof x, "%s (%s)", w, mp_last_other_world()); w = x; }
+    snprintf(t, sizeof t, TR("Could not join: %s"), w);         /* mpmenu_model fail() drops this same translated start */
     return t;
 }
 
@@ -901,7 +905,7 @@ __attribute__((visibility("default"))) int mp_game_modset_text(char *out, size_t
             char tmp[sizeof body]; snprintf(tmp, sizeof tmp, "%s\n%s", rel, body); snprintf(body, sizeof body, "%s", tmp);
         }
     }
-    snprintf(out, n, "<size=150%%>Could not join</size>\n%s", body);
+    snprintf(out, n, "<size=150%%>%s</size>\n%s", TR("Could not join"), body); dsi_utf8_fix_end(out);
     for (char *q = body; *q; q++) if (*q == '\n') *q = '|';                      /* one log line */
     rig_log("mp: modset refusal: %s", body);
     for (char *q = body; *q; q++) if (*q == '|') *q = '\n';
@@ -945,15 +949,16 @@ __attribute__((visibility("default"))) int mp_gear_check(const uint8_t unit[16])
 
 /* ord_game.c (dlsym, ux_flow F19): why the gear rule refused an equip on `unit`, for the notice on this screen */
 __attribute__((visibility("default"))) void mp_gear_refusal_text(const uint8_t unit[16], char *out, size_t n) {
-    if (!S) { snprintf(out, n, "You cannot equip this unit"); return; }
+    if (!S) { snprintf(out, n, "%s", TR("You cannot equip this unit")); return; }
     dsnet_client *c = mp_client(S);
-    if (dsnet_is_spectator(c)) { snprintf(out, n, "You are watching: spectators cannot change gear"); return; }
+    if (dsnet_is_spectator(c)) { snprintf(out, n, "%s", TR("You are watching: spectators cannot change gear")); return; }
     uint8_t uid[16]; char name[32] = "";
     int o = dsnet_owner_info(c, unit, uid, name);
-    if (o == DSNET_OWNER_RESERVED) snprintf(out, n, "This unit is reserved for %s: only its owner can change its gear", name[0] ? name : "a player who left");
-    else if (o < 0) snprintf(out, n, "Only the host can change the gear of a unit nobody owns");
+    if (o == DSNET_OWNER_RESERVED) snprintf(out, n, TR("This unit is reserved for %s: only its owner can change its gear"), name[0] ? name : TR("a player who left"));
+    else if (o < 0) snprintf(out, n, "%s", TR("Only the host can change the gear of a unit nobody owns"));
     else { const char *pn = dsnet_player_name(c, o);
-           snprintf(out, n, "This is %s's unit. The host's Gear rule lets you equip only your own units", pn && pn[0] ? pn : "another player"); }
+           snprintf(out, n, TR("This is %s's unit. The host's Gear rule lets you equip only your own units"), pn && pn[0] ? pn : TR("another player")); }
+    dsi_utf8_fix_end(out);
 }
 
 int mp_game_host(const mp_config *c) {
@@ -1004,7 +1009,7 @@ int mp_game_steam_invite(void) { return steam_host ? dsnet_steam_host_invite(ste
 static int invite_open; static mp_config invite_cfg; static char invite_host[48];
 static void invite_accepted(const mp_config *c, const char *host, const char *how) {
     if (scene() == 2 && !guest_world) {
-        invite_cfg = *c; snprintf(invite_host, sizeof invite_host, "%s", host && *host ? host : "your friend"); invite_open = 1;
+        invite_cfg = *c; snprintf(invite_host, sizeof invite_host, "%s", host && *host ? host : TR("your friend")); dsi_utf8_fix_end(invite_host); invite_open = 1;
         rig_log("mp: %s invite from %s accepted during a single-player game: asking first", how, invite_host);
         return;
     }
@@ -1076,20 +1081,22 @@ void mp_game_poll(void) {
             S = mp_start(&c, &api, &why);                    /* waits for the WELCOME (connect_timeout_ms) */
             last_reject = S ? 0 : why; modset_unshown = last_reject == DSNET_REJ_MODSET;
             if (S) { S_gen++; ord_mp_attach(S); mp_bridge_attach(S); trn_set_role(0); rig_det_arm(); }
-            else end_session(reject_text(why));
+            else end_session_c(MPM_END_REFUSED, reject_text(why));
         } else if (r < 0) {
-            char m[160]; snprintf(m, sizeof m, "Could not join: %s", dsnet_steam_join_error(steam_join));
-            end_session(m);
+            char e[160], m[240]; snprintf(m, sizeof m, TR("Could not join: %s"), dsnet_steam_join_error_text(steam_join, e, sizeof e));
+            end_session_c(MPM_END_REFUSED, m);
         }
     } else if (S && !cfg.host && ((steam_join && dsnet_steam_join_poll(steam_join, NULL) < 0) ||
                                    dsnet_is_disconnected(mp_client(S)))) {   /* host gone (Steam link or TCP) */
         /* ux_flow_v10 #2: only a BYE from the server means the host ended it; else our own link dropped and the
            host is waiting for us (auto pause + "Wait / Keep playing" on his side) */
         int sf = dsnet_save_failed(mp_client(S));
-        end_session(sf == DSNET_SAVE_FAIL_HOST ? "The host's game could not save the world for you. Try to join again"
-                    : sf == DSNET_SAVE_FAIL_TIMEOUT ? "The host's world did not arrive. Try to join again"
-                    : dsnet_bye_reason(mp_client(S)) == DSNET_BYE_SPECTATORS_OFF ? "The host turned spectators off"
-                    : dsnet_host_left(mp_client(S)) ? "The host left the game" : "Connection to the host lost");
+        int code = sf ? MPM_END_OTHER : dsnet_bye_reason(mp_client(S)) == DSNET_BYE_SPECTATORS_OFF ? MPM_END_SPECT_OFF
+                 : dsnet_host_left(mp_client(S)) ? MPM_END_HOST_LEFT : MPM_END_LINK_LOST;
+        end_session_c(code, sf == DSNET_SAVE_FAIL_HOST ? TR("The host's game could not save the world for you. Try to join again")
+                    : sf == DSNET_SAVE_FAIL_TIMEOUT ? TR("The host's world did not arrive. Try to join again")
+                    : code == MPM_END_SPECT_OFF ? TR("The host turned spectators off")
+                    : code == MPM_END_HOST_LEFT ? TR("The host left the game") : TR("Connection to the host lost"));
         quit_pending = 1;
     }
     /* host gone: back to the title as soon as the game is not mid-load (a load in progress is finished first) */
@@ -1138,7 +1145,7 @@ int mp_steam_host(const char *save, const mp_config *lobby_cfg) {
     int r = mp_game_host(&c);
     if (r == -2 && c.port) { rig_log("mp: port %u busy, using any free port", c.port); c.port = 0; r = mp_game_host(&c); }
     if (r) return r;
-    if (!steam_host) { end_session("Steam lobby could not be created"); return -3; }
+    if (!steam_host) { end_session(TR("Steam lobby could not be created")); return -3; }
     return 0;
 }
 int mp_steam_invite(void) { return mp_game_steam_invite(); }
@@ -1154,10 +1161,11 @@ int mp_steam_join(uint64_t lobby) {
 }
 void mp_steam_leave(void) {
     int was = S || steam_join || steam_host;
-    end_session("You left the game");
+    end_session(TR("You left the game"));
     if (was) ended = 0;                                      /* own choice: no message */
 }
-void mp_steam_ack(void) { ended = 0; ended_msg[0] = 0; }
+void mp_steam_ack(void) { ended = 0; ended_msg[0] = 0; ended_code = MPM_END_OTHER; }
+int mp_steam_end_code(void) { return ended ? ended_code : MPM_END_OTHER; }
 /* mpmenu (lan_v8 owner feedback): a guest's "Leave multiplayer" leaves the session and goes to the title at once (the
    world on screen is the host's); the same no-autosave quit as when the host leaves. */
 __attribute__((visibility("default"))) void mp_game_leave_to_title(void) {
@@ -1201,7 +1209,7 @@ int mp_game_frame(void) {
     if (!cfg_ok) return 0;
     if (!S && !start_failed && !steam_join && start_now(&cfg)) {                     /* mp.json session */
         start_failed = 1;
-        if (last_reject == DSNET_REJ_MODSET) { end_session(reject_text(last_reject)); return 0; }   /* wrong mods: tell the player (mpmenu notice) */
+        if (last_reject == DSNET_REJ_MODSET) { end_session_c(MPM_END_REFUSED, reject_text(last_reject)); return 0; }   /* wrong mods: tell the player (mpmenu notice) */
     }
     if (!S) return 0;
     if (cfg.host && !owners_restored && rig_det_mp_ready() && !host_reload) owners_restore();   /* before the first tick */
