@@ -153,6 +153,8 @@ class Copy:
     def start(self):
         if game_pids():
             raise SystemExit(f'copy {X} already running')
+        if hasattr(r, 'cap_wait'):                          # test copy cap (lrig.py; the loader checks it again in the copy)
+            r.cap_wait(f'copy {X}: start')
         self.lease()
         self.data_dirs = self.settings()
         prof = os.path.join(I, 'units_profile.json')
