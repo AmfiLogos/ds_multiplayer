@@ -481,6 +481,8 @@ static void fit_one(fit_e *e, Obj t, float w, float h) {
         F(0x4F0B68C, void (*)(Obj, float, void *))(t, e->size, NULL);
         if (e->on == 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, 1, NULL);
         F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
+        char tx[64] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
+        rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f: auto size %.0f-%.0f%s", tx, w, h, mn, e->size, e->on == 2 ? ", two lines" : "");
     }
 }
 /* once per frame (end of mpmenu_frame): changed texts now; every text's rect every 15 frames (a later layout change) */
