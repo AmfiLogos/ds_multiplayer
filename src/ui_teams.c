@@ -1938,9 +1938,8 @@ static void win_place(void) {
     float R = -1, a, b, bx, by, bw, bh;
     static int (*ppx)(float *, float *); static unsigned tries;
     if (!ppx && tries++ % 60 == 0) ppx = (int (*)(float *, float *))dlsym(RTLD_DEFAULT, "ui_panel_px");
-    float mv = 0;                                            /* the panel is still on its way to the left edge (ui_game docks it */
-    if (ppx && ppx(&a, &b) && a < home) { mv = a - gap; R = b - mv; }   /* every 3rd frame): its place there, so no step */
-    if (R >= 0 && !hud_dragged && ui_teams_button_rect(&bx, &by, &bw, &bh) && bx < home && bx - mv + bw > R) R = bx - mv + bw;
+    if (ppx && ppx(&a, &b) && a < home) R = b;
+    if (R >= 0 && !hud_dragged && ui_teams_button_rect(&bx, &by, &bw, &bh) && bx < home && bx + bw > R) R = bx + bw;
     float dx = 0, k = 1;
     if (R >= 0 && R + gap > hx0) {
         float need = R + gap - hx0, room = sw - gap - hx1;
