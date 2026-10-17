@@ -18,6 +18,12 @@ check "lease records the holder pid" "[[ \$(holder $p1 pid) == $$ ]]"
 s=$(sh -c "$R[*] lease laneZ" 2>/dev/null); zp=$(holder $s pid)
 check "lease without --pid: holder = the caller, not empty ($zp)" "[[ -n \$zp && \$zp != None ]]"
 $R release $s laneZ >/dev/null 2>&1
+# one lane name, two live holders (two runs of the same test): never the same pair; the same holder gets its pair back
+sleep 120 & h1=$!; sleep 120 & h2=$!
+s1=$($R lease fepvp --pid $h1 2>/dev/null); s2=$($R lease fepvp --pid $h2 2>/dev/null); s3=$($R lease fepvp --pid $h1 2>/dev/null)
+check "same lane, two live holders: different pairs ($s1, $s2)" "[[ -n \$s1 && -n \$s2 && \$s1 != \$s2 ]]"
+check "same holder again: its own pair ($s3)" "[[ \$s3 == \$s1 ]]"
+kill $h1 $h2; $R release $s1 fepvp >/dev/null 2>&1; $R release $s2 fepvp >/dev/null 2>&1
 $R release $p1 laneA >/dev/null 2>&1; $R release $p2 laneB >/dev/null 2>&1
 
 # a leaked copy (no lease) in A: AB is not given

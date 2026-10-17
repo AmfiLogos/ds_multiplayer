@@ -614,9 +614,20 @@ def lease(lane, pid=None):
     pid = pid or os.getpid()                              # 2026-10-17: the holder is always recorded (default: the caller)
     def take(d):
         _free_stale(d)
-        for pair, l in d.items():
-            if l['lane'] == lane:
-                l['used'] = time.time(); return pair      # a lane gets its own pair back
+        # a lane gets its own pair back only for the SAME holder (its pid, or a parent of the caller). 2026-10-17:
+        # two runs of one lane name (pvp_v1_pair.py "fepvp", merger13 + netlimits) shared AB at the same time
+        me = _ancestors() | {pid}
+        for pair, l in list(d.items()):
+            if l['lane'] != lane:
+                continue
+            if l.get('pid') in me:
+                l['used'] = time.time(); return pair
+            if l.get('pid') and not _pid_alive(l['pid']):     # same lane, holder gone: stop its copies, then hand over
+                if not _kill_copies(pair, f'holder {lane} pid {l["pid"]} dead, new holder pid {pid}'):
+                    continue
+                _free_log(f'{pair} {lane} pid={l["pid"]}: holder dead; copies stopped; given to pid {pid}')
+                d[pair] = {'lane': lane, 'pid': pid, 'since': time.time(), 'used': time.time()}
+                return pair
         if os.path.exists(os.path.join(LDIR, 'release.lock')) and os.environ.get('DSRIG_RELEASE') != '1':
             print(f'lease refused for {lane}: release gate running (rig/release.lock)', file=sys.stderr)
             return None                                   # the release gate owns every pair while it runs
