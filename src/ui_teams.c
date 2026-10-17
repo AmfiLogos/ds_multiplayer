@@ -1566,7 +1566,8 @@ static void hud_place(void) {
         Obj tx = ch ? tmp_of(ch) : NULL;
         if (!ch) continue;
         if (!tx) { rt_size(ch, H, H); Obj ic = img_of(tr_find(ch, "Img_ExitIcon")); if (u_alive(ic)) rt_size(u_tr(ic), H * 0.7f, H * 0.6f); }
-        else { rt_size(ch, W - H - 6, H); rt_pos(ch, H + 6, 0); (tm_is(tx, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0); }
+        else { rt_size(ch, W - H - 6, H); rt_pos(ch, H + 6, 0); (tm_is(tx, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0);
+               (tm_is(tx, K_TMP) ? F(0x4F0B68C, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0); }   /* fontSizeMax: auto size stays at most this */
     }
 }
 static void hud_move(float dx, float dy) {                   /* screen pixels -> canvas units */
@@ -1625,7 +1626,12 @@ static void hud_frame(void) {
     }
     Obj t = new_text(rt, HUD_W - lx, HUD_H, 22, AL_LEFT);
     if (t) { rt_anchor(u_tr(t), 0, 0.5f, 0, 0.5f); rt_pivot(u_tr(t), 0, 0.5f); rt_pos(u_tr(t), lx, 0);
-             tmp_font(t, font_title()); tmp_set(t, TR("Teams")); }
+             tmp_font(t, font_title()); tmp_set(t, TR("Teams"));
+             /* one line that shrinks to fit: a longer word ("Команды", "Équipes") wrapped into two cut lines */
+             (tm_is(t, K_TMP) ? F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, false, NULL) : (void)0);     /* no word wrap */
+             (tm_is(t, K_TMP) ? F(0x4F0B634, void (*)(Obj, float, void *))(t, 9.0f, NULL) : (void)0);     /* fontSizeMin */
+             (tm_is(t, K_TMP) ? F(0x4F0B68C, void (*)(Obj, float, void *))(t, 22.0f, NULL) : (void)0);    /* fontSizeMax (hud_place sets it) */
+             (tm_is(t, K_TMP) ? F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL) : (void)0); }    /* auto size */
     u_last_sibling(rt);
     { Obj cty = type_object("UnityEngine", "Canvas"), gty = type_object("UnityEngine.UI", "GraphicRaycaster");
       Obj cv = cty ? (tm_is(u_go(rt), K_GO) ? F(0x50F2B90, Obj (*)(Obj, Obj, void *))(u_go(rt), cty, NULL) : NULL) : NULL;
