@@ -25,6 +25,8 @@ int rig_hook(uintptr_t rva, void *repl, void **orig, const char *who);
 
 /* rig_win.c: keep every window invisible and the app inactive */
 void rig_win_install(void);
+int rig_bg_app(void);              /* Info.plist LSBackgroundOnly = a test copy */
+void rig_noact_install(void);     /* never activates, activation policy held at Prohibited */
 void rig_win_frame(void);
 void rig_win_place(void);
 void rig_win_space_install(void);  /* demo: DSRIG_SPACE=<space id> */
