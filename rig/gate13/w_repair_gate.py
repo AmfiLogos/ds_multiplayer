@@ -2,8 +2,8 @@
 """w_repair_gate.py <kit dir> <custom-modes release zip> <out>: Windows (DSMP bottle, -batchmode -nographics, wine lock
 held by the gate through held_lock_run.py), all in Japanese (UserSetting.json):
   repair     an install hit by the v0.1.7-v0.1.9 updater (custom-modes 0.11.0 from an old bundle release) ends on the
-             valid custom-modes 0.1.4: a local release server (loader/test/update/relserver.py) holds bundle-v0.1.16 with
-             custom-modes-0.11.0.zip and custom-modes-v0.1.4 with the real release zip; Auto-update on; start 1 finds and
+             valid custom-modes 0.1.5: a local release server (loader/test/update/relserver.py) holds bundle-v0.1.16 with
+             custom-modes-0.11.0.zip and custom-modes-v0.1.5 with the real release zip; Auto-update on; start 1 finds and
              downloads it, start 2 installs it in the starter
   window     that install's update window title is the Japanese text (starter.log, window hidden)
   pathwarn   the starter alone in a Chinese folder: the warning box text (logged with DSL_NO_ALERT) is the Japanese text
@@ -28,7 +28,7 @@ put_us(os.path.join(w.PROF, 'data'))
 mj = os.path.join(root, 'mods', 'custom-modes', 'mod.json')                 # the polluted state: an old bundle build's number
 s = open(mj, encoding='utf-8').read(); open(mj, 'w', encoding='utf-8').write(re.sub(r'"version": "[^"]+"', '"version": "0.11.0"', s, count=1))
 RS = os.path.join(OUT, 'releases')
-for tag, f, src in (('bundle-v0.1.16', 'custom-modes-0.11.0.zip', None), ('custom-modes-v0.1.4', 'custom-modes-0.1.4.zip', CMZIP)):
+for tag, f, src in (('bundle-v0.1.16', 'custom-modes-0.11.0.zip', None), ('custom-modes-v0.1.5', 'custom-modes-0.1.5.zip', CMZIP)):
     d = os.path.join(RS, 'AmfiLogos', 'ds_custommodes', tag); os.makedirs(d, exist_ok=True)
     if src: shutil.copy2(src, os.path.join(d, f))
     else: open(os.path.join(d, f), 'wb').write(b'old bundle-era build (test stand-in)')
@@ -48,13 +48,13 @@ try:
     t.start(); t.check('start 1: title', t.title(600))
     m = wait_log(r'update: mod custom-modes: installed 0\.11\.0 has no release of its own: back to (\S+)')
     d = wait_log(r'custom-modes-0\.1\.4\.zip downloaded, sha256 ok')
-    t.check('start 1: custom-modes 0.11.0 (no release of its own) goes back to 0.1.4, downloaded', m and m.group(1) == '0.1.4' and d,
+    t.check('start 1: custom-modes 0.11.0 (no release of its own) goes back to 0.1.5, downloaded', m and m.group(1) == '0.1.5' and d,
             [l[13:] for l in t.dlog().splitlines() if 'update:' in l][-6:])
     w.stop(); time.sleep(3)
     t.start(); t.check('start 2: title', t.title(600))
     sl = open(os.path.join(w.PROF, 'starter.log'), encoding='utf-8', errors='replace').read() if os.path.exists(os.path.join(w.PROF, 'starter.log')) else ''
     ver = json.load(open(mj, encoding='utf-8')).get('version')
-    t.check('start 2: the starter installed it, custom-modes is 0.1.4 again', ver == '0.1.4' and 'custom-modes 0.1.4: loaded' in t.dlog(), (ver, sl.strip()[-200:]))
+    t.check('start 2: the starter installed it, custom-modes is 0.1.5 again', ver == '0.1.5' and 'custom-modes 0.1.5: loaded' in t.dlog(), (ver, sl.strip()[-200:]))
     wt = re.findall(r'update window title: (.*)', sl); want = ja_prefix('Updating mods: %s')
     t.check(f'update window title in Japanese ("{want}...")', want and wt and wt[-1].startswith(want), wt[-1:] or 'no title line')
 finally:

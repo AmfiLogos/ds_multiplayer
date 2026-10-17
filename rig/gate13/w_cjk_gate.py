@@ -25,10 +25,10 @@ us = json.load(open(f'{H}/ds_launcher/loader/test_env/instances/X/data/UserSetti
 us['GeneralSettingData']['SaveCurrentLanguageType'] = LANG; us['GeneralSettingData']['IsLanguageInitialized'] = True
 json.dump(us, open(os.path.join(data, 'UserSetting.json'), 'w'), indent=1)
 # a local release server (loader/test/update/relserver.py; the real API has an hourly limit): ds_custommodes holds an old
-# bundle release with custom-modes-0.11.0.zip and the mod's own custom-modes-v0.1.5; the updater must offer 0.1.5
+# bundle release with custom-modes-0.11.0.zip and the mod's own custom-modes-v0.1.6; the updater must offer 0.1.6
 import socket, subprocess
 RS = os.path.join(OUT, 'releases')
-for tag, f in (('bundle-v0.1.16', 'custom-modes-0.11.0.zip'), ('custom-modes-v0.1.5', 'custom-modes-0.1.5.zip')):
+for tag, f in (('bundle-v0.1.16', 'custom-modes-0.11.0.zip'), ('custom-modes-v0.1.6', 'custom-modes-0.1.6.zip')):
     d = os.path.join(RS, 'AmfiLogos', 'ds_custommodes', tag); os.makedirs(d, exist_ok=True); open(os.path.join(d, f), 'wb').write(b'test only ' + tag.encode())
 os.makedirs(os.path.join(RS, 'AmfiLogos', 'ds_modloader', 'v0.1.9'), exist_ok=True)
 so = socket.socket(); so.bind(('127.0.0.1', 0)); port = so.getsockname()[1]; so.close()
@@ -59,15 +59,15 @@ try:
     cm = wait_for(r'\[custom-modes\] i18n: language %s [^:]*: (\d+) texts, (\d+) dropped' % re.escape(CODE))
     t.check(f'multiplayer and Custom Modes in {CODE}, texts loaded, none dropped', mp and cm and int(mp.group(1)) > 0 and mp.group(2) == '0' and int(cm.group(1)) > 0 and cm.group(2) == '0',
             (mp and mp.group(0), cm and cm.group(0)))
-    # Windows boot like the stock game (v0.1.12: every boot speed-up part off by default on Windows)
+    # Windows fast start on again by default (v0.1.13; v0.1.12 had every boot speed-up part off on Windows)
     L = t.dlog()
-    t.check('Windows: boot speed-up off (CRC skip, splash, frames, loading priority)', 'fastboot: off (bundle CRC skip' in L and 'A: boot speed-up off (' in L and 'A: boot speed-up on' not in L,
+    t.check('Windows: boot speed-up on (CRC skip, splash, frames, loading priority)', 'A: boot speed-up on (' in L and 'fastboot: off (bundle CRC skip' not in L and 'A: boot speed-up off' not in L,
             [l[13:] for l in L.splitlines() if 'boot speed-up' in l or 'fastboot:' in l][:3])
     # the updater (local releases): the mod's own newer release is offered, the old bundle zip with a higher number is not
     wait_for(r'update: kit: installed'); time.sleep(5); L = t.dlog()
     up = [l[13:] for l in L.splitlines() if 'update: mod ' in l]
-    t.check('auto-update: custom-modes 0.1.5 offered from custom-modes-v0.1.5, not 0.11.0 from bundle-v0.1.16',
-            any('custom-modes: installed 0.1.4, newer 0.1.5' in l for l in up) and not any('0.11.0' in l for l in up), up or 'no mod update line')
+    t.check('auto-update: custom-modes 0.1.6 offered from custom-modes-v0.1.6, not 0.11.0 from bundle-v0.1.16',
+            any('custom-modes: installed 0.1.5, newer 0.1.6' in l for l in up) and not any('0.11.0' in l for l in up), up or 'no mod update line')
     # the Mods window itself cannot open here: -nographics (the bottle has no graphics) gives the UI kit no sprites
 finally:
     w.stop()
