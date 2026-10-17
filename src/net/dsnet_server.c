@@ -63,6 +63,9 @@ struct dsnet_server {
 static int ext_behind(dsnet_server *s, sconn *c) { return c->ticks_behind + (int)(s->timer - c->behind_at); }
 static int live(sconn *c) { return c && c->id >= 0 && c->status != ST_LOADING && c->status != ST_NEW; }
 
+/* clock ms, wrapping at 2^32 (a double past UINT32_MAX cast straight to uint32_t is undefined: uptime > 49.7 days) */
+static uint32_t ms32(void) { return (uint32_t)(uint64_t)dsnet_now_ms(); }
+
 static void send_all_live(dsnet_server *s, const uint8_t *b, uint32_t n, int except_id) {
     for (int i = 0; i < MAX_CONNS; i++)
         if (live(s->conn[i]) && s->conn[i]->id != except_id) dsnet_link_send(&s->conn[i]->link, b, n);
@@ -166,6 +169,24 @@ static void send_save_to(dsnet_server *s, sconn *c) {
                s->save_len, s->save_tick, s->log_n - s->save_seq_after, c->id);
 }
 
+/* Foreign Expedition mail (guest or host): stamp the sender, send to the addressee (to_uid, zero = the host) */
+static void relay_mail(dsnet_server *s, sconn *c) {
+    uint8_t *m = c->rx.buf; uint32_t ml = c->rx.total; c->rx.buf = NULL;
+    if (ml >= 33 && ml <= DSNET_MAIL_MAX) {
+        static const uint8_t zero[16];
+        memcpy(m + 16, c->uid, 16);
+        sconn *to = NULL;
+        for (int i = 0; i < MAX_CONNS && !to; i++) {
+            sconn *o = s->conn[i];
+            if (!o || o->id < 0 || o->closing) continue;
+            if (memcmp(m, zero, 16) ? !memcmp(o->uid, m, 16) : o->is_host) to = o;
+        }
+        if (to) dsnet_link_send_blob(&to->link, ++s->blob_id, BLOB_MAIL, 0, 0, m, ml);
+        dsnet_logf("server: mail kind %u (%u bytes) from player %d -> %s", m[32], ml, c->id, to ? to->name : "nobody connected (dropped)");
+    }
+    free(m);
+}
+
 static void drop_conn(dsnet_server *s, int i) {
     sconn *c = s->conn[i];
     int id = c->id, spect = c->spectator;
@@ -246,6 +267,12 @@ static int modset_refused(dsnet_server *s, const sconn *c, char *why, size_t n) 
 }
 static void on_hello(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
     if (c->id >= 0) return;
+    if (n < 29) {                                  /* shorter than the fixed part: nothing below may read it */
+        uint8_t r[4] = { P_REJECT, DSNET_REJ_PROTO, 0, 0 };
+        dsnet_link_send(&c->link, r, 4); c->closing = 1;
+        dsnet_logf("server: rejected a client, reason %d: %u-byte HELLO", DSNET_REJ_PROTO, n);
+        return;
+    }
     /* join checks (rwmt ServerJoiningState): protocol, game build, mod version, float rounding mode, gameplay mods */
     int rej = 0, bl = n >= 29 ? p[28] : 0;
     uint32_t name_at = n >= 29 + (uint32_t)bl ? hello_mods(c, p, n, 29 + bl) : 0;
@@ -346,6 +373,7 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
             request_join_point(s);
             break;
         }
+        if (c->status == ST_LOADING) return;      /* dropped: nothing of it may count (rules too, review #9) */
         if (type == DSNET_RULES) {                 /* host rules: checked, the server's own part applied now, then stamped */
             dsnet_rules r = { 0 };
             if (get16(p + 3) < 4) return;
@@ -358,8 +386,9 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
             s->cfg.gear_mode = r.gear_mode; s->cfg.units_per_player = r.units_per_player; s->cfg.event_choice = r.event_choice; s->cfg.population = r.population;
             s->cfg.shared_fog = r.shared_fog;
             dsnet_logf("server: rules pause %d speed-up %d gear %d units %d", r.pause_mode, r.allow_speedup, r.gear_mode, r.units_per_player);
+            issue(s, type, c->id, p[2], p + 5, get16(p + 3));   /* applied and issued together (votes below do not apply) */
+            break;
         }
-        if (c->status == ST_LOADING) return;
         /* no votes until back in sync, so an auto pause holds until then */
         if (c->status == ST_DESYNCED && (type == DSNET_PAUSE_VOTE || type == DSNET_SPEED_VOTE)) return;
         /* lobby settings */
@@ -495,7 +524,7 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         break;
     }
     case P_PONG:
-        if (n >= 5) c->ping_ms = (int)((uint32_t)dsnet_now_ms() - get32(p + 1));
+        if (n >= 5) c->ping_ms = (int)(ms32() - get32(p + 1));
         break;
     case P_BUSY:
         if (n >= 2 && !c->spectator) c->busy = p[1] != 0;
@@ -508,24 +537,11 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         break;
     case P_BLOB: {
         if (!c->is_host && n >= 6 && p[5] == BLOB_MAIL) {   /* Foreign Expedition mail from a guest (spectators send none) */
-            if (c->spectator) return;
+            if (c->spectator || n < 1 + BLOB_HDR || get32(p + 6) > DSNET_MAIL_MAX) return;
             int r = dsnet_blob_feed(&c->rx, p + 1, n - 1);
             if (r < 0) { dsnet_logf("server: bad mail fragment from player %d", c->id); return; }
             if (r == 1 && c->rx.kind == BLOB_MAIL) {   /* relay: stamp the sender, find the addressee */
-                uint8_t *m = c->rx.buf; uint32_t ml = c->rx.total; c->rx.buf = NULL;
-                if (ml >= 33) {
-                    static const uint8_t zero[16];
-                    memcpy(m + 16, c->uid, 16);
-                    sconn *to = NULL;
-                    for (int i = 0; i < MAX_CONNS && !to; i++) {
-                        sconn *o = s->conn[i];
-                        if (!o || o->id < 0 || o->closing) continue;
-                        if (memcmp(m, zero, 16) ? !memcmp(o->uid, m, 16) : o->is_host) to = o;
-                    }
-                    if (to) dsnet_link_send_blob(&to->link, ++s->blob_id, BLOB_MAIL, 0, 0, m, ml);
-                    dsnet_logf("server: mail kind %u (%u bytes) from player %d -> %s", m[32], ml, c->id, to ? to->name : "nobody connected (dropped)");
-                }
-                free(m);
+                relay_mail(s, c);
                 return;
             }
             return;
@@ -546,20 +562,15 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         if (r < 0) { dsnet_logf("server: bad blob fragment from host"); return; }
         if (r == 0) return;
         if (c->rx.kind == BLOB_MAIL) {   /* relay: stamp the sender, find the addressee */
-            uint8_t *m = c->rx.buf; uint32_t ml = c->rx.total; c->rx.buf = NULL;
-            if (ml >= 33) {
-                static const uint8_t zero[16];
-                memcpy(m + 16, c->uid, 16);
-                sconn *to = NULL;
-                for (int i = 0; i < MAX_CONNS && !to; i++) {
-                    sconn *o = s->conn[i];
-                    if (!o || o->id < 0 || o->closing) continue;
-                    if (memcmp(m, zero, 16) ? !memcmp(o->uid, m, 16) : o->is_host) to = o;
-                }
-                if (to) dsnet_link_send_blob(&to->link, ++s->blob_id, BLOB_MAIL, 0, 0, m, ml);
-                dsnet_logf("server: mail kind %u (%u bytes) from player %d -> %s", m[32], ml, c->id, to ? to->name : "nobody connected (dropped)");
-            }
-            free(m);
+            relay_mail(s, c);
+            return;
+        }
+        if (c->rx.kind == BLOB_FULL) {             /* host's full-state list -> everyone else in game (outside the sim) */
+            if (c->rx.total <= DSNET_FULL_MAX)
+                for (int i = 0; i < MAX_CONNS; i++)
+                    if (live(s->conn[i]) && s->conn[i] != c)
+                        dsnet_link_send_blob(&s->conn[i]->link, ++s->blob_id, BLOB_FULL, c->rx.tick, 0, c->rx.buf, c->rx.total);
+            free(c->rx.buf); c->rx.buf = NULL;
             return;
         }
         if (c->rx.kind == BLOB_PATCH) {            /* host's state at the PATCH_POINT -> the players in it */
@@ -577,7 +588,13 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
             maybe_issue_patch(s);                  /* players that asked meanwhile get the next one */
             return;
         }
-        if (c->rx.kind != BLOB_SAVE) return;
+        if (c->rx.kind != BLOB_SAVE) { free(c->rx.buf); c->rx.buf = NULL; return; }
+        if (!s->jp_pending || c->rx.seq_after != s->jp_seq + 1) {   /* not the pending join point's (one issued before
+                                                                    FE_START, or a repeat): the old world, never sent on */
+            dsnet_logf("server: stale save (seq_after %u, pending join point %s %u) dropped", c->rx.seq_after, s->jp_pending ? "at" : "none, last", s->jp_seq);
+            free(c->rx.buf); c->rx.buf = NULL;
+            return;
+        }
         free(s->save);
         s->save = c->rx.buf; s->save_len = c->rx.total;
         s->save_tick = c->rx.tick; s->save_seq_after = c->rx.seq_after;
@@ -642,7 +659,7 @@ static void advance_timer(dsnet_server *s, double *real) {
 static void send_players(dsnet_server *s, int ping) {
     uint8_t b[2 + MAX_CONNS * 6], *p = b + 2; int cnt = 0;
     uint8_t sb[4 + MAX_CONNS * 36], *q = sb + 4; int scnt = 0;      /* spectators: their own list (never "players") */
-    uint8_t pg[5]; put8(pg, P_PING); put32(pg + 1, (uint32_t)dsnet_now_ms());
+    uint8_t pg[5]; put8(pg, P_PING); put32(pg + 1, ms32());
     for (int i = 0; i < MAX_CONNS; i++) {
         sconn *c = s->conn[i];
         if (!c || c->id < 0) continue;
