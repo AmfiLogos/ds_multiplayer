@@ -18,6 +18,8 @@
 #include "ui_tip.h"
 #include "ui_model.h"
 #include "rig.h"
+#include "ds_i18n.h"
+#include "ui_utf8.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +36,7 @@ static int shown, placed_by_us; static double routine_since;   /* (defined below
 #define BASE_KEY "Shared_Gold"                               /* any stock ETC key: "Gold" / "The basic currency..." */
 static const Guid TIP_ID = { 0x6d70746970756931ull, 0x0000000000000001ull };   /* our one tooltip session */
 
-static inline Obj u_str(const char *s) { return F(0x6F9738, Obj (*)(const char *))(s); }
+static inline Obj u_str(const char *s) { return (Obj)ui_str_new(F(0x6F9738, void *(*)(const char *)), s); }   /* broken UTF-8: a repaired copy (ui_utf8.h) */
 static inline uintptr_t u_gc_new(Obj o) { return o ? F(0x6F9540, uintptr_t (*)(Obj, bool))(o, false) : 0; }
 static inline Obj u_gc_get(uintptr_t h) { return h ? F(0x6F9598, Obj (*)(uintptr_t))(h) : NULL; }
 static inline void u_gc_free(uintptr_t h) { if (h) F(0x6F95E4, void (*)(uintptr_t))(h); }
@@ -272,8 +274,8 @@ static void show_core(const char *title, const char *body, Obj rect) {
     if (same && rect) return;                                /* an element: placed once */
     if (same) { static double last; if (now_s() - last < 0.05) return; last = now_s(); }   /* the mouse: follow it */
     if (shown && !same_text) { game_tip_hide(); switches++; }   /* another element: the stock session keeps its old text otherwise */
-    snprintf(cur_title, sizeof cur_title, "%s", title);
-    snprintf(cur_body, sizeof cur_body, "%s", body);
+    snprintf(cur_title, sizeof cur_title, "%s", title); dsi_utf8_fix_end(cur_title);   /* a long translation: cut at a character */
+    snprintf(cur_body, sizeof cur_body, "%s", body); dsi_utf8_fix_end(cur_body);
     u_gc_free(h_rect); h_rect = u_gc_new(rect);
     on_top(v);
     float x, y;

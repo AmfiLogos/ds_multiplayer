@@ -1,5 +1,7 @@
 /* ui_test: checks the pure logic in ui_model.c (no game, no network). */
 #include "ui_model.h"
+#include "ds_i18n.h"
+#include "ui_utf8.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -88,9 +90,9 @@ static void test_votes(void) {
     CHECK(!ui_is_paused(&v));
     char line[256];
     ui_status_line(UI_NET_PLAYING, &v, &p, 0, line, sizeof line);
-    CHECKS(line, "You want Fast \u00B7 waiting for B");
+    CHECKS(line, "You want Fast \u00B7 waiting for B"); CHECK(!ui_status_line_agree());
     ui_status_line(UI_NET_PLAYING, &v, &p, 1, line, sizeof line);
-    CHECKS(line, "Alex, Player 3 want Fast \u00B7 press >> to agree");
+    CHECKS(line, "Alex, Player 3 want Fast \u00B7 press >> to agree"); CHECK(ui_status_line_agree());
     CHECK(!strstr(line, "2x") && !strstr(line, "3x"));
     v.speed[2] = 0;                                /* no vote yet = Normal */
     ui_status_line(UI_NET_PLAYING, &v, &p, 1, line, sizeof line);
@@ -567,7 +569,28 @@ static void test_viewui(void) {
     ui_settings_default(&t); ui_settings_parse("{\"views\":1}", &t); CHECK(t.teams_button == 1);     /* older file: shown */
 }
 
+/* i18n: a byte-cut name must never reach il2cpp_string_new (it would blank the whole label), and the speed
+   tooltip must find its line by state in every language (it used strstr on the English text) */
+static void test_i18n(void) {
+    char a[16] = "ab\xE5\x90\x8D\xE5\x89";          /* "ab" + one CJK character + a cut one */
+    CHECK(!ui_utf8_valid(a)); ui_utf8_repair(a); CHECKS(a, "ab\xE5\x90\x8D"); CHECK(ui_utf8_valid(a));
+    char b[16] = "x\xE5\x89y\xC3\xA9";               /* a cut character in the middle (composed text) */
+    ui_utf8_repair(b); CHECKS(b, "xy\xC3\xA9");
+    CHECK(ui_utf8_valid("Hôte · 日本語") && !ui_utf8_valid("\xED\xA0\x80") && !ui_utf8_valid("\xC0\xAF"));
+    ui_players p; memset(&p, 0, sizeof p); p.present = 0x3; snprintf(p.name[1], sizeof p.name[1], "Ana");
+    ui_votes v; memset(&v, 0, sizeof v); v.present = 0x3; v.allow_speedup = v.allow_pause = 1; v.speed[0] = 2; v.speed[1] = 1;
+    char nm[40], line[256];
+    dsi_set_dir("lang_test");
+    CHECK(dsi_set_lang(2) == 1 && dsi_loaded() == 3 && dsi_dropped() == 0);   /* fr */
+    CHECKS(ui_player_label(&p, 0, nm), "H\xC3\xB4te");
+    ui_status_line(UI_NET_PLAYING, &v, &p, 1, line, sizeof line);
+    CHECKS(line, "H\xC3\xB4te veut Rapide \u00B7 appuyez sur >> pour accepter"); CHECK(ui_status_line_agree());
+    dsi_set_lang(0); dsi_set_dir(NULL);
+    CHECKS(ui_player_label(&p, 0, nm), "Host");
+}
+
 int main(void) {
+    test_i18n();
     test_viewui();
     test_mini();
     test_v10();

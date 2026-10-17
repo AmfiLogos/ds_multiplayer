@@ -96,6 +96,8 @@ typedef enum {
  * others see "Ben wants Fast: press >> to agree", the asker sees "You want Fast: waiting for the owner".
  * me = this player. "" when nothing to say. */
 void ui_status_line(ui_net_state st, const ui_votes *v, const ui_players *p, int me, char *out, size_t cap);
+/* 1 when the last ui_status_line call wrote the "press >> to agree" line (the tooltip asks by state, not by text) */
+int ui_status_line_agree(void);
 
 /* ---------------------------------------------------------------- popups (owner rules 2026-10-12) */
 typedef enum { UI_POP_OTHER = 0, UI_POP_LEVELUP, UI_POP_TRADE, UI_POP_STORY, UI_POP_RESULT } ui_pop_kind;
