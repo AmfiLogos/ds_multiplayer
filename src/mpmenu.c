@@ -422,14 +422,32 @@ void txt_color(Obj t, Col c) { if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Co
  * size per language. Here: every text styled by txt_style keeps its design size. At the end of the menu frame, a text
  * whose content or rect changed is measured at that size (TMP preferredWidth / preferredHeight). It fits: as before,
  * no auto size (so English that fits looks exactly as before). It does not fit: auto size from the design size down
- * to fit_min(), and a one-line label wraps when its rect holds two lines. */
+ * to fit_min() (0.75 x, the game's), and a one-line label wraps when its rect holds two lines. Still too long at
+ * 0.75: the game's way for long text, the text keeps its design size and wraps to more lines (the line grows; it
+ * draws past its rect, centred); a box we own asks txt_fit_h() for the height its text needs and grows. */
 #define FIT_N 2048                                                           /* open addressing by object address */
-typedef struct { Obj t; uintptr_t h; float size, w, h_; uint32_t hash; uint8_t wrap, on, dirty, multi, stock; } fit_e;
+typedef struct { Obj t; uintptr_t h; float size, w, h_, qw, qh, qr; uint32_t hash, qhash; uint8_t wrap, on, dirty, multi, stock; } fit_e;   /* q*: txt_fit_h cache */
 typedef struct { float x, y, w, h; } fit_rect;
 static fit_e fit_tab[FIT_N];
 static int fit_count;
-static void *m_fit_pw, *m_fit_ph, *m_fit_rect, *m_fit_live;
-static float fit_min(float size) { float m = size * 0.6f; m = (float)(int)(m + 0.5f); return m < 8 ? (size < 8 ? size : 8) : m; }
+static void *m_fit_pw, *m_fit_ph, *m_fit_rect, *m_fit_live, *m_fit_pv;
+static float fit_min(float size) { float m = size * 0.75f; m = (float)(int)(m + 0.5f); return m < 8 ? (size < 8 ? size : 8) : m; }   /* the game's 0.75 */
+static int fit_methods(void) {
+    if (!m_fit_pw) { m_fit_pw = mth("TMPro", "TMP_Text", "get_preferredWidth", 0); m_fit_ph = mth("TMPro", "TMP_Text", "get_preferredHeight", 0);
+                     m_fit_rect = mth("UnityEngine", "RectTransform", "get_rect", 0); m_fit_live = mth("UnityEngine", "GameObject", "get_activeInHierarchy", 0);
+                     m_fit_pv = mth("TMPro", "TMP_Text", "GetPreferredValues", 2); }   /* (float width, float height): the only 2-argument one */
+    return m_fit_pw && m_fit_ph && m_fit_rect && m_fit_live;
+}
+typedef struct { float x, y; } fit_v2;
+/* the text as styled at this size (no auto size), wrap on/off; its preferred width / height at width w (<= 0: its rect) */
+static void fit_set(Obj t, int autosize, float size, int wrap) {
+    F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, autosize != 0, NULL); F(0x4F0B340, void (*)(Obj, float, void *))(t, size, NULL);
+    F(0x4F0BA48, void (*)(Obj, int, void *))(t, wrap, NULL);
+}
+static fit_v2 fit_pref(Obj t, float w) {
+    if (w > 0 && m_fit_pv) return MCALL(m_fit_pv, fit_v2, Obj, float, float, const void *)(t, w, 100000.f, m_fit_pv);
+    return (fit_v2){ MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw), MCALL(m_fit_ph, float, Obj, const void *)(t, m_fit_ph) };
+}
 static fit_e *fit_find(Obj t, int add) {
     if (!t) return NULL;
     size_t i = ((uintptr_t)t >> 4) * 2654435761u % FIT_N, tomb = (size_t)-1;
@@ -455,6 +473,7 @@ static void fit_style(Obj t, float size, int wrap) {
     F(0x4F0B68C, void (*)(Obj, float, void *))(t, size, NULL);              /* fontSizeMax: the design size */
     F(0x4F0B634, void (*)(Obj, float, void *))(t, fit_min(size), NULL);     /* fontSizeMin */
     if (e->size == size && e->wrap == (wrap != 0) && e->on) {
+        if (e->on == 4) { fit_set(t, 0, size, 1); return; }                 /* grows: design size, more lines */
         F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
         if (e->on >= 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->on == 2, NULL);
         return;
@@ -466,34 +485,48 @@ static void fit_text(Obj t, const char *s) {
     fit_e *e = fit_find(t, 0); if (!e) return;
     uint32_t h = fit_hash(s); if (h != e->hash) { e->hash = h; e->dirty = 1; e->multi = s && strchr(s, '\n') != NULL; }
 }
+/* does the text fit w x h at the smallest size (fit_min)? A one-line label may use two lines when h holds them (two).
+   Leaves the text at that size; the caller sets it back. */
+static int fit_at_min(fit_e *e, Obj t, float w, float h, int *two) {
+    float mn = fit_min(e->size);
+    *two = !e->wrap && !e->multi && h >= 2.7f * mn;
+    fit_set(t, 0, mn, e->wrap || *two);
+    if (e->wrap || *two) return fit_pref(t, w).y <= h + 2;
+    return fit_pref(t, 0).x <= w + 1;
+}
 static void fit_one(fit_e *e, Obj t, float w, float h) {
     if (w < 4 || h < 4) return;                                              /* not placed yet */
-    if (e->on) { F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, false, NULL); F(0x4F0B340, void (*)(Obj, float, void *))(t, e->size, NULL);
-                 F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->wrap, NULL); }   /* measure as styled */
+    if (e->on) fit_set(t, 0, e->size, e->wrap);                              /* measure as styled */
     int over;
     if (!e->wrap) over = MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw) > w + 1;
     else over = MCALL(m_fit_ph, float, Obj, const void *)(t, m_fit_ph) > h + 2;   /* a second line in a one-line button runs out of its frame */
     e->on = 0;
     if (over) {
-        float mn = fit_min(e->size);
-        e->on = !e->wrap && !e->multi && h >= 2.7f * mn ? 2 : 1;             /* 2: a one-line label that may use two lines */
+        float mn = fit_min(e->size); int two = 0;
+        float pw1 = MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw);  /* one line at the design size (wrap off: no wrap width) */
+        int fits = fit_at_min(e, t, w, h, &two);
+        fit_set(t, 0, e->size, e->wrap);
+        char tx[64] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
+        if (!fits) {                                                         /* the game's long text: design size, more lines */
+            e->on = 4; fit_set(t, 0, e->size, 1);
+            rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f even at %.0f: size %.0f, wraps (%.0f high)", tx, w, h, mn, e->size, fit_pref(t, w).y);
+            return;
+        }
+        e->on = two ? 2 : 1;                                                 /* 2: a one-line label that may use two lines */
         /* 3: a wrapping text in a box made for one line (a button) that fits one line at the smaller size: one line, as
            the game's buttons (a second line ran over the frame of Host from a save) */
-        if (e->wrap && !e->multi && h < 2.56f * e->size && MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw) * mn / e->size <= w) e->on = 3;
+        if (e->wrap && !e->multi && h < 2.56f * e->size && pw1 * mn / e->size <= w) e->on = 3;
         F(0x4F0B634, void (*)(Obj, float, void *))(t, mn, NULL);
         F(0x4F0B68C, void (*)(Obj, float, void *))(t, e->size, NULL);
         if (e->on >= 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->on == 2, NULL);
         F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
-        char tx[64] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
         rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f: auto size %.0f-%.0f%s", tx, w, h, mn, e->size, e->on == 2 ? ", two lines" : e->on == 3 ? ", one line" : "");
     }
 }
 /* once per frame (end of mpmenu_frame): changed texts now; every text's rect every 15 frames (a later layout change) */
 static void fit_frame(void) {
     if (!fit_count) return;
-    if (!m_fit_pw) { m_fit_pw = mth("TMPro", "TMP_Text", "get_preferredWidth", 0); m_fit_ph = mth("TMPro", "TMP_Text", "get_preferredHeight", 0);
-                     m_fit_rect = mth("UnityEngine", "RectTransform", "get_rect", 0); m_fit_live = mth("UnityEngine", "GameObject", "get_activeInHierarchy", 0); }
-    if (!m_fit_pw || !m_fit_ph || !m_fit_rect || !m_fit_live) return;
+    if (!fit_methods()) return;
     int all = frames % 15 == 0;
     for (int i = 0; i < FIT_N; i++) {
         fit_e *e = &fit_tab[i];
@@ -520,6 +553,36 @@ static void fit_frame(void) {
 /* for the game-side files (ui_game.c, ui_teams.c) and Custom Modes texts styled their own way: same fit */
 void txt_fit(Obj t, float size, int wrap) { if (mm_is(t, K_TMP)) fit_style(t, size, wrap); }
 void txt_fit_text(Obj t, const char *s) { fit_text(t, s); }
+/* the fit's current settings again (after a measure) */
+static void fit_apply(fit_e *e, Obj t) {
+    if (!e->on || e->on == 4) { fit_set(t, 0, e->size, e->on == 4 ? 1 : e->wrap); return; }
+    F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->on == 2 ? 1 : e->on == 3 ? 0 : e->wrap, NULL);
+    F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
+}
+/* the height a box we own needs for text t laid out at w x h (its design box): h when the text fits there at its design
+   size or auto-sized down to 0.75; else its height at the design size, wrapped at w (the game's long text: the box grows,
+   the text keeps its size). Its caller grows the box (and moves what is stacked under it). Cached per text / box. */
+float txt_fit_h(Obj t, float w, float h) {
+    if (!mm_is(t, K_TMP) || w < 4 || h < 4 || !fit_methods()) return h;
+    fit_e *e = fit_find(t, 0); if (!e || e->size < 1) return h;
+    char tx[1024] = ""; str_utf8(tmp_get(t), tx, sizeof tx); uint32_t hs = fit_hash(tx);
+    if (e->qr > 0 && e->qhash == hs && e->qw == w && e->qh == h) return e->qr;
+    fit_set(t, 0, e->size, e->wrap);
+    int over = !e->wrap ? fit_pref(t, 0).x > w + 1 : fit_pref(t, w).y > h + 2, two = 0;
+    float r = h;
+    if (over && !fit_at_min(e, t, w, h, &two)) { fit_set(t, 0, e->size, 1); float ph = fit_pref(t, w).y; if (ph > h) r = (float)(int)(ph + 0.99f); }
+    fit_apply(e, t);
+    e->qhash = hs; e->qw = w; e->qh = h; e->qr = r;
+    return r;
+}
+/* the height of text t at its design size, wrapped at width w (as the loader kit's DSLUi.text_height): for a box that
+   grows to its text rather than auto-size it (0: not measured) */
+float txt_text_h(Obj t, float w) {
+    if (!mm_is(t, K_TMP) || w < 4 || !fit_methods()) return 0;
+    fit_e *e = fit_find(t, 0); if (!e || e->size < 1) return 0;
+    fit_set(t, 0, e->size, 1); float ph = fit_pref(t, w).y; fit_apply(e, t);
+    return ph;
+}
 /* the stock notice box text (CommonNoticeView Txt_Notice: Lora 16 in a fixed 520 x 109 rect; the game never sizes it):
    while our text is up it auto-sizes when too long; when the box closes, its stock settings come back */
 void txt_fit_stock(Obj t) {
@@ -779,6 +842,7 @@ Obj btn_label(Obj b, int esc) { return b ? AT(b, esc ? 0x28 : 0x130, Obj) : NULL
  * so it fits inside the lobby body under the title and above Start/Leave. */
 #define RP_WIDE_W 830
 #define RP_WIDE_H 376                                            /* 9 rules rows: the right column has 5 */
+static void destroy_go(Obj comp);
 static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt, float cx, float cy, const char *note, uintptr_t *reg, int wide) {
     float pw = wide ? RP_WIDE_W : 430, ph = wide ? RP_WIDE_H : 588;     /* narrow: 9 rows (+ Shared fog, Spectators); host page: always open, no Done */
     #define PX(x) ((x) - pw / 2)
@@ -788,6 +852,13 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
                           : 68 + 50 * (i) + ((i) > MPM_RULE_POP ? 22 : 0))     /* the Population row has a description line under it */
     #define RX(i) (wide ? (RCOL(i) ? 422 : 14) : 18)                            /* row left edge; rows are 394 wide */
     float rh = wide ? 44 : 48;
+    float end = (wide && RTOP(MPM_RULE_POP - 1) > RTOP(MPM_RULE_ROWS - 1) ? RTOP(MPM_RULE_POP - 1) : RTOP(MPM_RULE_ROWS - 1)) + rh;   /* the longer column */
+    /* the note under the rows: one line of 12 in English; a longer one (ru, de, fr, ja: two lines) gets a taller box at
+       the same size, as the game does for long text (it was auto-sized down to 8; English stays 22 high). Measured on a throwaway copy, so the
+       panel can grow before it is built. Narrow: the box starts 7 under the rows and grows down (the panel too, if needed). */
+    float nw = wide ? 600 : 394, nh = 22;
+    { Obj m = mk_txt(tpl_txt, parent, 0, 12, 513, 1, 0, 0, nw, 22, C_SUB); if (m) { tmp_set(m, note); float th = txt_text_h(m, nw); if (th > nh + 2) nh = (float)(int)(th + 0.99f); u_active(m, false); destroy_go(m); } }
+    if (!wide && end + 7 + nh + 8 > ph) ph = end + 7 + nh + 8;
     Obj root = mk_img(tpl_img, parent, S_BOX, C_WHITE, cx, cy, pw, ph);
     if (!root) return;
     Obj R = u_tr(root);
@@ -810,10 +881,9 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
     }
     { Obj ds = mk_txt(tpl_txt, R, 0, 12, 513, 0, PX(RX(MPM_RULE_POP) + 197), PY(RTOP(MPM_RULE_POP) + rh + 11), 380, 20, C_SUB);   /* under Population */
       u_gc_free(p->desc); p->desc = ds ? u_gc_new(ds) : 0; }
-    float end = (wide && RTOP(MPM_RULE_POP - 1) > RTOP(MPM_RULE_ROWS - 1) ? RTOP(MPM_RULE_POP - 1) : RTOP(MPM_RULE_ROWS - 1)) + rh;   /* the longer column */
-    Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 1, wide ? PX(14 + 300) : 0, PY(end + (wide ? 40 : 18)), wide ? 600 : 394, 22, C_SUB); tmp_set(nt, note);
+    Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 1, wide ? PX(14 + 300) : 0, wide ? PY(end + 40) : PY(end + 7 + nh / 2), nw, nh, C_SUB); tmp_set(nt, note);
     u_gc_free(p->note); p->note = nt ? u_gc_new(nt) : 0;
-    Obj d = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(pw - 88), PY(end + (wide ? 40 : 59)), 140, 34, 16, TR("Done"), C_MAIN);
+    Obj d = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(pw - 88), PY(end + (wide ? 40 : 59 + nh - 22)), 140, 34, 16, TR("Done"), C_MAIN);
     if (reg) { u_gc_free(reg[MPB_RULES_DONE]); reg[MPB_RULES_DONE] = d ? u_gc_new(d) : 0; }
     p->pw = pw; p->ph = ph; p->tip_row = -1;
     u_active(root, false);
