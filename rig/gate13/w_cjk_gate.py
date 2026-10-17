@@ -59,6 +59,10 @@ try:
     cm = wait_for(r'\[custom-modes\] i18n: language %s [^:]*: (\d+) texts, (\d+) dropped' % re.escape(CODE))
     t.check(f'multiplayer and Custom Modes in {CODE}, texts loaded, none dropped', mp and cm and int(mp.group(1)) > 0 and mp.group(2) == '0' and int(cm.group(1)) > 0 and cm.group(2) == '0',
             (mp and mp.group(0), cm and cm.group(0)))
+    # Windows boot like the stock game (v0.1.12: every boot speed-up part off by default on Windows)
+    L = t.dlog()
+    t.check('Windows: boot speed-up off (CRC skip, splash, frames, loading priority)', 'fastboot: off (bundle CRC skip' in L and 'A: boot speed-up off (' in L and 'A: boot speed-up on' not in L,
+            [l[13:] for l in L.splitlines() if 'boot speed-up' in l or 'fastboot:' in l][:3])
     # the updater (local releases): the mod's own newer release is offered, the old bundle zip with a higher number is not
     wait_for(r'update: kit: installed'); time.sleep(5); L = t.dlog()
     up = [l[13:] for l in L.splitlines() if 'update: mod ' in l]

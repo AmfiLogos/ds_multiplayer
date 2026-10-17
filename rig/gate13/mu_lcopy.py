@@ -13,7 +13,7 @@ import hashlib, json, os, shutil, signal, subprocess, sys, threading, time
 sys.path.insert(0, os.path.expanduser('~/ds_launcher/loader/test'))
 import lrig as r
 
-WT = os.path.expanduser('~/ds_mp_gate13')
+WT = os.path.expanduser(os.environ.get('WT', '~/ds_mp_gate13'))   # the gate's MP checkout (env WT)
 B = os.path.join(WT, 'build')
 L = os.path.join(os.path.expanduser(os.environ.get('LD', '~/ds_launcher')), 'loader')   # LD = the loader checkout under test
 LB = os.path.join(L, 'build')
