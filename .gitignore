@@ -18,7 +18,6 @@
 !/lang/
 /research/*
 !/research/*.md
-!/tools/
 # game binaries and dumps (copyright: never publish)
 *.dll
 *.dylib

@@ -1302,7 +1302,7 @@ static void lw_build(Obj v, int host) {
     KEEP(h_lw_bbar, mk_img(tpl_img, R, -1, C_BAND, 0, LY(lw_h - 38), 876, 74));
     KEEP(h_lw_bline, mk_img(tpl_img, R, -1, C_COPPER, 0, LY(lw_h - 76), 876, 1));
     b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 103), LY(lw_h - 38), 206, 34, 16, host ? TR("Leave multiplayer") : TR("Leave"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b);
-    if (host) { b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, LX(848 - 116), LY(lw_h - 38), 232, 44, 18, mpm_word("TEXTKEY_Common_Start", "Start"), C_START); KEEP(h_lwb[LW_START], b); }
+    if (host) { b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, LX(848 - 116), LY(lw_h - 38), 232, 44, 18, mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), C_START); KEEP(h_lwb[LW_START], b); }
     b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? 0 : LX(848 - 116), LY(lw_h - 38), 206, 34, 16, TR("Bring units"), C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
     if (b) u_active(b, false);
     T(T_NOTE, 0, 14, 514, 0, 0, LY(lw_h - 38), 300, 24, C_ORANGE);
@@ -1834,7 +1834,7 @@ static void leave_box_show(void) {
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str_ok(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
     tmp_set(AT(v, 0x30, Obj), lbox_text);
     tmp_set(AT(v, 0x40, Obj), others ? TR("End for everyone") : TR("Leave"));          /* from the box's own case, not its text */
-    tmp_set(AT(v, 0x50, Obj), mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel"));
+    tmp_set(AT(v, 0x50, Obj), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }   /* centred, as the ui lane's boxes */
     u_go_active(u_go(v), true);
     lbox_up = BX_LEAVE;
@@ -1904,7 +1904,7 @@ __attribute__((visibility("default"))) int mpmenu_spectators_off_ask(void) {
     char t[400];
     char hd[160]; snprintf(hd, sizeof hd, TRN("Remove the spectator now?", "Remove the %d spectators now?", n), n);
     snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s", hd, TR("They go back to the title. Nobody can watch until you allow spectators again."));
-    box_show(BX_SPECT_OFF, t, TR("Remove"), mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel"));
+    box_show(BX_SPECT_OFF, t, TR("Remove"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     if (lbox_up != BX_SPECT_OFF) { spect_apply(0); return 0; }            /* no box could be shown: the host asked for it, apply */
     return 1;
 }
@@ -1950,7 +1950,7 @@ static void invite_frame(const mpm_obs *o) {
             char t[400];
             char q[200]; snprintf(q, sizeof q, TR("Join %s's game anyway?"), inv_host);
             snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", TR("Your game could not be saved"), q, TR("Unsaved progress in this world will be lost."));
-            box_show(BX_NOSAVE, t, TR("Join anyway"), mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel"));
+            box_show(BX_NOSAVE, t, TR("Join anyway"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
         }
     }
     if (nosave_ask) return;
@@ -1958,7 +1958,7 @@ static void invite_frame(const mpm_obs *o) {
         char t[400];
         char hd[160], bd[200]; snprintf(hd, sizeof hd, TR("Join %s?"), inv_host); snprintf(bd, sizeof bd, TR("%s invited you to their world."), inv_host);
         snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", hd, bd, TR("Your progress here is saved first, then this world closes."));
-        box_show(BX_INVITE, t, TR("Save and join"), mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel"));
+        box_show(BX_INVITE, t, TR("Save and join"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     }
     /* "Joining <host>'s game..." in the world (a join started from the player's own world) */
     mp_steam_info in; mp_steam_state(&in);
@@ -1972,7 +1972,7 @@ static void invite_frame(const mpm_obs *o) {
         char hd[160]; snprintf(hd, sizeof hd, TR("Joining %s's game..."), h);
         char t[300]; snprintf(t, sizeof t, "<size=150%%>%s</size>\n<size=88%%><color=#a69085>%s</color></size>", hd,
                               in.phase == MP_PH_LOADING ? TR("Loading the world") : in.phase == MP_PH_WAITING_SAVE ? TR("Waiting for the world") : TR("Connecting"));
-        box_show(BX_JOINING, t, mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel"), NULL);
+        box_show(BX_JOINING, t, mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")), NULL);
         join_phase_shown = in.phase;
     }
 }
@@ -2687,7 +2687,7 @@ static void tips_frame(const mpm_obs *o) {
     int lobby_rules = M.state == MPM_LOBBY && M.lobby_settings_open, host = M.state == MPM_LOBBY;
     /* lobby window (3.5, 3.7) */
     if (M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY) {
-        TIP(u_gc_get(h_lwb[LW_START]), mpm_word("TEXTKEY_Common_Start", "Start"), TR("Starts the game for everyone in the lobby. Players who join later catch up with the running game."));
+        TIP(u_gc_get(h_lwb[LW_START]), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Starts the game for everyone in the lobby. Players who join later catch up with the running game."));
         TIP(u_gc_get(h_lwb[LW_LEAVE]), TR("Leave Multiplayer"), TR("Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you leave and return to the title; your units stay reserved for you."));
         if (!lobby_rules) {
             TIP(u_gc_get(h_lwb[LW_GEAR]), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));
@@ -2710,7 +2710,7 @@ static void tips_frame(const mpm_obs *o) {
     if (ev && u_on(ev) && M.state != MPM_LOBBY && M.state != MPM_GUEST_LOBBY) {
         TIP(eb(MPB_ESC_INVITE), TR("Steam Invite"), TR("Opens Steam's invite window so you can invite friends into this world."));
         TIP(eb(MPB_LEAVE), TR("Leave Multiplayer"), TR("Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you return to the title; your units stay reserved for you."));
-        if (in_session()) { char lc[128]; snprintf(lc, sizeof lc, "%s", load_label[0] ? load_label : mpm_word("TEXTKEY_SystemMenu_LoadCampaign", "Load Campaign"));   /* the stock button's own label */
+        if (in_session()) { char lc[128]; snprintf(lc, sizeof lc, "%s", load_label[0] ? load_label : mpm_word("TEXTKEY_SystemMenu_LoadCampaign", TR_NOOP("Load Campaign")));   /* the stock button's own label */
                             TIP(AT(ev, 0x60, Obj), lc, TR("Leave multiplayer to load another world.")); }
     }
     if (o->scene != 1) return;
@@ -2728,7 +2728,7 @@ static void tips_frame(const mpm_obs *o) {
     TIP(tb(MPB_HOST_SAVE), TR("Your Save"), TR("Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer."));
     TIP(tb(MPB_HOST_NEW), TR("New Save"), TR("Start a new campaign and open it to other players as soon as it is created."));
     for (int k = 0; k < hcl.n; k++) TIP(tb(mpm_choice_btn(k)), hcl.c[k].label, hcl.c[k].tip);
-    TIP(tb(MPB_HOST_START), mpm_word("TEXTKEY_Common_Start", "Start"), TR("Prepares the world for this mode and opens the lobby. Friends join you there."));
+    TIP(tb(MPB_HOST_START), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Prepares the world for this mode and opens the lobby. Friends join you there."));
     TIP(tb(MPB_JOIN_ADDR), TR("Join by Address"), TR("Join a friend's world with their address. Use it without Steam, or on the same home network."));
     TIP(tb(MPB_JOIN_FRIEND), TR("Join a Friend on Steam"), TR("Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."));
     for (int i = 0; i < 6; i++) { char t[64];                                 /* the friend's name from the model (not read out of the label) */
@@ -2742,9 +2742,9 @@ static void tips_frame(const mpm_obs *o) {
     TIP(u_gc_get(h_field), TR("Host Address"), TR("The address the host shares from their lobby, for example 192.168.1.20:47777. Outside your home network, the host must open the port on their router."));
     TIP(tb(MPB_CONNECT), TR("Connect"), TR("Connects to the host and loads their world. It stops trying after 8 seconds without an answer."));
     TIP(tb(MPB_WATCH), TR("Watch"), TR("Watch the game: you see everything and can chat and ping, but you own no units and cannot pause or vote."));
-    TIP(tb(MPB_CANCEL_JOIN), mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel"), M.state == MPM_GUEST_JOINING || M.state == MPM_GUEST_LOADING ? TR("Stops joining and returns to the title. Escape does the same.")
+    TIP(tb(MPB_CANCEL_JOIN), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")), M.state == MPM_GUEST_JOINING || M.state == MPM_GUEST_LOADING ? TR("Stops joining and returns to the title. Escape does the same.")
                                                                                                     : TR("Stops connecting. You stay on this page. Escape does the same."));
-    TIP(tb(MPB_BACK), mpm_word("TEXTKEY_Common_Back", "Back"), TR("Returns to the previous menu."));
+    TIP(tb(MPB_BACK), mpm_word("TEXTKEY_Common_Back", TR_NOOP("Back")), TR("Returns to the previous menu."));
     #undef TIP
 }
 /* per-player fog (mp_fog.c): follow the host rule and the owner table; then the module's own frame work */
@@ -2894,7 +2894,7 @@ static void tag_ask(tag_row *r) {
     snprintf(tag_pending, sizeof tag_pending, "%s", r->guid);
     char bd[400]; snprintf(bd, sizeof bd, TR("%s was played with %s."), clan, who);
     snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", TR("Remove the multiplayer tag?"), bd, TR("The world itself does not change. The tag comes back if a friend joins it again."));
-    box_show(BX_UNTAG, t, TR("Remove"), mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel"));
+    box_show(BX_UNTAG, t, TR("Remove"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     if (lbox_up != BX_UNTAG) tag_answer(1);                                 /* no box could be shown: the player asked for it */
 }
 static tag_row *tag_rm_at(V3 m) {

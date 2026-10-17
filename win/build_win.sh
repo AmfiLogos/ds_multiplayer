@@ -49,7 +49,10 @@ CM_SOLO=(); CM_MP=(); while read k f; do if [[ $k == solo ]]; then CM_SOLO+=(bui
 NET=()
 O=build/obj; [[ $TARGET == module ]] && O=build/obj_module
 mkdir -p $O build/old_obj; olds=($O/*.o(N)); (( ${#olds} )) && mv -f $olds build/old_obj/
-for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do nice -n 5 $TC $CF -fwrapv $CEMB $INC -include dswin.h -include port/cm/xm_bsd_win.h -c $f -o $O/${f:t:r}.o; done
+# i18n: three string tables in the rig DLL (multiplayer, Custom Modes solo, Custom Modes mp; each has its own
+# DSI_IMPLEMENTATION): -DDSI_PREFIX renames the Custom Modes ones (cms_tr ..., cmm_tr ...). The module target has one per DLL.
+dsi_pfx() { DP=(); [[ $TARGET == module ]] && return; (( ${CM_MP[(Ie)$1]} )) && DP=(-DDSI_PREFIX=cmm_); (( ${CM_SOLO[(Ie)$1]} )) && DP=(-DDSI_PREFIX=cms_); return 0; }
+for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do dsi_pfx $f; nice -n 5 $TC $CF $DP -fwrapv $CEMB $INC -include dswin.h -include port/cm/xm_bsd_win.h -c $f -o $O/${f:t:r}.o; done
 for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $ZL/zutil.c; do nice -n 5 $TC $PM -O2 -w -c $f -o $O/zl_${f:t:r}.o; done
 if [[ $TARGET == module ]]; then
 nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o

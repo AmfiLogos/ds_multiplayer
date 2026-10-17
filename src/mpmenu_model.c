@@ -52,12 +52,12 @@ const char *mpm_rule_tip(int row) {                     /* tooltip bodies (resea
 /* row 4 "Population" is the game's own word (TEXTKEY_Shared_Population_NAME) */
 const char *mpm_rule_tip_title(int row) {
     static const char *t[MPM_RULE_ROWS] = { TR_NOOP("Pause"), TR_NOOP("Speed-up"), TR_NOOP("Gear"), TR_NOOP("Units per Player"), "Population", TR_NOOP("Event Choices"), TR_NOOP("Admin Mode"), TR_NOOP("Shared Fog of War"), TR_NOOP("Spectators") };
-    if (row == MPM_RULE_POP) return mpm_word("TEXTKEY_Shared_Population_NAME", "Population");
+    if (row == MPM_RULE_POP) return mpm_word("TEXTKEY_Shared_Population_NAME", TR_NOOP("Population"));
     return row >= 0 && row < MPM_RULE_ROWS ? TR(t[row]) : "";
 }
 const char *mpm_rule_label(int row) {
     static const char *l[MPM_RULE_ROWS] = { TR_NOOP("Pause"), TR_NOOP("Speed-up"), TR_NOOP("Gear"), TR_NOOP("Units per player"), "Population", TR_NOOP("Event choices"), TR_NOOP("Admin mode"), TR_NOOP("Shared fog"), TR_NOOP("Spectators") };
-    if (row == MPM_RULE_POP) return mpm_word("TEXTKEY_Shared_Population_NAME", "Population");
+    if (row == MPM_RULE_POP) return mpm_word("TEXTKEY_Shared_Population_NAME", TR_NOOP("Population"));
     return row >= 0 && row < MPM_RULE_ROWS ? TR(l[row]) : "";
 }
 void mpm_rule_value(const mpm_settings *s, int row, char *out, size_t cap) {
@@ -81,7 +81,7 @@ void mpm_rule_value(const mpm_settings *s, int row, char *out, size_t cap) {
    Row 1 "Experience" is the game's own word (TEXTKEY_Shared_EXP_NAME). */
 const char *mpm_fe_label(int row) {
     static const char *l[MPM_FE_ROWS] = { TR_NOOP("Death"), "Experience", TR_NOOP("Dungeon loot"), TR_NOOP("Units per player"), TR_NOOP("Gear"), TR_NOOP("Recruiting") };
-    if (row == 1) return mpm_word("TEXTKEY_Shared_EXP_NAME", "Experience");
+    if (row == 1) return mpm_word("TEXTKEY_Shared_EXP_NAME", TR_NOOP("Experience"));
     return row >= 0 && row < MPM_FE_ROWS ? TR(l[row]) : "";
 }
 void mpm_fe_value(const mpm_settings *s, int row, char *out, size_t cap) {
@@ -488,9 +488,9 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     /* host choices: the registering mod's own text (Custom Modes registers it translated, again on a language change) */
     case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : TR("Foreign Expedition")); break;
     case MPB_HOST_C1: case MPB_HOST_C2: case MPB_HOST_C3: snprintf(out, cap, "%s", m->choice_label[mpm_choice_of_btn(b)]); break;
-    case MPB_HOST_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", "Start")); break;
+    case MPB_HOST_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start"))); break;
     case MPB_FE_RESLIST: snprintf(out, cap, "%s", TR("Expedition results")); break;
-    case MPB_BACK: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Back", "Back")); break;
+    case MPB_BACK: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Back", TR_NOOP("Back"))); break;
     case MPB_PAUSE_MODE: snprintf(out, cap, TR("Pause: %s"), mpm_pause_text(m->set.pause_mode)); break;
     case MPB_SPEEDUP: snprintf(out, cap, TR("Speed-up: %s"), on_off(m->set.speedup)); break;
     case MPB_GEAR: snprintf(out, cap, TR("Gear: %s"), mpm_gear_text(m->set.gear)); break;
@@ -500,9 +500,9 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_JOIN_ADDR: snprintf(out, cap, "%s", TR("Join by address")); break;
     case MPB_CONNECT: snprintf(out, cap, "%s", m->no_field ? TR("Connect with the copied address") : TR("Connect")); break;
     case MPB_COPY_ADDR: snprintf(out, cap, "%s", TR("Copy direct address")); break;
-    case MPB_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", "Start")); break;
+    case MPB_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start"))); break;
     case MPB_LEAVE: snprintf(out, cap, "%s", TR("Leave multiplayer")); break;
-    case MPB_CANCEL_JOIN: snprintf(out, cap, "%s", mpm_word("TEXTKEY_CommonPopUp_Cancel", "Cancel")); break;
+    case MPB_CANCEL_JOIN: snprintf(out, cap, "%s", mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel"))); break;
     case MPB_WATCH: case MPB_HISTW0: case MPB_HISTW1: case MPB_HISTW2: case MPB_HISTW3: case MPB_HISTW4: case MPB_HISTW5: snprintf(out, cap, "%s", TR("Watch")); break;
     case MPB_SPECT_PREV: case MPB_SPECT_NEXT: out[0] = 0; break;
     default: snprintf(out, cap, "?"); break;

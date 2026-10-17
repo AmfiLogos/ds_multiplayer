@@ -1,8 +1,8 @@
 # ui_test: pure logic of the multiplayer UI (vote tally, claim rules, popup routing). make test
 CC = clang
 CFLAGS = -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -I..
-test_ui: test_ui.c ../ui_model.c ../ui_model.h ../ds_i18n.h ../ui_utf8.h dsi_impl_test.c
-	nice -n 19 $(CC) $(CFLAGS) -o $@ test_ui.c ../ui_model.c dsi_impl_test.c
+test_ui: test_ui.c ../ui_model.c ../ui_model.h ../ds_i18n.h ../ui_utf8.h ../ds_i18n.c
+	nice -n 19 $(CC) $(CFLAGS) -o $@ test_ui.c ../ui_model.c ../ds_i18n.c
 test: test_ui
 	nice -n 19 ./test_ui
 clean:
