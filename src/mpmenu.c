@@ -1099,7 +1099,8 @@ static void title_build(Obj v) {
         }
         /* owner v12 item 4: the stock row height (the clone keeps the stock button's size), so the column's spacing gives the
            stock gap. A smaller row (40 before) left the stock frame image at full size: the frames touched. */
-        if (id == MPB_HOST_SAVE || id == MPB_HOST_NEW || mpm_choice_of_btn(id) >= 0) txt_style(l, 0, 19, 514, 0);
+        if (id == MPB_HOST_SAVE || id == MPB_HOST_NEW || mpm_choice_of_btn(id) >= 0 || id == MPB_JOIN_ADDR || id == MPB_JOIN_FRIEND || id == MPB_FE_RESLIST)
+            txt_style(l, 0, 19, 514, 0);                                    /* the whole page one size (fr "Join a friend" + its note spilled at 22) */
         if (id == MPB_SETTINGS) {                                           /* [cog] Rules  ›  + summary under it */
             row_height(b, 262, 104);
             Obj bg = first_image(u_tr(b), 0); if (bg) { stretch(bg); u_gc_free(h_title_box); h_title_box = u_gc_new(bg); }
