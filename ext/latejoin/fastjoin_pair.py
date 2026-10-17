@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""latejoin lane: late-join pair test of the per-player "Fast join" option (cog row, mp_ui.json fast_join).
+"""latejoin lane: late-join pair test of the per-player "Fast join" option (cog row, mp_ui.json fast_join_on).
 
-  fastjoin_pair.py --mode off|on [--joins 3] [--dylib PATH] [--play 40] [--full-every 600]
+  fastjoin_pair.py [--mode default|off|on] [--joins 3] [--dylib PATH] [--play 40] [--full-every 600]
 
 X hosts a running world; Y joins late by address, both play --play s (full-state checks every --full-every steps), Y
 leaves, joins again. The option is set on BOTH copies through the panel's own setter (ui_coop set fast_join) before the
-first join, and put back to Off at the end (the copies' data folders are shared with other lanes).
+first join, and put back to the default (On) at the end (the copies' data folders are shared with other lanes).
+--mode default (the default): the key is removed from both copies' mp_ui.json before they start, so they run what a
+new player gets (On since owner 2026-10-17): a skip on both each join.
 Per join: host reload (queued -> load done), host tick frozen, until running (join_freeze_test's measures), the guest's
 load (join sent -> Y locked and loaded). Pass: Off = no skip line on either copy, On = a skip on both each join;
 0 desync, no full-state or deep difference, at least one full check equal. Results: <rig>/build/core_test/fastjoin_*/"""
@@ -61,16 +63,35 @@ def grep_log(x, pat, pos):
         return [l for l in f.read().decode('utf8', 'replace').splitlines() if pat in l]
 
 
+KEY = 'fast_join_on'                                          # its key in mp_ui.json (the ui_coop key is fast_join)
+
+
 def set_fast(x, v):
+    if v is None:                                             # default mode: nothing set, the saved file has no key
+        return 'default' if KEY not in ui_json(x) else ui_json(x)[KEY]
     c(x, cmd='ui_coop', action='set', key='fast_join', value=v)
     try:                                                      # read back what the game saved (mp_ui.json)
-        return json.load(open(os.path.join(st(x)['persistentDataPath'], 'mp_ui.json'))).get('fast_join')
+        return json.load(open(os.path.join(st(x)['persistentDataPath'], 'mp_ui.json'))).get(KEY)
     except Exception as e:
         return repr(e)[:80]
 
 
+def ui_json(x):
+    try:
+        return json.load(open(os.path.join(rig.idir(x), 'data', 'mp_ui.json')))
+    except Exception:
+        return {}
+
+
+def drop_key(x):                                              # before the copy starts: no new key, an old "fast_join":0 stays
+    j = ui_json(x)                                            # (the old default; it must be ignored)
+    if KEY in j:
+        del j[KEY]; json.dump(j, open(os.path.join(rig.idir(x), 'data', 'mp_ui.json'), 'w'))
+
+
 def main():
-    mode = arg('--mode', 'off'); want = 1 if mode == 'on' else 0
+    mode = arg('--mode', 'default'); want = 0 if mode == 'off' else 1
+    setting = None if mode == 'default' else want
     if '--dylib' in sys.argv:
         rig.DYLIB = os.path.abspath(os.path.expanduser(arg('--dylib', '')))
     play, fc = arg('--play', 40), arg('--full-every', 600)
@@ -92,9 +113,11 @@ def main():
         yj = os.path.join(rig.idir(Y), 'mp.json')
         if os.path.exists(yj):
             os.replace(yj, yj + '.off')
+        if setting is None:
+            rig.stop(X); rig.stop(Y); drop_key(X); drop_key(Y)   # a running copy keeps the settings it read
         rig.start(X, fps=30)
         rig.wait_for(X, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title X', timeout=1500)
-        setv[X] = set_fast(X, want)
+        setv[X] = set_fast(X, setting)
         work = os.path.join(rig.idir(X), 'save_in'); os.makedirs(work, exist_ok=True)
         save = arg('--save', os.path.join(rig.SEED_DATA, 'Saves', 'ElvenExpedition__AutoSave_f816ebc6195c432c9fff754b75ee3738_0.json'))
         src = os.path.join(work, 'fj.json'); shutil.copy2(save, src)
@@ -102,7 +125,7 @@ def main():
         wait('X locked', lambda: st(X).get('det', {}).get('locked'), every=2)
         rig.start(Y, fps=30)
         rig.wait_for(Y, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title Y', timeout=1500)
-        setv[Y] = set_fast(Y, want)
+        setv[Y] = set_fast(Y, setting)
         log('option set', setv)
         p0 = {X: logsize(X), Y: logsize(Y)}
         for k in range(arg('--joins', 3)):
@@ -148,16 +171,17 @@ def main():
                  'full_diffs': diffs[:10], 'deep_diffs': deep[:10], 'desync_lines': des[:10]}
         log('stats', json.dumps(stats))
         skip_ok = all((r['skips_X'] > 0 and r['skips_Y'] > 0) if want else (r['skips_X'] == 0 and r['skips_Y'] == 0) for r in res)
-        checks.append(('option read back on both copies', setv.get(X) == want and setv.get(Y) == want, str(setv)))
+        exp = 'default' if setting is None else want
+        checks.append(('option read back on both copies', setv.get(X) == exp and setv.get(Y) == exp, str(setv)))
         checks.append((f'skip lines match mode {mode}', skip_ok and len(res) == arg('--joins', 3), json.dumps([(r['skips_X'], r['skips_Y']) for r in res])))
         checks.append(('no desync, no full / deep difference', not des and not diffs and not deep, ''))
         checks.append(('full-state checks ran, none failed', (stats['full_ok'] or 0) >= 1 and not stats['full_fails'], f"ok {stats['full_ok']} fails {stats['full_fails']}"))
     except Exception as e:
         log('ERROR', repr(e)); checks.append(('ran', False, repr(e)))
     finally:
-        for x in (X, Y):                                          # leave the copies' option Off for other lanes
+        for x in (X, Y):                                          # leave the copies' option at the default for other lanes
             try:
-                c(x, cmd='ui_coop', action='set', key='fast_join', value=0)
+                c(x, cmd='ui_coop', action='set', key='fast_join', value=1)
             except Exception as e:
                 log('reset', x, repr(e)[:120])
         json.dump({'pair': pair, 'mode': mode, 'joins': res, 'checks': checks}, open(os.path.join(out, 'results.json'), 'w'), indent=1)

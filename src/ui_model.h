@@ -253,7 +253,7 @@ typedef struct ui_settings {
     int mini, mini_size;                /* shown while following (on); UI_MINI_SMALL / MEDIUM (default) / LARGE */
     int mini_pos_set, mini_x, mini_y;   /* dragged: top-left in layer units from the canvas top centre, else bottom right */
     int fast_join;                      /* "Fast join" (owner 2026-10-15): this copy skips the game's 1.5-3.5 s settle wait at
-                                           the end of its own mp loads (mp_game.c); off (default) = stock wait */
+                                           the end of its own mp loads (mp_game.c); on by default (owner 2026-10-17), off = stock wait */
     int ncol;                           /* this viewer's colours for other players, by stable uid (32 hex) */
     char col_uid[UI_MAX_COLOR_OVR][33]; int col_idx[UI_MAX_COLOR_OVR];
 } ui_settings;
