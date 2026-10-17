@@ -456,7 +456,7 @@ static void fit_style(Obj t, float size, int wrap) {
     F(0x4F0B634, void (*)(Obj, float, void *))(t, fit_min(size), NULL);     /* fontSizeMin */
     if (e->size == size && e->wrap == (wrap != 0) && e->on) {
         F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
-        if (e->on == 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, 1, NULL);
+        if (e->on >= 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->on == 2, NULL);
         return;
     }
     e->size = size; e->wrap = wrap != 0; e->on = 0; e->dirty = 1;
@@ -477,12 +477,15 @@ static void fit_one(fit_e *e, Obj t, float w, float h) {
     if (over) {
         float mn = fit_min(e->size);
         e->on = !e->wrap && !e->multi && h >= 2.7f * mn ? 2 : 1;             /* 2: a one-line label that may use two lines */
+        /* 3: a wrapping text in a box made for one line (a button) that fits one line at the smaller size: one line, as
+           the game's buttons (a second line ran over the frame of Host from a save) */
+        if (e->wrap && !e->multi && h < 2.56f * e->size && MCALL(m_fit_pw, float, Obj, const void *)(t, m_fit_pw) * mn / e->size <= w) e->on = 3;
         F(0x4F0B634, void (*)(Obj, float, void *))(t, mn, NULL);
         F(0x4F0B68C, void (*)(Obj, float, void *))(t, e->size, NULL);
-        if (e->on == 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, 1, NULL);
+        if (e->on >= 2) F(0x4F0BA48, void (*)(Obj, int, void *))(t, e->on == 2, NULL);
         F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, true, NULL);
         char tx[64] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
-        rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f: auto size %.0f-%.0f%s", tx, w, h, mn, e->size, e->on == 2 ? ", two lines" : "");
+        rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f: auto size %.0f-%.0f%s", tx, w, h, mn, e->size, e->on == 2 ? ", two lines" : e->on == 3 ? ", one line" : "");
     }
 }
 /* once per frame (end of mpmenu_frame): changed texts now; every text's rect every 15 frames (a later layout change) */
