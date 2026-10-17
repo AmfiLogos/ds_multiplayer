@@ -426,7 +426,7 @@ void txt_color(Obj t, Col c) { if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Co
  * 0.75: the game's way for long text, the text keeps its design size and wraps to more lines (the line grows; it
  * draws past its rect, centred); a box we own asks txt_fit_h() for the height its text needs and grows. */
 #define FIT_N 2048                                                           /* open addressing by object address */
-typedef struct { Obj t; uintptr_t h; float size, w, h_, qw, qh, qr; uint32_t hash, qhash; uint8_t wrap, on, dirty, multi, stock; } fit_e;   /* q*: txt_fit_h cache */
+typedef struct { Obj t; uintptr_t h; float size, w, h_, qw, qh, qr, qs; uint32_t hash, qhash; uint8_t wrap, on, dirty, multi, stock, qk; } fit_e;   /* q*: txt_fit_h / _w cache */
 typedef struct { float x, y, w, h; } fit_rect;
 static fit_e fit_tab[FIT_N];
 static int fit_count;
@@ -566,13 +566,27 @@ float txt_fit_h(Obj t, float w, float h) {
     if (!mm_is(t, K_TMP) || w < 4 || h < 4 || !fit_methods()) return h;
     fit_e *e = fit_find(t, 0); if (!e || e->size < 1) return h;
     char tx[1024] = ""; str_utf8(tmp_get(t), tx, sizeof tx); uint32_t hs = fit_hash(tx);
-    if (e->qr > 0 && e->qhash == hs && e->qw == w && e->qh == h) return e->qr;
+    if (e->qr > 0 && e->qk == 1 && e->qhash == hs && e->qw == w && e->qh == h && e->qs == e->size) return e->qr;
     fit_set(t, 0, e->size, e->wrap);
     int over = !e->wrap ? fit_pref(t, 0).x > w + 1 : fit_pref(t, w).y > h + 2, two = 0;
     float r = h;
     if (over && !fit_at_min(e, t, w, h, &two)) { fit_set(t, 0, e->size, 1); float ph = fit_pref(t, w).y; if (ph > h) r = (float)(int)(ph + 0.99f); }
     fit_apply(e, t);
-    e->qhash = hs; e->qw = w; e->qh = h; e->qr = r;
+    e->qhash = hs; e->qw = w; e->qh = h; e->qr = r; e->qs = e->size; e->qk = 1;
+    return r;
+}
+/* the same for a one-line box that can only grow wider (a chip): w when the text fits on one line at its design size or
+   at 0.75, else its one-line width at the design size */
+float txt_fit_w(Obj t, float w, float h) {
+    if (!mm_is(t, K_TMP) || w < 4 || h < 4 || !fit_methods()) return w;
+    fit_e *e = fit_find(t, 0); if (!e || e->size < 1) return w;
+    char tx[512] = ""; str_utf8(tmp_get(t), tx, sizeof tx); uint32_t hs = fit_hash(tx);
+    if (e->qr > 0 && e->qk == 2 && e->qhash == hs && e->qw == w && e->qh == h && e->qs == e->size) return e->qr;
+    fit_set(t, 0, e->size, 0);
+    float pw = fit_pref(t, 0).x, r = w;
+    if (pw > w + 1 && pw * fit_min(e->size) / e->size > w + 1) r = (float)(int)(pw + 0.99f);
+    fit_apply(e, t);
+    e->qhash = hs; e->qw = w; e->qh = h; e->qr = r; e->qs = e->size; e->qk = 2;
     return r;
 }
 /* the height of text t at its design size, wrapped at width w (as the loader kit's DSLUi.text_height): for a box that
@@ -981,6 +995,29 @@ static Obj empty_rt(Obj parent_tr, const char *name) {    /* new GameObject(name
     F(0x510B2C4, void (*)(Obj, Obj, bool, void *))(rt, parent_tr, false, NULL);       /* Transform.SetParent(parent, false) */
     return rt;
 }
+/* title-column rows as built (row, its frame image, its label rect), for rows that grow to a label still too long at 0.75 */
+static float trow_base[MPB_COUNT], trow_bgh[MPB_COUNT], trow_lw[MPB_COUNT], trow_lh[MPB_COUNT], trow_cur[MPB_COUNT];
+static void trow_note(int id, Obj b) {
+    if (id < 0 || id >= MPB_COUNT) return;
+    Obj rt = u_tr(b), bg = first_image(rt, 0), l = AT(b, 0x130, Obj);
+    trow_base[id] = trow_cur[id] = mm_is(rt, K_RT) ? F(0x510701C, V2 (*)(Obj, void *))(rt, NULL).y : 0;   /* sizeDelta */
+    trow_bgh[id] = bg && mm_is(u_tr(bg), K_RT) ? F(0x510701C, V2 (*)(Obj, void *))(u_tr(bg), NULL).y : 0;   /* 0: stretched */
+    trow_lw[id] = trow_lh[id] = 0;
+    if (mm_is(l, K_TMP) && fit_methods() && mm_is(u_tr(l), K_RT)) { fit_rect r = MCALL(m_fit_rect, fit_rect, Obj, const void *)(u_tr(l), m_fit_rect); trow_lw[id] = r.w; trow_lh[id] = r.h; }
+}
+/* each frame: a row whose label does not fit even at 0.75 grows to the label's height at its design size (+8 above and
+   below); the column's layout moves the rows under it down. A label that fits (all English) keeps the stock row. */
+static void trow_fit(int id, Obj b) {
+    if (id < 0 || id >= MPB_COUNT || id == MPB_SETTINGS || trow_base[id] < 30 || trow_lw[id] < 4 || trow_lh[id] < 4) return;
+    float need = txt_fit_h(AT(b, 0x130, Obj), trow_lw[id], trow_lh[id]);
+    float want = need > trow_lh[id] + 1 && need + 16 > trow_base[id] ? need + 16 : trow_base[id];
+    if (want == trow_cur[id]) return;
+    row_height(b, 262, want);
+    Obj bg = first_image(u_tr(b), 0);
+    if (bg && trow_bgh[id] > 1 && mm_is(u_tr(bg), K_RT)) { V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(bg), NULL); sd.y = trow_bgh[id] + want - trow_base[id]; F(0x5107110, void (*)(Obj, V2, void *))(u_tr(bg), sd, NULL); }
+    rig_log("mpmenu: text fit: title row %d grows to %.0f (label needs %.0f of %.0f)", id, want, need, trow_lh[id]);
+    trow_cur[id] = want;
+}
 static void title_build(Obj v) {
     Obj src = AT(v, 0x50, Obj), after = AT(v, 0x40, Obj);
     if (!u_alive(src) || !u_alive(after)) { rig_log("mpmenu: title buttons not found"); return; }
@@ -1035,6 +1072,7 @@ static void title_build(Obj v) {
             Obj sm = mk_txt(tpl_txt, u_tr(b), 0, 12, 513, 1, 0, -18, 238, 60, C_SUB);   /* up to 4 lines inside the box (owner lan_v8: it spilled) */
             u_gc_free(h_title_sum); h_title_sum = sm ? u_gc_new(sm) : 0;
         }
+        trow_note(id, b);
         u_set_sibling(u_tr(b), at + i);
         u_active(b, false);
         u_gc_free(h_tb[id]); h_tb[id] = u_gc_new(b);
@@ -1117,6 +1155,7 @@ static void title_sync(const mpm_obs *o) {
         u_active(b, on);
         if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
     }
+    for (int i = 0; i < NT; i++) { Obj b = tb(title_ids[i]); if (b && u_on(b)) trow_fit(title_ids[i], b); }   /* rows grow to a long label */
     if (M.state == MPM_TITLE_HOST) {                                        /* Rules box: closed = button + summary (mockup A), open = button (B) */
         int open = M.settings_open; Obj b = tb(MPB_SETTINGS), l = b ? AT(b, 0x130, Obj) : NULL;
         if (b) row_height(b, 262, open ? 52 : 104);

@@ -54,6 +54,7 @@ static Obj tmp_get(Obj t) {
 void txt_fit(Obj t, float size, int wrap);               /* mpmenu.c: a text too long for its rect auto-sizes (ext/i18n/CJK_FIT.md) */
 void txt_fit_text(Obj t, const char *s);
 void txt_fit_stock(Obj t);                                 /* the stock notice box text: auto size while ours is up */
+float txt_fit_w(Obj t, float w, float h);                  /* mpmenu.c: the width a one-line box needs (its text too long even at 0.75) */
 static void tmp_set(Obj t, const char *s) {
     if (!ui_is(t, K_TMP)) return;
     void *k = *(void **)t;
@@ -4823,6 +4824,10 @@ static void chips_frame(void) {
         else if (o == UI_RESERVED) { snprintf(t, sizeof t, "<color=#8a8088>%s</color>", pl_dot); w = 16; }
         else { snprintf(t, sizeof t, "<color=%s>%s</color>", ui_player_color(e >= 0 ? e : o), pl_dot); w = 16; }
         line_text(tx, t);
+        if (o == UI_UNCLAIMED && ui_is(tx, K_TMP)) {                  /* "Free" too long even at 0.75 (ru): the chip grows wider, inside the picture */
+            Obj pic = AT(pa, 0x140, Obj); float pw = u_alive(pic) ? u_rt_size(u_tr(pic)).x : 0, cap = pw > 24 ? pw - 4 : 64;
+            float need = txt_fit_w(tx, 30, 16) + 6; if (need > 31) w = need < cap ? need : cap;
+        }
         if (u_alive(bg)) u_rt_set_size(u_tr(bg), w, 16);
         if (ui_is(tx, K_TMP)) u_rt_set_size(u_tr(tx), w, 16);
     }
