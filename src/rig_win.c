@@ -1,6 +1,7 @@
 // Window hiding (used when the game runs WITH graphics). Every NSWindow is made invisible the moment
 // it is created: alpha 0, ignores the mouse, never key/main, excluded from window menus; the app never
-// activates. The window still exists on screen for the compositor, so Metal keeps presenting frames.
+// activates (activation policy Prohibited, see hold_policy). The window still exists on screen for the compositor, so
+// Metal keeps presenting frames.
 // Pure objc runtime calls (no Objective-C source).
 #include "rig.h"
 #include <objc/runtime.h>
@@ -8,6 +9,7 @@
 #include <CoreGraphics/CoreGraphics.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dlfcn.h>
 
 typedef id (*init4_t)(id, SEL, CGRect, unsigned long, unsigned long, BOOL);
 typedef id (*init5_t)(id, SEL, CGRect, unsigned long, unsigned long, BOOL, id);
@@ -41,6 +43,22 @@ static void swap(const char *cls, const char *sel, IMP imp, IMP *orig) {
     if (orig) *orig = o;
 }
 
+/* Activation policy Prohibited (2) = a background-only app: the window server never makes the copy the front app.
+   The copies were LSUIElement apps, which can still become the front app by paths the no-op activation methods
+   do not cover: the system choosing the next app when the front app quits or hides, a saved original activate IMP
+   (the loader's soft restart keeps one). Guard kills "copy frontmost" with several copies and CrossOver starting and
+   quitting, 2026-10-17. setActivationPolicy: is held at 2, so no later call (Unity, soft restart) lifts it; set
+   before finishLaunching, and again from rig_win_frame (batchmode copies, or a module loaded after launch). */
+static IMP o_policy, o_finish;
+static BOOL my_policy(id self, SEL s, long p) { (void)p; return ((BOOL (*)(id, SEL, long))o_policy)(self, s, 2); }
+static void hold_policy(id app) {
+    if (!app || !o_policy) return;
+    if (((long (*)(id, SEL))objc_msgSend)(app, sel_registerName("activationPolicy")) == 2) return;
+    BOOL ok = ((BOOL (*)(id, SEL, long))o_policy)(app, sel_registerName("setActivationPolicy:"), 2);
+    rig_log("win: activation policy Prohibited (%s)", ok ? "ok" : "REFUSED");
+}
+static void my_finish(id self, SEL s) { hold_policy(self); ((void (*)(id, SEL))o_finish)(self, s); }
+
 void rig_win_install(void) {
     swap("NSWindow", "initWithContentRect:styleMask:backing:defer:", (IMP)my_init4, (IMP*)&o_init4);
     swap("NSWindow", "initWithContentRect:styleMask:backing:defer:screen:", (IMP)my_init5, (IMP*)&o_init5);
@@ -53,6 +71,10 @@ void rig_win_install(void) {
     swap("NSApplication", "activateIgnoringOtherApps:", (IMP)noopb, NULL);
     swap("NSApplication", "activate", (IMP)noop0, NULL);
     swap("NSRunningApplication", "activateWithOptions:", (IMP)no0, NULL);
+    swap("NSApplication", "setActivationPolicy:", (IMP)my_policy, &o_policy);
+    swap("NSApplication", "finishLaunching", (IMP)my_finish, &o_finish);
+    id *nsapp = (id *)dlsym(RTLD_DEFAULT, "NSApp");                  /* AppKit already launched: set it now */
+    if (nsapp && *nsapp) hold_policy(*nsapp);
     rig_log("win: NSWindow/NSApplication hiding installed");
 }
 
@@ -60,6 +82,7 @@ void rig_win_install(void) {
 void rig_win_frame(void) {
     id app = ((id (*)(Class, SEL))objc_msgSend)(objc_getClass("NSApplication"), sel_registerName("sharedApplication"));
     if (!app) return;
+    hold_policy(app);
     id wins = ((id (*)(id, SEL))objc_msgSend)(app, sel_registerName("windows"));
     unsigned long n = ((unsigned long (*)(id, SEL))objc_msgSend)(wins, sel_registerName("count"));
     for (unsigned long i = 0; i < n; i++) {

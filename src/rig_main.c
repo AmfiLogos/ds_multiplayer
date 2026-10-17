@@ -158,7 +158,7 @@ __attribute__((constructor)) static void rig_init(void) {
             getenv("DSRIG_BATCH") ? "yes" : "no", getenv("DSRIG_HIDEWIN") ? "yes" : "no");
     unsetenv("DYLD_INSERT_LIBRARIES");          /* children (crash reporter etc.) do not inherit the rig */
     if (getenv("DSRIG_LIVE")) rig_log("DSRIG_LIVE: normal game (sound, frame rate, windows untouched)");
-    else if (getenv("DSRIG_HIDEWIN")) rig_win_install();
+    else if (getenv("DSRIG_HIDEWIN") || getenv("DSRIG_BATCH")) rig_win_install();   /* batchmode copies check in with AppKit too */
     else if (getenv("DSRIG_SPACE")) rig_win_space_install();
     _dyld_register_func_for_add_image(on_image);
 }

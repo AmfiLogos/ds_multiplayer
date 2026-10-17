@@ -156,7 +156,7 @@ void rig_frame(void *mainflow) {
     }
     if (!live) {
         F(0x5067948, void (*)(float, void *))(0.0f, NULL);   /* AudioListener.volume = 0, every frame (focus handler resets it) */
-        if (getenv("DSRIG_HIDEWIN") && f % 30 == 0) rig_win_frame();
+        if ((getenv("DSRIG_HIDEWIN") || getenv("DSRIG_BATCH")) && f % 30 == 0) rig_win_frame();
         if (getenv("DSRIG_SPACE") && f % 30 == 0) rig_win_space_frame();
         if (getenv("DSRIG_SHOWWIN") && f % 30 == 0) rig_win_place();
     }
