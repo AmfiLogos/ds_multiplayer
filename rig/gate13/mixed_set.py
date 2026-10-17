@@ -21,7 +21,7 @@ import lrig
 A = sys.argv
 arg = lambda k, d: A[A.index(k) + 1] if k in A else d
 HX, GX = arg('--host', 'U'), arg('--guest', 'W')
-LANE = 'gate13_mx'
+LANE = f'gate13_mx-{os.getpid()}'
 WT = M.WT
 OUT = os.path.join(WT, 'ext', 'gate13', 'out', 'mixed', 'mac_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
 SHIPPED = os.path.expanduser('~/ds_launcher/loader/build/mods_all/mac')

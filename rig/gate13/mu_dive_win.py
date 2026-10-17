@@ -23,7 +23,7 @@ import lrig
 
 A = sys.argv
 KIT = os.path.abspath(os.path.expanduser(A[A.index('--kit') + 1])) if '--kit' in A else os.path.expanduser('~/ds_launcher/loader/build/win/kit')
-WT = M.WT; LANE = 'gate13_mu'
+WT = M.WT; LANE = f'gate13_mu-{os.getpid()}'
 OUT = os.path.join(WT, 'ext', 'gate13', 'out', 'mudive', 'win_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
 TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')
 CM = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')   # Custom Modes' own repo (post-v13)
