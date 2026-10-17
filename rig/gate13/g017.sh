@@ -80,9 +80,10 @@ chk g017_w_pkg '([0-9]+)/\1 checks' $WT python3 $WH $H/w_pkg_gate.py $REL $OUT/g
 G=$HOME/ds_multiplayer/ext/merger13/tools/gate.sh
 chk g017_smoke 'smoke 3/3' $WT zsh $G $D gate13 smoke
 chk g017_mp2 ' 19 PASS, 0 FAIL, tb 0' $WT zsh $G $D gate13 mp2
-fullcheck() { local L=$OUT/g017_fastjoin_raw.log; (cd $WT/ext/latejoin && python3 fastjoin_pair.py --mode off --dylib $D --full-every 300) > $L 2>&1; local rc=$?; cat $L
+fullcheck() { local L=$OUT/g017_fastjoin_${1:-off}_raw.log; (cd $WT/ext/latejoin && python3 fastjoin_pair.py --mode ${1:-off} --dylib $D --full-every 300) > $L 2>&1; local rc=$?; cat $L
   command grep -qE 'PASS full-state checks ran, none failed ok [1-9][0-9]* fails 0' $L && command grep -q 'PASS no desync, no full / deep difference' $L && echo "FULLCHECK PASS" && return $rc; return 1; }
-chk g017_fullcheck 'FULLCHECK PASS' $WT fullcheck
+chk g017_fullcheck 'FULLCHECK PASS' $WT fullcheck off
+chk g017_fullcheck_on 'FULLCHECK PASS' $WT fullcheck on   # Fast join On is the default since 2164719
 pvpx() {   # PvP v1, Mac host + Windows guest W (C:\DSW, this tree's baselib.dll); every check incl. 6 (0 desyncs, 500+ ticks)
   local DSW="$HOME/Library/Application Support/CrossOver/Bottles/DSMP/drive_c/DSW" R=$HOME/ds_multiplayer/rig/rig.py LOCK=$HOME/ds_multiplayer/rig/wine.lock t=$(date +%Y%m%d-%H%M%S)
   (cd $WT/win && nice -n 19 zsh build_win.sh > $OUT/g017_build_win.log 2>&1) || { echo "win build failed"; return 1; }
