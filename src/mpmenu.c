@@ -684,6 +684,17 @@ static const int arrow_ids[] = { MPB_PAUSE_PREV, MPB_PAUSE_NEXT, MPB_SPEED_PREV,
 typedef struct { char key[128], world[64], how[8], addr[96], host[48], players[240], units[200], portraits[400]; long long day, when; uint64_t steamid; } hist_t;
 static hist_t hist[HIST_MAX]; static int nhist, hist_loaded;
 static uintptr_t h_title_cog, h_title_more, h_title_sum, h_title_box, h_title_pcog;
+/* host choice buttons: the small second line (mpm_choice_note) and the label's own place, to move it up over the line */
+static uintptr_t h_cnote[MPM_CHOICES]; static V2 cnote_ap0[MPM_CHOICES]; static float cnote_x[MPM_CHOICES];
+static mpm_choices hcl;                                                     /* (defined with the host choice code below) */
+/* owner 2026-10-17: the Multiplayer page always shows a PvP entry. Without a "pvp" choice (Custom Modes not installed, off
+   or refused) the first free choice slot shows it greyed, with "Needs Custom Modes" under it; the model gives an
+   unregistered slot no action, so a click does nothing. -1: PvP is registered (its own button) or no slot is free. */
+static int pvp_stub_slot(void) {
+    if (M.state != MPM_TITLE_MENU) return -1;
+    for (int k = 0; k < hcl.n; k++) if (!strcmp(hcl.c[k].id, "pvp")) return -1;
+    return hcl.n < MPM_CHOICES ? hcl.n : -1;
+}
 /* Recent worlds panel (mockup "Multiplayer page: recent worlds"): beside the column on the Multiplayer page */
 static uintptr_t h_rw_root, h_rw_l1[6], h_rw_l2[6], h_rw_ul[6], h_rw_u[6], h_rw_note, h_rw_band, h_rw_line, h_rw_title;
 static uintptr_t h_rw_pf[6][6], h_rw_pi[6][6], h_rw_pp[6][6], h_rw_pn[6][6];   /* + the unit's name beside its box */   /* "Your units": 30x30 frames (copper edge), initial, portrait image */
@@ -1048,10 +1059,13 @@ static void trow_note(int id, Obj b) {
 }
 /* each frame: a row whose label does not fit even at 0.75 grows to the label's height at its design size (+8 above and
    below); the column's layout moves the rows under it down. A label that fits (all English) keeps the stock row. */
-static void trow_fit(int id, Obj b) {
+/* note: a choice row's second line (CN_H high at its design size; more when it wraps at 0.75): a row that grows for its
+   label adds the line's height, a stock row only what the line needs beyond CN_H (the stock row holds label + line) */
+#define CN_H 16
+static void trow_fit(int id, Obj b, float note) {
     if (id < 0 || id >= MPB_COUNT || id == MPB_SETTINGS || trow_base[id] < 30 || trow_lw[id] < 4 || trow_lh[id] < 4) return;
     float need = txt_fit_h(AT(b, 0x130, Obj), trow_lw[id], trow_lh[id]);
-    float want = need > trow_lh[id] + 1 && need + 16 > trow_base[id] ? need + 16 : trow_base[id];
+    float want = need > trow_lh[id] + 1 && need + 16 > trow_base[id] ? need + 16 + note : trow_base[id] + (note > CN_H ? note - CN_H : 0);
     if (want == trow_cur[id]) return;
     row_height(b, 262, want);
     Obj bg = first_image(u_tr(b), 0);
@@ -1115,6 +1129,18 @@ static void title_build(Obj v) {
             u_gc_free(h_title_sum); h_title_sum = sm ? u_gc_new(sm) : 0;
         }
         trow_note(id, b);
+        { int k = mpm_choice_of_btn(id);                                    /* host choice: its small second line (hidden until it has one) */
+          if (k >= 0) {
+              Obj lr = u_tr(l);
+              cnote_ap0[k] = mm_is(lr, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(lr, NULL) : (V2){ 0, 0 };   /* anchoredPosition */
+              cnote_x[k] = (trow_lw[id] > 64 ? trow_lw[id] : 262) - 24;        /* the label's width (the row's 262) inside the frame */
+              /* the game's small text: the language's body font (LanguageSetting.GetFont EasyRead, plain material), 12, the
+                 secondary colour; one line, auto size down to 0.75 when too long (txt_style) */
+              Obj nt = mk_txt(tpl_txt, u_tr(b), 0, 12, 514, 0, 0, -14, cnote_x[k], CN_H, C_SUB);
+              if (nt) u_active(nt, false);
+              u_gc_free(h_cnote[k]); h_cnote[k] = nt ? u_gc_new(nt) : 0;
+              rig_log("mpmenu: choice %d note line: row %.0f, label %.0f x %.0f at (%.0f, %.0f)", k, trow_base[id], trow_lw[id], trow_lh[id], cnote_ap0[k].x, cnote_ap0[k].y);
+          } }
         u_set_sibling(u_tr(b), at + i);
         u_active(b, false);
         u_gc_free(h_tb[id]); h_tb[id] = u_gc_new(b);
@@ -1192,13 +1218,36 @@ static void title_sync(const mpm_obs *o) {
     uint64_t vis = mpm_visible(&M, o);
     int sub = vis & ~(1ull << MPB_MULTIPLAYER) ? 1 : 0;                        /* our own menu page: hide the stock buttons */
     if (sub != stock_hidden) { for (int off = 0x30; off <= 0x60; off += 8) u_active(AT(v, off, Obj), !sub); stock_hidden = sub; }
+    int ps = pvp_stub_slot(), psb = ps >= 0 ? mpm_choice_btn(ps) : MPB_NONE;   /* greyed PvP entry (no Custom Modes) */
     for (int i = 0; i < NT; i++) {
         Obj b = tb(title_ids[i]); if (!b) continue;
         int on = title_ids[i] < 64 ? (int)((vis >> title_ids[i]) & 1) : mpm_is_visible(&M, o, title_ids[i]);   /* Watch: id 68 */
+        if (title_ids[i] == psb) on = 1;
         u_active(b, on);
-        if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
+        if (on && title_ids[i] == psb) { char l[160]; snprintf(l, sizeof l, "<color=#A69085>%s</color>", TR("PvP")); tmp_set(AT(b, 0x130, Obj), l); }   /* greyed like Join a friend without Steam */
+        else if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
     }
-    for (int i = 0; i < NT; i++) { Obj b = tb(title_ids[i]); if (b && u_on(b)) trow_fit(title_ids[i], b); }   /* rows grow to a long label */
+    float cnh[MPM_CHOICES] = { 0 };                                         /* host choices: second line on, its height (0 = none) */
+    for (int k = 0; k < MPM_CHOICES; k++) {
+        Obj b = tb(mpm_choice_btn(k)), nt = u_gc_get(h_cnote[k]);
+        const char *n = !b || !u_on(b) ? NULL : k == ps ? TR("Needs Custom Modes") : k < hcl.n ? mpm_choice_note(hcl.c[k].id) : NULL;
+        if (!u_alive(nt)) continue;
+        u_active(nt, n != NULL);
+        if (!n) continue;
+        tmp_set(nt, n);
+        float h = txt_fit_h(nt, cnote_x[k], CN_H);                            /* CN_H, or more when it wraps even at 0.75 */
+        cnh[k] = h > CN_H ? h : CN_H;
+    }
+    for (int i = 0; i < NT; i++) { Obj b = tb(title_ids[i]); int k = mpm_choice_of_btn(title_ids[i]);   /* rows grow to a long label */
+                                   if (b && u_on(b)) trow_fit(title_ids[i], b, k >= 0 ? cnh[k] : 0); }
+    for (int k = 0; k < MPM_CHOICES; k++) {                                   /* label up by half the line, the line under it */
+        Obj b = tb(mpm_choice_btn(k)), l = b ? AT(b, 0x130, Obj) : NULL, nt = u_gc_get(h_cnote[k]);
+        if (!b || !u_on(b) || !mm_is(u_tr(l), K_RT)) continue;
+        int id = mpm_choice_btn(k);
+        float H = trow_cur[id] > 1 ? trow_cur[id] : trow_base[id], up = cnh[k] > 0 ? cnh[k] / 2 - 1 : 0;
+        F(0x5106F2C, void (*)(Obj, V2, void *))(u_tr(l), (V2){ cnote_ap0[k].x, cnote_ap0[k].y + up }, NULL);
+        if (cnh[k] > 0 && u_alive(nt)) place(nt, 0, -H / 2 + 6 + cnh[k] / 2, cnote_x[k], cnh[k]);
+    }
     if (M.state == MPM_TITLE_HOST) {                                        /* Rules box: closed = button + summary (mockup A), open = button (B) */
         int open = M.settings_open; Obj b = tb(MPB_SETTINGS), l = b ? AT(b, 0x130, Obj) : NULL;
         if (b) row_height(b, 262, open ? 52 : 104);
@@ -3017,6 +3066,7 @@ static void tips_frame(const mpm_obs *o) {
     TIP(tb(MPB_HOST_SAVE), TR("Your Save"), TR("Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer."));
     TIP(tb(MPB_HOST_NEW), TR("New Save"), TR("Start a new campaign and open it to other players as soon as it is created."));
     for (int k = 0; k < hcl.n; k++) TIP(tb(mpm_choice_btn(k)), hcl.c[k].label, hcl.c[k].tip);
+    { int ps = pvp_stub_slot(); if (ps >= 0) TIP(tb(mpm_choice_btn(ps)), TR("PvP"), TR("Teams of players fight each other. Install and turn on the Custom Modes mod to play it.")); }
     TIP(tb(MPB_HOST_START), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Prepares the world for this mode and opens the lobby. Friends join you there."));
     TIP(tb(MPB_JOIN_ADDR), TR("Join by Address"), TR("Join a friend's world with their address. Use it without Steam, or on the same home network."));
     TIP(tb(MPB_JOIN_FRIEND), TR("Join a Friend on Steam"), TR("Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."));

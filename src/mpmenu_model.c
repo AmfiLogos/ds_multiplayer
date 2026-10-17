@@ -156,6 +156,16 @@ static int ch_rules(const mpm_model *m, int k) { return m->nchoice && k >= 0 && 
 static int cur_v2(const mpm_model *m) { return m->choice > 0 && ch_v2(m, m->choice - 1); }
 int mpm_choice_btn(int k) { return k == 0 ? MPB_HOST_FE : k > 0 && k < MPM_CHOICES ? MPB_HOST_C1 + k - 1 : MPB_NONE; }
 int mpm_choice_of_btn(int b) { return b == MPB_HOST_FE ? 0 : b >= MPB_HOST_C1 && b <= MPB_HOST_C3 ? b - MPB_HOST_C1 + 1 : -1; }
+/* owner 2026-10-17: the Multiplayer page did not say where PvP and the game modes start. Under the buttons of the two
+   modes Custom Modes registers (ids of ds_custommodes cm_mp.c), one small line says what the button leads to: Foreign
+   Expedition = co-op in the neutral hub with the units each player brings (fe/fe_hub.c); PvP = the PvP v1 match, mode
+   Fight or Capture the Flag (pvp/pvp_ui.c). Another mod's choice: no line. */
+const char *mpm_choice_note(const char *id) {
+    if (!id) return NULL;
+    if (!strcmp(id, "foreign-expedition")) return TR("Co-op: your units in a shared hub");
+    if (!strcmp(id, "pvp")) return TR("Team battle or Capture the Flag");
+    return NULL;
+}
 int mpm_choice_register(mpm_choices *l, const char *id, const char *label, const char *tip, const mpm_choice *fn, int check_len) {
     if (!l || !id || !id[0] || !label || !label[0] || !fn) return -1;
     if (check_len && (strlen(id) > 31 || strlen(label) > 47 || (tip && strlen(tip) > 299))) return -1;

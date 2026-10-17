@@ -233,6 +233,7 @@ void mpm_choices_to_model(const mpm_choices *l, mpm_model *m);           /* ncho
 const char *mpm_choice_now(const mpm_choices *l, const mpm_model *m);    /* id of m->choice, "" none */
 int  mpm_choice_btn(int k);                                              /* button of choice k (0..3) */
 int  mpm_choice_of_btn(int button);                                      /* its choice index, -1 not a choice button */
+const char *mpm_choice_note(const char *id);                             /* the small second line under a choice's button, NULL none */
 void mpm_page_started(mpm_model *m, int rc, const char *err);            /* after page_start: 0 = wait for the load, else err on the page */
 
 /* Game words (i18n): a label that is a game term comes from the game's own text table in the game's language. The game side
