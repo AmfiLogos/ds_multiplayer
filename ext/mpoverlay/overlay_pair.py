@@ -130,7 +130,12 @@ def main():
         def panel_teams():   # task 2: the Players panel before / after the Teams window opens (both peers)
             for x, who in ((X, 'host'), (Y, 'guest')):
                 b = c(x, cmd='ui_view')
-                tm(x, action='open'); time.sleep(2.5)
+                tm(x, action='open'); time.sleep(0.3)
+                q = c(x, cmd='ui_view')     # panelfix: above the window and collapsed at once, not after the next 18-frame plist_frame
+                check(f'{TAG}: Teams open ({who}): panel above the window and collapsed within 0.3 s',
+                      q.get('top_order') == 32020 and q.get('settings', {}).get('list_open') == 0 and q.get('plate', {}).get('active') == 1,
+                      {k: q.get(k) for k in ('top_order', 'settings', 'plate', 'hide_why')})
+                time.sleep(2.2)
                 info = shot(x, f'{who}_teams_open')
                 a = info['view']
                 log(who, 'panel before', b.get('plate'), 'hide_why', b.get('hide_why'), '| after', a.get('plate'), 'hide_why', a.get('hide_why'), 'teams', info['teams'])
@@ -145,6 +150,10 @@ def main():
                 log(who, 'frames per second now', (f1 - f0) / 2.0)
                 time.sleep(4); shot(x, f'{who}_teams_open_8s')
                 tm(x, action='close'); time.sleep(1.5)
+                q = c(x, cmd='ui_view')
+                check(f'{TAG}: Teams closed ({who}): the panel view the player had comes back',
+                      q.get('settings', {}).get('list_open') == b.get('settings', {}).get('list_open') and q.get('top_order') == 5000,
+                      {k: q.get(k) for k in ('top_order', 'settings')})
         step('panel_teams', panel_teams)
 
         def hide_show():     # task 1: the Hide / Show control (new build only)

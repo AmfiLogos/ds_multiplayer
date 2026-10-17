@@ -139,9 +139,11 @@ static void settings_load(void) {
     char b[2048]; size_t n = fread(b, 1, sizeof b - 1, f); fclose(f); b[n] = 0;   /* lan_v10: colour choices make it longer */
     ui_settings_parse(b, &uiset);
 }
+static int teams_fold = -1;                                  /* panelfix: the player's list_open while Teams folds the panel, else -1 */
 static void settings_save(void) {
     char pth[1024], b[2048]; settings_path(pth, sizeof pth);
-    ui_settings_format(&uiset, b, sizeof b);
+    ui_settings c = uiset; if (teams_fold >= 0) c.list_open = teams_fold;   /* the fold for Teams is never saved */
+    ui_settings_format(&c, b, sizeof b);
     FILE *f = fopen(pth, "w"); if (f) { fputs(b, f); fclose(f); }
 }
 static int result_open, result_chooser, result_forced, result_close;   /* return-to-base screen (popup 3) */
@@ -2284,6 +2286,21 @@ static void top_layer_order(int teams_open) {
     F(0x547640C, void (*)(Obj, int, void *))(cv, want, NULL); top_order = want;
     rig_log("ui: top layer sorting order %d", want);
 }
+/* panelfix (owner 2026-10-17): every frame (cheap: one call into ui_teams), on the frame the Teams window opens the
+   panel goes above it and shows the collapsed view (the player can still expand it); when Teams closes, the view the
+   player had before comes back */
+static void teams_watch(void) {
+    static int (*teams_modal)(void); static unsigned tries; static int was;
+    if (!teams_modal && tries++ % 50 == 0) teams_modal = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_modal_open");
+    int open_ = teams_modal && teams_modal();
+    if (open_ == was) return;
+    was = open_; settings_load();
+    if (open_) { teams_fold = uiset.list_open; uiset.list_open = 0; }
+    else if (teams_fold >= 0) { uiset.list_open = teams_fold; teams_fold = -1; }
+    rig_log("ui: Teams %s, panel %s", open_ ? "open" : "closed", uiset.list_open ? "open" : "collapsed");
+    top_layer_order(open_);
+    plist_frame();
+}
 
 /* the cog's rows, in order (lan_v10: + co-op markers, outline, other players' colours; host rows last). arg = the
    player of a colour row, else -1. Returns the count. */
@@ -3040,7 +3057,7 @@ static char *ui_view_cmd(void) {
     bput(&b, ",\"status\":"); bstr(&b, status_text);
     bput(&b, ",\"left_prompt\":%d", left_prompt);
     { Obj pl = u_gc_get(h_plate); V2 ps = u_alive(pl) ? u_rt_size(u_tr(pl)) : (V2){ 0, 0 };
-      bput(&b, ",\"plate\":{\"active\":%d,\"w\":%.0f,\"h\":%.0f},\"hide_why\":%d,\"cog_icon\":%d", u_alive(pl) ? u_go_active_self(u_go(pl)) : -1, ps.x, ps.y, pl_hide_why, cog_has_icon); }
+      bput(&b, ",\"plate\":{\"active\":%d,\"w\":%.0f,\"h\":%.0f},\"hide_why\":%d,\"cog_icon\":%d,\"top_order\":%d", u_alive(pl) ? u_go_active_self(u_go(pl)) : -1, ps.x, ps.y, pl_hide_why, cog_has_icon, top_order); }
     { Obj rl = u_gc_get(h_result_line); str_utf8(u_alive(rl) && u_go_active_self(u_go(rl)) ? tmp_get(rl) : NULL, t, sizeof t);
       bput(&b, ",\"result_line\":"); bstr(&b, t); bput(&b, ",\"result_disabled\":%d", result_dis.n); }
     { Obj v = u_gc_get(h_sysmenu), sb = u_alive(v) ? AT(v, 0x50, Obj) : NULL, tt = u_alive(sb) ? AT(sb, 0x28, Obj) : NULL;
@@ -5365,6 +5382,7 @@ void ui_frame(void) {
     if (n % 60 == 30) guild_button_apply();                  /* also after loads that skip the view's refresh */
     teams_lookup();
     if (ui_teams_frame) ui_teams_frame();                    /* every frame: it reads mouse-down itself */
+    teams_watch();                                           /* panelfix: above Teams on the frame it opens */
     plist_mouse();
     tooltip_frame();
     strip_mouse();
