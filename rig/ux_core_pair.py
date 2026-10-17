@@ -65,7 +65,7 @@ def rig_log_since(x, pos):
 def main():
     out = os.path.join(rig.ROOT, 'build', 'core_test', 'ux_' + time.strftime('%Y%m%d-%H%M%S'))
     os.makedirs(out, exist_ok=True)
-    pair = rig.lease('core', os.getpid())
+    pair = rig.lease(f'core-{os.getpid()}', os.getpid())
     if not pair:
         raise SystemExit('no free pair')
     X, Y = pair[0], pair[1]

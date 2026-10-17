@@ -57,7 +57,7 @@ def snap(x):
 
 
 def main():
-    pair = rig.lease('mpglue'); assert pair, 'no free pair'
+    pair = rig.lease(f'mpglue-{os.getpid()}'); assert pair, 'no free pair'
     H, G = pair[0], pair[1]
     c = lambda x, **k: rig.send(x, k, timeout=120)
     st = lambda x: c(x, cmd='status')

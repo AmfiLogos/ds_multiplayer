@@ -14,7 +14,7 @@ def snap(x):
 
 
 def main():
-    pair = rig.lease('mpglue'); assert pair, 'no free pair'
+    pair = rig.lease(f'mpglue-{os.getpid()}'); assert pair, 'no free pair'
     H, G = pair[0], pair[1]
     print('pair', pair, flush=True)
     try:

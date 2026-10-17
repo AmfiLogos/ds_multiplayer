@@ -2,7 +2,7 @@
 """rig smoke on a given dylib with a leased pair (lane mpfix-ui): smoke_pinned.py <dylib> [lane]. Prints 'smoke N/3'."""
 import contextlib, io, os, sys
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig')); import rig
-rig.DYLIB = os.path.abspath(sys.argv[1]); lane = sys.argv[2] if len(sys.argv) > 2 else 'mpfix-ui'
+rig.DYLIB = os.path.abspath(sys.argv[1]); lane = (sys.argv[2] if len(sys.argv) > 2 else 'mpfix-ui') + f'-{os.getpid()}'
 import time
 pair = None
 for _ in range(80):                                  # max 4 pairs machine-wide: wait for one (40 min)

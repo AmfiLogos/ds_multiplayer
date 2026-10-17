@@ -29,7 +29,7 @@ DEATH = int(sys.argv[sys.argv.index('--death') + 1]) if '--death' in sys.argv el
 WEAK = '--weak' in sys.argv          # the guest's 2nd unit leaves home at 3 % health (test copy only): it should die
 RECRUIT = int(sys.argv[sys.argv.index('--recruit') + 1]) if '--recruit' in sys.argv else 0   # host rule Recruiting in the hub 0 Off / 1 On
 FEED = '--feed' in sys.argv          # test copies only: brought units leave home fed and rested (Hunger, Energy 1.0)
-LANE = 'fepvp'
+LANE = f'fepvp-{os.getpid()}'
 SI = dict(HealthHead=12, HealthBody=13, Energy=14, Hunger=15, Level=17, Exp=18)   # fe_stats index (StatType - 1)
 
 

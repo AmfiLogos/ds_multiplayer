@@ -24,7 +24,7 @@ def check(name, ok, info=''):
 def main():
     if '--dylib' in sys.argv:
         rig.DYLIB = os.path.abspath(sys.argv[sys.argv.index('--dylib') + 1]); log('dylib', rig.DYLIB)
-    pair = rig.lease('determinism-owner'); assert pair, 'no free pair'
+    pair = rig.lease(f'determinism-owner-{os.getpid()}'); assert pair, 'no free pair'
     H, G = pair[0], pair[1]
     c = lambda x, **k: rig.send(x, k, timeout=120)
     st = lambda x: c(x, cmd='status')

@@ -53,7 +53,7 @@ def trigger(y, text):
 def main():
     a = sys.argv
     rig.DYLIB = os.path.abspath(a[a.index('--dylib') + 1]) if '--dylib' in a else os.path.join(LANE, 'build', 'mac', 'dsrig.dylib')
-    pair = rig.lease('bepinex'); X, Y = pair[0], pair[1]; PORT = rig.PAIR_PORTS[pair]
+    pair = rig.lease(f'bepinex-{os.getpid()}'); X, Y = pair[0], pair[1]; PORT = rig.PAIR_PORTS[pair]
     MACBIE = '--mac-bie' in a
     if MACBIE:
         sys.path.insert(0, os.path.join(LANE, 'tools')); import mac_bie_host

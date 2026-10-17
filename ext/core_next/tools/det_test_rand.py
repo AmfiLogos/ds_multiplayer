@@ -10,10 +10,11 @@ import os, subprocess, sys
 H = os.path.expanduser('~/ds_multiplayer')
 sys.path.insert(0, os.path.join(H, 'rig'))
 import rig
+LANE = f'corenext_rand-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 
 rig.DYLIB = os.path.join(H, 'build/merge_corenext.dylib')
 os.environ['DSRIG_RANGES'] = os.path.join(H, 'ext/core_next/build/det_ranges.tsv')
-pair = rig.lease('corenext_rand', os.getpid())
+pair = rig.lease(LANE, os.getpid())
 if not pair:
     print('no pair leased (release.lock or 2 pairs in use)', flush=True); raise SystemExit(3)
 print('pair', pair, 'dylib', rig.DYLIB, 'ranges', os.environ['DSRIG_RANGES'], flush=True)
@@ -43,4 +44,4 @@ try:
 finally:
     for dst, mj in locals().get('moved', []):
         if not os.path.exists(mj): os.rename(dst, mj)
-    print('released', pair, rig.release(pair, 'corenext_rand'), flush=True)
+    print('released', pair, rig.release(pair, LANE), flush=True)

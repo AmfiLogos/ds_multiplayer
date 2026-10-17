@@ -24,7 +24,7 @@ def log(*a):
 
 def main():
     minutes = arg('--minutes', 15.0); save = arg('--save', SAVE)
-    pair = rig.lease('determinism-base')
+    pair = rig.lease(f'determinism-base-{os.getpid()}')
     assert pair, 'no free pair'
     H, C = pair[0], pair[1]
     log('pair', pair)

@@ -6,6 +6,7 @@ Writes ext/fepvp13/out/hub_smoke_<time>/ (log, the host's save of the hub)."""
 import json, os, shutil, sys, time
 W = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig')); import rig
+LANE = f'fepvp-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 A = sys.argv
 rig.DYLIB = os.path.abspath(A[A.index('--dylib') + 1]) if '--dylib' in A else os.path.join(W, 'build', 'dsrig.dylib')
 TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')   # test copy of the wiki file
@@ -25,7 +26,7 @@ def check(name, ok, info=''):
 def main():
     pair = None
     while not pair:
-        pair = rig.lease('fepvp', os.getpid())
+        pair = rig.lease(LANE, os.getpid())
         if not pair: log('no free pair, waiting'); time.sleep(30)
     H = pair[0]; log('pair', pair, 'dylib', rig.DYLIB)
     c = lambda **k: rig.send(H, k, timeout=180)
@@ -72,7 +73,7 @@ def main():
         if os.path.exists(p + '.last'): shutil.copy2(p + '.last', p)
         for f in ('player.log', 'rig.log'):
             if os.path.exists(os.path.join(rig.idir(H), f)): shutil.copy2(os.path.join(rig.idir(H), f), os.path.join(OUT, f'{H}_{f}'))
-        if '--keep' not in A: log('released', rig.release(pair, 'fepvp'))
+        if '--keep' not in A: log('released', rig.release(pair, LANE))
         n = sum(1 for _, ok in results if not ok)
         log(f'{len(results) - n}/{len(results)} PASS' + (f', {n} FAIL' if n else ''), '| out:', OUT, '| prefs', 'identical' if rig.check_prefs() else 'DIFFERENT')
 

@@ -15,6 +15,7 @@ import hashlib, json, os, sys, time
 ROOT = os.path.expanduser('~/ds_multiplayer')
 sys.path.insert(0, os.path.join(ROOT, 'rig'))
 import rig
+LANE = f'mptag-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 
 A = sys.argv
 rig.DYLIB = os.path.abspath(A[A.index('--dylib') + 1])
@@ -43,7 +44,7 @@ def tags(x):
 def main():
     pair = None
     for _ in range(240):
-        pair = rig.lease('mptag')
+        pair = rig.lease(LANE)
         if pair: break
         time.sleep(30)
     if not pair: log('FAIL not run: no free pair'); sys.exit(1)
@@ -78,7 +79,7 @@ def main():
 
     busy = [x for x in (H, P) if rig.read_pid(x) and rig.alive(rig.read_pid(x))]
     if busy:
-        log('copies already running outside this lease:', busy); rig.release(pair, 'mptag'); return
+        log('copies already running outside this lease:', busy); rig.release(pair, LANE); return
     stamp = time.strftime('%Y%m%d-%H%M%S')
     for x in (H, P):
         for f in ('mp.json', 'mp_tags.txt', 'mp_history.json'):
@@ -175,7 +176,7 @@ def main():
         for x in (H, P):
             try: rig.stop(x)
             except Exception as e: log('stop', x, e)
-        rig.release(pair, 'mptag')
+        rig.release(pair, LANE)
         json.dump(results, open(os.path.join(OUT, 'result.json'), 'w'), indent=1)
         n = sum(1 for k, v in results.items() if k != 'error' and v)
         log(f'RESULT {n}/{len([k for k in results if k != "error"])} pass', 'ERROR' if 'error' in results else '')

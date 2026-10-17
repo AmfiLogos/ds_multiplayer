@@ -41,7 +41,7 @@ def check(name, ok, info=''):
 
 def main():
     while True:                                               # lead 2026-10-13: AB / CD / EF only; wait for one
-        pair = rig.lease('mpui')
+        pair = rig.lease(f'mpui-{os.getpid()}')
         if pair in ('AB', 'CD', 'EF') and not any(rig.alive(rig.read_pid(i)) for i in pair):
             break
         if pair: rig.release(pair)

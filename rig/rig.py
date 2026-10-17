@@ -4,11 +4,11 @@
   rig.py start A|B|both [--window] [--fps N]   start hidden copies (default: -batchmode, no window, 30 fps)
   rig.py stop  A|B|both               quit (socket), then kill by PID if still alive
   rig.py cmd   A|B '<json>'           send one command, print the answer
-  rig.py status                       pid / alive / socket per instance
+  rig.py status                       pid / alive / socket per instance, then per pair: lease holder + every process in its folders
   rig.py check-prefs                  owner's prefs plist + UserSetting.json byte-identical to the backup?
   rig.py smoke                        full smoke test (A alone, then A and B at once)
-  rig.py lease <lane> [--pid N]       take a free pair (AB, CD, EF, GH or IJ); prints the pair name
-  rig.py release <pair> [lane]        give a pair back (with lane: only if that lane holds it)
+  rig.py lease <lane> [--pid N]       take a free pair (no lease AND no process in its folders); holder = N (default: the caller)
+  rig.py release <pair> [lane]        stop the pair's copies, give it back (only its lane, or without lane its holder process)
   rig.py leases                       list leases
 Instances A..J; "both" = A+B, a pair name (AB..IJ) = its two copies. Max 5 pairs at once.
   rig.py port <pair>                  host TCP port of the pair (AB 7791, CD 7811, EF 7831, GH 7851, IJ 7871)
@@ -478,8 +478,9 @@ def smoke(pair=None):
 # ------------------------------------------------------------------ pair leases
 PAIRS = ['AB', 'CD', 'EF', 'GH', 'IJ']
 PAIR_PORTS = {'AB': 7791, 'CD': 7811, 'EF': 7831, 'GH': 7851, 'IJ': 7871}   # host TCP port per pair (net tests)
-LEASES = os.path.join(ROOT, 'rig', 'leases.json')
-LEASE_LOCK = os.path.join(ROOT, 'rig', 'leases.lock')
+LDIR = os.environ.get('DSRIG_LEASE_DIR') or os.path.join(ROOT, 'rig')    # tests: a temp folder (never the real leases)
+LEASES = os.path.join(LDIR, 'leases.json')
+LEASE_LOCK = os.path.join(LDIR, 'leases.lock')
 STALE_S = 2 * 3600
 
 
@@ -509,15 +510,21 @@ def _free_stale(d):
     now = time.time()
     for pair, l in list(d.items()):
         used = max(l.get('used', 0), *[_inst_used(x) for x in pair])
-        # 2026-10-15: a dead lease pid alone no longer frees a pair while one of its copies runs or within
-        # 10 min of the lease (lanes passed short-lived waiter pids; the pair was then given twice: 06:51, 09:06)
-        copies_up = any(alive(read_pid(x)) for x in pair)
-        dead_pid = l.get('pid') and not _pid_alive(l['pid']) and not copies_up and now - l.get('since', 0) > 600
-        if dead_pid or now - used > STALE_S:
+        # 2026-10-17: a lease whose holder process died is reclaimed only after its copies are killed (they
+        # kept running and corrupted the next lane's runs); 10 min grace after the lease for slow starters
+        if l.get('pid') and not _pid_alive(l['pid']) and now - l.get('since', 0) > 600:
+            if _kill_copies(pair, f'holder {l["lane"]} pid {l["pid"]} dead'):
+                _free_log(f'{pair} {l["lane"]} pid={l["pid"]}: holder dead; copies stopped; freed')
+                print(f'freed lease {pair} of {l["lane"]} (holder pid {l["pid"]} dead, its copies stopped)', file=sys.stderr)
+                del d[pair]
+            else:
+                _free_log(f'{pair} {l["lane"]} pid={l["pid"]}: holder dead; KEPT, processes survived SIGKILL')
+            continue
+        if now - used > STALE_S:
             # 2026-10-16: never free a pair while any process runs from its instances/<X>/ folder (a copy started
             # without a pid file, its guard, a test's helper); every auto-free is logged in rig/lease_free.log
             procs = [q for x in pair for q in _procs_in(x)]
-            why = 'lease pid dead' if dead_pid else f'unused {int(now - used)} s'
+            why = f'unused {int(now - used)} s'
             _free_log(f'{pair} {l["lane"]} pid={l.get("pid")}: {why}; ' + (f'KEPT, processes in its folders: {procs[:6]}' if procs else 'freed'))
             if procs:
                 continue
@@ -525,15 +532,71 @@ def _free_stale(d):
             del d[pair]
 
 
-def _procs_in(x):
-    """pids of every process whose command line runs from instances/<x>/ (pgrep -f on the folder path)"""
-    out = subprocess.run(['pgrep', '-f', idir(x) + '/'], capture_output=True, text=True).stdout
-    return [int(q) for q in out.split() if int(q) != os.getpid()]
+def _ancestors():
+    out, p = {os.getpid()}, os.getpid()
+    while p > 1:
+        r = subprocess.run(['ps', '-o', 'ppid=', '-p', str(p)], capture_output=True, text=True).stdout.strip()
+        if not r.isdigit():
+            break
+        p = int(r); out.add(p)
+    return out
+
+
+def _procs_all():
+    """{copy: pids} of every process running from instances/<x>/: its command line (pgrep -f) or any open file,
+    cwd or executable in that folder (lsof; instances/ is a link, both spellings count). This process and its
+    parents never count. 2026-10-17: lease files alone gave pairs whose copies still ran (AB twice in one night)."""
+    roots = sorted({INST, os.path.realpath(INST)}, key=len, reverse=True)
+    res = {x: set() for x in 'ABCDEFGHIJ'}
+    for x in res:
+        for r in roots:
+            out = subprocess.run(['pgrep', '-f', os.path.join(r, x) + '/'], capture_output=True, text=True).stdout
+            res[x].update(int(q) for q in out.split())
+    lo = subprocess.run(['lsof', '-nP', '-w', '-Fpn'], capture_output=True, text=True).stdout
+    pid = None
+    for l in lo.split('\n'):
+        if l.startswith('p'):
+            pid = int(l[1:])
+        elif l.startswith('n') and pid is not None:
+            for r in roots:
+                if l.startswith('n' + r + '/'):
+                    x = l[len(r) + 2:].split('/', 1)[0]
+                    if x in res:
+                        res[x].add(pid)
+                    break
+    me = _ancestors()
+    return {x: sorted(v - me) for x, v in res.items()}
+
+
+def _procs_in(x, allp=None):
+    """pids of every process running from instances/<x>/ (see _procs_all)"""
+    return (allp or _procs_all())[x]
+
+
+def _kill_copies(pair, why):
+    """stop the pair's copies (quit, then SIGKILL) and every other process in their folders; True = none left"""
+    for x in pair:
+        if alive(read_pid(x)):
+            try: stop(x)
+            except Exception as e: print(f'{x}: stop failed ({e})', file=sys.stderr)
+    for sig, pause in ((signal.SIGTERM, 5), (signal.SIGKILL, 2)):
+        allp = _procs_all(); left = [q for x in pair for q in allp[x]]
+        if not left:
+            break
+        _free_log(f'{pair}: {why}: {"TERM" if sig == signal.SIGTERM else "KILL"} {left[:8]}')
+        for q in left:
+            try: os.kill(q, sig)
+            except OSError: pass
+        t = time.time() + pause
+        while time.time() < t and any(_pid_alive(q) for q in left):
+            time.sleep(0.2)
+    allp = _procs_all()
+    return not any(allp[x] for x in pair)
 
 
 def _free_log(msg):
     try:
-        with open(os.path.join(ROOT, 'rig', 'lease_free.log'), 'a') as f:
+        with open(os.path.join(LDIR, 'lease_free.log'), 'a') as f:
             f.write(time.strftime('%Y-%m-%d %H:%M:%S ') + msg + '\n')
     except OSError:
         pass
@@ -548,15 +611,27 @@ def _inst_used(x):
 
 
 def lease(lane, pid=None):
+    pid = pid or os.getpid()                              # 2026-10-17: the holder is always recorded (default: the caller)
     def take(d):
         _free_stale(d)
-        for pair, l in d.items():
-            if l['lane'] == lane:
-                l['used'] = time.time(); return pair      # a lane gets its own pair back
-        if os.path.exists(os.path.join(ROOT, 'rig', 'release.lock')) and os.environ.get('DSRIG_RELEASE') != '1':
+        # a lane gets its own pair back only for the SAME holder (its pid, or a parent of the caller). 2026-10-17:
+        # two runs of one lane name (pvp_v1_pair.py "fepvp", merger13 + netlimits) shared AB at the same time
+        me = _ancestors() | {pid}
+        for pair, l in list(d.items()):
+            if l['lane'] != lane:
+                continue
+            if l.get('pid') in me:
+                l['used'] = time.time(); return pair
+            if l.get('pid') and not _pid_alive(l['pid']):     # same lane, holder gone: stop its copies, then hand over
+                if not _kill_copies(pair, f'holder {lane} pid {l["pid"]} dead, new holder pid {pid}'):
+                    continue
+                _free_log(f'{pair} {lane} pid={l["pid"]}: holder dead; copies stopped; given to pid {pid}')
+                d[pair] = {'lane': lane, 'pid': pid, 'since': time.time(), 'used': time.time()}
+                return pair
+        if os.path.exists(os.path.join(LDIR, 'release.lock')) and os.environ.get('DSRIG_RELEASE') != '1':
             print(f'lease refused for {lane}: release gate running (rig/release.lock)', file=sys.stderr)
             return None                                   # the release gate owns every pair while it runs
-        rsv = os.path.join(ROOT, 'rig', 'reserve.lock')     # 2026-10-15: a lane that needs both slots writes its lane prefix here
+        rsv = os.path.join(LDIR, 'reserve.lock')     # 2026-10-15: a lane that needs both slots writes its lane prefix here
         if os.path.exists(rsv):
             who = open(rsv).read().strip()
             if who and not any(lane.startswith(w.strip()) for w in who.split(',') if w.strip()) and time.time() - os.path.getmtime(rsv) < 3600:
@@ -565,10 +640,16 @@ def lease(lane, pid=None):
         limit = int(os.environ.get('DSRIG_MAX_PAIRS', '4'))     # owner limit 4 (restored 2026-10-15 after the night run)
         if len(d) >= limit:
             return None
+        allp = _procs_all()
         for pair in PAIRS:
-            if pair not in d:
-                d[pair] = {'lane': lane, 'pid': pid, 'since': time.time(), 'used': time.time()}
-                return pair
+            if pair in d:
+                continue
+            busy = [q for x in pair for q in allp[x]]
+            if busy:                                      # no lease, but copies or helpers still run there: not free
+                print(f'{pair} skipped: no lease but processes run in its folders: {busy[:6]}', file=sys.stderr)
+                continue
+            d[pair] = {'lane': lane, 'pid': pid, 'since': time.time(), 'used': time.time()}
+            return pair
         return None
     return _with_leases(take)
 
@@ -582,8 +663,13 @@ def release(pair, lane=None):
         if lane and l['lane'] != lane:
             print(f'release refused: {pair} is held by {l["lane"]}, not {lane}', file=sys.stderr)
             return False
-        if not lane:
-            print(f'warning: release {pair} without a lane name (holder {l["lane"]}); use: rig.py release {pair} <lane>', file=sys.stderr)
+        # 2026-10-17: without a lane name only the holder process (or one of its children) may release
+        if not lane and l.get('pid') and l['pid'] not in _ancestors() and _pid_alive(l['pid']):
+            print(f'release refused: {pair} is held by {l["lane"]} pid {l["pid"]}; use: rig.py release {pair} <lane>', file=sys.stderr)
+            return False
+        if not _kill_copies(pair, f'release by {lane or l["lane"]}'):
+            print(f'release refused: processes in {pair} survived SIGKILL', file=sys.stderr)
+            return False
         del d[pair]
         return True
     return _with_leases(r)
@@ -619,6 +705,14 @@ def main():
         for x in 'ABCDEFGHIJ':
             pid = read_pid(x)
             print(x, pid, 'alive' if alive(pid) else 'dead', 'sock' if os.path.exists(sockpath(x)) else '')
+        d = _with_leases(lambda d: dict(d)); allp = _procs_all()
+        for pair in PAIRS:
+            l = d.get(pair)
+            who = f"{l['lane']} pid={l.get('pid')} ({'alive' if _pid_alive(l.get('pid')) else 'DEAD'})" if l else 'no lease'
+            ps = [q for x in pair for q in allp[x]]
+            desc = subprocess.run(['ps', '-o', 'pid=,etime=,comm=', '-p', ','.join(map(str, ps))], capture_output=True, text=True).stdout if ps else ''
+            print(f'{pair}: {who}; processes: ' + ('; '.join(' '.join(z.split())[:90] for z in desc.strip().split('\n')) if ps else 'none')
+                  + ('   <- NOT FREE without a lease' if ps and not l else ''))
     elif a[0] == 'check-prefs':
         print('identical' if check_prefs() else 'DIFFERENT')
     elif a[0] == 'smoke':
@@ -626,7 +720,7 @@ def main():
     elif a[0] == 'port':
         print(PAIR_PORTS[a[1]])
     elif a[0] == 'lease':
-        pid = int(a[a.index('--pid') + 1]) if '--pid' in a else None
+        pid = int(a[a.index('--pid') + 1]) if '--pid' in a else os.getppid()   # the caller holds it
         p = lease(a[1], pid)
         if not p:
             print('no free pair', file=sys.stderr); sys.exit(1)

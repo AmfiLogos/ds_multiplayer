@@ -33,7 +33,7 @@ pvpx() {
   [[ -f $WT/win/build/baselib.dll ]] || (cd $WT/win && nice -n 19 zsh build_win.sh > $OUT/g11_build_win.log 2>&1) || return 1
   mkdir -p "$DSW/old_gate13"; for f in baselib.dll det_ranges_win.tsv; do mv "$DSW/$f" "$DSW/old_gate13/$f.$t"; cp $WT/win/build/$f "$DSW/$f"; done
   python3 $HOME/ds_multiplayer/rig/wine_lease.py take gate13 --pid $$ || { echo "wine busy / locked"; return 1; }
-  local P=$(python3 $R lease gate13 --pid $$ | tail -1) rc=1
+  local P=$(python3 $R lease gate13-$$ --pid $$ | tail -1) rc=1
   if [[ $P == [A-J][A-J] ]]; then
     local XL=$OUT/g11_pvp_xplay_raw.log
     (cd $HOME/ds_multiplayer/win && python3 xplay_run.py $P $WT/ext/fepvp13/tests/pvp_v1_pair.py --math --dylib $D --tag gate13_xv1) > $XL 2>&1
@@ -41,7 +41,7 @@ pvpx() {
     # verdict = PLAN_V13 G11 checks 1, 4, 7 (the other checks are logged; xplay_run's release() stub raises a TypeError at
     # the very end of pvp_v1_pair, after its results: not a check)
     command grep -q 'PASS 1 ' $XL && command grep -q 'PASS 4 ' $XL && command grep -q 'PASS 7 ' $XL && { echo "XPV PASS checks 1 4 7"; rc=0; } || echo "XPV FAIL"
-    python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P gate13 >/dev/null
+    python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P gate13-$$ >/dev/null
   fi
   python3 $HOME/ds_multiplayer/rig/wine_lease.py release gate13 >/dev/null; return $rc
 }

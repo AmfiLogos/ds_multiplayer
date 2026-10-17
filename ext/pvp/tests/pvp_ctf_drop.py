@@ -20,6 +20,7 @@ import json, os, shutil, sys, time
 ROOT = os.path.expanduser('~/ds_multiplayer')
 sys.path.insert(0, os.path.join(ROOT, 'rig'))
 import rig
+LANE = f'pvp-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 sys.path.insert(0, os.path.join(ROOT, 'research', 'ux_shots'))
 import ux                                     # hidden window at a real resolution; frames from the back buffer
 
@@ -66,7 +67,7 @@ def wait(what, pred, timeout=900, every=2):
 
 def lease():
     for i in range(480):
-        p = rig.lease('pvp', os.getpid())
+        p = rig.lease(LANE, os.getpid())
         if p:
             return p
         if i % 10 == 0:
@@ -231,7 +232,7 @@ def main():
         if '--keep' not in A:
             for x in (H, G):
                 rig.stop(x)
-            rig.release(pair, 'pvp')   # rule 10: only our own lease
+            rig.release(pair, LANE)   # rule 10: only our own lease
             log('stopped + released', pair, 'prefs', 'identical' if rig.check_prefs() else 'DIFFERENT')
     log('RESULT', 'PASS' if results and all(results.values()) else 'FAIL', json.dumps(results))
 

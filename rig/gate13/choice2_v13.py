@@ -21,7 +21,7 @@ import rig
 A = sys.argv
 arg = lambda k, d=None: A[A.index(k) + 1] if k in A else d
 rig.DYLIB = os.path.abspath(arg('--dylib', os.path.join(ROOT, 'build', 'dsrig.dylib')))
-LANE = arg('--lane', 'mpfix-ui')
+LANE = f"{arg('--lane', 'mpfix-ui')}-{os.getpid()}"
 TAG = time.strftime('choice2_%H%M%S')
 OUT = os.path.join(os.path.expanduser('~/ds_mp_gate13/ext/mpfix'), 'out', TAG); os.makedirs(OUT, exist_ok=True)
 LOG = open(os.path.join(OUT, 'test.log'), 'a')

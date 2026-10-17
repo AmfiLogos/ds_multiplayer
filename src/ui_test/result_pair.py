@@ -132,7 +132,7 @@ def main():
     """Return-to-base screen (popup 3), owner rule 2026-10-12: B's unit uses the exit portal -> B picks,
     A sees it read-only and paused, B's Return travels as one order, both land on base, fingerprints equal."""
     rig.DYLIB = arg('--dylib', rig.DYLIB)
-    pair = rig.lease('mpui', os.getpid())
+    pair = rig.lease(f'mpui-{os.getpid()}', os.getpid())
     if not pair:
         raise SystemExit('no free pair')
     X, Y = pair[0], pair[1]

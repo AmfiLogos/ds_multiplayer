@@ -5,6 +5,7 @@ import json, os, sys, time
 
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig
+LANE = f'uifix11-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 
 rig.DYLIB = os.path.abspath(sys.argv[1])
 B = json.load(open(os.path.expanduser('~/ds_multiplayer/ext/foreign_expedition/tests/mpm_ids.json')))
@@ -13,7 +14,7 @@ c = lambda x, **k: rig.send(x, k, timeout=180)
 press = lambda x, n: (c(x, cmd='mpm_press', button=B[n]), time.sleep(1.2))[0]
 shot = lambda x, n: c(x, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, n))
 
-pair = rig.lease('uifix11', os.getpid())
+pair = rig.lease(LANE, os.getpid())
 if not pair: sys.exit('no free pair')
 H, G = pair[0], pair[1]
 try:
@@ -33,5 +34,5 @@ try:
     press(G, 'NEW_CAMPAIGN'); time.sleep(2); shot(G, 'host_new_screen.png'); print('after Host a new campaign:', c(G, cmd='mpm_status').get('state'))
 finally:
     for x in (H, G): rig.stop(x)
-    rig.release(pair, 'uifix11')
+    rig.release(pair, LANE)
 print('frames', OUT)

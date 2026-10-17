@@ -128,7 +128,7 @@ def fp_equal_from(x, y, t_from):
 def main():
     save = arg('--save', os.path.join(rig.SEED_DATA, 'Saves', 'MoonlightBrigade__AutoSave_41e9c1bb8790492cbdc10f4dcad22179_0.json'))  # CurrentMap 0 = base
     rig.DYLIB = arg('--dylib', os.path.expanduser('~/ds_multiplayer/build/teams_test/dsrig_teams.dylib'))
-    pair = rig.lease('teams', os.getpid())
+    pair = rig.lease(f'teams-{os.getpid()}', os.getpid())
     if not pair:
         raise SystemExit('no free pair')
     X, Y = pair[0], pair[1]

@@ -30,13 +30,13 @@ pvpx() {   # PvP v1, Mac host + Windows guest W (C:\DSW, this tree's baselib.dll
   git -C $WT checkout -q win/win_map.tsv     # build_win.sh regenerates it (test tree stays clean for later tests)
   mkdir -p "$DSW/old_gate13"; for f in baselib.dll det_ranges_win.tsv; do mv "$DSW/$f" "$DSW/old_gate13/$f.$t"; cp $WT/win/build/$f "$DSW/$f"; done
   python3 $HOME/ds_multiplayer/rig/wine_lease.py take gate13 --pid $$ || { echo "wine busy / locked"; return 1; }
-  local P=$(python3 $R lease gate13 --pid $$ | tail -1) rc=1 XL=$OUT/g132_pvp_raw.log
+  local P=$(python3 $R lease gate13-$$ --pid $$ | tail -1) rc=1 XL=$OUT/g132_pvp_raw.log
   if [[ $P == [A-J][A-J] ]]; then
     (cd $HOME/ds_multiplayer/win && python3 xplay_run.py $P $WT/ext/fepvp13/tests/pvp_v1_pair.py --math --dylib $D --tag gate132_xv1) > $XL 2>&1
     command grep -E '(PASS|FAIL) [0-9]' $XL; echo "raw log (xplay_run's release() stub raises at the end): $XL"
     local f=$(command grep -cE '^[0-9:]+ FAIL [0-9]' $XL) p=$(command grep -cE '^[0-9:]+ PASS [0-9]' $XL)
     (( f == 0 && p >= 10 )) && { echo "XPV PASS all $p checks"; rc=0; } || echo "XPV FAIL $f failed"
-    python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P gate13 >/dev/null
+    python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P gate13-$$ >/dev/null
   fi
   python3 $HOME/ds_multiplayer/rig/wine_lease.py release gate13 >/dev/null; return $rc
 }

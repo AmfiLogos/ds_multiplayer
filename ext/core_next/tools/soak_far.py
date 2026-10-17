@@ -81,7 +81,7 @@ def main():
     minutes = arg('--minutes', 60.0)
     out = os.path.join(rig.ROOT, 'build', 'core_test', 'soak_' + time.strftime('%Y%m%d-%H%M%S'))
     os.makedirs(out, exist_ok=True)
-    pair = rig.lease('core', os.getpid())
+    pair = rig.lease(f'core-{os.getpid()}', os.getpid())
     if not pair:
         raise SystemExit('no free pair')
     lease0 = rig._with_leases(lambda d: dict(d.get(pair) or {}))   # under xplay_run the outer process holds it
