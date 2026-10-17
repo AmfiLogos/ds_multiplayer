@@ -10,11 +10,11 @@ brg() {
   mkdir -p "$BRG/old_gate13"; local t=$(date +%Y%m%d-%H%M%S)
   for f in baselib.dll det_ranges_win.tsv; do mv "$BRG/$f" "$BRG/old_gate13/$f.$t"; cp $WT/win/build/$f "$BRG/$f"; done
   python3 $HOME/ds_multiplayer/rig/wine_lease.py take gate13 --pid $$ || { echo "wine busy / locked"; return 1; }
-  local P=$(python3 $R lease gate13 --pid $$ | tail -1) rc=1
+  local P=$(python3 $R lease gate13-$$ --pid $$ | tail -1) rc=1
   if [[ $P == [A-J][A-J] ]]; then
     (cd $HOME/ds_multiplayer/ext/bepinex_bridge && python3 tools/brg_wrig.py xplay $P tests/bridge_xplay.py --dylib $D); rc=$?
     python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/ext/bepinex_bridge && python3 tools/brg_wrig.py stop) >/dev/null 2>&1
-    python3 $R release $P gate13 >/dev/null
+    python3 $R release $P gate13-$$ >/dev/null
   fi
   python3 $HOME/ds_multiplayer/rig/wine_lease.py release gate13 >/dev/null
   return $rc
