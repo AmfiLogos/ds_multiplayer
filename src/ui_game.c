@@ -2157,6 +2157,7 @@ static int pl_written[PL_N];                                 /* row text set by 
 static void chat_get(int *fade, int *join, int *en); static void chat_step(int row, int dir);
 static float pl_y0;
 static int pl_anchor_bar, pl_pop;                            /* pl_pop: the cog is pressed (settings rows shown) */
+static int pl_dragging;
 static float pl_cur_L, pl_cur_Y; static int pl_shown, pl_hide_why, cog_has_icon;       /* where the panel is now (lan_v8 drag) */
 static int row_player[19];                                   /* player of each row (connection tooltip; PL_MAXROWS + 1) */
 static int row_lvl[19];                                      /* its connection level (ui_conn_level; -2 = left, -3 = "Watching" divider) */
@@ -2180,6 +2181,7 @@ static float bar_bottom_y(Obj root) {                       /* y just under the 
 #define PL_LEFT  (PL_X - PL_WIDTH / 2 - 12)                  /* frame's left edge (canvas units from the top centre) */
 #define PL_W     300.0f
 #define PL_PAD   10.0f
+#define PL_DOCK_GAP 12.0f                                    /* panel to the screen edge while the Teams window is up */
 #define PL_HDR_H 34.0f
 #define PL_ROW_H 32.0f
 #define PL_SET_H 28.0f
@@ -2574,6 +2576,12 @@ static void plist_frame(void) {
     }
     /* lan_v8: the player may drag the panel; its place is saved in mp_ui.json (pos_*), else the default place */
     float L = uiset.pos_set ? (float)uiset.pos_x : PL_LEFT, Y0 = uiset.pos_set ? (float)uiset.pos_y : pl_y0;
+    /* i18n game test: while the Teams window is up the panel (drawn above it, owner 2026-10-15) covered its "Your units"
+       row. Like the game's own panels, the two now sit side by side: the panel goes to the screen's left edge (its height
+       stays) and Teams moves its window right of the panel and the Teams button (ui_teams win_place). Back on close. */
+    { static int (*tw)(void); static unsigned tw_tries; Obj top = layer_top();
+      if (!tw && tw_tries++ % 50 == 0) tw = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_window_shown");
+      if (tw && tw() && top && !pl_dragging) { float x0, y0; scr_to_layer(top, 0, 0, &x0, &y0); L = x0 + PL_DOCK_GAP; } }
     pl_cur_L = L; pl_cur_Y = Y0; pl_shown = 1;
     { Obj g = layer_of_panel(); float k = uiset.compact ? 0.75f : 1.0f; if (g) u_rt_set_pos(g, (1 - k) * L, (1 - k) * Y0); }
     float x = L + PL_PAD, inner = PL_W - 2 * PL_PAD, y = Y0 - 2;
@@ -2767,7 +2775,7 @@ int ui_panel_anchor(float *x, float *y, float *w, float *h) {   /* the header AS
     return pl_shown;
 }
 int ui_tooltips_enabled(void) { settings_load(); return uiset.tooltips; }   /* ui_tip.c (dlsym): "Show tooltips on hover" */
-static int pl_drag_arm, pl_dragging; static float pl_drag_mx, pl_drag_my, pl_drag_L, pl_drag_Y;
+static int pl_drag_arm; static float pl_drag_mx, pl_drag_my, pl_drag_L, pl_drag_Y;
 static void plist_mouse(void) {
     Obj hdr = u_gc_get(h_pl[PL_HDR]);
     if (!u_alive(hdr) || !u_go_active_self(u_go(hdr))) { pl_drag_arm = pl_dragging = 0; return; }
@@ -3968,6 +3976,13 @@ static int scr_rect(Obj tr, SR *r) {
     V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(tr, (V3){ q.x, q.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(tr, (V3){ q.x + q.w, q.y + q.h, 0 }, NULL);   /* Transform.TransformPoint */
     r->x0 = a.x < b.x ? a.x : b.x; r->x1 = a.x < b.x ? b.x : a.x; r->y0 = a.y < b.y ? a.y : b.y; r->y1 = a.y < b.y ? b.y : a.y;
     return r->x1 - r->x0 > 1 && r->y1 - r->y0 > 1;
+}
+/* the Players panel's frame as drawn, screen pixels (x0 left, x1 right); 0 = not shown. For ui_teams (dlsym): the Teams
+   window keeps right of it (win_place). */
+int ui_panel_px(float *x0, float *x1) {
+    SR r; Obj fr = u_gc_get(h_plate);
+    if (!pl_shown || !u_alive(fr) || !scr_rect(u_tr(fr), &r)) return 0;
+    *x0 = r.x0; *x1 = r.x1; return 1;
 }
 static int edge_blocked(void) {                             /* a stock window (or ours) is open: no edge marks */
     Obj pc = u_gc_get(h_popups), csv = u_gc_get(h_status_ui), ckv = u_gc_get(h_skill_ui);
