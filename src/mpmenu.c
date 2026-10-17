@@ -693,6 +693,17 @@ static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *
       }
       rig_log("mpmenu: field frame %s", u_alive(fim) && u_alive(spr) ? "= menu button frame (no magnifier)" : "unchanged (no image / sprite)"); }
     row_height(f, 262, 44);                                                 /* v2 §2a: input 262x44, Lora 18, centred vertically */
+    /* The text area (TMP_InputField.textViewport, "Text Area", stretched): the stock save-name field keeps 35.8 units on
+     * its left for the magnifier its "Search" sprite draws, 10 on its right (prefab: offset x 12.9, size -45.8; SaveLoadUI
+     * and RenameUnitUI). Our frame has no magnifier, so that gap only cut the address hint ("...:4777" at 216 of 262).
+     * Here the stock right inset on both sides; height and vertical place stay the source's. */
+    { Obj ta = tr_find(u_tr(f), "Text Area");
+      if (mm_is(ta, K_RT)) {
+          V2 sd = F(0x510701C, V2 (*)(Obj, void *))(ta, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(ta, NULL);   /* sizeDelta, anchoredPosition */
+          F(0x5106B64, void (*)(Obj, V2, void *))(ta, (V2){ 0, 0 }, NULL); F(0x5106D48, void (*)(Obj, V2, void *))(ta, (V2){ 1, 1 }, NULL);
+          F(0x5107110, void (*)(Obj, V2, void *))(ta, (V2){ -20, sd.y }, NULL);
+          F(0x5106F2C, void (*)(Obj, V2, void *))(ta, (V2){ 0, ap.y }, NULL);
+      } }
     { static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
       Obj tc = mtc && mm_is(f, K_FIELD) ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
       if (u_alive(tc)) { txt_body(tc); txt_style(tc, 0, 18, 513, 0); txt_color(tc, C_MAIN); } }
