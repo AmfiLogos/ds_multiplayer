@@ -48,13 +48,13 @@ pvpx() {   # PvP v1, Mac host + Windows guest W (C:\DSW, this tree's baselib.dll
     [[ -z $(ps -axo etime=,comm= | command grep -iE 'wine|\.exe$' | command grep -ve '-[0-9][0-9]:') ]] && mkdir $LOCK || { echo "wine busy / locked"; return 1; }
     echo gate13 > $LOCK/owner
   fi
-  local P=$(python3 $R lease gate13 --pid $$ | tail -1) rc=1 XL=$OUT/g016_pvp_raw.log
+  local P=$(python3 $R lease gate13-$$ --pid $$ | tail -1) rc=1 XL=$OUT/g016_pvp_raw.log
   if [[ $P == [A-J][A-J] ]]; then
     (cd $HOME/ds_multiplayer/win && python3 xplay_run.py $P $WT/ext/fepvp13/tests/pvp_v1_pair.py --math --dylib $D --tag gate016_xv1) > $XL 2>&1
     command grep -E '(PASS|FAIL) [0-9]' $XL; echo "raw log (xplay_run's release() stub raises at the end): $XL"
     local f=$(command grep -cE '^[0-9:]+ FAIL [0-9]' $XL) p=$(command grep -cE '^[0-9:]+ PASS [0-9]' $XL)
     (( f == 0 && p >= 10 )) && { echo "XPV PASS all $p checks"; rc=0; } || echo "XPV FAIL $f failed"
-    python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P gate13 >/dev/null
+    python3 $R stop $P >/dev/null 2>&1; (cd $HOME/ds_multiplayer/win && python3 wrig.py stop) >/dev/null 2>&1; python3 $R release $P gate13-$$ >/dev/null
   fi
   (( held )) || { mkdir -p $HOME/ds_multiplayer/rig/old; mv $LOCK/owner $HOME/ds_multiplayer/rig/old/wine.lock.owner.gate13.$(date +%s); rmdir $LOCK; }
   return $rc
