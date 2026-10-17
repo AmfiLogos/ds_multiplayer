@@ -9,11 +9,18 @@
 #   PASS, and no "group_* FAIL" line exists (a g*.sh that exited non-zero). Missing = FAIL.
 # Env: GATE_DIR (default ext/gate13/out of this worktree). Exports DSRIG_RELEASE=1 (gate owns rig/release.lock).
 export DSRIG_RELEASE=1
+GATE_LIB_DIR=${${(%):-%x}:A:h}                                # this folder (gate_clean.sh)
 WT=${WT:-$HOME/ds_mp_gate13}; LD=${LD:-$HOME/ds_launcher}
 # Custom Modes: its own repo since post-v13 (checkout CM_REPO, default ~/ds_custommodes); its test tools build into $MP_ROOT
 export CM=${CM_REPO:-$HOME/ds_custommodes} MP_ROOT=$WT
 D=$WT/build/dsrig.dylib; M=$WT/build/gate13_mouse/dsrig.dylib
 OUT=${GATE_DIR:-$WT/ext/gate13/out}; SUM=$OUT/summary.txt; mkdir -p $OUT
+# free disk first (2026-10-17: the gates' leftovers filled the disk mid-gate): below GATE_MIN_FREE_GB (15) the gate stops
+{ local_free=$(df -g "$HOME" | awk 'NR==2 {print $4}')
+  if (( local_free < ${GATE_MIN_FREE_GB:-15} )); then
+    print -u2 "GATE STOPPED: only $local_free GB free on the disk (need ${GATE_MIN_FREE_GB:-15} GB). Free space, or run rig/gate13/gate_clean.sh <gate out dir> for old gate leftovers."
+    print "GATE STOPPED $(date '+%F %T'): only $local_free GB free (need ${GATE_MIN_FREE_GB:-15} GB)" >> $SUM; exit 3
+  fi; unset local_free; }
 _once() {   # <name> <regex> <cwd> <cmd...> -> 0 pass / 1 fail
   local n=$1 re=$2 d=$3; shift 3
   # a test output folder named like the check starts empty each try (a My Units library left there by an earlier
@@ -51,6 +58,7 @@ expected() { { command grep -hoE '^[[:space:]]*(chk|print "?)[[:space:]]*[a-z][a
 # a gate script arms its verdict at top level (a trap set inside a function fires when that function returns):
 #   trap "verdict ${0:A}" EXIT      -> the verdict also runs when the script exits early (missing checks = FAIL)
 verdict() {   # <gate script...> -> last line "ALL GREEN ..." / "NOT GREEN ..." appended to $SUM; exit 0 only when green
+  zsh $GATE_LIB_DIR/gate_clean.sh $OUT 2>/dev/null   # every run, passed or failed: the copies it left (bottle, check folders)
   local e=(${(f)"$(expected "$@")"}) bad=() np=0 n st
   for n in $e; do
     st=$(awk -v n=$n '$1 == n {s = $2} END {print s}' $SUM)
