@@ -15,7 +15,7 @@ import lrig as r
 
 WT = os.path.expanduser('~/ds_mp_gate13')
 B = os.path.join(WT, 'build')
-L = os.path.expanduser('~/ds_launcher/loader')
+L = os.path.join(os.path.expanduser(os.environ.get('LD', '~/ds_launcher')), 'loader')   # LD = the loader checkout under test
 LB = os.path.join(L, 'build')
 DSLOAD = os.path.join(LB, 'dsload.dylib')
 STAGE = '-20000,-20000'

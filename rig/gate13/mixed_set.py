@@ -24,7 +24,7 @@ HX, GX = arg('--host', 'U'), arg('--guest', 'W')
 LANE = f'gate13_mx-{os.getpid()}'
 WT = M.WT
 OUT = os.path.join(WT, 'ext', 'gate13', 'out', 'mixed', 'mac_' + time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT)
-SHIPPED = os.path.expanduser('~/ds_launcher/loader/build/mods_all/mac')
+SHIPPED = os.path.join(os.path.expanduser(os.environ.get('LD', '~/ds_launcher')), 'loader/build/mods_all/mac')   # LD = the loader checkout under test
 BTN = json.loads(os.popen(f'python3 {WT}/ext/fepvp13/tools/mpm_ids.py {WT}').read())
 LOGF = open(os.path.join(OUT, 'test.log'), 'a'); results = []
 NAMES = ('gcd-cdr', 'Global cooldown')

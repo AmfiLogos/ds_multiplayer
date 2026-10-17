@@ -21,6 +21,8 @@ if subprocess.run([sys.executable, WL, 'take', 'gate13', '--pid', str(os.getpid(
 try:
     if not w.bottle_silent(): raise SystemExit('bottle not silent')
     if os.path.exists(w.ROOT): os.rename(w.ROOT, w.ROOT + '.gate13-' + time.strftime('%Y%m%d-%H%M%S'))
+    # Setup reuses the folder in this key (InstallDirRegKey); other lanes' test installs set it to their own folders
+    wine('reg', 'delete', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\DungeonSettlersModded', '/f', timeout=120)
     t = os.path.join(w.DRIVE, 'gate13_setup'); os.makedirs(t, exist_ok=True); shutil.copy2(SETUP, os.path.join(t, 'Setup.exe'))
     r = wine('C:\\gate13_setup\\Setup.exe', '/S', f'/GAME={GAMEW}')
     open(os.path.join(OUT, 'setup.out'), 'w').write(r.stdout + r.stderr)
@@ -60,7 +62,10 @@ try:
         if not os.path.exists(os.path.join(w.ROOT, 'Uninstall.exe')) and not os.path.isdir(os.path.join(w.ROOT, 'game')): break
         time.sleep(2)
     gone = [x for x in ('game', 'mods', 'Dungeon Settlers Modded.exe', 'Uninstall.exe') if not os.path.exists(os.path.join(w.ROOT, x))]
-    check('uninstall removes the program (game copy, mods, starter, uninstaller)', len(gone) == 4, f'gone {gone}, left {os.listdir(w.ROOT) if os.path.isdir(w.ROOT) else None}')
+    left = [os.path.relpath(os.path.join(d, f), w.ROOT) for x in ('game', 'mods') for d, _, fs in os.walk(os.path.join(w.ROOT, x)) for f in fs]
+    open(os.path.join(OUT, 'left_after_uninstall.txt'), 'w').write('\n'.join(left))
+    check('uninstall removes the program (game copy, mods, starter, uninstaller)', len(gone) == 4,
+          f'gone {gone}, left {os.listdir(w.ROOT) if os.path.isdir(w.ROOT) else None}; {len(left)} files left in game/mods, e.g. {left[:8]}; uninstall rc {r.returncode} {r.stdout[-200:]}')
     check('uninstall keeps the saves (profiles\\)', os.path.exists(marker) and len(os.listdir(sv)) == nsave, f'{nsave} files before')
     q = wine('reg', 'query', 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\DungeonSettlersModded', timeout=120)
     check('uninstall entry removed', q.returncode != 0, q.stdout[-200:])

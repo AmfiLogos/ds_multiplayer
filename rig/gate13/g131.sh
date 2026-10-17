@@ -5,7 +5,7 @@
 # on Mac, mixed mod set refused at join.
 source ${0:A:h}/lib.sh; H=${0:A:h}
 REL=${REL:-$WT/ext/gate13/release_v131}
-[[ -e $SUM ]] && { mkdir -p $OUT/old; mv $SUM $OUT/old/summary-$(date +%Y%m%d-%H%M%S).txt; }
+[[ -z ${GATE_ONLY:-} && -e $SUM ]] && { mkdir -p $OUT/old; mv $SUM $OUT/old/summary-$(date +%Y%m%d-%H%M%S).txt; }   # a GATE_ONLY rerun appends to the same summary
 inputs > $OUT/inputs.txt; IN=$(shasum -a 256 $OUT/inputs.txt | cut -c1-64)
 print "v13.1 gate $(date '+%F %T')  inputs $IN ($(head -1 $OUT/inputs.txt))" > $SUM
 trap "verdict ${0:A}" EXIT

@@ -7,7 +7,7 @@
 # Windows guest (all checks: 0 desyncs, 500+ ticks), mixed mod set refused at join, owner prefs.
 source ${0:A:h}/lib.sh; H=${0:A:h}
 REL=${REL:-$WT/ext/gate13/release_v133}
-[[ -e $SUM ]] && { mkdir -p $OUT/old; mv $SUM $OUT/old/summary-$(date +%Y%m%d-%H%M%S).txt; }
+[[ -z ${GATE_ONLY:-} && -e $SUM ]] && { mkdir -p $OUT/old; mv $SUM $OUT/old/summary-$(date +%Y%m%d-%H%M%S).txt; }   # a GATE_ONLY rerun appends to the same summary
 { echo "MP $(git -C $WT rev-parse HEAD)  LD $(git -C $LD rev-parse HEAD)  pin $(head -1 $LD/loader/mp_pin.txt)  cm $(head -1 $LD/loader/cm_pin.txt)"
   for f in $REL/* $D $WT/build/custom-modes*.dylib; do print -r -- "$(shasum -a 256 "$f" | cut -c1-64)  $f"; done; } > $OUT/inputs.txt
 IN=$(shasum -a 256 $OUT/inputs.txt | cut -c1-64)
