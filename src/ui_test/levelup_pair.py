@@ -124,7 +124,7 @@ def fight(X, Y, us):
 
 def main():
     rig.DYLIB = arg('--dylib', os.path.expanduser('~/ds_multiplayer/build/ui_test/dsrig_ui.dylib'))
-    pair = rig.lease('ui', os.getpid())
+    pair = rig.lease(f'ui-{os.getpid()}', os.getpid())
     if not pair:
         raise SystemExit('no free pair')
     X, Y = pair[0], pair[1]

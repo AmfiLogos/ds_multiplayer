@@ -13,7 +13,7 @@ results = T.results
 def main():
     save = os.path.join(rig.SEED_DATA, 'Saves', 'MoonlightBrigade__AutoSave_41e9c1bb8790492cbdc10f4dcad22179_0.json')
     rig.DYLIB = T.arg('--dylib', os.path.expanduser('~/ds_multiplayer/build/v10menu/dsrig_v10menu_mouse.dylib'))
-    pair = rig.lease('v10menu', os.getpid())
+    pair = rig.lease(f'v10menu-{os.getpid()}', os.getpid())
     if not pair: raise SystemExit('no free pair')
     X, Y = pair[0], pair[1]; port = rig.PAIR_PORTS.get(pair, 7795)
     try:

@@ -92,7 +92,7 @@ def main():
     window = '--window' in sys.argv
     pair, t0 = None, time.time()
     while not pair and time.time() - t0 < 3600:                 # max 3 pairs are shared with other lanes: wait for one
-        pair = rig.lease('fe_f2', os.getpid())
+        pair = rig.lease(f'fe_f2-{os.getpid()}', os.getpid())
         if not pair:
             time.sleep(30)
     if not pair:

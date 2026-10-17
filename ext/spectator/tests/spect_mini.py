@@ -17,6 +17,8 @@ import json, os, random, sys, time
 ROOT = os.path.expanduser('~/ds_multiplayer')
 sys.path.insert(0, os.path.join(ROOT, 'rig'))
 import rig
+LANE = f'spectator-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
+LANE2 = f'spectator2-{os.getpid()}'
 
 A = sys.argv
 rig.DYLIB = os.path.abspath(A[A.index('--dylib') + 1]) if '--dylib' in A else os.path.join(ROOT, 'build', 'dsrig.dylib')   # merged into src 2026-10-15
@@ -39,11 +41,11 @@ def check(name, ok, info=''):
 
 def lease_two():
     for _ in range(240):                                     # up to 2 h: other lanes come first
-        p1 = rig.lease('spectator')
-        p2 = rig.lease('spectator2') if p1 else None
+        p1 = rig.lease(LANE)
+        p2 = rig.lease(LANE2) if p1 else None
         if p1 and p2:
             return p1, p2
-        if p1: rig.release(p1, 'spectator')
+        if p1: rig.release(p1, LANE)
         time.sleep(30)
     return None, None
 
@@ -100,7 +102,7 @@ def main():
             d = json.load(open(m)); d['spectators'] = 1; os.replace(m, m + '.last'); json.dump(d, open(m, 'w'))
     busy = [x for x in (H, P, S) if rig.read_pid(x) and rig.alive(rig.read_pid(x))]
     if busy:                                                 # a copy started outside the lease: never drive it
-        log('copies already running outside this lease:', busy); rig.release(p1, 'spectator'); rig.release(p2, 'spectator2'); return
+        log('copies already running outside this lease:', busy); rig.release(p1, LANE); rig.release(p2, LANE2); return
     log('copies', H, P, S, 'dylib', rig.DYLIB)
     try:
         for x in (H, P, S): rig.start(x, window=True, fps=30)   # hidden windows: frames with the HUD
@@ -225,7 +227,7 @@ def main():
         check('flow completed', False, repr(e))
     finally:
         for x in (H, P, S): rig.stop(x)
-        rig.release(p1, 'spectator'); rig.release(p2, 'spectator2')
+        rig.release(p1, LANE); rig.release(p2, LANE2)
         log('prefs identical:', rig.check_prefs())
         json.dump(results, open(os.path.join(OUT, 'result.json'), 'w'), indent=1)
         log('RESULTS', json.dumps(results))

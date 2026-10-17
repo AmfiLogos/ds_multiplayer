@@ -95,7 +95,7 @@ def out_lib_dir(out):
 
 class Copy:
     def __init__(self, mods, out, extra=None, lane='units13', ui_scale=None):
-        self.mods, self.out, self.extra, self.lane, self.ui_scale = mods, out, extra or {}, lane, ui_scale
+        self.mods, self.out, self.extra, self.lane, self.ui_scale = mods, out, extra or {}, f'{lane}-{os.getpid()}', ui_scale
         self.p = None; self.pair = None; self.seq = 0; self.steps = []; self.violations = []
         self.stop_guard = threading.Event()
         self.drv = os.path.join(out, 'drv'); os.makedirs(os.path.join(self.drv, 'cap'), exist_ok=True)

@@ -26,7 +26,7 @@ def check(name, ok, info=''):
 def main():
     a = sys.argv
     rig.DYLIB = a[a.index('--dylib') + 1] if '--dylib' in a else os.path.expanduser('~/ds_multiplayer/build/uxcolor/dsrig.dylib')
-    pair = rig.lease('uxcolor', os.getpid()); assert pair, 'no free pair'
+    pair = rig.lease(f'uxcolor-{os.getpid()}', os.getpid()); assert pair, 'no free pair'
     H, G = pair[0], pair[1]
     c = lambda inst, **k: rig.send(inst, k, timeout=120)
     st = lambda x: c(x, cmd='status')

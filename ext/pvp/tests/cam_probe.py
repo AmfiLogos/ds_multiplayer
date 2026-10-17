@@ -2,13 +2,14 @@
 """one copy: does pvp_cfg cam_x/cam_y/cam_size move the view? frames before / after (ext/pvp/out/camprobe)"""
 import json, os, shutil, sys, time
 ROOT = os.path.expanduser('~/ds_multiplayer'); sys.path.insert(0, os.path.join(ROOT, 'rig')); import rig
+LANE = f'pvp-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 rig.DYLIB = os.environ.get('PVP_DYLIB') or os.path.join(ROOT, 'ext', 'pvp', 'build', 'dsrig.dylib')   # PVP_DYLIB: test another build (the src merge)
 sys.path.insert(0, os.path.join(ROOT, 'research', 'ux_shots')); import ux
 OUT = os.path.join(ROOT, 'ext', 'pvp', 'out', 'camprobe'); os.makedirs(OUT, exist_ok=True)
 c = lambda _i, **k: rig.send(_i, k, timeout=120)
 pair = None
 for i in range(240):
-    pair = rig.lease('pvp', os.getpid())
+    pair = rig.lease(LANE, os.getpid())
     if pair: break
     time.sleep(30)
 X = pair[0]
@@ -37,4 +38,4 @@ try:
     print('cam now', c(X, cmd='pvp_cfg', cam_read=1))
     c(X, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'after.png'))
 finally:
-    rig.stop(X); rig.release(pair, 'pvp')   # rule 10: only our own lease; print('prefs', rig.check_prefs())
+    rig.stop(X); rig.release(pair, LANE)   # rule 10: only our own lease; print('prefs', rig.check_prefs())

@@ -12,7 +12,7 @@ import json, os, signal, subprocess, sys, time
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig')); import rig
 A = sys.argv
 rig.DYLIB = os.path.abspath(A[A.index('--dylib') + 1])
-LANE = A[A.index('--lane') + 1] if '--lane' in A else 'mpfix'
+LANE = (A[A.index('--lane') + 1] if '--lane' in A else 'mpfix') + f'-{os.getpid()}'
 res = {}
 def log(*a): print(time.strftime('%H:%M:%S'), *a, flush=True)
 def check(name, ok, info=''): res[name] = bool(ok); log('PASS' if ok else 'FAIL', name, str(info)[:300])

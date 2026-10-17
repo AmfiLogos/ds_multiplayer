@@ -27,7 +27,7 @@ def check(name, ok, info=''):
 
 
 def main():
-    pair = rig.lease('mpglue'); assert pair, 'no free pair'
+    pair = rig.lease(f'mpglue-{os.getpid()}'); assert pair, 'no free pair'
     H, G = pair[0], pair[1]
     # mpglue: plant the stale owner table that caused the 03:37 failure (ElvenExpedition, saved 03:25 on host C, old
     # campaign-only file name), plus the same table under the new campaign+tick name at a tick that is not the demo's

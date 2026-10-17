@@ -3,12 +3,13 @@
 import json, os, shutil, sys, time
 W = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig')); import rig
+LANE = f'fepvp-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 rig.DYLIB = os.path.join(W, 'build', 'dsrig.dylib')
 TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')
 OUT = os.path.join(W, 'ext', 'fepvp13', 'out', 'grid_' + time.strftime('%H%M%S')); os.makedirs(OUT)
 pair = None
 while not pair:
-    pair = rig.lease('fepvp', os.getpid())
+    pair = rig.lease(LANE, os.getpid())
     if not pair: time.sleep(30)
 H = pair[0]; c = lambda **k: rig.send(H, k, timeout=180)
 try:
@@ -29,4 +30,4 @@ finally:
     rig.stop(H)
     p = os.path.join(rig.idir(H), 'mp.json')
     if os.path.exists(p + '.last'): shutil.copy2(p + '.last', p)
-    rig.release(pair, 'fepvp')
+    rig.release(pair, LANE)

@@ -18,7 +18,7 @@ PORT = 7813
 
 def main():
     rig.DYLIB = arg('--dylib', rig.DYLIB)
-    pair = rig.lease('seethrough', os.getpid())
+    pair = rig.lease(f'seethrough-{os.getpid()}', os.getpid())
     if not pair:
         raise SystemExit('no free pair')
     X, Y = pair[0], pair[1]

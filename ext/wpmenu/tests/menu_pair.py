@@ -29,7 +29,7 @@ TAG = A[A.index('--tag') + 1] if '--tag' in A else time.strftime('menu_%H%M%S')
 OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'out', TAG); os.makedirs(OUT, exist_ok=True)
 LOG = open(os.path.join(OUT, 'test.log'), 'a')
 B = dict(MULTIPLAYER=1, BACK=3, LOAD_SAVE=7, START=10, JOIN_ADDR=14, CONNECT=15, HOST_SAVE=121, HOST_NEW=122, HOST_FE=123)
-LANE = A[A.index('--lane') + 1] if '--lane' in A else 'm2menu'
+LANE = (A[A.index('--lane') + 1] if '--lane' in A else 'm2menu') + f'-{os.getpid()}'
 results = {}
 
 

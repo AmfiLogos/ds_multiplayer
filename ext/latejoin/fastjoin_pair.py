@@ -13,6 +13,7 @@ import json, os, shutil, sys, time
 RIG = os.path.expanduser('~/ds_multiplayer/rig')           # shared leases / instances
 sys.path.insert(0, RIG)
 import rig
+LANE = f'latejoin-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 
 
 def arg(name, default):
@@ -75,7 +76,7 @@ def main():
     play, fc = arg('--play', 40), arg('--full-every', 600)
     out = os.path.join(rig.ROOT, 'build', 'core_test', f'fastjoin_{mode}_' + time.strftime('%Y%m%d-%H%M%S'))
     os.makedirs(out, exist_ok=True)
-    pair = rig.lease('latejoin', os.getpid())
+    pair = rig.lease(LANE, os.getpid())
     if not pair:
         raise SystemExit('no free pair')
     X, Y = pair[0], pair[1]
@@ -168,7 +169,7 @@ def main():
         yj = os.path.join(rig.idir(Y), 'mp.json')
         if os.path.exists(yj + '.off'):
             os.replace(yj + '.off', yj)
-        rig.stop(X); rig.stop(Y); rig.release(pair, 'latejoin')
+        rig.stop(X); rig.stop(Y); rig.release(pair, LANE)
         for name, ok, info in checks:
             print(('PASS ' if ok else 'FAIL ') + name, info, flush=True)
         log('SUMMARY', mode, json.dumps(res), out)

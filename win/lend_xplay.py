@@ -47,7 +47,7 @@ def fp_equal_from(x, y, t_from):
 def main():
     a = sys.argv
     rig.DYLIB = a[a.index('--dylib') + 1] if '--dylib' in a else os.path.expanduser('~/ds_multiplayer/build/dsrig.dylib')
-    pair = rig.lease('windows2'); X, Y = pair[0], pair[1]; PORT = rig.PAIR_PORTS[pair]
+    pair = rig.lease(f'windows2-{os.getpid()}'); X, Y = pair[0], pair[1]; PORT = rig.PAIR_PORTS[pair]
     log('pair', pair, 'dylib', rig.DYLIB)
     try:
         json.dump({'role': 'host', 'port': PORT, 'name': 'The owner', 'allow_speedup': True, 'allow_pause': True}, open(os.path.join(rig.idir(X), 'mp.json'), 'w'))

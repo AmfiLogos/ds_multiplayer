@@ -4,7 +4,7 @@
 import os, sys, time, runpy
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig')); import rig
 a = sys.argv[1:]; rig.DYLIB = os.path.abspath(a.pop(0)); lane = None
-if a[0] == '--lease': a.pop(0); lane = a.pop(0)
+if a[0] == '--lease': a.pop(0); lane = f'{a.pop(0)}-{os.getpid()}'
 pair = None
 if lane:
     for _ in range(120):

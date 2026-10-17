@@ -15,6 +15,8 @@ import json, os, sys, time
 ROOT = os.path.expanduser('~/ds_multiplayer')
 sys.path.insert(0, os.path.join(ROOT, 'rig'))
 import rig
+LANE = f'spectator-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
+LANE2 = f'spectator2-{os.getpid()}'
 
 A = sys.argv
 rig.DYLIB = os.path.abspath(A[A.index('--dylib') + 1]) if '--dylib' in A else os.path.join(ROOT, 'build', 'dsrig.dylib')   # merged into src 2026-10-15
@@ -35,10 +37,10 @@ def check(name, ok, info=''):
 
 
 def main():
-    p1 = rig.lease('spectator'); p2 = rig.lease('spectator2')
+    p1 = rig.lease(LANE); p2 = rig.lease(LANE2)
     if not p1 or not p2:
         for p in (p1, p2):
-            if p: rig.release(p, 'spectator' if p == p1 else 'spectator2')
+            if p: rig.release(p, LANE if p == p1 else LANE2)
         log('FAIL not run: no free pair (two needed)'); sys.exit(1)
     H, P, S = p1[0], p1[1], p2[0]
     c = lambda inst, **k: rig.send(inst, k, timeout=120)
@@ -135,7 +137,7 @@ def main():
         check('flow completed', False, repr(e))
     finally:
         for x in (H, P, S): rig.stop(x)
-        rig.release(p1, 'spectator'); rig.release(p2, 'spectator2')
+        rig.release(p1, LANE); rig.release(p2, LANE2)
         log('prefs identical:', rig.check_prefs())
         json.dump(results, open(os.path.join(OUT, 'result.json'), 'w'), indent=1)
         log('RESULTS', json.dumps(results))

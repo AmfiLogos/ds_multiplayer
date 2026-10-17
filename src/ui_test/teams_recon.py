@@ -8,7 +8,7 @@ rig, log, c, st, wait, tm = T.rig, T.log, T.c, T.st, T.wait, T.tm
 SHOTS = os.path.expanduser('~/ds_multiplayer/build/teams_test/shots')
 save = os.path.join(rig.SEED_DATA, 'Saves', 'MoonlightBrigade__AutoSave_41e9c1bb8790492cbdc10f4dcad22179_0.json')
 rig.DYLIB = os.path.expanduser('~/ds_multiplayer/build/teams_test/dsrig_teams.dylib')
-pair = rig.lease('teams', os.getpid()); X = pair[0]
+pair = rig.lease(f'teams-{os.getpid()}', os.getpid()); X = pair[0]
 try:
     json.dump({'role': 'host', 'port': rig.PAIR_PORTS.get(pair, 7795), 'name': 'The owner'}, open(os.path.join(rig.idir(X), 'mp.json'), 'w'))
     rig.start(X, fps=10, window=True)

@@ -49,7 +49,7 @@ def steps_after(X, Y, n, what):
 def main():
     save = T.arg('--save', os.path.join(rig.SEED_DATA, 'Saves', 'MoonlightBrigade__AutoSave_41e9c1bb8790492cbdc10f4dcad22179_0.json'))
     rig.DYLIB = T.arg('--dylib', os.path.expanduser('~/ds_multiplayer/build/teams_test/dsrig_teams.dylib'))
-    pair = rig.lease('teams_desync', os.getpid())
+    pair = rig.lease(f'teams_desync-{os.getpid()}', os.getpid())
     if not pair:
         raise SystemExit('no free pair')
     X, Y = pair[0], pair[1]

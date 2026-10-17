@@ -36,9 +36,10 @@ def check(name, ok, info=""):
     results.append((name, bool(ok), info)); log("PASS" if ok else "FAIL", name, info)
 def dsl(): return open(os.path.join(w.PROF, "dsload.log"), errors="replace").read() if os.path.exists(os.path.join(w.PROF, "dsload.log")) else ""
 
+LANE = f"crossmods-{os.getpid()}"                     # unique per run: two runs never share a pair
 PAIR = None; t_l = time.time()
 while not PAIR and time.time() - t_l < float(os.environ.get("XM_LEASE_WAIT", "1200")):   # max 4 pairs machine-wide: wait for one
-    lease = subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "lease", "crossmods", "--pid", str(os.getpid())], capture_output=True, text=True)
+    lease = subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "lease", LANE, "--pid", str(os.getpid())], capture_output=True, text=True)
     PAIR = lease.stdout.strip() if lease.returncode == 0 else None
     if not PAIR: time.sleep(20)
 log("lease", PAIR or lease.stderr.strip(), f"after {time.time() - t_l:.0f} s")
@@ -138,7 +139,7 @@ finally:
     for f in ("dsload.log", "rig.log", "starter.log", "player.log"):
         p = os.path.join(w.PROF, f)
         if os.path.exists(p): shutil.copy2(p, os.path.join(OUT, f))
-    if PAIR: subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "release", PAIR, "crossmods"], capture_output=True)
+    if PAIR: subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "release", PAIR, LANE], capture_output=True)
     if HAVE_LOCK: subprocess.run([sys.executable, WL, "release", "crossmods"])
     log("left:", w.dsmp_pids())
 fails = [r for r in results if not r[1]]

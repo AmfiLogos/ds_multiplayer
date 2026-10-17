@@ -18,6 +18,7 @@ Checks (both copies):
 import json, os, shutil, sys, time
 W = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig')); import rig
+LANE = f'fepvp-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 A = sys.argv
 rig.DYLIB = os.path.abspath(A[A.index('--dylib') + 1]) if '--dylib' in A else os.path.join(W, 'build', 'dsrig.dylib')
 TAG = A[A.index('--tag') + 1] if '--tag' in A else time.strftime('v1_%Y%m%d-%H%M%S')
@@ -62,7 +63,7 @@ def main():
     import signal; signal.signal(signal.SIGTERM, lambda *a: sys.exit(3))   # kill -TERM: copies stopped + pair released (finally)
     pair = None
     while not pair:
-        pair = rig.lease('fepvp', os.getpid())
+        pair = rig.lease(LANE, os.getpid())
         if not pair: log('no free pair, waiting'); time.sleep(30)
     H, G = pair[0], pair[1]; port = rig.pair_port(H)
     log('pair', pair, 'dylib', rig.DYLIB, 'out', OUT)
@@ -82,7 +83,7 @@ def main():
                 if os.path.exists(os.path.join(rig.idir(x), f)): shutil.copy2(os.path.join(rig.idir(x), f), os.path.join(OUT, f'{x}_{f}'))
         ex = {x: sum(1 for l in open(os.path.join(OUT, f'{x}_player.log'), errors='replace') if 'Exception' in l) for x in (H, G) if os.path.exists(os.path.join(OUT, f'{x}_player.log'))}
         log('player.log exceptions', ex)
-        if '--keep' not in A: log('released', rig.release(pair, 'fepvp'))
+        if '--keep' not in A: log('released', rig.release(pair, LANE))
         log('prefs', 'identical' if rig.check_prefs() else 'DIFFERENT')
         n = sum(1 for v in results.values() if not v)
         log('RESULT', 'PASS' if results and not n else 'FAIL', f'{len(results) - n}/{len(results)}', json.dumps(results))

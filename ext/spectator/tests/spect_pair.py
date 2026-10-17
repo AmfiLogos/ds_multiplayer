@@ -20,6 +20,7 @@ import json, os, sys, time
 ROOT = os.path.expanduser('~/ds_multiplayer')
 sys.path.insert(0, os.path.join(ROOT, 'rig'))
 import rig
+LANE = f'spectator-{os.getpid()}'                 # unique per run: two runs of one test never share a pair
 
 A = sys.argv
 rig.DYLIB = os.path.abspath(A[A.index('--dylib') + 1]) if '--dylib' in A else os.path.join(ROOT, 'build', 'dsrig.dylib')   # merged into src 2026-10-15
@@ -42,7 +43,7 @@ def check(name, ok, info=''):
 def main():
     pair = None
     for _ in range(60):                                      # wait for a free pair (other lanes come first)
-        pair = rig.lease('spectator')
+        pair = rig.lease(LANE)
         if pair: break
         time.sleep(30)
     assert pair, 'no free pair'
@@ -218,7 +219,7 @@ def main():
     except Exception as e:
         check('flow completed', False, repr(e))
     finally:
-        rig.stop(H); rig.stop(G); rig.release(pair, 'spectator')
+        rig.stop(H); rig.stop(G); rig.release(pair, LANE)
         ok = rig.check_prefs()
         log('prefs identical:', ok)
         json.dump(results, open(os.path.join(OUT, 'result.json'), 'w'), indent=1)

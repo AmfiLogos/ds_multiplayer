@@ -80,7 +80,7 @@ run() {
   print "$n $(verdict $o $?)  log $o" > $L/$n.res
 }
 wait_pair() { while (( $(leased) >= ${GATE_PAIRS:-1} )); do sleep 15; done; }   # 2026-10-14: one pair at a time by default; 3 at once crashed the Mac
-lease_own() { local p; until p=$(python3 rig.py lease $1 --pid $$ 2>/dev/null | tail -1); [[ $p == [A-J][A-J] ]]; do sleep 15; done; echo $p; }
+lease_own() { local p; until p=$(python3 rig.py lease $1-$$ --pid $$ 2>/dev/null | tail -1); [[ $p == [A-J][A-J] ]]; do sleep 15; done; echo $p; }
 U=$SRC/ui_test
 
 lane1() {
@@ -103,7 +103,7 @@ lane3() {
   for s in v10_menu v9_menu tips chat chatkeys typing hist esc_center; do
     run ux_$s $ROOT/build_ux env PAIR=$P DSRIG_DYLIB=$D python3 $s.py; python3 rig.py stop $P >/dev/null 2>&1
   done
-  python3 rig.py release $P release_gate_ux >/dev/null
+  python3 rig.py release $P release_gate_ux-$$ >/dev/null
   [[ $WRC == 0 ]] || { print "windows_suites FAIL  no Windows build" > $L/win.res; return; }
   P=$(lease_own release_gate_win)
   run win_mp2 $W python3 xplay_run.py $P xplay_wrap.py --math --pin-dylib $D $R/mp2_test.py
@@ -118,7 +118,7 @@ lane3() {
   python3 rig.py stop $P >/dev/null 2>&1; (cd $W && python3 wrig.py stop >/dev/null 2>&1)
   # kit dry run = the friend's Windows kit, recorded on the Mac and replayed alone in the DSMP bottle: IDENTICAL every tick
   run win_kit $W python3 kit/kit_dryrun.py ${P[1]} --dylib $D --ranges $RG
-  python3 rig.py stop $P >/dev/null 2>&1; (cd $W && python3 wrig.py stop >/dev/null 2>&1); python3 rig.py release $P release_gate_win >/dev/null
+  python3 rig.py stop $P >/dev/null 2>&1; (cd $W && python3 wrig.py stop >/dev/null 2>&1); python3 rig.py release $P release_gate_win-$$ >/dev/null
 }
 echo "lanes $(date +%T)"
 if (( ${GATE_PAIRS:-1} <= 1 )); then   # serial: three lanes started together raced past wait_pair (each saw 0 leased)

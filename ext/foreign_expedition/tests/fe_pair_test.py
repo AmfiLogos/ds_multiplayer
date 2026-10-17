@@ -38,7 +38,7 @@ def main():
         # lead 2026-10-14 12:00: the release test has 2 pairs; fe and pvpbuild share the third (never while pvp holds one)
         held = rig._with_leases(lambda d: [l['lane'] for l in d.values()])
         if not any('pvp' in l for l in held):
-            pair = rig.lease('fe_pair', os.getpid())
+            pair = rig.lease(f'fe_pair-{os.getpid()}', os.getpid())
         if not pair: time.sleep(30)
     if not pair: log('no free pair'); sys.exit(2)
     H, G = pair[0], pair[1]

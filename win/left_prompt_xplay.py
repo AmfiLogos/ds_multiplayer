@@ -42,7 +42,7 @@ def check(name, ok, info=''):
 
 
 def main():
-    pair = rig.lease('mpui'); assert pair, 'no free pair'
+    pair = rig.lease(f'mpui-{os.getpid()}'); assert pair, 'no free pair'
     H, G = pair[0], pair[1]
     c = lambda inst, **k: rig.send(inst, k, timeout=120)
     st = lambda x: c(x, cmd='status')

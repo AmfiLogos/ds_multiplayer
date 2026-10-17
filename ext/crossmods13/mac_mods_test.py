@@ -33,10 +33,10 @@ for pid_, src, tbl in (("gcd-probe", f"{LD}/test/probe/gcd-probe/gcd_probe.c", f
 EN = ["multiplayer", "gcd-cdr", "hell-difficulty", "gcd-probe", "hell-probe"]
 prof = os.path.join(OUT, "profile.json"); json.dump({"enabled": EN, "order": EN}, open(prof, "w"))
 
-HELD = "crossmods" in subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "leases"], capture_output=True, text=True).stdout
-PAIR = None; t_l = time.time()                         # (a pair this lane already holds for its wine test is shared, not released here)
+LANE = f"crossmods-{os.getpid()}"                     # unique per run: a pair is never shared with another run
+PAIR = None; t_l = time.time()
 while not PAIR and time.time() - t_l < 1800:
-    r = subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "lease", "crossmods", "--pid", str(os.getpid())], capture_output=True, text=True)
+    r = subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "lease", LANE, "--pid", str(os.getpid())], capture_output=True, text=True)
     PAIR = r.stdout.strip() if r.returncode == 0 else None
     if not PAIR: time.sleep(20)
 log("lease", PAIR)
@@ -83,7 +83,7 @@ finally:
     except Exception as e: log("stop:", e)
     p = os.path.join(lrig.idir(X), "dsload.log")
     if os.path.exists(p): shutil.copy2(p, os.path.join(OUT, "dsload.log"))
-    if PAIR and not HELD: subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "release", PAIR, "crossmods"], capture_output=True)
+    if PAIR: subprocess.run([sys.executable, f"{H}/ds_multiplayer/rig/rig.py", "release", PAIR, LANE], capture_output=True)
 fails = [r for r in results if not r[1]]
 print(f"\n{len(results) - len(fails)} PASS {len(fails)} FAIL; logs in {OUT}")
 sys.exit(1 if fails else 0)
