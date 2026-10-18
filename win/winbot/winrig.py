@@ -311,6 +311,27 @@ class Win:
         open(local, 'wb').write(d)
         return len(d)
 
+    def upload(self, local, path):
+        """a big file (Setup.exe): one vmrun copy on the VM, a plain copy into the bottle under Wine"""
+        if self.target == 'vm':
+            self.write(path.rsplit('\\', 1)[0] + r'\.keep', b'')   # makes the folder (the agent's mkdirs)
+            r = vmrun('copyFileFromHostToGuest', local, self.expand(path), timeout=600)
+            if r.returncode:
+                raise GameError('upload: ' + (r.stdout + r.stderr).strip()[-200:])
+        else:
+            import shutil
+            d = os.path.expanduser('~/Library/Application Support/CrossOver/Bottles/DSMP/drive_c/') + self.expand(path)[3:].replace('\\', '/')
+            os.makedirs(os.path.dirname(d), exist_ok=True); shutil.copyfile(local, d)
+        return self.a('stat', path=path)
+
+    def install(self, setup, timeout=600):
+        """the release Setup.exe, silent (/S, per user, no admin); returns its exit code"""
+        self.kill_all()
+        g = WORK + r'\winbot\Setup.exe'
+        self.upload(setup, g)
+        r = self.a('run', exe=self.expand(g), args='/S', wait_ms=timeout * 1000, cwd=self.expand(WORK))
+        return r.get('exit')
+
     def exists(self, path):
         return self.a('stat', path=path).get('exists')
 
