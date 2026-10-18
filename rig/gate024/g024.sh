@@ -99,7 +99,7 @@ i18npair() { local O=$HOME/ds_mp_ship024/ext/gate024/i18n/out/pair2_ja_ru; [[ -d
 chk g024_i18n_pair 'RESULT 4/4 pass' $WT i18npair
 chk g024_fastboot_ui '([0-9]+) PASS 0 FAIL' $LD/loader python3 test/soft/fastboot_ui_test.py $OUT/g024_fastboot_ui   # boot ~3 s, Unity splash at the stock place, switch: after the boot, no tooltip, click flips
 # ---- saves (cloud backup (import tests gone with Import a save, v0.1.13: 17 unit, 6 game checks), safety, save warning: fake cloud and test copy K only)
-chk g024_cloud_unit '== 17 ok, 0 failed' $LD/loader zsh test/cloud/run.sh
+chk g024_cloud_unit '== 21 ok, 0 failed' $LD/loader zsh test/cloud/run.sh
 chk g024_cloud '6/6 checks, violations 0' $LD/loader python3 $LR l1_cloud_test.py $OUT/g024_cloud
 chk g024_safety '7/7 checks, violations 0' $LD/loader python3 $LR l1_safety_test.py $OUT/g024_safety
 chk g024_savewarn '7/7 checks, violations 0' $LD/loader python3 $LR l1_savewarn_test.py $OUT/g024_savewarn
