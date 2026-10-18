@@ -116,7 +116,7 @@ static int build_ok(void) {
                                                                      { 0xF387DC, 0x6dba2beb } };
     ok = 1;
     for (size_t i = 0; i < sizeof want / sizeof want[0]; i++)
-        if (*(const uint32_t *)(ds_base + want[i].rva) != want[i].ins) { ok = 0; rig_log("tip: game function %#lx does not match build 25846389: tooltips off", (unsigned long)want[i].rva); }
+        if (*(const uint32_t *)(ds_base + rv(want[i].rva)) != want[i].ins) { ok = 0; rig_log("tip: game function %#lx does not match build 25846389: tooltips off", (unsigned long)want[i].rva); }
     return ok;
 }
 static int scene_ready(void) { int sc = scene(); return (sc == 1 || sc == 2) && !busy(); }   /* title / campaign, not loading */

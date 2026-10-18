@@ -1369,7 +1369,7 @@ static void hk_pop_enqueue(Obj loader, int t, void *mi) {   /* ViewObjectLoader<
            unit on the dungeon map passes <CheckGameOver>b__69_0 0xD8DA20 (no Unconscious affecter, category 900): the
            stock party wipe. (Calling that test from here threw inside the sim cycle, run 51: never call it here.) */
         uintptr_t lr0 = (uintptr_t)__builtin_return_address(0) - ds_base;
-        if (lr0 >= 0xD854EC && lr0 < 0xD858F0) rig_log("ui: return screen from the stock game over (CheckGameOver: every unit on the map unconscious)");
+        if (lr0 >= rv(0xD854EC) && lr0 < rv(0xD858F0)) rig_log("ui: return screen from the stock game over (CheckGameOver: every unit on the map unconscious)");
     }
     o_pop_enqueue(loader, t, mi);
 }

@@ -15,9 +15,10 @@
 # Windows build); off only with DSMP_MATH=0 or <DSRIG_DIR>/dsmp_math.off (measurements, tests).
 # Needs win/math/build/libdsmath_arm64.a (run win/math/build_math.sh once).
 set -e; cd "${0:A:h}"; OUT=${OUT:-../build}; mkdir -p $OUT
+python3 ../tools/rv_gate.py > /dev/null || { python3 ../tools/rv_gate.py >&2; exit 1; }   # every game address through rv() (src/rig_rv.c)
 nice -n 19 clang -arch arm64 -mmacosx-version-min=12.0 -O2 -Wall -Wno-unused-function -D_DARWIN_C_SOURCE -dynamiclib -framework AppKit -framework CoreGraphics -framework CoreFoundation \
   -install_name @rpath/multiplayer.dylib -o $OUT/dsrig.dylib.tmp \
-  rig_main.c rig_hook.c rig_sock.c rig_cmd.c rig_win.c rig_det.c \
+  rig_main.c rig_hook.c rig_sock.c rig_cmd.c rig_win.c rig_det.c rig_rv.c \
   mp_core.c mp_config.c mp_game.c mp_fog.c mp_api.c mp_bridge.c \
   net/dsnet_link.c net/dsnet_server.c net/dsnet_client.c net/steam/dsnet_steam.c \
   ord_core.c ord_game.c ord_mp.c ord_test/ord_smoke.c \

@@ -103,6 +103,7 @@ static int hook_raw(uintptr_t rva, void *repl, void **orig, const char *who) {
 #endif
 }
 int rig_hook(uintptr_t rva, void *repl, void **orig, const char *who) {
+    rva = rv(rva);                                       /* the running game version's address (rig_rv.c) */
     for (int i = 0; i < nhooks; i++) if (hooks[i].rva == rva) {
         *orig = hooks[i].orig;
         rig_log("hook %s: address %#llx already hooked by %s (identical-code folding); sharing", who, (unsigned long long)rva, hooks[i].who);
@@ -152,7 +153,7 @@ static Obj my_pdp(void *mi) {
     (void)mi; (void)o_pdp;
     static char p[1100];
     if (!p[0]) snprintf(p, sizeof p, "%s/data", rig_dir);
-    return ((Obj (*)(const char *))(ds_base + W_STRING_NEW))(p);
+    return ((Obj (*)(const char *))(ds_base + rv(W_STRING_NEW)))(p);
 }
 /* Steam gate: the Mac copy patches SteamRuntime.get_IsEnabled to false. On Windows that getter's body is
    folded with every "return true" method, so the caller is hooked instead: Start() returns Disabled (0). */
@@ -256,7 +257,7 @@ static int check_ga(HMODULE m) {
    DllMain, so it is cleared again on the first MainFlow.Update. */
 static void zero_fma3_flag(const char *when) {
     if (getenv("DSRIG_KEEP_FMA3")) return;
-    DWORD old; uint32_t *flag = (uint32_t *)(ds_base + W_CRT_FMA3_FLAG);
+    DWORD old; uint32_t *flag = (uint32_t *)(ds_base + rv(W_CRT_FMA3_FLAG));
     if (VirtualProtect(flag, 4, PAGE_READWRITE, &old)) { rig_log("CRT FMA3 flag was %u -> 0 (%s)", *flag, when); *flag = 0; VirtualProtect(flag, 4, old, &old); }
 }
 
@@ -345,13 +346,17 @@ DSL_EXPORT int dsl_module_load(const DSLHost *host, DSLPlugin *self) {
     DH = host; DME = self;
     const char *d = getenv("DSRIG_DIR");
     if (!d || !*d) { host->log(self, "DSRIG_DIR not set: multiplayer inactive"); return 1; }
-    if (!host->game_build || strcmp(host->game_build, RIG_BUILD)) { host->log(self, "game build %s is not %s", host->game_build ? host->game_build : "?", RIG_BUILD); return 2; }
     snprintf(rig_dir, sizeof rig_dir, "%s", d);
     for (char *p = rig_dir; *p; p++) if (*p == '\\') *p = '/';
     InitializeCriticalSection(&loglock);
     char lp[1100]; snprintf(lp, sizeof lp, "%s/rig.log", rig_dir);
     lf = fopen(lp, "a");
     rig_log("---- rig start pid %lu (windows, loader module %s)", (unsigned long)GetCurrentProcessId(), host->plugin_id(self));
+    /* game addresses: the reference version RIG_BUILD as written, another version through its address table (rig_rv.c) */
+    if (!host->game_build || rig_rv_load(host->game_build, host->module_dir(self))) {
+        host->log(self, "game build %s: no address table (reference build %s): multiplayer off", host->game_build ? host->game_build : "?", RIG_BUILD);
+        return 2;
+    }
     if (getenv("DSRIG_LIVE")) rig_log("DSRIG_LIVE: normal game (sound, frame rate, windows untouched)");
     dsw_net_init();
     host->log(self, "rig log %s", lp);
@@ -360,7 +365,7 @@ DSL_EXPORT int dsl_module_load(const DSLHost *host, DSLPlugin *self) {
 
 DSL_EXPORT int dsl_module_early(const DSLHost *host, DSLPlugin *self) {
     HMODULE m = GetModuleHandleA("GameAssembly.dll");
-    if (!m || (uintptr_t)m != host->ga_base || !check_ga(m)) { host->log(self, "GameAssembly is not build %s: multiplayer off", RIG_BUILD); return 3; }
+    if (!m || (uintptr_t)m != host->ga_base || (!rig_rv_on && !check_ga(m))) { host->log(self, "GameAssembly is not build %s: multiplayer off", RIG_BUILD); return 3; }
     install(m);
     host->log(self, "multiplayer started (control port %s)", getenv("DSRIG_PORT") ? getenv("DSRIG_PORT") : "47811");
     return 0;

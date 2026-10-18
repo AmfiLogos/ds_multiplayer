@@ -344,7 +344,7 @@ static bool h_fadeout(Obj it, void *mi) {
 /* A hook added by fastboot_mp goes in only when the method still starts with the bytes of build 25846389 (the rig
    itself only runs on that GameAssembly, rig_main.c): another build or another hook at that place = stock behaviour. */
 static int hook_checked(uintptr_t va, uint32_t w0, uint32_t w1, void *repl, void **orig, const char *who) {
-    const volatile uint32_t *p = (const volatile uint32_t *)(ds_base + va);
+    const volatile uint32_t *p = (const volatile uint32_t *)(ds_base + rv(va));
     if (p[0] != w0 || p[1] != w1) { rig_log("mp: %s not hooked: its first bytes %08x %08x are not build %s's (stock behaviour)", who, p[0], p[1], RIG_BUILD); return -1; }
     return rig_hook(va, repl, orig, who);
 }

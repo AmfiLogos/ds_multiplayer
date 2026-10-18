@@ -15,6 +15,7 @@
 !/ext/
 !/research/
 !/tools/
+!/rva/
 !/lang/
 /research/*
 !/research/*.md

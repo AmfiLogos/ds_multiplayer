@@ -42,7 +42,7 @@ static void finish(const char *what) {
     FILE *f = fopen(p, "w");
     if (f) { fprintf(f, "%s\nlast tick %lld\nsend the file fp.log (same folder)\n", what, (long long)tick()); fclose(f); }
     rig_log("kit: %s", what);
-    ((void (*)(void *))(ds_base + 0x38E91E0))(NULL);              /* UnityEngine.Application$$Quit */
+    ((void (*)(void *))(ds_base + rv(0x38E91E0)))(NULL);              /* UnityEngine.Application$$Quit */
 }
 
 /* once per MainFlow.Update, after rig_frame */

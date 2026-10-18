@@ -65,7 +65,7 @@ static void cm_log(DSLPlugin *self, const char *fmt, ...) {
     rig_log("custom-modes: %s", b);
 }
 static const char *cm_id(DSLPlugin *self) { (void)self; return "custom-modes"; }
-static void *cm_rva(uintptr_t rva) { return (void *)(ds_base + rva); }
+static void *cm_rva(uintptr_t rva) { return (void *)(ds_base + rv(rva)); }
 static int cm_hook_rva(DSLPlugin *self, uintptr_t rva, void *repl, void **orig, const char *name) { (void)self; return rig_hook(rva, repl, orig, name); }
 static const char *cm_module_dir(DSLPlugin *self) { (void)self; return cm_dir; }
 static const char *cm_ga_path(void) { return cm_ga[0] ? cm_ga : NULL; }
@@ -109,7 +109,7 @@ static Obj my_pdp(void *mi) {
     (void)mi; (void)o_pdp;
     static char p[1100];
     if (!p[0]) snprintf(p, sizeof p, "%s/data", rig_dir);
-    return ((Obj (*)(const char *))(ds_base + 0x6F9738))(p);     /* il2cpp_string_new */
+    return F(0x6F9738, Obj (*)(const char *))(p);     /* il2cpp_string_new */
 }
 
 static void on_image(const struct mach_header *mh, intptr_t slide) {
@@ -124,6 +124,7 @@ static void on_image(const struct mach_header *mh, intptr_t slide) {
     ds_base = (uintptr_t)mh;
     rig_log("GameAssembly %s mapped at %p (build %s)", di.dli_fname, (void*)ds_base, RIG_BUILD);
     snprintf(cm_ga, sizeof cm_ga, "%s", di.dli_fname);
+    if (rig_rv_load(RIG_BUILD, NULL)) return;                   /* the rig: reference version only (DSRIG_RV_TABLE: tests) */
     int bad = 0;
     bad |= rig_hook(0xD1B648, (void*)my_update, (void**)&o_update, "MainFlow.Update");
     bad |= rig_hook(0x507B74C, (void*)my_pdp, (void**)&o_pdp, "Application.get_persistentDataPath");
