@@ -1,10 +1,11 @@
 #!/bin/zsh
 # Mac only (owner 2026-10-18): the Windows side is the real Windows VM lane (WIN_GREEN.txt); the Wine checks are in
 # g024w.sh, an optional last check that never blocks the release.
-# g024.sh - the v0.1.14 gate (loader v0.1.14: crash reports ask first, notice box fits its text, "Global cooldown fix",
-# hidden-worlds line; multiplayer 0.1.11, custom-modes 0.1.6, gcd-cdr 0.1.5). Copy of g023.sh + the hidden-worlds checks
+# g024.sh - the v0.1.15 gate (loader v0.1.15: crash reports ask first, notice box fits its text, "Global cooldown fix",
+# hidden-worlds line, mod settings, "Get the host's mods", ZET-U Mod Suite; multiplayer 0.1.12, custom-modes 0.1.7,
+# gcd-cdr 0.1.5, hell-difficulty 0.1.5, zetu-suite 0.1.0; includes the v0.1.14 hotfix). Copy of g023.sh + the hidden-worlds checks
 # (host test + in-game l1_hidden_test) and the crash report checks (scrubber unit test on this Mac's own logs; one hidden
-# copy crashes and its report reaches the private receiver with none of this Mac's names). i18n game tests on the v0.1.14
+# copy crashes and its report reaches the private receiver with none of this Mac's names). i18n game tests on the v0.1.15
 # test trees (~/ds_ld_ship024t, ~/ds_mp_ship024t, ~/ds_cm_ship024t = the int014 heads + the local test commits, never shipped).
 # g018 notes: the gate's tools from rig/gate13; the wine lock taken by the gate only around the Windows steps (owner
 # ship018-gate, GATE_WINE_OWNER); rig pairs leased under a unique name (ship018-<pid>) with the dylib pinned (pin_run.py).
@@ -19,7 +20,7 @@ if [[ -z ${GATE_ONLY:-} ]]; then
 { echo "MP $(git -C $WT rev-parse HEAD)  LD $(git -C $LD rev-parse HEAD)  CM $(git -C $CMR rev-parse HEAD)  pins $(head -1 $LD/loader/mp_pin.txt) $(head -1 $LD/loader/cm_pin.txt)  RELEASE $(cat $LD/RELEASE $LD/loader/RELEASE 2>/dev/null | head -1)"
   for f in $REL/* $D $WT/build/custom-modes*.dylib; do print -r -- "$(shasum -a 256 "$f" | cut -c1-64)  $f"; done; } > $OUT/inputs.txt
 IN=$(shasum -a 256 $OUT/inputs.txt | cut -c1-64)
-print "v0.1.14 gate $(date '+%F %T')  inputs $IN ($(head -1 $OUT/inputs.txt))" > $SUM
+print "v0.1.15 gate $(date '+%F %T')  inputs $IN ($(head -1 $OUT/inputs.txt))" > $SUM
 else
   IN=$(shasum -a 256 $OUT/inputs.txt | cut -c1-64); print "rerun $(date '+%F %T') GATE_ONLY=$GATE_ONLY" >> $SUM
 fi
@@ -127,5 +128,9 @@ fullcheck() { local L=$OUT/g024_fastjoin_${1:-off}_raw.log; (cd $WT/ext/latejoin
 chk g024_fullcheck 'FULLCHECK PASS' $WT fullcheck off
 chk g024_fullcheck_on 'FULLCHECK PASS' $WT fullcheck on   # Fast join On is the default since 2164719
 chk g024_mixed_set 'RESULT 4/4 pass' $WT python3 $H/mixed_set.py
+fogpair() { local L=$OUT/g024_fogfix_raw.log; (cd $WT/ext/fogfix && python3 fogfix_pair.py --dylib $D --cycles 3) > $L 2>&1; local rc=$?; command grep -E 'RESULT|FAIL' $L | tail -5; return $rc; }
+chk g024_fogfix 'RESULT PASS' $WT fogpair   # v0.1.14 hotfix crash path: 3 dungeon entries with a watcher, fog redraws, quit to title
+tbpair() { local L=$OUT/g024_takeback_raw.log; (cd $WT/ext/takeback && python3 takeback_pair.py --dylib $D) > $L 2>&1; local rc=$?; command grep -E 'RESULT|FAIL' $L | tail -5; return $rc; }
+chk g024_takeback 'RESULT PASS' $WT tbpair   # taking back a lent unit off the current map names the unit (4-player test)
 print "g024_inputs_unchanged $([[ $( { echo "MP $(git -C $WT rev-parse HEAD)  LD $(git -C $LD rev-parse HEAD)  CM $(git -C $CMR rev-parse HEAD)  pins $(head -1 $LD/loader/mp_pin.txt) $(head -1 $LD/loader/cm_pin.txt)  RELEASE $(cat $LD/RELEASE $LD/loader/RELEASE 2>/dev/null | head -1)"; for f in $REL/* $D $WT/build/custom-modes*.dylib; do print -r -- "$(shasum -a 256 "$f" | cut -c1-64)  $f"; done; } | shasum -a 256 | cut -c1-64) == $IN ]] && echo PASS || echo FAIL)" | tee -a $SUM
 print "g024_prefs $([[ $(prefs) == identical ]] && echo PASS || echo FAIL)" | tee -a $SUM
