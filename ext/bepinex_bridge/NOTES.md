@@ -97,5 +97,6 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
   and a mod running WITHOUT DsmpBridge.dll (soft-dependency pattern + DsmpLite): 27 checks PASS. It fails when
   Installed goes back to == 1 (checked) or a marshalled argument breaks.
 - Probe `plugin/DsmpRandProbe` (test only) + `tests/rand_pair.py` (Mac pair, both peers dsload + multiplayer module +
-  BepInEx clone per copy + DsmpBridge + probe): see the result below. One-copy start smoke (17:44, api-1 module): 47 s to
+  BepInEx clone per copy + DsmpBridge + probe): NOT RUN yet (needs the mp_api v2 commit on mpapi; run: build the loader with
+  MP_REPO=$HOME/ds_multiplayer MP_PIN=mpapi loader/build.sh, then python3 tests/rand_pair.py). One-copy start smoke (17:44, api-1 module): 47 s to
   the title, bridge found api 1, Harmony postfix on Refactor.Tick.TickFlow.Tick installed.
