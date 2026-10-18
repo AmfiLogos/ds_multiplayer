@@ -1,0 +1,47 @@
+{
+  "GeneralSettingData": {
+    "IsLanguageInitialized": true,
+    "SaveCurrentLanguageType": 0,
+    "AutoSaveIntervalType": 12,
+    "IsCollectingInitialized": true,
+    "IsToggleCollectingLog": false,
+    "MoveScreenByEdgeScreen": true,
+    "CameraMovementSpeedScale": 1.0,
+    "HiddenUpdateNoticeVersion": -1,
+    "IsKeyboardEnvironmentNoticeAcknowledged": true
+  },
+  "GraphicSettingData": {
+    "UIScale": 1.1,
+    "TooltipAdditionalScale": 1.0,
+    "CursorScale": 1.0,
+    "SaveCurrentScreenType": 1,
+    "ResolutionWidth": 1728,
+    "ResolutionHeight": 1000,
+    "WindowedResolutionWidth": 1728,
+    "WindowedResolutionHeight": 1000,
+    "FullScreenResolutionWidth": 0,
+    "FullScreenResolutionHeight": 0,
+    "BuildingShadowMode": 1,
+    "VSyncEnabled": true,
+    "ConfineCursorInBorderlessWindow": false
+  },
+  "SoundSettingData": {
+    "MuteInBackground": true,
+    "MasterVolumePercent": 50.0,
+    "MasterVolumeMute": false,
+    "BGMVolumePercent": 50.0,
+    "BGMVolumeMute": false,
+    "AmbienceBGMVolumePercent": 50.0,
+    "AmbienceBGMVolumeMute": false,
+    "SFXVolumePercent": 50.0,
+    "SFXVolumeMute": false,
+    "UISFXVolumePercent": 50.0,
+    "UISFXVolumeMute": false
+  },
+  "KeySettingData": {
+    "Bindings": [],
+    "KeyboardLayout": 0,
+    "InputCompatibility": 0,
+    "CompatibilityOriginalBindings": []
+  }
+}

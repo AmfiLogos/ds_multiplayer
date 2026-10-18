@@ -452,8 +452,8 @@ class Win:
         update_notice False hides the stock Update Notice (HiddenUpdateNoticeVersion 1, like the Mac rig's prefs);
         consent 'no'/'yes' pre-answers the crash-report question (None = leave it); active = enabled mod ids;
         settings = {mod: {key: value}}; saves = {guest name: local file} copied into the profile's Saves."""
-        us = self.json_file(DATA + r'\UserSetting.json')
-        if us:
+        us = self.json_file(DATA + r'\UserSetting.json') or json.load(open(os.path.join(HERE, 'UserSetting.template.json')))
+        if us:                                               # a fresh profile gets the template: no first-run Language picker
             g, gr = us.setdefault('GeneralSettingData', {}), us.setdefault('GraphicSettingData', {})
             g['IsLanguageInitialized'] = True
             if lang is not None:

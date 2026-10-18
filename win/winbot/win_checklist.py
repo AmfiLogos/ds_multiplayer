@@ -16,6 +16,7 @@ Items (ship013's v0.1.15 list):
      "Get the host's mods" box
   4  "Get the host's mods": plan, Get, Apply, soft restart, the restarted game rejoins, world arrives, 0 desyncs
   5  cross-play with fights: 3 dungeon entries in the same processes, lend + take back, quit to title; 0 crashes, 0 desyncs
+  S  (test builds) the control port follows a soft restart: --mp-dll = a multiplayer.dll with the winbot port fix
 Output: <out>/summary.json, <out>/RESULT.txt, <out>/shots/*.png, <out>/logs_<item>/ (VM logs).
 """
 import argparse, json, os, socket, subprocess, sys, time, traceback
@@ -285,22 +286,41 @@ def item4(w, rep, a, mac):
         w.mark(f)
     t = time.time()
     w.box('confirm')                                                 # Get
+    port_ok = True
     try:
         w.wait_log('dsload.log', ['soft:'], 300)
-        new = w.wait_restart(old, 300)
+        w.wait(lambda: [p for p in w.procs() if p['pid'] != old], 'the restarted game process', 120)
+        rep.check(I, 'soft restart: a new game process', True, f'{time.time() - t:.0f} s after Get')
+        new = w.wait_restart(old, 120)
         rep.check(I, 'soft restart: the new game took the control port', new != old, f'pid {old} -> {new}, {time.time() - t:.0f} s')
     except W.GameError as e:
-        rep.check(I, 'soft restart: the new game took the control port', False, e)
-        return
+        rl = w.text(W.PROF + r'\rig.log') or ''
+        if 'bind/listen failed' in rl:                               # the release build without the winbot port fix
+            port_ok = False
+            w.pid = next((p['pid'] for p in w.procs() if p['pid'] != old), None)
+            log('no control port in the restarted game (build without the port fix): host view + logs')
+        else:
+            rep.check(I, 'soft restart', False, e)
+            return
     act = w.json_file(W.DATA + r'\Mods\active.json') or {}
     st = w.json_file(W.DATA + r'\Mods\settings.json') or {}
     rep.check(I, "host's mods taken", ZETU in act.get('enabled', []), act)
     rep.check(I, "host's setting taken", (st.get(ZETU) or {}).get('max_units') == 7, st)
     try:
-        s = w.wait(w.in_mp_game, "the restarted game rejoined and the host's world arrived", 240, 1)
-        m = s.get('mp') or {}
-        rep.check(I, 'rejoined, world loaded', True, f"{time.time() - t:.0f} s after Get; {w.cmd(cmd='mpm_hostmods')}")
-        rep.check(I, '0 desyncs', not m.get('desyncs') and not m.get('desynced'), m.get('desyncs'))
+        if port_ok:
+            s = w.wait(w.in_mp_game, "the restarted game rejoined and the host's world arrived", 240, 1)
+            m = s.get('mp') or {}
+            rep.check(I, 'rejoined, world loaded', True, f"{time.time() - t:.0f} s after Get; {w.cmd(cmd='mpm_hostmods')}")
+            rep.check(I, '0 desyncs', not m.get('desyncs') and not m.get('desynced'), m.get('desyncs'))
+        else:                                                        # a build without the port fix: the host's view + B's log
+            def joined():
+                m = mac.status().get('mp') or {}
+                return 1 in mac.peers() and not (m.get('busy_mask') or 0) and m
+            w.wait(lambda: joined() and (time.sleep(5) or joined()), "the host sees the restarted guest present and not busy", 240, 2)
+            rl = w.text(W.PROF + r'\rig.log') or ''
+            rep.check(I, 'rejoined, world loaded (host view)', 'did not arrive' not in rl, f"{time.time() - t:.0f} s after Get")
+            m = mac.status().get('mp') or {}
+            rep.check(I, '0 desyncs (host)', not m.get('desyncs') and not m.get('desynced'), m.get('desyncs'))
     except W.GameError as e:
         rep.check(I, 'rejoined, world loaded', False, f"{e}; host peers {mac.peers()}")
     scan_logs(w, rep, I)
@@ -402,10 +422,48 @@ def item5(w, rep, a, mac):
     w.stop(); mac.stop()
 
 
+def itemS(w, rep, a):
+    """the winbot port fix on the VM: the test build's multiplayer.dll (mod.json hash updated, version kept), single
+    player Mods window Apply = soft restart, the new process must answer on the port. Files restored after."""
+    I = 'S'
+    if not a.mp_dll:
+        rep.check(I, 'port fix proof', False, 'no --mp-dll given'); return
+    import hashlib
+    md = W.ROOT + r'\mods\multiplayer'
+    keep = W.WORK + r'\to_delete\mp_release_' + time.strftime('%Y%m%d-%H%M%S')
+    mj = w.json_file(md + r'\mod.json')
+    dll = open(a.mp_dll, 'rb').read()
+    w.kill_all()
+    for f in ('multiplayer.dll', 'mod.json'):
+        w.move(md + '\\' + f, keep + '\\' + f)
+    try:
+        mj['platforms']['win-x64'].setdefault('files', {})['multiplayer.dll'] = hashlib.sha256(dll).hexdigest()
+        w.upload(a.mp_dll, md + r'\multiplayer.dll'); w.write(md + r'\mod.json', json.dumps(mj, indent=1))
+        w.prepare(lang=0, active=BASE_MODS, settings={})
+        w.start()
+        rl = w.text(W.PROF + r'\rig.log') or ''
+        rep.check(I, 'test multiplayer.dll loaded (ctl.pid written)', w.exists(W.PROF + r'\ctl.pid'), [l for l in rl.splitlines() if 'control port' in l][-1:])
+        old = w.pid; t = time.time()
+        w.ui({'op': 'open'}); w.ui({'op': 'click', 'target': 'mod:gcd-cdr'}); w.ui({'op': 'click', 'target': 'apply'})
+        new = w.wait_restart(old, 180)
+        w.wait(w.on_title, 'the restarted game at the title', 120)
+        rl = w.text(W.PROF + r'\rig.log') or ''
+        rep.check(I, 'after a soft restart the new process answers on the control port', new != old,
+                  f'pid {old} -> {new} in {time.time() - t:.0f} s; ' + ' | '.join(l[13:] for l in rl.splitlines() if 'control port' in l)[-300:])
+        w.ui({'op': 'open'}); w.ui({'op': 'click', 'target': 'mod:gcd-cdr'}); w.ui({'op': 'click', 'target': 'apply'})   # back on
+        w.wait_restart(new, 180)
+        fresh_logs(w, rep, 'S')
+    finally:
+        w.stop()
+        for f in ('multiplayer.dll', 'mod.json'):
+            w.move(md + '\\' + f, keep + r'\winbot_' + f)
+            w.move(keep + '\\' + f, md + '\\' + f)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--out', required=True); p.add_argument('--setup'); p.add_argument('--prev-setup')
-    p.add_argument('--items', default='1,2,3,4,5'); p.add_argument('--mac-build')
+    p.add_argument('--items', default='1,2,3,4,5'); p.add_argument('--mac-build'); p.add_argument('--mp-dll')
     p.add_argument('--save-base', default=os.path.join(SAVES, 'base_25846389.json'))
     p.add_argument('--save-dungeon', default=os.path.join(SAVES, 'boss_golem_25846389.json'))
     a = p.parse_args()
@@ -413,7 +471,7 @@ def main():
     w = W.Win(); w.up()
     mac = Mac(a.mac_build)
     fns = {'1': lambda: item1(w, rep, a), '2': lambda: item2(w, rep, a), '3': lambda: item3(w, rep, a, mac),
-           '4': lambda: item4(w, rep, a, mac), '5': lambda: item5(w, rep, a, mac)}
+           '4': lambda: item4(w, rep, a, mac), '5': lambda: item5(w, rep, a, mac), 'S': lambda: itemS(w, rep, a)}
     for k in a.items.split(','):
         t = time.time()
         log(f'---- item {k}')
