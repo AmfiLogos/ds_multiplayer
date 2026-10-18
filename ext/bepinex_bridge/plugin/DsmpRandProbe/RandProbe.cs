@@ -5,6 +5,7 @@
 //   "tick N"  -> Multiplayer.Send("probe.rand", {1, N}): the handler arms a Harmony postfix on Refactor.Tick.TickFlow.Tick
 //                (a sim method our hooks do not hook); the next N Tick calls each draw one set (armed at the same step on
 //                every peer, so the draw count stays the same on all peers)
+//   "chat T"  -> Multiplayer.Chat("Rand Probe", T, broadcast) (result in the status "last")
 // One JSON line per draw set in <DSRIG_DIR>/rand_probe.log:
 //   {"src":"h"|"t","seq":k,"step":s,"shared":0|1,"ri":[Random.Range(int)..],"rv":[Random.value..],"rf":[Random.Range(float)..],"mp":[Multiplayer.Rand..]}
 // <DSRIG_DIR>/rand_probe.status: one JSON line (bridge seen, api, harmony patched, counts).
@@ -88,8 +89,9 @@ namespace DsmpRandProbe
                 {
                     string[] t = File.ReadAllText(trig).Trim().Split(' ');
                     File.Move(trig, trig + "." + (++done) + ".done", true);
-                    byte n = t.Length > 1 ? byte.Parse(t[1]) : (byte)4;
-                    var r = Multiplayer.Send("probe.rand", new byte[] { (byte)(t[0] == "tick" ? 1 : 0), n });
+                    string r;
+                    if (t[0] == "chat") r = Multiplayer.Chat("Rand Probe", string.Join(" ", t.Skip(1)), true).ToString();
+                    else { byte n = t.Length > 1 ? byte.Parse(t[1]) : (byte)4; r = Multiplayer.Send("probe.rand", new byte[] { (byte)(t[0] == "tick" ? 1 : 0), n }).ToString(); }
                     ProbePlugin.last = $"{string.Join(" ", t)} -> {r} at step {Multiplayer.Step}";
                     ProbePlugin.I.Log.LogInfo("probe trigger: " + ProbePlugin.last);
                 }
