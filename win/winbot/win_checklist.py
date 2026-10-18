@@ -392,8 +392,10 @@ def item3(w, rep, a, mac):
 def mac_host_with_extra(mac, a):
     """Mac copy W hosts the base save with ZET-U on + a setting the VM lacks; returns its menu port"""
     mac.start(BASE_MODS[:3] + [ZETU, 'multiplayer'], {ZETU: {'max_units': 7}})
-    work = os.path.join(os.path.dirname(MAC_CTL), 'save_in_base.json')
-    import shutil; shutil.copy2(a.save_base, work)
+    # the host's save must have no load popup: the wiki Template save shows the stock "Lock Consecration" Yes/No popup on
+    # load, and a host with that popup open never sends the join save (known join deadlock, fixed only in branch popupfix)
+    work = os.path.join(os.path.dirname(MAC_CTL), 'save_in_host.json')
+    import shutil; shutil.copy2(a.save_host, work)
     mac.host(work)
     return mac.port()
 
@@ -517,11 +519,23 @@ def item5(w, rep, a, mac):
         time.sleep(25)                                                 # the fight itself runs on game time
         alive(f'fight {where}')
 
+    used = set()
     w.wait(lambda: (mac.answer_boxes(), land('mac') and land('vm'))[1], 'both in the dungeon (entry 1)', 600, 1)
     alive('entry 1')
     for cy in range(1, 4):
         if cy > 1:
-            f1 = host_unit(0)
+            # a fresh unit each dive, as ext/fogfix/fogfix_pair.py: the unit back from the last dive is not offered
+            # again at once ("Choose at least one unit"); a free one is taken through Teams (left, then right click)
+            free = next((col['model'] for col in tm('mac').get('columns', []) if col.get('player') == -1), [])
+            f1 = next((g for g in free if g not in used), None)
+            if not f1:
+                raise W.GameError(f'no free unit left for entry {cy}')
+            used.add(f1)
+            tm('mac', action='open'); tm('vm', action='open'); time.sleep(2)
+            tm('mac', action='click', guid=f1, button=0); time.sleep(1.5); tm('mac', action='click', guid=f1, button=1)
+            mine = lambda side: any(col.get('player') == 0 and f1 in col.get('model', []) for col in tm(side).get('columns', []))
+            w.wait(lambda: mine('mac') and mine('vm'), f'host takes a fresh unit ({cy})', 60, 1)
+            tm('mac', action='close'); tm('vm', action='close'); time.sleep(1)
             for k in range(3):                                         # as lane vmwin2's xplay.py: up to 3 proposals
                 tm('mac', action='open'); time.sleep(1); tm('mac', action='go')
                 w.wait(lambda: tm('mac').get('stock', {}).get('open'), 'stock window', 60)
@@ -630,6 +644,7 @@ def main():
     p.add_argument('--items', default='1,2,3,4,5'); p.add_argument('--mac-build'); p.add_argument('--mp-dll')
     p.add_argument('--save-base', default=os.path.join(SAVES, 'base_25846389.json'))
     p.add_argument('--save-dungeon', default=os.path.join(SAVES, 'boss_golem_25846389.json'))
+    p.add_argument('--save-host', default=SEED_7)                    # Mac host for items 3 / 4 (vmwin2's passing rejoin: this save)
     a = p.parse_args()
     rep = Report(os.path.abspath(a.out))
     w = W.Win(); w.up()
