@@ -286,7 +286,7 @@ static void install(HMODULE ga) {
       else if (GetFileAttributesA(off) != INVALID_FILE_ATTRIBUTES) rig_log("dsmath: off (%s)", off);
       else dsmath_win_install(); }
     const char *port = getenv("DSRIG_PORT");
-    if (getenv("DSRIG_MINIMAL")) { rig_log("DSRIG_MINIMAL: det / trn / mp / ord / ui hooks NOT installed"); rig_sock_start(port && *port ? port : "47811"); return; }
+    if (getenv("DSRIG_MINIMAL")) { rig_log("DSRIG_MINIMAL: det / trn / mp / ord / ui hooks NOT installed"); rig_sock_start(port); return; }
     /* same order as src/rig_main.c on_image */
     extern void trn_install(void), mp_game_install(void), ord_install(void), ui_install(void), ui_teams_install(void), mpmenu_install(void);
     rig_det_install();
@@ -309,7 +309,7 @@ static void install(HMODULE ga) {
     rig_hook(W_EXP_TRYSTART, (void *)h_exp_try, (void **)&o_exp_try, "ExpeditionPlanPresenter.TryStartExpedition (inlined start redirected)");
     rig_hook(W_UIINPUT_ADD, (void *)h_uiadd, (void **)&o_uiadd, "UIInputStream.AddInput (expedition start redirect)");
     rig_hook(W_CF_MOVE, (void *)h_cf_move, (void **)&o_cf_move, "CommandFlow.Move (un-inlined for ord capture)");
-    rig_sock_start(port && *port ? port : "47811");
+    rig_sock_start(port);
 }
 
 #ifdef DSMP_MODULE
@@ -367,7 +367,7 @@ DSL_EXPORT int dsl_module_early(const DSLHost *host, DSLPlugin *self) {
     HMODULE m = GetModuleHandleA("GameAssembly.dll");
     if (!m || (uintptr_t)m != host->ga_base || (!rig_rv_on && !check_ga(m))) { host->log(self, "GameAssembly is not build %s: multiplayer off", RIG_BUILD); return 3; }
     install(m);
-    host->log(self, "multiplayer started (control port %s)", getenv("DSRIG_PORT") ? getenv("DSRIG_PORT") : "47811");
+    host->log(self, "multiplayer started (control port %s)", getenv("DSRIG_PORT") && *getenv("DSRIG_PORT") ? getenv("DSRIG_PORT") : "off");
     return 0;
 }
 

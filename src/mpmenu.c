@@ -4182,6 +4182,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     if (!strcmp(cmd, "mpm_shot")) {
         char p[1024], how[32] = "camera"; if (!jstr(line, "path", p, sizeof p)) return strdup("{\"ok\":false}");
         jstr(line, "how", how, sizeof how);
+        { const char *no = rig_path_refused(p, 1); if (no) return rig_path_err(no); }
         return !strcmp(how, "backbuffer") ? backbuffer_shot(p) : ui_shot(p);
     }
     if (!strcmp(cmd, "mpm_tree")) {                                         /* hierarchy of the Esc menu (layout debugging) */
@@ -4392,6 +4393,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         double v = -1; jnum(line, "test", &v); if (v >= 0) { hostmods_loader(); hm_test = v != 0; }
         char pf[1024] = "";                                                 /* {plan_file:<dsl_hostmods_plan JSON>, vanilla:0|1}: the box from that plan (layout tests) */
         if (jstr(line, "plan_file", pf, sizeof pf)) {
+            { const char *no = rig_path_refused(pf, 0); if (no) return rig_path_err(no); }
             static char pj[32768]; static dsmc_plan pl; FILE *f = fopen(pf, "rb"); size_t nr = f ? fread(pj, 1, sizeof pj - 1, f) : 0; if (f) fclose(f); pj[nr] = 0;
             double va = 0; jnum(line, "vanilla", &va); hostmods_loader();
             if (dsmc_plan_parse(pj, &pl) <= 0) return strdup("{\"ok\":false,\"error\":\"bad plan\"}");

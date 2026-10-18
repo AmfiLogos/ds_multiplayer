@@ -1647,6 +1647,7 @@ char *ui_exec(const char *cmd, const char *line) {
     if (!strcmp(cmd, "ui_view")) return ui_view_cmd();
     if (!strcmp(cmd, "ui_capture")) {                        /* ui_capture {path}: the screen with the UI (needs a window) */
         char path[1024] = ""; jstr(line, "path", path, sizeof path);
+        { const char *no = rig_path_refused(path, 1); if (no) return rig_path_err(no); }
         Obj tex = F(0x51FA520, Obj (*)(void *))(NULL);                                     /* ScreenCapture.CaptureScreenshotAsTexture */
         Obj png = tex ? F(0x51657D8, Obj (*)(Obj, void *))(tex, NULL) : NULL;               /* EncodeToPNG */
         size_t n = png ? (size_t)AT(png, 0x18, int64_t) : 0;

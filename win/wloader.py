@@ -32,6 +32,11 @@ def dsmp_pids():
 
 def winpath(p): return "Z:" + p.replace("/", "\\")
 
+def ctl_dirs_env():
+    """test commands may write / read files there besides the copy's own folder (multiplayer rig_path_refused; ';' list)"""
+    w = [winpath(os.path.join(H, "ds_*"))] + [winpath(t.rstrip("/")) for t in (os.environ.get("TMPDIR", ""), "/tmp", "/private/tmp") if t]
+    return {"DSRIG_WRITE_DIRS": ";".join(w), "DSRIG_READ_DIRS": ";".join(w + [winpath(f"{H}/DungeonSettlers_SaveBackups")])}
+
 def other_wine():
     """another test's wine copy: any process of the DSMP bottle, or a Dungeon Settlers exe in any bottle. The owner's own
     bottles (Steam, Wollay...) keep long-lived wine services; those are not a test copy and are ignored."""
@@ -93,6 +98,7 @@ def start(extra):
         subprocess.Popen(["python3", f"{H}/ds_multiplayer/win/tools/dsmp_guard.py", "7200"], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     env = dict(os.environ, DSRIG_PORT=str(PORT), DSMP_GUARD_TAG="1", DSL_NO_ALERT="1")
+    env.update(ctl_dirs_env())
     env["WINEDLLOVERRIDES"] = "winhttp=n,b"          # wine only: Doorstop's winhttp.dll from the game folder (Windows loads it anyway)
     for k in ("DSRIG_DIR", "DSRIG_RANGES", "DSL_MODS_DIR", "DSL_PROFILE", "DSL_LOG_DIR", "DSML_SESSION"): env.pop(k, None)
     args = ["nice", "-n", "19", f"{C}/wine", "--bottle", BOTTLE, "--no-wait", WROOT + "\\Dungeon Settlers Modded.exe",

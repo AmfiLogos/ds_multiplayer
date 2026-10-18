@@ -24,7 +24,7 @@ if '--rig' in sys.argv:
     inject.append(os.path.expanduser('~/ds_multiplayer/research/loadertest.noindex/envrestore.dylib'))
 env = {'HOME': home, 'CFFIXED_USER_HOME': home, 'USER': os.environ.get('USER', ''),
        'LOGNAME': os.environ.get('LOGNAME', ''), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
-       'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'DSRIG_DIR': rig.idir(x), 'DSRIG_FPS': '30',
+       'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'DSRIG_DIR': rig.idir(x), 'DSRIG_FPS': '30', **(rig.ctl_env() if hasattr(rig, 'ctl_env') else {'DSRIG_CTL': '1'}),
        'DSRIG_BATCH': '1', 'DYLD_INSERT_LIBRARIES': ':'.join(inject),
        'DOORSTOP_ENABLED': '1', 'DOORSTOP_TARGET_ASSEMBLY': os.path.join(B, 'BepInEx/core/BepInEx.Unity.IL2CPP.dll'),
        'DOORSTOP_CLR_RUNTIME_CORECLR_PATH': os.path.join(B, 'dotnet/libcoreclr.dylib'),

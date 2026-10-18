@@ -295,6 +295,7 @@ static const char *load_file(const char *file, int det, char *name, size_t name_
     char *d = malloc((size_t)n + 1); fread(d, 1, (size_t)n, f); fclose(f); d[n] = 0;
     char *p = strstr(d, "\"SaveName\"");
     if (!p || !jstr(p, "SaveName", name, name_n)) { free(d); return "no SaveName in the file"; }
+    if (!name[0] || strchr(name, '/') || strchr(name, '\\') || strstr(name, "..")) { free(d); return "bad SaveName in the file"; }   /* data/Saves/<name>.json stays in data/Saves */
     char dst[1400]; snprintf(dst, sizeof dst, "%s/data/Saves", rig_dir); mkdir(dst, 0755);
     snprintf(dst, sizeof dst, "%s/data/Saves/%s.json", rig_dir, name);
     if (strcmp(dst, file)) {
@@ -337,6 +338,7 @@ static char *c_load_save(const char *line) {
     double detv = 0; jnum(line, "det", &detv);
     jstr(line, "name", name, sizeof name);
     if (jstr(line, "file", file, sizeof file)) {
+        const char *no = rig_path_refused(file, 0); if (no) return err(no);
         const char *e = load_file(file, detv != 0, name, sizeof name);
         if (e) return err(e);
     } else {
@@ -428,6 +430,7 @@ static char *c_fingerprint(void) {
    Camera only (no screen-space overlay UI). */
 static char *c_screenshot(const char *line) {
     char path[1024]; if (!jstr(line, "path", path, sizeof path)) return err("need path");
+    { const char *no = rig_path_refused(path, 1); if (no) return err(no); }
     Obj cam = F(0x5083208, Obj (*)(void *))(NULL);                                    /* Camera.main */
     if (!cam) return err("no Camera.main");
     double dw = 960, dh = 540; jnum(line, "w", &dw); jnum(line, "h", &dh);

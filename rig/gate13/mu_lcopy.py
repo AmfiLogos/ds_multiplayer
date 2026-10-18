@@ -165,7 +165,7 @@ class Copy:
             os.replace(r.sockpath(self.x), os.path.join(self.I, 'old', 'ctl.sock.' + time.strftime('%H%M%S')))
         env = {'HOME': os.path.join(self.I, 'home'), 'CFFIXED_USER_HOME': os.path.join(self.I, 'home'), 'USER': os.environ.get('USER', ''),
                'LOGNAME': os.environ.get('LOGNAME', ''), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'TMPDIR': os.environ.get('TMPDIR', '/tmp'),
-               'DSRIG_DIR': self.I, 'DSRIG_FPS': str(self.fps), 'DYLD_INSERT_LIBRARIES': os.path.join(self.APP, 'Contents/Frameworks/dsload.dylib'),
+               'DSRIG_DIR': self.I, 'DSRIG_FPS': str(self.fps), **(r.ctl_env() if hasattr(r, 'ctl_env') else {'DSRIG_CTL': '1'}), 'DYLD_INSERT_LIBRARIES': os.path.join(self.APP, 'Contents/Frameworks/dsload.dylib'),
                'DSL_PROFILE': prof, 'DSL_SOFT_STAGE': STAGE, 'DSL_SOFT_NOACTIVATE': '1', 'DSL_NO_ALERT': '1',
                'DSL_UNITS_TEST': self.drv, 'DSMP_TEST': '1', 'DSL_LOG_DIR': self.I}
         env.update(self.extra)

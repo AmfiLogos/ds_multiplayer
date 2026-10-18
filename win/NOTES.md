@@ -152,8 +152,8 @@ Build: `win/build_win.sh` -> `win/build/baselib.dll` (proxy + rig + det + mp + d
   Disabled. `SteamRuntime.get_IsEnabled` cannot be patched, because its body is the shared "return true" body
   0x5D3EE0. The rig also zeroes the CRT FMA3 flag twice: at load, and again at the first Update, because the CRT
   sets it after our DllMain. **Under CrossOver/Rosetta the flag is 3** (Rosetta reports FMA3/AVX2).
-- `port/rig_sock_tcp.inc`: control channel on TCP 127.0.0.1:47811 (`DSRIG_PORT`). The port is also written to
-  `<rig_dir>/ctl.port`.
+- `port/rig_sock_tcp.inc`: control channel on TCP 127.0.0.1:`DSRIG_PORT` (the test tools use 47811). Off when
+  `DSRIG_PORT` is not set (no default port: test builds only). The port is also written to `<rig_dir>/ctl.port`.
 - `port/steam_stub_win.c`: the Steam bridge is not ported. It reports "no Steam", so mp uses direct TCP.
 
 Math: `win/math/` = musl 1.2.5 libm (MIT) with a dsm_ prefix, built with `-ffp-contract=off` and the

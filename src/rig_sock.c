@@ -76,6 +76,85 @@ void bstr(Buf *b, const char *s) {
     bput(b, "\"");
 }
 
+/* ---------------------------------------------------------------- file paths in test commands
+   Commands that write (screenshot, mpm_shot, ui_capture, teams shot) or read (load_save file, plan_file) a file at a
+   path given in the command: no "..", and the file only under the rig folder (DSRIG_DIR) or a folder listed in
+   DSRIG_WRITE_DIRS (writes) / DSRIG_READ_DIRS (reads; the write folders may be read too). The lists are set only by
+   the test launchers: ':'-separated (';' on Windows, where paths have drive letters); an entry ending in '*' is a
+   folder name prefix ("<home>/ds_mp_*"). Windows compares case-insensitively, either slash. */
+#ifdef _WIN32
+#define RIG_LIST_SEP ';'
+static int is_sep(char c) { return c == '/' || c == '\\'; }
+static int path_abs(const char *in, char *out, size_t n) {
+    if (!_fullpath(out, in, n)) return 0;
+    for (char *p = out; *p; p++) { if (*p == '\\') *p = '/'; else if (*p >= 'A' && *p <= 'Z') *p = (char)(*p - 'A' + 'a'); }
+    size_t l = strlen(out); while (l > 3 && out[l - 1] == '/') out[--l] = 0;
+    return 1;
+}
+#else
+#include <limits.h>
+#include <sys/stat.h>
+#define RIG_LIST_SEP ':'
+static int is_sep(char c) { return c == '/'; }
+/* symlinks resolved; a file that does not exist yet (a write): its folder resolved + its name */
+static int path_abs(const char *in, char *out, size_t n) {
+    char r[PATH_MAX], d[PATH_MAX]; struct stat st;
+    if (realpath(in, r)) { snprintf(out, n, "%s", r); return 1; }
+    if (!lstat(in, &st)) return 0;                                /* exists but does not resolve: a dangling link */
+    snprintf(d, sizeof d, "%s", in);
+    char *s = strrchr(d, '/'); const char *base;
+    if (!s) { base = in; snprintf(d, sizeof d, "."); }
+    else if (s == d) { base = in + 1; snprintf(d, sizeof d, "/"); }
+    else { *s = 0; base = in + (s - d) + 1; }
+    if (!*base || !realpath(d, r)) return 0;
+    snprintf(out, n, "%s/%s", strcmp(r, "/") ? r : "", base);
+    return 1;
+}
+#endif
+static int under_dir(const char *abs, const char *entry) {
+    char e[1100], r[1100]; snprintf(e, sizeof e, "%s", entry);
+    size_t l = strlen(e); if (!l) return 0;
+    if (e[l - 1] == '*') {                                        /* "<dir>/<prefix>*" */
+        e[--l] = 0;
+        char *s = e + l; while (s > e && !is_sep(s[-1])) s--;
+        if (s == e) return 0;
+        char stem[256]; snprintf(stem, sizeof stem, "%s", s); s[-1] = 0;
+        if (!path_abs(e[0] ? e : "/", r, sizeof r)) return 0;
+#ifdef _WIN32
+        for (char *p = stem; *p; p++) { if (*p >= 'A' && *p <= 'Z') *p = (char)(*p - 'A' + 'a'); }
+#endif
+        char pre[1400]; snprintf(pre, sizeof pre, "%s/%s", strcmp(r, "/") ? r : "", stem);
+        return !strncmp(abs, pre, strlen(pre));
+    }
+    if (!path_abs(e, r, sizeof r)) return 0;
+    size_t k = strlen(r);
+    if (!strcmp(r, "/")) return 1;
+    return !strncmp(abs, r, k) && (abs[k] == 0 || abs[k] == '/');
+}
+static int in_list(const char *abs, const char *list) {
+    if (!list) return 0;
+    while (*list) {
+        const char *e = strchr(list, RIG_LIST_SEP); size_t l = e ? (size_t)(e - list) : strlen(list);
+        char one[1100]; if (l && l < sizeof one) { memcpy(one, list, l); one[l] = 0; if (under_dir(abs, one)) return 1; }
+        if (!e) break;
+        list = e + 1;
+    }
+    return 0;
+}
+const char *rig_path_refused(const char *path, int wr) {
+    if (!path || !path[0]) return "need path";
+    const char *why = NULL; char a[1100];
+    if (strstr(path, "..")) why = "path refused (\"..\")";
+    else if (!path_abs(path, a, sizeof a)) why = "path refused (its folder does not exist)";
+    else if (!(rig_dir[0] && under_dir(a, rig_dir)) && !in_list(a, getenv("DSRIG_WRITE_DIRS")) && !(!wr && in_list(a, getenv("DSRIG_READ_DIRS"))))
+        why = "path refused (outside the rig folder and the test folders)";
+    if (why) rig_log("%s %s: %s", wr ? "write" : "read", path, why);
+    return why;
+}
+char *rig_path_err(const char *why) {
+    Buf b = {0}; bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, why); bput(&b, "}"); return b.p;
+}
+
 /* ---------------------------------------------------------------- connections */
 static void send_all(int fd, const char *s, size_t n) {
     while (n) { ssize_t k = write(fd, s, n); if (k <= 0) { if (errno == EINTR) continue; return; } s += k; n -= (size_t)k; }
@@ -173,10 +252,12 @@ static void short_sock_path(const char *path, char *out, size_t n) {
     snprintf(out, n, "/tmp/dsrig-%u-%016llx.sock", (unsigned)getuid(), h);
 }
 
-/* DSRIG_NO_CTL=1: no control socket at all (a helper copy that must never answer for the game). */
+/* Test tools only: the socket opens only with DSRIG_CTL=1 (set by the test launchers, never by a player's game).
+   DSRIG_NO_CTL=1: no control socket at all (a helper copy that must never answer for the game). */
 void rig_sock_start(const char *path) {
-    const char *no = getenv("DSRIG_NO_CTL");
+    const char *no = getenv("DSRIG_NO_CTL"), *on = getenv("DSRIG_CTL");
     if (no && *no == '1') { rig_log("control socket off (DSRIG_NO_CTL=1)"); return; }
+    if (!on || strcmp(on, "1")) { rig_log("control socket off (no DSRIG_CTL)"); return; }
     struct sockaddr_un probe;
     if (strlen(path) >= sizeof probe.sun_path) {
         short_sock_path(path, sock_path, sizeof sock_path);

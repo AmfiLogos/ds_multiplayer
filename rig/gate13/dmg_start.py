@@ -45,6 +45,7 @@ try:
     e = {k: v for k, v in genv.items()}
     e.update(HOME=genv.get('CFFIXED_USER_HOME', os.path.join(OUT, 'home')), USER=os.environ.get('USER', ''), PATH='/usr/bin:/bin:/usr/sbin:/sbin',
              TMPDIR=os.environ.get('TMPDIR', '/tmp'), DSRIG_BATCH='1', DSRIG_FPS='30')
+    e.update(lrig.ctl_env() if hasattr(lrig, 'ctl_env') else {'DSRIG_CTL': '1'})   # test copy: control socket on (the app never sets it)
     front0 = lrig.front_pid()
     game = subprocess.Popen(argv + ['-batchmode'], env=e, cwd=cwd, stdin=subprocess.DEVNULL, stdout=open(os.path.join(OUT, 'stdout.log'), 'wb'),
                             stderr=subprocess.STDOUT, preexec_fn=lambda: os.nice(5))

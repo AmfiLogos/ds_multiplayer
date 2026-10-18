@@ -25,7 +25,7 @@ def start(x, W, H):
     if os.path.exists(rig.sockpath(x)): os.unlink(rig.sockpath(x))
     env = {'HOME': os.path.join(rig.idir(x), 'home'), 'CFFIXED_USER_HOME': os.path.join(rig.idir(x), 'home'),
            'USER': os.environ.get('USER', ''), 'LOGNAME': os.environ.get('LOGNAME', ''), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
-           'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'DSRIG_DIR': rig.idir(x), 'DSRIG_FPS': '30',
+           'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'DSRIG_DIR': rig.idir(x), 'DSRIG_FPS': '30', **(rig.ctl_env() if hasattr(rig, 'ctl_env') else {'DSRIG_CTL': '1'}),
            'DYLD_INSERT_LIBRARIES': rig.DYLIB, 'DSRIG_HIDEWIN': '1'}
     args = [os.path.join(rig.idir(x), rig.EXE_REL), '-logFile', os.path.join(rig.idir(x), 'player.log'), '-screen-fullscreen', '0',
             '-screen-width', str(W), '-screen-height', str(H)]

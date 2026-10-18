@@ -17,7 +17,7 @@ def start(x, fps=30):
     home = os.path.join(rig.idir(x), 'home')
     dsload = os.path.join(LD, 'dsload.dylib')
     env = {'HOME': home, 'CFFIXED_USER_HOME': home, 'USER': os.environ.get('USER', ''), 'LOGNAME': os.environ.get('LOGNAME', ''),
-           'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'DSRIG_DIR': rig.idir(x), 'DSRIG_FPS': str(fps),
+           'PATH': '/usr/bin:/bin:/usr/sbin:/sbin', 'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'DSRIG_DIR': rig.idir(x), 'DSRIG_FPS': str(fps), **(rig.ctl_env() if hasattr(rig, 'ctl_env') else {'DSRIG_CTL': '1'}),
            'DSRIG_BATCH': '1', 'DYLD_INSERT_LIBRARIES': dsload + ':' + os.path.join(B, 'libdoorstop.dylib'),
            'DSL_MODS_DIR': os.path.join(LD, 'mods'), 'DSL_PROFILE': os.path.join(L, 'l1/profile.json'), 'DSL_NO_ALERT': '1',
            'DSML_DSLOAD': dsload, 'DSML_BEPINEX_DIR': B,

@@ -22,6 +22,9 @@ Socket commands (one JSON per line, `instances/X/ctl.sock`): `ping`, `status`, `
 `set_speed {speed 0..3}`, `list_units {map?}`, `order_move {guid,x,y}` (cell), `fingerprint`,
 `screenshot {path,w,h}`, `quit`. Everything except ping/quit runs on the main thread from the
 `MainFlow.Update` hook (queue drained before the original Update).
+The socket opens only with `DSRIG_CTL=1` (rig.py / lrig.py `ctl_env()`; a player's game never sets it; Windows: only with
+`DSRIG_PORT`). Commands that write or read a file at a given path accept only the rig folder and the folders in
+`DSRIG_WRITE_DIRS` / `DSRIG_READ_DIRS` (set by `ctl_env()`), never a path with "..". Gate check: `rig/gate13/ctl_off_check.py`.
 
 ## How a copy is built (make_instance.sh)
 - APFS clone of the installed app into `instances/X/DungeonSettlers.app`.

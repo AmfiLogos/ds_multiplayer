@@ -18,6 +18,11 @@ PORT = 47811
 
 def winpath(p): return "Z:" + p.replace("/", "\\")
 
+def ctl_dirs_env():
+    """test commands may write / read files there besides the copy's own folder (multiplayer rig_path_refused; ';' list)"""
+    w = [winpath(os.path.join(H, "ds_*"))] + [winpath(t.rstrip("/")) for t in (os.environ.get("TMPDIR", ""), "/tmp", "/private/tmp") if t]
+    return {"DSRIG_WRITE_DIRS": ";".join(w), "DSRIG_READ_DIRS": ";".join(w + [winpath(f"{H}/DungeonSettlers_SaveBackups")])}
+
 def dsmp_pids():
     out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
     res = []
@@ -33,6 +38,7 @@ def start():
         subprocess.Popen(["python3", f"{H}/ds_multiplayer/win/tools/dsmp_guard.py", "7200"], start_new_session=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     env = dict(os.environ, DSRIG_DIR=winpath(INST), DSRIG_PORT=str(PORT), DSMP_GUARD_TAG="1")
+    env.update(ctl_dirs_env())
     env.pop("DSRIG_RANGES", None)          # a Mac path (release gate pins the Mac ranges); Windows uses det_ranges_win.tsv
     args = ["nice", "-n", "19", f"{C}/wine", "--bottle", BOTTLE, "--no-wait", "C:\\DSW\\DungeonSettlers.exe",
             "-batchmode", "-logFile", winpath(f"{INST}/player.log")]

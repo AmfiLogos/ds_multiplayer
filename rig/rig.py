@@ -45,6 +45,17 @@ def pidfile(x): return os.path.join(idir(x), 'game.pid')
 def sockpath(x): return os.path.join(idir(x), 'ctl.sock')
 
 
+def ctl_env():
+    """Test copies only: DSRIG_CTL=1 opens the control socket (<DSRIG_DIR>/ctl.sock; a player's game never has it), and
+    the folders where test commands may write (screenshot / mpm_shot / ui_capture paths) or read (load_save file,
+    plan_file) besides the copy's own folder: the test worktrees (~/ds_*), the scratch roots, the seed saves (read)."""
+    h = os.path.expanduser('~')
+    tmp = [os.environ.get('TMPDIR', ''), '/tmp']
+    w = [os.path.join(h, 'ds_*')] + [t.rstrip('/') for t in tmp if t]
+    r = w + [os.path.join(h, 'DungeonSettlers_SaveBackups')]
+    return {'DSRIG_CTL': '1', 'DSRIG_WRITE_DIRS': ':'.join(w), 'DSRIG_READ_DIRS': ':'.join(r)}
+
+
 def read_pid(x):
     try:
         return int(open(pidfile(x)).read().split()[0])
@@ -318,6 +329,7 @@ def start(x, window=False, fps=30, show=None):
            'USER': os.environ.get('USER', ''), 'LOGNAME': os.environ.get('LOGNAME', ''), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
            'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'DSRIG_DIR': idir(x), 'DSRIG_FPS': str(fps),
            'DYLD_INSERT_LIBRARIES': DYLIB}
+    env.update(ctl_env())                                      # test copy: control socket on (test tools)
     env.update({k: v for k, v in os.environ.items() if k.startswith('DSRIG_') and k not in env})   # DSRIG_DIAG, DSRIG_DETAIL_SYNC...
     args = [exe, '-logFile', os.path.join(idir(x), 'player.log'), '-screen-fullscreen', '0',
             '-screen-width', '960', '-screen-height', '540']

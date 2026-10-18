@@ -2617,6 +2617,7 @@ char *ui_teams_exec(const char *cmd, const char *line) {
     } else if (!strcmp(act, "popup")) { double ty = 0; jnum(line, "type", &ty); rc = show_popup((int)ty);
     } else if (!strcmp(act, "shot")) {
         char path[1024] = ""; double w = 0, h = 0; jstr(line, "path", path, sizeof path); jnum(line, "w", &w); jnum(line, "h", &h);
+        { const char *no = rig_path_refused(path, 1); if (no) return rig_path_err(no); }
         rc = path[0] ? ui_capture(path, (int)w, (int)h) : -1;
     } else if (!strcmp(act, "accept")) {                    /* stock panel accept: units = "guid,guid,..." (the panel party) */
         double rg = 0; jnum(line, "region", &rg);

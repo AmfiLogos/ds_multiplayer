@@ -39,7 +39,10 @@ typedef struct RigReq {
     int done;
     struct RigReq *next;
 } RigReq;
-void rig_sock_start(const char *path);
+void rig_sock_start(const char *path);   /* Mac: only with DSRIG_CTL=1; Windows: only with DSRIG_PORT (path = port, NULL = off) */
+/* a test command's file path: NULL = allowed, else why not (logged). wr = 1: a write. rig_dir, DSRIG_WRITE_DIRS, DSRIG_READ_DIRS. */
+const char *rig_path_refused(const char *path, int wr);
+char *rig_path_err(const char *why);     /* {"ok":false,"error":why}, malloc'd */
 RigReq *rig_take_requests(void);       /* main thread: take every queued request (FIFO) */
 void rig_finish(RigReq *r, char *resp);/* main thread: hand the response back */
 

@@ -1,5 +1,5 @@
 /* Windows tail of rig_sock.c (appended by gen_port.py instead of the AF_UNIX listener):
-   TCP listener on 127.0.0.1:<port>; the port is also written to <rig_dir>/ctl.port. */
+   TCP listener on 127.0.0.1:<DSRIG_PORT> (test launchers only); the port is also written to <rig_dir>/ctl.port. */
 static char sock_port[16];
 static void *accept_thread(void *arg) {
     (void)arg;
@@ -19,7 +19,12 @@ static void *accept_thread(void *arg) {
     }
     return NULL;
 }
+/* Test tools only: listens only when DSRIG_PORT is set (by the test launchers, never by a player's game); no default port.
+   DSRIG_NO_CTL=1: off as on the Mac. */
 void rig_sock_start(const char *port) {
+    const char *no = getenv("DSRIG_NO_CTL");
+    if (no && *no == '1') { rig_log("control socket off (DSRIG_NO_CTL=1)"); return; }
+    if (!port || !*port) { rig_log("control socket off (no DSRIG_PORT)"); return; }
     snprintf(sock_port, sizeof sock_port, "%s", port);
     pthread_t t; pthread_create(&t, NULL, accept_thread, NULL); pthread_detach(t);
 }
