@@ -3397,6 +3397,13 @@ static void lf_frame(void) {
     }
 }
 
+/* the loader's hidden-worlds line (dsl_sdk.h dsl_loadlist_hidden): world rows this filter hides in the open Load list
+   now; kind 1 = multiplayer worlds (single-player list), 2 = single-player worlds (Your save) */
+__attribute__((visibility("default"))) int dsl_loadlist_hidden(int *kind) {
+    if (kind) *kind = lf_mode == MPM_LIST_MP ? 2 : 1;
+    return popup_open(5) && u_alive(u_gc_get(h_lf_slv)) ? lf_hidden : 0;
+}
+
 /* ---------------------------------------------------------------- the third host choice (MASTER_PLAN 2.2 B register_host_choice) */
 /* old API: one choice per id (same id = replace), its page = Load save + the Expedition Rules, lobby Start = on_start
    (MPA_FE_START). draw_page is kept but never called (as before). 1 = ok. */
