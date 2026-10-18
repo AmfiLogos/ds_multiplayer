@@ -237,7 +237,7 @@
 "Everyone approved"	ui_teams.c:1221
 "Everyone approved, but nobody marked a unit"	ui_teams.c:2253
 "Everyone approved: leaving for %s"	ui_teams.c:2253
-"Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home."	mpmenu.c:3509
+"Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home."	mpmenu.c:3516
 "Everyone in this world and their connection. Right-click and drag to move this panel."	ui_game.c:5371 ui_game.c:5372
 "Everyone in this world. The bars show each player's connection."	mpmenu.c:3077
 "Everything found stays in the hub."	mpmenu_model.c:104
@@ -262,7 +262,7 @@
 "Follow %s's View"	ui_game.c:5288
 "Follow Camera"	ui_game.c:5384
 "Following %s"	ui_game.c:3854
-"Foreign Expedition"	mpmenu.c:3509 mpmenu_model.c:502
+"Foreign Expedition"	mpmenu.c:3516 mpmenu_model.c:502
 "Foreign Expedition · Death: %s · Experience: %s · Dungeon loot: %s · Units: %d · Recruiting: %s"	mpmenu_model.c:25
 "Forgotten Abyss"	ui_teams.c:258
 "Free"	ui_game.c:5012
