@@ -99,6 +99,9 @@ class Mac:
         self.sh('stop')
         m = os.path.join(os.path.dirname(MAC_CTL), 'data', 'Mods')
         os.makedirs(m, exist_ok=True)
+        if os.path.exists(os.path.join(m, 'worlds.json')):           # a fresh session: no remembered world mod sets (moved, never deleted)
+            old = os.path.join(os.path.dirname(MAC_CTL), 'old'); os.makedirs(old, exist_ok=True)
+            os.replace(os.path.join(m, 'worlds.json'), os.path.join(old, 'worlds_%s.json' % time.strftime('%Y%m%d-%H%M%S')))
         json.dump({'enabled': list(active), 'order': list(active)}, open(os.path.join(m, 'active.json'), 'w'))
         json.dump(settings or {}, open(os.path.join(m, 'settings.json'), 'w'))
         self.env.update(DSML_SESSION=os.path.join(m, 'worlds.json'), DSL_SETTINGS_FILE=os.path.join(m, 'settings.json'),
@@ -118,6 +121,8 @@ class Mac:
     def host(self, save):
         r = self.sh('host', save)
         self.answer_boxes()
+        if not r.get('port'):
+            raise W.GameError(f'Mac copy W did not host {os.path.basename(save)}: {str(r)[-300:]}')
         return r
 
     def answer_boxes(self):
@@ -214,7 +219,7 @@ def item1(w, rep, a):
             b = w.wait(lambda: (w.mpm().get('box') or {}).get('on') and w.mpm()['box'], 'the crash-report question', 30)
             rep.check(I, 'crash-report question shown on the first start', 'crash' in b.get('text', '').lower(), b.get('text'))
             w.box('cancel')
-            c = w.wait(lambda: w.json_file(W.ROOT + r'\crash\consent.json'), 'consent.json', 10)
+            c = w.wait(lambda: (lambda j: j if j and j.get('consent') != 'unasked' else None)(w.json_file(W.ROOT + r'\crash\consent.json')), 'consent.json answered', 15)
             rep.check(I, 'No stored (consent.json)', c.get('consent') == 'no', c)
         ms = mods_state(w)
         z = ms.get('mod:' + ZETU, {})
@@ -235,6 +240,9 @@ def item1(w, rep, a):
 
 def probe(w, line, limit=20):
     """zetu-probe request (the loader's test module, built by zetu_probe/build_probe.sh): the answer lines in dsload.log"""
+    done = W.PROF + r'\zetu_probe_req.txt.done'
+    if w.exists(done):                  # the probe renames the request to .done; on Windows rename() does not replace, so the
+        w.move(done, W.WORK + r'\to_delete\probe_' + f'{time.time():.3f}.txt')   # request would run again every 10 frames
     mark = w.mark('dsload.log')
     w.write(W.PROF + r'\zetu_probe_req.txt', line + '\n')
     try:
@@ -309,7 +317,7 @@ def _item2(w, rep, a, I):
     m0 = w.mark('dsload.log')
     tm(action='go'); w.wait(lambda: (tm(action='state').get('stock') or {}).get('open'), 'expedition window', 30)
     tm(action='stock_select', units=','.join(g8)); time.sleep(2)
-    L = dl(m0)
+    L = dl(0)                                                        # whole log, like the Mac test: some lines come once per build of a view
     sel = re.findall(r'zetu-suite.*expedition: (\d+) selected', L)
     sh('expedition_8_select')
     lines = [l for l in L.splitlines() if 'zetu-suite' in l and ('portraits:' in l or 'count text' in l)][-3:]
@@ -318,7 +326,7 @@ def _item2(w, rep, a, I):
     rep.check(I, '3: count text says (8/8)', re.search(r"count text now '[^']*\(8/8\)'", L), lines)
     m0 = w.mark('dsload.log')
     tm(action='stock_next'); w.wait(lambda: (tm(action='state').get('stock') or {}).get('state') == 1, 'supplies step', 30); time.sleep(1)
-    L = dl(m0); sh('expedition_8_supplies')
+    L = dl(0); sh('expedition_8_supplies')
     st = tm(action='state').get('stock') or {}
     rep.check(I, '2: supplies step: 8 panels in one row, no overlap', re.search(r'supplies: 8 unit panels .*, no overlap', L),
               [l for l in L.splitlines() if 'supplies' in l][-2:])
@@ -338,7 +346,7 @@ def _item2(w, rep, a, I):
         except W.GameError:
             pass
         time.sleep(1.5); sh(f'dungeon_8_{n}')
-        L = dl(m0)
+        L = dl(0)
         fit = re.findall(view + r': (\d+) units shown, row scale ([\d.]+), x (-?\d+)\.\.(-?\d+) of (\d+) px', L)
         rep.check(I, f'5: {n} window: 8 panels (4 stock + 4 copies)', re.search(view + r': 8 panels \(4 stock \+ 4 copies\)', L), [l for l in L.splitlines() if view in l][-2:])
         rep.check(I, f'5: {n} window: the 8 units inside the screen', fit and fit[-1][0] == '8' and int(fit[-1][2]) >= 0 and int(fit[-1][3]) <= int(fit[-1][4]), fit[-1:])
@@ -370,7 +378,7 @@ def item3(w, rep, a, mac):
         w.ui({'op': 'close'})
         w.cmd(cmd='mpm_open_load'); w.wait(lambda: w.mpm().get('state') in ('pick_save', 'idle'), 'load list', 10)
         w.cmd(cmd='mpm_list', flip=1); time.sleep(1); sh('load')
-        w.cmd(cmd='mpm_press', button=W.B['BACK'])
+        w.cmd(cmd='mpm_list', close=1); time.sleep(0.5)
         w.join(f'{W.hub_host()}:{host}', wait=None)
         w.wait(lambda: w.cmd(cmd='mpm_hostmods').get('box'), "the host's mods box", 60)
         hm = w.mpm().get('box') or {}
@@ -432,12 +440,17 @@ def item4_run(w, rep, a, mac):
     rep.check(I, "host's mods taken", ZETU in act.get('enabled', []), act)
     rep.check(I, "host's setting taken", (st.get(ZETU) or {}).get('max_units') == 7, st)
     try:
-        if port_ok:
-            s = w.wait(w.in_mp_game, "the restarted game rejoined and the host's world arrived", 240, 1)
+        if port_ok:                                                  # the v2 lobby holds the world until the host's Start
+            w.wait(lambda: (mac.answer_boxes(), w.mpm().get('state') in ('guest_lobby', 'guest_loading', 'playing'))[1], 'the restarted game in the host lobby', 120, 1)
+            rep.check(I, 'the restarted game rejoined by itself (in the host lobby)', True, f'{time.time() - t:.0f} s after Get')
+            mac.cmd(cmd='mpm_press', button=W.B['START'])
+            s = w.wait(lambda: (mac.answer_boxes(), w.in_mp_game())[1], "the host's world arrived after Start", 240, 1)
             m = s.get('mp') or {}
             rep.check(I, 'rejoined, world loaded', True, f"{time.time() - t:.0f} s after Get; {w.cmd(cmd='mpm_hostmods')}")
             rep.check(I, '0 desyncs', not m.get('desyncs') and not m.get('desynced'), m.get('desyncs'))
         else:                                                        # a build without the port fix: the host's view + B's log
+            w.wait(lambda: 1 in mac.peers(), 'the restarted guest in the host lobby', 120, 1)
+            mac.cmd(cmd='mpm_press', button=W.B['START'])
             def joined():
                 m = mac.status().get('mp') or {}
                 return 1 in mac.peers() and not (m.get('busy_mask') or 0) and m
@@ -462,7 +475,8 @@ def item5(w, rep, a, mac):
     mac.host(work)
     w.prepare(lang=0, active=BASE_MODS, settings={})
     w.start()
-    w.join(f'{W.hub_host()}:{mac.port()}', wait='lobby')
+    w.join(f'{W.hub_host()}:{mac.port()}', wait=None)
+    w.wait(lambda: (mac.answer_boxes(), w.mpm().get('state') in ('guest_lobby', 'guest_loading', 'playing'))[1], 'the VM in the host lobby', 300, 1)
     mac.cmd(cmd='mpm_press', button=W.B['START'])
     S = {'mac': mac, 'vm': w}
     c = lambda side, **k: S[side].cmd(**k)
@@ -503,17 +517,23 @@ def item5(w, rep, a, mac):
         time.sleep(25)                                                 # the fight itself runs on game time
         alive(f'fight {where}')
 
-    w.wait(lambda: land('mac') and land('vm'), 'both in the dungeon (entry 1)', 600, 1)
+    w.wait(lambda: (mac.answer_boxes(), land('mac') and land('vm'))[1], 'both in the dungeon (entry 1)', 600, 1)
     alive('entry 1')
     for cy in range(1, 4):
         if cy > 1:
             f1 = host_unit(0)
-            tm('mac', action='open'); tm('mac', action='go')
-            w.wait(lambda: tm('mac').get('stock', {}).get('open'), 'stock window', 60)
-            tm('mac', action='stock_select', units=f1); tm('mac', action='stock_next')
-            w.wait(lambda: tm('mac').get('stock', {}).get('state') == 1, 'stock step 2', 60)
-            tm('mac', action='stock_accept')
-            w.wait(lambda: tm('vm').get('prop', {}).get('shown'), f'guest summary {cy}', 60)
+            for k in range(3):                                         # as lane vmwin2's xplay.py: up to 3 proposals
+                tm('mac', action='open'); time.sleep(1); tm('mac', action='go')
+                w.wait(lambda: tm('mac').get('stock', {}).get('open'), 'stock window', 60)
+                tm('mac', action='stock_select', units=f1); time.sleep(1); tm('mac', action='stock_next')
+                w.wait(lambda: tm('mac').get('stock', {}).get('state') == 1, 'stock step 2', 60)
+                tm('mac', action='stock_accept')
+                try:
+                    w.wait(lambda: tm('vm').get('prop', {}).get('shown'), f'guest summary {cy}', 45); break
+                except W.GameError:
+                    log(f'no guest summary (entry {cy}, try {k + 1}): host teams', json.dumps(tm('mac'))[:300])
+            else:
+                raise W.GameError(f'timeout: guest summary {cy} (3 proposals)')
             tm('vm', action='approve')
             w.wait(lambda: land('mac') and land('vm'), f'both in the dungeon (entry {cy})', 900, 1)
             alive(f'entry {cy}')
@@ -524,9 +544,13 @@ def item5(w, rep, a, mac):
             name = next((u.get('name', '') for u in c('mac', cmd='list_units')['units'] if u['guid'] == g), '')
             r1 = c('mac', cmd='ui_lend', guid=g, action='lend', to=1)
             w.wait(lambda: c('vm', cmd='ui_lend', guid=g).get('controller') == 1, 'the VM sees the unit lent to it', 30)
+            w.mark('rig.log')
             r2 = c('mac', cmd='ui_lend', guid=g, action='take')
             w.wait(lambda: c('vm', cmd='ui_lend', guid=g).get('controller') != 1, 'the VM sees the unit taken back', 30)
-            m = w.mpm(); said = json.dumps([m.get('notice'), (m.get('chat') or {}).get('last')], ensure_ascii=False)
+            try:
+                said = w.wait_log('rig.log', ['took back'], 15)                  # the borrower's notice ("Mac took back <unit>")
+            except W.GameError as e:
+                said = str(e)
             rep.check(I, 'lend + take back', r1.get('ok') and r2.get('ok'), {'lend': r1.get('rc'), 'take': r2.get('rc')})
             rep.check(I, 'the take-back message names the unit', name and name in said, f'{name}: {said[:200]}')
             alive('lend / take back')

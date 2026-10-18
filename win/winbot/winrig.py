@@ -290,7 +290,8 @@ class Win:
             r = vmrun('copyFileFromHostToGuest', AGENT_EXE, AGENT_GUEST)
             if r.returncode:
                 raise SystemExit('copy winagent.exe: ' + (r.stdout + r.stderr).strip()[-300:])
-            r = vmrun('runProgramInGuest', '-noWait', '-interactive', AGENT_GUEST, args)
+            # vmrun hands the arguments over as one quoted string: start it through cmd's start (no window, returns at once)
+            r = vmrun('runProgramInGuest', '-noWait', '-interactive', r'C:\Windows\System32\cmd.exe', f'/c start "" "{AGENT_GUEST}" {args}')
             if r.returncode:
                 raise SystemExit('start winagent.exe: ' + (r.stdout + r.stderr).strip()[-300:])
         else:
@@ -347,6 +348,10 @@ class Win:
         g = WORK + r'\winbot\Setup.exe'
         self.upload(setup, g)
         r = self.a('run', exe=self.expand(g), args='/S', wait_ms=timeout * 1000, cwd=self.expand(WORK))
+        # the starter's dry run makes the profile as the first real start does (active.json: the default mod set)
+        st = self.expand(ROOT + r'\Dungeon Settlers Modded.exe')
+        if self.exists(st):
+            self.a('run', exe=st, args='--dry', cwd=self.expand(ROOT), wait_ms=60000)
         return r.get('exit')
 
     def exists(self, path):
@@ -357,7 +362,13 @@ class Win:
 
     def json_file(self, path):
         t = self.text(path)
-        return json.loads(t.lstrip('\ufeff')) if t else None
+        if not t:
+            return None
+        t = t.lstrip('\ufeff')
+        try:
+            return json.loads(t)
+        except ValueError:                                   # the loader's result.json holds raw Windows paths (C:\dsm\...)
+            return json.loads(re.sub(r'\\(?!")', r'\\\\', t))
 
     # -- logs as events
     def mark(self, name):
@@ -384,6 +395,7 @@ class Win:
                 self.a('kill', name=n)
             except GameError:
                 pass
+        self.wait(lambda: not self.procs(), 'the game processes to end', 20, 0.3)   # files stay locked until then
 
     def alive(self):
         """our game pid runs, no crash dialog, its window answers"""
@@ -463,6 +475,8 @@ class Win:
             gr.update(SaveCurrentScreenType=1, ResolutionWidth=1728, ResolutionHeight=1000, WindowedResolutionWidth=1728,
                       WindowedResolutionHeight=1000)
             self.write(DATA + r'\UserSetting.json', json.dumps(us, indent=1))
+        if self.exists(DATA + r'\Mods\worlds.json'):                 # no remembered world mod sets from an earlier case (moved)
+            self.move(DATA + r'\Mods\worlds.json', WORK + r'\to_delete\worlds_' + time.strftime('%Y%m%d-%H%M%S') + '.json')
         if consent:
             self.write(ROOT + r'\crash\consent.json', json.dumps({'consent': consent}))
         if active is not None:
