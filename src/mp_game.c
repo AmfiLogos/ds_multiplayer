@@ -826,11 +826,61 @@ static void install_hooks(void) {
 /* ui_player_color: slot -> the world's per-uid colour (owner 2026-10-14: one colour per player, rejoin keeps it) */
 extern int (*ui_color_resolver)(int player);
 static int color_of_slot(int player) { return S ? dsnet_player_color(mp_client(S), player) : -1; }
+/* ---------------------------------------------------------------- "Get the host's mods" (v0.1.14, hostmods CONTRACT)
+   The last guest join attempt (address + port, or the Steam lobby; spectator; the world a Recent worlds row asked for):
+   after a DSNET_REJ_MODSET refusal mpmenu passes it to the loader as DSMP_REJOIN=<line>, and the new process joins
+   that host once, the same way (mpmenu, mp_game_rejoin_take). */
+static dsmc_rejoin rj_last; static uint64_t rj_lobby;
+static char rejoin_line[300];                       /* DSMP_REJOIN of this process, until mpmenu takes it */
+static int rejoin_seen;                             /* this process started with DSMP_REJOIN (used or not) */
+/* mpmenu (dlsym): 1 = this process came from "Get the host's mods" (its test hook never clicks again: no loop) */
+__attribute__((visibility("default"))) int mp_game_rejoined(void) { return rejoin_seen; }
+static void rj_note(const mp_config *c) {
+    memset(&rj_last, 0, sizeof rj_last); rj_lobby = 0;
+    if (c->host) return;
+    if (!strncmp(c->host_addr, "steam:", 6)) {
+        snprintf(rj_last.how, sizeof rj_last.how, "steam");
+        rj_lobby = strtoull(c->host_addr + 6, NULL, 10);
+        rj_last.steamid = rj_lobby && steam_ok == 1 ? dsnet_steam_lobby_owner(rj_lobby) : 0;
+    } else { snprintf(rj_last.how, sizeof rj_last.how, "ip"); snprintf(rj_last.addr, sizeof rj_last.addr, "%s", c->host_addr); rj_last.port = c->port; }
+    rj_last.watch = c->spectator != 0;
+    snprintf(rj_last.world, sizeof rj_last.world, "%s", c->expect_world);
+}
+static void rejoin_env_read(void) {
+    const char *e = getenv("DSMP_REJOIN");
+    if (!e || !*e) return;
+    rejoin_seen = 1;
+    snprintf(rejoin_line, sizeof rejoin_line, "%s", e);
+#ifdef _WIN32
+    _putenv("DSMP_REJOIN=");                         /* used once: never handed on to a later process */
+#else
+    unsetenv("DSMP_REJOIN");
+#endif
+    dsmc_rejoin r;
+    if (dsmc_rejoin_parse(rejoin_line, &r)) { rig_log("mp: rejoin: bad DSMP_REJOIN \"%s\": not used", rejoin_line); rejoin_line[0] = 0; return; }
+    rig_log("mp: rejoin: DSMP_REJOIN %s (joins once at the title)", rejoin_line);
+}
+/* mpmenu (dlsym): this process's DSMP_REJOIN line, once (1 = out filled) */
+__attribute__((visibility("default"))) int mp_game_rejoin_take(char *out, size_t n) {
+    if (!rejoin_line[0]) return 0;
+    snprintf(out, n, "%s", rejoin_line); rejoin_line[0] = 0;
+    return 1;
+}
+/* mpmenu (dlsym): the DSMP_REJOIN line of the last guest join attempt (1 = out filled). steam_hint: the host's
+   SteamID64 when mpmenu knows it (friend row, Recent worlds row) and the lobby's owner cannot be read. */
+__attribute__((visibility("default"))) int mp_game_rejoin_line(uint64_t steam_hint, char *out, size_t n) {
+    dsmc_rejoin r = rj_last;
+    if (!strcmp(r.how, "steam") && !r.steamid) r.steamid = rj_lobby && steam_ok == 1 ? dsnet_steam_lobby_owner(rj_lobby) : 0;
+    if (!strcmp(r.how, "steam") && !r.steamid) r.steamid = steam_hint;
+    return dsmc_rejoin_format(&r, out, n) == 0;
+}
+
 void mp_game_install(void) {
     ui_color_resolver = color_of_slot;
     mp_set_log(mp_rig_log);
     install_hooks();
     sync_file_delete("left over from an earlier run");
+    rejoin_env_read();
     char p[1200]; snprintf(p, sizeof p, "%s/mp.json", rig_dir);
     int rc = mp_config_load(p, &cfg);
     if (rc == -1) return;                                    /* no mp.json: lobby buttons only */
@@ -838,6 +888,7 @@ void mp_game_install(void) {
     cfg_ok = 1;
     rig_log("mp: mp.json %s %s:%u name %s allow_speedup %d allow_pause %d", cfg.host ? "host" : "client", cfg.host ? "*" : cfg.host_addr,
             cfg.port, cfg.name, cfg.allow_speedup, cfg.allow_pause);
+    if (rejoin_line[0] && !cfg.host) { rig_log("mp: rejoin: mp.json joins the host already (same path): %s not used", rejoin_line); rejoin_line[0] = 0; }
 }
 
 /* ---------------------------------------------------------------- lobby (title screen) */
@@ -952,6 +1003,15 @@ __attribute__((visibility("default"))) int mp_game_modset_text(char *out, size_t
     for (char *q = body; *q; q++) if (*q == '|') *q = '\n';
     return 1;
 }
+/* mpmenu (dlsym, hostmods): the host's gameplay lines of the last DSNET_REJ_MODSET refusal and its rule (vanilla = 1:
+ * "Vanilla check"). 1 = filled; 0 = the last start was not refused for mods. Does not use up mp_game_modset_text. */
+__attribute__((visibility("default"))) int mp_game_modset_host(int *vanilla, char *out, size_t n) {
+    if (last_reject != DSNET_REJ_MODSET) return 0;
+    int rule = 0;
+    if (dsnet_reject_host_mods(&rule, out, n) != 0 && n) out[0] = 0;
+    if (vanilla) *vanilla = rule == 1;
+    return 1;
+}
 static int start_now(const mp_config *c) {                   /* game thread (dsnet reads fegetround) */
     int why = 0;
     set_uid();
@@ -1031,6 +1091,7 @@ int mp_game_join(const mp_config *c) {
     if (expect_next[0]) { snprintf(cfg.expect_world, sizeof cfg.expect_world, "%s", expect_next); expect_next[0] = 0; }
     cfg.need_save = 1;                                       /* a lobby joiner is on the title screen: no campaign */
     if (spect_next) { cfg.spectator = 1; spect_next = 0; }
+    rj_note(&cfg);                                           /* hostmods: how to join this host again */
     if (!strncmp(cfg.host_addr, "steam:", 6)) {
         if (!steam_ready()) return -3;
         uint64_t lobby = strtoull(cfg.host_addr + 6, NULL, 10);
@@ -1249,6 +1310,7 @@ int mp_game_active(void) { return cfg_ok || S; }
 
 int mp_game_frame(void) {
     if (!cfg_ok) return 0;
+    if (!S && !start_failed && !steam_join && !cfg.host) rj_note(&cfg);           /* mp.json guest: how to join again (hostmods) */
     if (!S && !start_failed && !steam_join && start_now(&cfg)) {                     /* mp.json session */
         start_failed = 1;
         if (last_reject == DSNET_REJ_MODSET) { end_session_c(MPM_END_REFUSED, reject_text(last_reject)); return 0; }   /* wrong mods: tell the player (mpmenu notice) */

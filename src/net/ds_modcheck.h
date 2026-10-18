@@ -13,6 +13,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 /* i18n: the multiplayer mod defines DSMC_TR as TR (ds_i18n.h) before the include, so the guest text is in the player's
  * language; any other user of this header gets English. TR_NOOP marks the keys for the extractor. */
@@ -200,5 +201,229 @@ __attribute__((unused)) static int dsmc_host_text(const char *player, const char
         if (i == 4) dsmc_slist(&b, h, nh, g, ng, names, 0); else dsmc_list(&b, i, h, nh, g, ng, names, 0);
     }
     return total;
+}
+__attribute__((unused)) static int dsmc_hexv(int c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; }
+/* a plan row's host_set / my_set for the player: the loader's text as is, separators ('\n', '&', ';') as ", " */
+__attribute__((unused)) static void dsmc_set_show(const char *s, char *out, size_t n) {
+    size_t o = 0; if (!n) return;
+    for (const char *p = s ? s : ""; *p && o + 3 < n; p++) {
+        if (*p == '\n' || *p == '&' || *p == ';') { if (o && p[1]) { out[o++] = ','; out[o++] = ' '; } }
+        else out[o++] = *p;
+    }
+    out[o] = 0;
+}
+/* ================================================================ "Get the host's mods" (v0.1.14, hostmods CONTRACT)
+ * The loader's dsl_hostmods_plan answers JSON {"rows":[{"id","name","host_ver","my_ver","my_on","official","action",
+ * "host_set","my_set"}...],"can_fix":0|1,"downloads":N}; the box text is built from it here (pure C, unit-tested).
+ * Mod settings are their own lines (`<mod>/<setting>@<value>`, lane modsettings) in the lines given to the loader. */
+typedef struct { char id[64], name[96], host_ver[32], my_ver[32], action[16], host_set[256], my_set[256]; int my_on, official; } dsmc_prow;
+typedef struct { int n, can_fix, downloads; dsmc_prow row[DSMC_MAX_MODS]; } dsmc_plan;
+
+__attribute__((unused)) static const char *dsmc_j_ws(const char *p) { while (p && (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t')) p++; return p; }
+__attribute__((unused)) static const char *dsmc_j_after_str(const char *p) {          /* p at '"': just after the closing quote (NULL: broken) */
+    for (p++; *p; p++) { if (*p == '\\') { if (!*++p) return NULL; } else if (*p == '"') return p + 1; }
+    return NULL;
+}
+__attribute__((unused)) static const char *dsmc_j_after(const char *p) {              /* p at any value: just after it (NULL: broken) */
+    p = dsmc_j_ws(p);
+    if (*p == '"') return dsmc_j_after_str(p);
+    if (*p == '{' || *p == '[') {
+        int d = 0;
+        while (*p) {
+            if (*p == '"') { p = dsmc_j_after_str(p); if (!p) return NULL; continue; }
+            if (*p == '{' || *p == '[') d++;
+            else if ((*p == '}' || *p == ']') && --d == 0) return p + 1;
+            p++;
+        }
+        return NULL;
+    }
+    while (*p && *p != ',' && *p != '}' && *p != ']') p++;
+    return p;
+}
+/* in the object starting at o ('{'): the value of "key" (NULL: absent) */
+__attribute__((unused)) static const char *dsmc_j_get(const char *o, const char *key) {
+    o = dsmc_j_ws(o); if (!o || *o != '{') return NULL;
+    const char *p = dsmc_j_ws(o + 1); size_t kl = strlen(key);
+    while (p && *p == '"') {
+        const char *ke = dsmc_j_after_str(p); if (!ke) return NULL;
+        int hit = (size_t)(ke - p - 2) == kl && !strncmp(p + 1, key, kl);
+        p = dsmc_j_ws(ke); if (*p != ':') return NULL;
+        const char *v = dsmc_j_ws(p + 1);
+        if (hit) return v;
+        p = dsmc_j_after(v); if (!p) return NULL;
+        p = dsmc_j_ws(p); if (*p == ',') p = dsmc_j_ws(p + 1);
+    }
+    return NULL;
+}
+__attribute__((unused)) static void dsmc_j_utf8(unsigned c, char *out, size_t n, size_t *o) {
+    char b[4]; int k = 0;
+    if (c < 0x80) b[k++] = (char)c;
+    else if (c < 0x800) { b[k++] = (char)(0xC0 | c >> 6); b[k++] = (char)(0x80 | (c & 63)); }
+    else if (c < 0x10000) { b[k++] = (char)(0xE0 | c >> 12); b[k++] = (char)(0x80 | (c >> 6 & 63)); b[k++] = (char)(0x80 | (c & 63)); }
+    else { b[k++] = (char)(0xF0 | c >> 18); b[k++] = (char)(0x80 | (c >> 12 & 63)); b[k++] = (char)(0x80 | (c >> 6 & 63)); b[k++] = (char)(0x80 | (c & 63)); }
+    if (*o + (size_t)k < n) { memcpy(out + *o, b, (size_t)k); *o += (size_t)k; }
+}
+__attribute__((unused)) static unsigned dsmc_j_hex4(const char *p) { unsigned v = 0; for (int i = 0; i < 4; i++) { int h = dsmc_hexv(p[i]); if (h < 0) return 0xFFFD; v = v * 16 + (unsigned)h; } return v; }
+/* a JSON string value -> UTF-8 (whole characters only); 0 = not a string ("" written) */
+__attribute__((unused)) static int dsmc_j_str(const char *v, char *out, size_t n) {
+    size_t o = 0; if (n) out[0] = 0;
+    if (!v || *v != '"' || !n) return 0;
+    for (const char *p = v + 1; *p && *p != '"'; p++) {
+        unsigned c = (unsigned char)*p;
+        if (c == '\\') {
+            p++;
+            if (*p == 'n') c = '\n'; else if (*p == 't') c = '\t'; else if (*p == 'r') c = '\r'; else if (*p == 'b') c = 8; else if (*p == 'f') c = 12;
+            else if (*p == 'u' && p[1] && p[2] && p[3] && p[4]) {
+                c = dsmc_j_hex4(p + 1); p += 4;
+                if (c >= 0xD800 && c < 0xDC00 && p[1] == '\\' && p[2] == 'u') {
+                    unsigned lo = dsmc_j_hex4(p + 3);
+                    if (lo >= 0xDC00 && lo < 0xE000) { c = 0x10000 + ((c - 0xD800) << 10) + (lo - 0xDC00); p += 6; }
+                }
+                dsmc_j_utf8(c, out, n, &o); continue;
+            } else if (*p) c = (unsigned char)*p; else break;
+        }
+        if (o + 1 < n) out[o++] = (char)c;
+        else break;
+    }
+    {                                                                     /* never half a character at a cut */
+        size_t i = o; while (i && ((unsigned char)out[i - 1] & 0xC0) == 0x80) i--;
+        if (i) { unsigned char c0 = (unsigned char)out[i - 1]; size_t need = c0 >= 0xF0 ? 4 : c0 >= 0xE0 ? 3 : c0 >= 0xC0 ? 2 : 1;
+                 if (o - (i - 1) < need) o = i - 1; }
+    }
+    out[o] = 0;
+    return 1;
+}
+__attribute__((unused)) static int dsmc_j_int(const char *v, int def) {
+    if (!v) return def;
+    if (*v == 't') return 1;
+    if (*v == 'f') return 0;
+    return (*v == '-' || (*v >= '0' && *v <= '9')) ? atoi(v) : def;
+}
+/* dsl_hostmods_plan JSON -> pl. Returns the number of rows, -1 = not that JSON. */
+__attribute__((unused)) static int dsmc_plan_parse(const char *json, dsmc_plan *pl) {
+    memset(pl, 0, sizeof *pl);
+    const char *r = json ? dsmc_j_get(json, "rows") : NULL;
+    if (!r || *r != '[') return -1;
+    pl->can_fix = dsmc_j_int(dsmc_j_get(json, "can_fix"), 0);
+    pl->downloads = dsmc_j_int(dsmc_j_get(json, "downloads"), 0);
+    const char *p = dsmc_j_ws(r + 1);
+    while (p && *p == '{' && pl->n < DSMC_MAX_MODS) {
+        dsmc_prow *w = &pl->row[pl->n++];
+        dsmc_j_str(dsmc_j_get(p, "id"), w->id, sizeof w->id);
+        dsmc_j_str(dsmc_j_get(p, "name"), w->name, sizeof w->name);
+        if (!w->name[0]) snprintf(w->name, sizeof w->name, "%s", w->id);
+        dsmc_j_str(dsmc_j_get(p, "host_ver"), w->host_ver, sizeof w->host_ver);
+        dsmc_j_str(dsmc_j_get(p, "my_ver"), w->my_ver, sizeof w->my_ver);
+        dsmc_j_str(dsmc_j_get(p, "action"), w->action, sizeof w->action);
+        dsmc_j_str(dsmc_j_get(p, "host_set"), w->host_set, sizeof w->host_set);
+        dsmc_j_str(dsmc_j_get(p, "my_set"), w->my_set, sizeof w->my_set);
+        w->my_on = dsmc_j_int(dsmc_j_get(p, "my_on"), 0);
+        w->official = dsmc_j_int(dsmc_j_get(p, "official"), 1);
+        p = dsmc_j_after(p); if (!p) return -1;
+        p = dsmc_j_ws(p); if (*p == ',') p = dsmc_j_ws(p + 1);
+    }
+    for (int i = 0; i < pl->n; i++) if (!strcmp(pl->row[i].action, "not_official")) pl->can_fix = 0;   /* never a button then */
+    return pl->n;
+}
+/* what a row's action means for the player (status words, not what the button does) */
+__attribute__((unused)) static const char *dsmc_action_text(const char *a) {
+    if (!strcmp(a, "turn_on")) return DSMC_TR(TR_NOOP("you have it, turned off"));
+    if (!strcmp(a, "download")) return DSMC_TR(TR_NOOP("you do not have it"));
+    if (!strcmp(a, "update")) return DSMC_TR(TR_NOOP("your version is older"));
+    if (!strcmp(a, "reinstall")) return DSMC_TR(TR_NOOP("same version, different files"));
+    if (!strcmp(a, "host_older")) return DSMC_TR(TR_NOOP("the host has an older version: the host should update"));
+    if (!strcmp(a, "turn_off")) return DSMC_TR(TR_NOOP("the host does not use it"));
+    if (!strcmp(a, "settings")) return DSMC_TR(TR_NOOP("other gameplay settings"));
+    if (!strcmp(a, "not_official")) return DSMC_TR(TR_NOOP("not one of our official mods: it cannot be downloaded"));
+    return "";
+}
+/* The box text for the guest: title, the differing rows (host's version next to the guest's, on / off, settings),
+ * the mods that are the same in one line, and what the button does (or why there is none). max_rows: rows shown
+ * before "More differences: N" (the stock box is small). Returns the number of differing rows. */
+__attribute__((unused)) static int dsmc_hostmods_text(const dsmc_plan *pl, int vanilla, char *out, size_t n, int max_rows) {
+    dsmc_buf b = {out, n, 0}; if (n) out[0] = 0;
+    int diff = 0, same = 0, shown = 0, older = 0;
+    for (int i = 0; i < pl->n; i++) { if (strcmp(pl->row[i].action, "same")) diff++; else same++; if (!strcmp(pl->row[i].action, "host_older")) older++; }
+    dsmc_put(&b, "<size=130%%>%s</size>\n%s", DSMC_TR(TR_NOOP("Could not join")),
+             vanilla ? DSMC_TR(TR_NOOP("This host allows no gameplay mods. Client mods (comfort mods) are fine."))
+                     : DSMC_TR(TR_NOOP("Your gameplay mods are not the same as the host's.")));
+    dsmc_put(&b, "\n<size=85%%>");
+    for (int i = 0; i < pl->n; i++) {
+        const dsmc_prow *w = &pl->row[i];
+        if (!strcmp(w->action, "same")) continue;
+        if (shown >= max_rows) continue;
+        shown++;
+        char mine[96];
+        if (!w->my_ver[0]) snprintf(mine, sizeof mine, "-");
+        else if (!w->my_on) snprintf(mine, sizeof mine, "%s %s", w->my_ver, DSMC_TR(TR_NOOP("(off)")));
+        else snprintf(mine, sizeof mine, "%s", w->my_ver);
+        char nm[140]; snprintf(nm, sizeof nm, "<color=#E8A23A>%s</color>", w->name);
+        dsmc_put(&b, "\n");
+        dsmc_put(&b, DSMC_TR(TR_NOOP("%s (host %s, you %s)")), nm, w->host_ver[0] ? w->host_ver : "-", mine);
+        const char *st = dsmc_action_text(w->action);
+        if (*st) dsmc_put(&b, ": %s", st);
+        if (strcmp(w->host_set, w->my_set) && (w->host_set[0] || w->my_set[0])) {
+            char hs[200], ms[200]; dsmc_set_show(w->host_set, hs, sizeof hs); dsmc_set_show(w->my_set, ms, sizeof ms);
+            dsmc_put(&b, "\n   <color=#a69085>");
+            dsmc_put(&b, DSMC_TR(TR_NOOP("settings: host %s, you %s")), hs[0] ? hs : DSMC_TR(TR_NOOP("default")), ms[0] ? ms : DSMC_TR(TR_NOOP("default")));
+            dsmc_put(&b, "</color>");
+        }
+    }
+    if (diff > shown) { dsmc_put(&b, "\n"); dsmc_put(&b, DSMC_TR(TR_NOOP("More differences: %d")), diff - shown); }
+    if (same) {
+        dsmc_put(&b, "\n<color=#a69085>%s ", DSMC_TR(TR_NOOP("Same as the host:")));
+        int k = 0;
+        for (int i = 0; i < pl->n; i++) if (!strcmp(pl->row[i].action, "same")) dsmc_put(&b, "%s%s", k++ ? DSMC_TR(TR_NOOP(", ")) : "", pl->row[i].name);
+        dsmc_put(&b, "</color>");
+    }
+    dsmc_put(&b, "</size>\n");
+    if (pl->can_fix) {
+        dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("\"Get the host's mods\" downloads what is missing from our official releases, sets your gameplay mods like the host's, then joins the host again.")));
+        if (older) dsmc_put(&b, " %s", DSMC_TR(TR_NOOP("Where the host has an older version, you get the host's version.")));
+    } else
+        dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("The host uses a mod that is not one of our official mods, so the game cannot get the host's mods for you. Ask the host for it, or ask the host to turn it off.")));
+    return diff;
+}
+
+/* ---- DSMP_REJOIN (the new process joins the same host once): `ip|<addr>|<port>` or `steam|<host steamid64>`, then
+ * optional flags: `|watch` (spectator), `|world=<campaign id>` (a Recent worlds row: the join is for that world).
+ * Unknown flags are skipped (a newer writer). */
+typedef struct { char how[8], addr[96]; unsigned port; unsigned long long steamid; int watch; char world[40]; } dsmc_rejoin;
+__attribute__((unused)) static int dsmc_rejoin_format(const dsmc_rejoin *r, char *out, size_t n) {
+    int w;
+    if (!strcmp(r->how, "ip")) {
+        if (!r->addr[0] || !r->port || r->port > 65535 || strpbrk(r->addr, "|\n\r=")) return -1;
+        w = snprintf(out, n, "ip|%s|%u", r->addr, r->port);
+    } else if (!strcmp(r->how, "steam")) {
+        if (!r->steamid) return -1;
+        w = snprintf(out, n, "steam|%llu", r->steamid);
+    } else return -1;
+    if (w < 0 || (size_t)w >= n) return -1;
+    if (r->watch) { size_t l = strlen(out); if (snprintf(out + l, n - l, "|watch") >= (int)(n - l)) return -1; }
+    if (r->world[0] && !strpbrk(r->world, "|\n\r")) { size_t l = strlen(out); if (snprintf(out + l, n - l, "|world=%s", r->world) >= (int)(n - l)) return -1; }
+    return 0;
+}
+__attribute__((unused)) static int dsmc_rejoin_parse(const char *s, dsmc_rejoin *r) {
+    memset(r, 0, sizeof *r);
+    if (!s) return -1;
+    char t[300]; snprintf(t, sizeof t, "%s", s);
+    size_t l = strlen(t); while (l && (t[l - 1] == '\n' || t[l - 1] == '\r' || t[l - 1] == ' ')) t[--l] = 0;
+    char *f[8]; int nf = 0;
+    for (char *p = t; nf < 8;) { f[nf++] = p; char *e = strchr(p, '|'); if (!e) break; *e = 0; p = e + 1; }
+    int k;
+    if (nf >= 3 && !strcmp(f[0], "ip")) {
+        char *end; unsigned long pt = strtoul(f[2], &end, 10);
+        if (!f[1][0] || *end || !pt || pt > 65535 || strlen(f[1]) >= sizeof r->addr) return -1;
+        snprintf(r->how, sizeof r->how, "ip"); snprintf(r->addr, sizeof r->addr, "%s", f[1]); r->port = (unsigned)pt; k = 3;
+    } else if (nf >= 2 && !strcmp(f[0], "steam")) {
+        char *end; unsigned long long id = strtoull(f[1], &end, 10);
+        if (!id || *end) return -1;
+        snprintf(r->how, sizeof r->how, "steam"); r->steamid = id; k = 2;
+    } else return -1;
+    for (; k < nf; k++) {
+        if (!strcmp(f[k], "watch")) r->watch = 1;
+        else if (!strncmp(f[k], "world=", 6)) snprintf(r->world, sizeof r->world, "%s", f[k] + 6);
+    }
+    return 0;
 }
 #endif

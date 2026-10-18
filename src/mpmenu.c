@@ -15,6 +15,8 @@
 #include "rig.h"
 #include "ui_model.h"
 #include "ds_i18n.h"                                     /* TR / TRN, language files, UTF-8 cuts (one DSI_IMPLEMENTATION: ds_i18n.c) */
+#define DSMC_TR(s) TR(s)                                 /* ds_modcheck.h: the hostmods box in the player's language */
+#include "net/ds_modcheck.h"                             /* "Get the host's mods": plan JSON -> box text, DSMP_REJOIN line */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -2012,10 +2014,67 @@ static dsnet_connector *conn;
 static mp_config conn_cfg;
 static double conn_t0;
 static double now_ms_(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1e3 + ts.tv_nsec / 1e6; }
+/* ---------------------------------------------------------------- "Get the host's mods" (v0.1.14, hostmods CONTRACT)
+ * After a DSNET_REJ_MODSET refusal, with a loader that has dsl_hostmods_plan / _get / _state (dlsym): the stock notice
+ * box lists the host's gameplay mods next to this copy's (differences marked) with ONE button "Get the host's mods"
+ * (none when a host mod is not one of our official mods) and Close. The click hands the host's lines + DSMP_REJOIN
+ * (how this guest joined) to the loader; it downloads, installs and switches the mods, and the new process joins the
+ * host once (rejoin_frame). An older loader (no symbol): the text-only notice as before. */
+enum { HM_ROWS = 6 };                                        /* differing rows shown in the box (the stock box is small) */
+static struct {
+    int pending;            /* the box waits for the title to be calm */
+    int can_fix, vanilla, tries;
+    int go;                 /* the button was clicked: start once the stock box has closed */
+    int busy, wait_box_shown, st_shown, pct_shown, auto_done;   /* go counts the frames it waits */
+    double shown_ms;
+    char host[DSNET_MODLINES_MAX], rejoin[300], text[2048];
+} HM;
+static int (*hm_plan)(const char *, int, char *, size_t), (*hm_get)(const char *, int, const char *, char *, size_t), (*hm_state)(int *, char *, size_t);
+static int hm_test, hm_rejoined;     /* hm_test: DSMP_HOSTMODS_TEST=1 / mpm_hostmods {test:1}; hm_rejoined: this process came from DSMP_REJOIN */
+static void *hm_sym(const char *n) {
+#ifdef _WIN32
+    HMODULE b = GetModuleHandleA("baselib.dll");    /* Windows: the loader is the baselib.dll proxy; the dlfcn shim only sees this DLL */
+    void *p = b ? (void *)GetProcAddress(b, n) : NULL;
+    if (p) return p;
+#endif
+    return dlsym(RTLD_DEFAULT, n);
+}
+static int hostmods_loader(void) {                                   /* 1 = the loader has the hostmods API */
+    static int looked;
+    if (!looked) {
+        looked = 1;
+        hm_plan = (int (*)(const char *, int, char *, size_t))hm_sym("dsl_hostmods_plan");
+        hm_get = (int (*)(const char *, int, const char *, char *, size_t))hm_sym("dsl_hostmods_get");
+        hm_state = (int (*)(int *, char *, size_t))hm_sym("dsl_hostmods_state");
+        const char *t = getenv("DSMP_HOSTMODS_TEST"); if (t && !strcmp(t, "1")) hm_test = 1;
+        rig_log("mpmenu: hostmods: loader API %s%s", hm_plan && hm_get && hm_state ? "found" : "not found (older loader: text notice)", hm_test ? ", test hook on" : "");
+    }
+    return hm_plan && hm_get && hm_state;
+}
+/* the box from the loader's plan (1 = it will show; 0 = use the text notice) */
+static int hostmods_prepare(void) {
+    if (!hostmods_loader()) return 0;
+    static int (*mh)(int *, char *, size_t); static int (*rl)(uint64_t, char *, size_t); static int looked;
+    if (!looked) { looked = 1; mh = (int (*)(int *, char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_modset_host"); rl = (int (*)(uint64_t, char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_rejoin_line"); }
+    if (!mh || !mh(&HM.vanilla, HM.host, sizeof HM.host)) return 0;
+    static char json[32768]; static dsmc_plan pl;
+    json[0] = 0;
+    int r = hm_plan(HM.host, HM.vanilla, json, sizeof json);
+    if (r <= 0 || dsmc_plan_parse(json, &pl) <= 0) { rig_log("mpmenu: hostmods: plan %d (%.200s): text notice", r, json); return 0; }
+    dsmc_hostmods_text(&pl, HM.vanilla, HM.text, sizeof HM.text, HM_ROWS); dsi_utf8_fix_end(HM.text);
+    HM.can_fix = pl.can_fix != 0;
+    if (!rl || !rl(joined_steamid, HM.rejoin, sizeof HM.rejoin)) HM.rejoin[0] = 0;
+    HM.pending = 1; HM.tries = 0; HM.go = 0;
+    rig_log("mpmenu: hostmods: plan %d differences, can_fix %d, downloads %d, rejoin %s", r, HM.can_fix, pl.downloads, HM.rejoin[0] ? HM.rejoin : "(none)");
+    return 1;
+}
 static void modset_notice(void) {                                    /* wrong gameplay mods: the notice box names them */
     static int (*fn)(char *, size_t); static int looked;
     if (!looked) { looked = 1; fn = (int (*)(char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_modset_text"); }
-    if (fn) fn(M.notice, sizeof M.notice);
+    static char t[sizeof M.notice];
+    if (!fn || !fn(t, sizeof t)) return;                              /* once per refusal (and its log line) */
+    if (hostmods_prepare()) return;                                   /* the hostmods box instead */
+    snprintf(M.notice, sizeof M.notice, "%s", t);
 }
 static void join_refused(int rc, const char *addr) {
     static int (*last_reject)(void); static int looked;                 /* mpglue: enum dsnet_reject of the last failed start */
@@ -2135,6 +2194,7 @@ static void notice_frame(const mpm_obs *o) {
     static int calm_scene;
     if (o->scene != calm_scene) { calm_scene = o->scene; title_calm = 0; }
     title_calm = (o->scene == 1 && o->title_visible && !o->loading) || (o->scene == 2 && M.state == MPM_FAILED && o->campaign_ready && !o->loading) ? title_calm + 1 : 0;
+    if (HM.pending) M.notice[0] = 0;                                        /* the hostmods box says it (hostmods_frame) */
     if (!M.notice[0] || title_calm < 90) return;                            /* the loading curtain is gone (~3 s of title, or of the world) */
     if (M.confirm_leave) return;                                            /* never over the Leave box */
     Obj v = find_view_x(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true);
@@ -2158,14 +2218,14 @@ static void notice_frame(const mpm_obs *o) {
  * actions; _txtConfirm +0x40 primary right "End for everyone", _txtCancle +0x50 "Cancel"). The ui lane's
  * OnClick_Confirm / OnClick_Cancle hooks hand clicks on a box that is not theirs to mpmenu_notice_click (dlsym). If
  * another box takes the view (its text changes) or it closes another way, it counts as Cancel. */
-enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK };   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
-static char lbox_text[400]; static int lbox_up;                             /* lbox_up = BX_* */
+enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK, BX_HOSTMODS, BX_HOSTMODS_INFO };   /* HOSTMODS: the host's mods + "Get the host's mods"; _INFO: its progress / failure */   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
+static char lbox_text[2048]; static int lbox_up;                             /* lbox_up = BX_* */
 static Obj lbox_view(void) { return find_view_x(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }
 static Obj lbox_view_now(void) { return find_view_now(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }   /* showing a box */
 static int lbox_ours(Obj v) {
     if (!lbox_up || !u_alive(v) || !u_on(v)) return 0;
-    char t[400] = ""; str_utf8(tmp_get(AT(v, 0x30, Obj)), t, sizeof t);
-    char want[400]; str_utf8(u_str_ok(lbox_text), want, sizeof want);       /* the same ASCII-safe form as the read-back */
+    char t[2048] = ""; str_utf8(tmp_get(AT(v, 0x30, Obj)), t, sizeof t);
+    char want[2048]; str_utf8(u_str_ok(lbox_text), want, sizeof want);       /* the same ASCII-safe form as the read-back */
     return !strcmp(t, want);
 }
 static int leave_box_text(char *out, size_t cap) {             /* returns how many other players are in (they go back to the title) */
@@ -2303,6 +2363,7 @@ static void invite_answer(int choice) {
         }
     }
 }
+static void hostmods_click(int confirm);
 static void invite_click(int confirm) {
     int k = lbox_up; lbox_up = BX_NONE;
     if (k == BX_INVITE) invite_answer(confirm ? 2 : 0);
@@ -2311,6 +2372,7 @@ static void invite_click(int confirm) {
     else if (k == BX_SPECT_OFF) { if (confirm) spect_apply(0); else rig_log("mpmenu: spectators stay (box: Cancel)"); }
     else if (k == BX_UNTAG) tag_answer(confirm);
     else if (k == BX_LANBLOCK && confirm) lanblock_open_settings();
+    else if (k == BX_HOSTMODS) hostmods_click(confirm);
 }
 static void invite_frame(const mpm_obs *o) {
     static int looked; if (!looked) { looked = 1; inv_pending = (int (*)(char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_invite_pending"); inv_answer = (int (*)(int))dlsym(RTLD_DEFAULT, "mp_game_invite_answer"); }
@@ -2555,6 +2617,166 @@ static void hist_join(int k) {
     conn = dsnet_connect_start(cc.host_addr, port, DSNET_CONNECT_TIMEOUT_MS);
     snprintf(M.connecting, sizeof M.connecting, "%s:%u", cc.host_addr, port);
     rig_log("mpmenu: recent world %s: reconnecting to %s", h->world, M.connecting);
+}
+/* ---------------------------------------------------------------- "Get the host's mods": the box, the loader's work, the rejoin */
+static void hm_log_box(const char *text) {                                   /* one rig.log line (tests grep it): no tags, no newlines */
+    char f[2048]; size_t o = 0; int tag = 0;
+    for (const char *p = text; *p && o + 4 < sizeof f; p++) {
+        if (*p == '<') { tag = 1; continue; }
+        if (tag) { if (*p == '>') tag = 0; continue; }
+        if (*p == '\n') { if (o) { f[o++] = ' '; f[o++] = '/'; f[o++] = ' '; } continue; }
+        f[o++] = *p;
+    }
+    f[o] = 0;
+    rig_log("mp: hostmods box: %s [button %s] [rejoin %s]", f, HM.can_fix ? "Get the host's mods" : "none", HM.rejoin[0] ? HM.rejoin : "none");
+}
+static void hm_info_box(const char *head, const char *body) {                /* progress / failure: one button, it only closes the box */
+    char t[1200]; snprintf(t, sizeof t, "<size=130%%>%s</size>\n%s", head, body); dsi_utf8_fix_end(t);
+    box_show(BX_HOSTMODS_INFO, t, TR("OK"), NULL);
+}
+static void hm_info_update(const char *head, const char *body) {             /* the progress box, its text changed in place */
+    Obj v = lbox_view();
+    if (lbox_up != BX_HOSTMODS_INFO || !lbox_ours(v)) return;
+    snprintf(lbox_text, sizeof lbox_text, "<size=130%%>%s</size>\n%s", head, body); dsi_utf8_fix_end(lbox_text);
+    tmp_set(AT(v, 0x30, Obj), lbox_text);
+}
+static void hostmods_click(int confirm) {
+    if (confirm && HM.can_fix) { HM.go = 1; rig_log("mp: hostmods: Get the host's mods"); }
+    else rig_log("mp: hostmods box: closed");
+}
+static void hostmods_start(void) {
+    char env[400] = "", why[300] = "";
+    if (HM.rejoin[0]) snprintf(env, sizeof env, "DSMP_REJOIN=%s\n", HM.rejoin);
+    int rc = hm_get(HM.host, HM.vanilla, env[0] ? env : NULL, why, sizeof why);
+    rig_log("mp: hostmods get: rc %d%s%s (env %s)", rc, why[0] ? ": " : "", why, env[0] ? HM.rejoin : "none");
+    if (rc) {
+        snprintf(M.msg, sizeof M.msg, "%s", TR("Could not get the host's mods"));
+        hm_info_box(TR("Could not get the host's mods"), why[0] ? why : TR("Your mods stay as they were."));
+        return;
+    }
+    HM.busy = 1; HM.wait_box_shown = 0; HM.st_shown = -9; HM.pct_shown = -1;
+}
+static void hostmods_poll(void) {
+    int pct = 0; char why[300] = "";
+    int st = hm_state(&pct, why, sizeof why);
+    if (pct < 0) pct = 0; if (pct > 100) pct = 100;
+    if (st == HM.st_shown && pct == HM.pct_shown) return;
+    if (st != HM.st_shown) rig_log("mp: hostmods state %d (%d%%)%s%s", st, pct, why[0] ? ": " : "", why);
+    HM.st_shown = st; HM.pct_shown = pct;
+    if (st < 0) {
+        HM.busy = 0;
+        char b[600]; snprintf(b, sizeof b, "%s\n%s", why[0] ? why : TR("Something went wrong."), TR("Your mods stay as they were."));
+        snprintf(M.msg, sizeof M.msg, "%s", TR("Could not get the host's mods"));
+        hm_info_box(TR("Could not get the host's mods"), b);
+        return;
+    }
+    char line[200];
+    if (st == 2) snprintf(line, sizeof line, "%s", TR("Installing the host's mods..."));
+    else if (st == 3) snprintf(line, sizeof line, "%s", TR("Loading the host's mods..."));
+    else snprintf(line, sizeof line, TR("Downloading the host's mods... %d%%"), pct);
+    snprintf(M.msg, sizeof M.msg, "%s", line);                              /* the Multiplayer line too (the box can be closed) */
+    if (!HM.wait_box_shown && lbox_up == BX_NONE) { HM.wait_box_shown = 1; hm_info_box(TR("Get the host's mods"), line); }
+    else hm_info_update(TR("Get the host's mods"), line);
+}
+static void hostmods_frame(void) {
+    Obj v = lbox_view();
+    if ((lbox_up == BX_HOSTMODS || lbox_up == BX_HOSTMODS_INFO) && !lbox_ours(v)) lbox_up = BX_NONE;   /* closed another way */
+    if (HM.pending && title_calm >= 90 && !M.confirm_leave && lbox_up == BX_NONE) {
+        box_show(BX_HOSTMODS, HM.text, HM.can_fix ? TR("Get the host's mods") : TR("Close"), HM.can_fix ? TR("Close") : NULL);
+        if (lbox_up == BX_HOSTMODS) { HM.pending = 0; HM.shown_ms = now_ms_(); hm_log_box(HM.text); }
+        else if (++HM.tries > 120) {                                        /* no notice box at all: the button line says it */
+            HM.pending = 0; snprintf(M.msg, sizeof M.msg, "%s", TR("Could not join: your gameplay mods are not the same as the host's"));
+            rig_log("mpmenu: hostmods: no notice box: message on the button line");
+        }
+    }
+    /* test hook: the button 2 s after the box shows (never in a process that came from a rejoin: no loop) */
+    if (hm_test && lbox_up == BX_HOSTMODS && HM.can_fix && !HM.auto_done && !hm_rejoined && now_ms_() - HM.shown_ms >= 2000 && lbox_ours(v)) {
+        HM.auto_done = 1; rig_log("mp: hostmods test: button clicked");
+        F(0xF65A18, void (*)(Obj, void *))(v, NULL);                        /* OnClick_Confirm (through the ui lane's hook) */
+        if (lbox_up == BX_HOSTMODS) { lbox_up = BX_NONE; hostmods_click(1); }   /* the hook did not answer: the same click */
+    }
+    if (HM.go && (!(u_alive(v) && u_on(v)) || ++HM.go > 60)) { HM.go = 0; hostmods_start(); }   /* the stock box has closed (or 1 s) */
+    if (HM.busy && frames % 6 == 0) hostmods_poll();
+}
+
+/* DSMP_REJOIN (mp_game_rejoin_take): once the title is up and calm, open the Multiplayer page and join that host once,
+ * the same way as before (address + port, a Recent worlds row's world, or the Steam host); a refusal then is shown as
+ * usual (the hostmods box again, no automatic click). */
+static struct { int state; dsmc_rejoin r; char line[300]; double t0, next; } RJ;   /* state 0 not read, 1 waiting, 2 Steam: waiting for the host's lobby, 3 done */
+static void rejoin_ip(void) {
+    mp_config cc; mp_config_defaults(&cc); cc.host = 0; cc.need_save = 1;
+    snprintf(cc.host_addr, sizeof cc.host_addr, "%s", RJ.r.addr); cc.port = (uint16_t)RJ.r.port;
+    snprintf(cc.name, sizeof cc.name, "%s", my_name); default_name(cc.name, sizeof cc.name);
+    cc.spectator = RJ.r.watch; M.watch = RJ.r.watch;
+    if (conn) dsnet_connect_free(conn);
+    conn_cfg = cc; conn_t0 = now_ms_();
+    conn = dsnet_connect_start(cc.host_addr, cc.port, DSNET_CONNECT_TIMEOUT_MS);
+    snprintf(M.connecting, sizeof M.connecting, "%s:%u", cc.host_addr, (unsigned)cc.port);
+    rig_log("mp: rejoin: connecting to %s%s", M.connecting, cc.spectator ? " to watch" : "");
+}
+static int rejoin_steam(void) {                                             /* 1 = the join runs */
+    static void (*next_spect)(int); static int looked;
+    if (!looked) { looked = 1; next_spect = (void (*)(int))dlsym(RTLD_DEFAULT, "mp_game_next_spectator"); }
+    friends_refresh();
+    for (int i = 0; i < M.nfriends && i < 6; i++) if (friend_id[i] == RJ.r.steamid) {
+        if (next_spect) next_spect(RJ.r.watch);
+        expect_world(RJ.r.world);
+        int rc = mp_steam_join(friend_lobby[i]);
+        rig_log("mp: rejoin: Steam host %llu lobby %llu: rc %d", RJ.r.steamid, (unsigned long long)friend_lobby[i], rc);
+        if (!rc) { snprintf(joined_how, sizeof joined_how, "steam"); joined_steamid = RJ.r.steamid; return 1; }
+    }
+    return 0;
+}
+static void rejoin_frame(const mpm_obs *o) {
+    if (RJ.state == 3) return;
+    if (RJ.state == 0) {
+        static int (*take)(char *, size_t); static int (*seen)(void);
+        take = (int (*)(char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_rejoin_take"); seen = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_rejoined");
+        RJ.state = 3; if (seen && seen()) hm_rejoined = 1;
+        if (take && take(RJ.line, sizeof RJ.line) && !dsmc_rejoin_parse(RJ.line, &RJ.r)) { RJ.state = 1; RJ.t0 = now_ms_(); hm_rejoined = 1; }
+        return;
+    }
+    double now = now_ms_();
+    if (now - RJ.t0 > 180000) { RJ.state = 3; rig_log("mp: rejoin: the title was never ready in 3 min: not joined"); return; }
+    if (RJ.state == 2) {                                                    /* Steam: the host's lobby shows in the friends list */
+        if (now < RJ.next) return;
+        RJ.next = now + 1000;
+        if (o->role || mp_game_session()) { RJ.state = 3; return; }
+        if (rejoin_steam()) { RJ.state = 3; return; }
+        if (now - RJ.t0 > 30000) {
+            RJ.state = 3; expect_world("");
+            snprintf(M.msg, sizeof M.msg, TR("%s is not hosting this world right now."), TR("The host"));
+            rig_log("mp: rejoin: Steam host %llu not found hosting", RJ.r.steamid);
+        }
+        return;
+    }
+    int ready = o->scene == 1 && o->title_visible && !o->loading && title_calm >= 90 && !o->role && !conn && !mp_game_session()
+             && lbox_up == BX_NONE && !M.notice[0] && !HM.pending && !HM.busy;
+    if (!ready) return;
+    if (M.state == MPM_IDLE || M.state == MPM_FAILED) { pending_click = MPB_MULTIPLAYER; return; }   /* the Multiplayer page first: status + Cancel */
+    if (M.state != MPM_TITLE_MENU) return;
+    rig_log("mp: rejoin: joining %s", RJ.line);
+    if (!strcmp(RJ.r.how, "ip")) {
+        RJ.state = 3;
+        expect_world(RJ.r.world);
+        hist_world[0] = 0; hist_host[0] = 0;
+        if (RJ.r.world[0]) {                                                /* a Recent worlds row: its names for the refusal texts */
+            if (!hist_loaded) hist_load();
+            for (int i = 0; i < nhist; i++) {
+                size_t gl = strlen(RJ.r.world);
+                if (!strncmp(hist[i].key, RJ.r.world, gl) && hist[i].key[gl] == '|' && !strcmp(hist[i].how, "ip")) {
+                    snprintf(hist_world, sizeof hist_world, "%s", hist[i].world); snprintf(hist_host, sizeof hist_host, "%s", hist_shown_host(hist[i].host)); break;
+                }
+            }
+        }
+        rejoin_ip();
+        return;
+    }
+    if (!M.steam) {                                                         /* Steam not up yet in this process: wait for it */
+        if (now - RJ.t0 > 30000) { RJ.state = 3; snprintf(M.msg, sizeof M.msg, "%s", TR("This world was joined through Steam: needs the Steam version.")); rig_log("mp: rejoin: no Steam"); }
+        return;
+    }
+    RJ.state = 2; RJ.next = 0;
 }
 static void hist_del(int k) {
     if (k < 0 || k >= nhist) return;
@@ -3574,6 +3796,8 @@ void mpmenu_frame(void) {
     notice_frame(&o);
     leave_box_frame();
     invite_frame(&o);
+    hostmods_frame();
+    rejoin_frame(&o);
     tag_frame(&o);
     tag_click_frame();
     lf_frame();
@@ -4048,6 +4272,12 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     }
     if (!strcmp(cmd, "mpm_esc")) { popup_activate(1); return strdup("{\"ok\":true}"); }   /* open the Esc menu (test) */
     if (!strcmp(cmd, "mpm_return_game")) { Obj ev = esc_view(); if (ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL); return strdup("{\"ok\":true}"); }   /* test: Esc menu > Return to Game */
+    if (!strcmp(cmd, "mpm_hostmods")) {                                     /* test: {test:1} = DSMP_HOSTMODS_TEST (auto click); state of the hostmods box */
+        double v = -1; jnum(line, "test", &v); if (v >= 0) { hostmods_loader(); hm_test = v != 0; }
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"loader\":%d,\"test\":%d,\"pending\":%d,\"box\":%d,\"can_fix\":%d,\"busy\":%d,\"rejoined\":%d,\"rejoin_state\":%d,\"rejoin\":",
+                          hostmods_loader(), hm_test, HM.pending, lbox_up == BX_HOSTMODS, HM.can_fix, HM.busy, hm_rejoined, RJ.state);
+        bstr(&b, HM.rejoin); bput(&b, "}"); return b.p;
+    }
     if (!strcmp(cmd, "mpm_box")) {                                          /* test: a click on the stock notice box's button (the real OnClick, through the ui lane's hook) */
         char w[16] = ""; jstr(line, "action", w, sizeof w); Obj v = lbox_view();
         if (!u_alive(v) || !u_on(v)) return strdup("{\"ok\":false,\"why\":\"no box\"}");
