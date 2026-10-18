@@ -3972,6 +3972,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     }
     if (!strcmp(cmd, "mpm_tip")) { test_hover[0] = 0; jstr(line, "title", test_hover, sizeof test_hover); return strdup("{\"ok\":true}"); }   /* test: hover the element with this title; none = real mouse */
     if (!strcmp(cmd, "mpm_escape")) { test_escape = 1; return strdup("{\"ok\":true}"); }   /* test: as if Escape was pressed */
+    if (!strcmp(cmd, "mpm_fog")) { double v = -1; jnum(line, "watch", &v); return mp_fog_state(v < 0 ? -1 : v != 0); }   /* test: watcher rule + fog counts */
     if (!strcmp(cmd, "mpm_spectators")) {                                   /* test: {allow:0|1} what the in-game cog calls (box when off + watching) */
         double v = 1; jnum(line, "allow", &v);
         Buf b = {0}; bput(&b, "{\"ok\":true,\"box\":%d,\"allowed\":%d,\"watching\":%d}", mpmenu_spectators_set(v != 0), M.set.spectators, spect_watching()); return b.p;

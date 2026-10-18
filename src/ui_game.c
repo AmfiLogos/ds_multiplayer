@@ -3576,6 +3576,11 @@ static int ask_order(mp_session *s, int player, const uint8_t guid[16], const ui
     if (a[0] == me()) { ui_players p; players(&p); char nm[40]; notice(TR("%s asks you to lend a unit (right-click your portrait)"), ui_player_label(&p, player, nm)); }
     return 0;
 }
+/* mp_fog's blank-view line: camera centre (CameraSetting position), the followed player (-1 none), 1 = the viewer box shows */
+void ui_view_brief(float *x, float *y, int *follow, int *watching) {
+    Obj cs = cam_setting(); V3 cp = cs ? F(0xD23584, V3 (*)(Obj, void *))(cs, NULL) : (V3){ 0, 0, 0 };
+    *x = cp.x; *y = cp.y; *follow = coop_follow; *watching = viewer_on;
+}
 static void viewer_send(int type, const uint8_t *a, uint16_t n) { static const uint8_t zero[16]; mp_session *s = sess(); if (s) mp_order(s, (uint16_t)type, zero, a, n); }
 /* lan_v10: the follow is local (the leader's P_VIEW moves this camera, 8j); no sim order any more (UI_ORDER_FOLLOW /
    UI_ORDER_CAMERA went through the command stream; their handlers stay registered for older peers' orders) */
