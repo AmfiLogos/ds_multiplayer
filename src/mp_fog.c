@@ -25,6 +25,7 @@
 #include "rig.h"
 #include "mp.h"
 #include "mp_game.h"
+#include <dlfcn.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
