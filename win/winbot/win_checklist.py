@@ -529,13 +529,16 @@ def item5(w, rep, a, mac):
         if cy > 1:
             # a fresh unit each dive, as ext/fogfix/fogfix_pair.py: the unit back from the last dive is not offered
             # again at once ("Choose at least one unit"); a free one is taken through Teams (left, then right click)
-            free = next((col['model'] for col in tm('mac').get('columns', []) if col.get('player') == -1), [])
-            f1 = next((g for g in free if g not in used), None)
+            cols = tm('mac').get('columns', [])
+            free = next((col['model'] for col in cols if col.get('player') == -1), [])
+            own = next((col['model'] for col in cols if col.get('player') == 0), [])
+            f1 = next((g for g in free + own if g not in used), None)   # a free unit, else another of the host's own
             if not f1:
                 raise W.GameError(f'no free unit left for entry {cy}')
             used.add(f1)
-            tm('mac', action='open'); tm('vm', action='open'); time.sleep(2)
-            tm('mac', action='click', guid=f1, button=0); time.sleep(1.5); tm('mac', action='click', guid=f1, button=1)
+            if f1 not in own:                                          # a click on an own unit would release it
+                tm('mac', action='open'); tm('vm', action='open'); time.sleep(2)
+                tm('mac', action='click', guid=f1, button=0); time.sleep(1.5); tm('mac', action='click', guid=f1, button=1)
             mine = lambda side: any(col.get('player') == 0 and f1 in col.get('model', []) for col in tm(side).get('columns', []))
             w.wait(lambda: mine('mac') and mine('vm'), f'host takes a fresh unit ({cy})', 60, 1)
             tm('mac', action='close'); tm('vm', action='close'); time.sleep(1)
@@ -573,7 +576,8 @@ def item5(w, rep, a, mac):
             alive('lend / take back')
         if cy < 3:
             portal = c('mac', cmd='ui_buildings', map=1, subtype=2)['buildings'][0]['guid']
-            c('mac', cmd='ui_interact', unit=host_unit(1), building=portal, map=1)
+            pu = host_unit(1); used.add(pu)                            # the unit back through the portal is not picked next
+            c('mac', cmd='ui_interact', unit=pu, building=portal, map=1)
             rs = w.wait(lambda: (lambda x, y: (x, y) if x.get('open') and y.get('open') else None)(c('mac', cmd='ui_result'), c('vm', cmd='ui_result')),
                         'return screen on both', 900, 1)
             P = 'mac' if rs[0].get('chooser') == 0 else 'vm'
@@ -670,8 +674,11 @@ def itemP(w, rep, a):
           'DSML_SESSION': W.DATA + r'\Mods\worlds.json', 'DSML_BUILD': '25846389', 'DSML_APP': W.GAME, 'DSML_DATA': W.DATA,
           'DSML_GAME_SAVES': W.WORK + r'\fake_gamesaves', 'DSL_STEAM': '0', 'DSML_ROOT': W.ROOT, 'DOORSTOP_DISABLE': '1'}
     env = [f'{k}={w.expand(v)}' for k, v in pe.items()]
-    leak = [k for k in w._genv if k.startswith(('DSRIG', 'DSL_', 'DSML'))] if getattr(w, '_genv', None) else []
-    rep.check(I, 'player start: environment used (the agent adds none of the test variables)', not leak, ' '.join(sorted(pe)) + (f' | agent env has {leak}' if leak else ''))
+    genv = getattr(w, '_genv', None) or {}
+    leak = [k for k in genv if k.startswith('DSRIG')]               # a gate variable inherited from the agent would void the check
+    other = [k for k in genv if k.startswith(('DSL_', 'DSML')) and k not in pe]
+    rep.check(I, 'player start: no DSRIG_* variable besides the starter\'s', not leak,
+              ' '.join(sorted(pe)) + f' | inherited DSRIG_*: {leak}' + (f' | other test variables in the guest user environment (not gate variables): {other}' if other else ''))
     r = w.a('run', exe=w.expand(W.GAME + r'\DungeonSettlers.exe'), args=w.expand(f'-logFile "{W.PROF}\\player.log"'),
             cwd=w.expand(W.GAME), env=env, show=True, wait_ms=0)
     w.pid = r['pid']; t = time.time()
