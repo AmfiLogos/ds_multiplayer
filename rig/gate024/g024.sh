@@ -38,6 +38,7 @@ modrepos() {   # every module the build ships is an official mod (MOD_REPOS: aut
     command grep -qE "\\{ \"$id\", \"AmfiLogos/ds_[a-z]+\" \\}" $LD/loader/src/dsl_update.c && echo "ok $id" || { echo "MISSING $id"; bad=1; }; done
   (( bad )) || echo "MOD REPOS PASS"; return $bad; }
 chk g024_mod_repos 'MOD REPOS PASS' $WT modrepos
+chk g024_ctl_off 'CTL OFF PASS' $WT python3 rig/gate13/ctl_off_check.py --loader-build $LD/loader/build   # a player start (no DSRIG_CTL / DSRIG_PORT) opens no test control channel (Mac: no ctl.sock; Windows DLLs: no default port)
 chk g024_mods_check 'modules .*: OK' $LD env MP_REPO=$HOME/ds_multiplayer CM_REPO=$CMR DSMP_ROOT=$HOME/ds_multiplayer zsh loader/modules/build_mods.sh --check   # every built module complete, Mac + Windows
 chk g024_rv_gate 'rv gate: ok' $WT python3 tools/rv_gate.py   # every game address goes through rv() (per-game-version tables)
 chk g024_cargo_core 'test result: ok. [1-9][0-9]* passed; 0 failed' $LD nice -n 19 cargo test -p dsml-core
