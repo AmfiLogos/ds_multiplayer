@@ -387,11 +387,13 @@ int ui_win_ev_lambda_test(int idx) {             /* test: call the hooked lambda
 }
 /* FactionManagementView.OnWorldRefresh (Foreign Expedition hub: Guild Contact button hidden with Recruiting Off) is
    inlined into FactionManagementPresenter.WorldRefreshed(IViewUpdateData): apply the button rule after it (the view
-   handle comes from hk_faction_init / ActivateButton, both still hooked on Windows) */
+   handle comes from hk_faction_init / ActivateButton, both still hooked on Windows). Windows addresses here (this block is
+   added after the Mac -> Windows translation): WorldRefreshed = 0xBF2D70 (until v0.1.15 it said 0xEF58E8, the Mac
+   WorldRefreshed+0x8c, which on Windows is inside PerformanceAnalyzer.PrintHeader) */
 static void (*o_win_fac_world)(Obj, Obj, void *);
 static void h_win_fac_world(Obj p, Obj data, void *mi) { o_win_fac_world(p, data, mi); guild_button_apply(); }
 void ui_win_install(void) {
-    rig_hook(0xEF58E8, (void *)h_win_fac_world, (void **)&o_win_fac_world, "ui FactionManagementPresenter.WorldRefreshed (OnWorldRefresh inlined on Windows)");
+    rig_hook(0xBF2D70, (void *)h_win_fac_world, (void **)&o_win_fac_world, "ui FactionManagementPresenter.WorldRefreshed (OnWorldRefresh inlined on Windows)");
     rig_hook(0xC53060, (void *)h_win_pop_act, (void **)&o_win_pop_act, "ui PopUpUI_Base.OnActivate (SetTimeLock inlined on Windows)");
     rig_hook(0xC53390, (void *)h_win_pop_deact, (void **)&o_win_pop_deact, "ui PopUpUI_Base.OnDeactivate (UnsetTimeLock inlined on Windows)");
     rig_hook(0xBEE3A0, (void *)h_win_ev_lambda, (void **)&o_win_ev_lambda, "ui EventNodeUIView choice lambda (OnClickChoice inlined on Windows)");
