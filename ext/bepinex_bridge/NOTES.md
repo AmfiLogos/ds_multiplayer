@@ -70,3 +70,41 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
   own handler sets ClanDataContainer.ClanGold through the interop types) 100 from W + 40 from the Mac: 301 -> 441 on
   both (Mac log: step 2340 player 1, step 2467 player 0); full checks after it equal; 0 desyncs; fingerprints equal
   (1951 ticks); managed demo.note handled on both (unhandled 0).
+
+## Mod-maker API v2 in C# (lane mpapi_bridge, 2026-10-18)
+- DsmpBridge 1.1.0: `Installed` = native api >= 1 (1.0.0 wanted == 1 and would switch off on api 2). `NativeApi` = the version
+  found. api 2 exports are looked up one by one (a missing one = that feature off, the rest works):
+  `Rand(modId, stream)` u32, `RandRange(modId, stream, lo, hi)` (lo..hi-1, hi <= lo -> lo), `RandValue` [0,1) 24 bits,
+  `RandShared` (a draw now is the shared one), `HasRand`, `Chat(modName, text, broadcast)` -> `ChatResult`
+  (Shown 0, NoSession 1, BadArgs -1, Spectator -2, RateLimited -5, NotSent -6, NoNative -100).
+  No multiplayer / api 1: Rand* = a local System.Random per (mod, stream) (seeded by time), Chat = NoNative. Nothing throws.
+- `plugin/DsmpLite/DsmpLite.cs`: one file a mod pastes into its own source (internal class, no unsafe, no reference):
+  Installed, NativeApi, Active, Role, Rand*, RandShared, Chat. It does not set the action dispatcher (that stays DsmpBridge's).
+- Soft dependency (mod referencing DsmpBridge.dll that must still start without it):
+  `[BepInDependency("dsmp.bridge", BepInDependency.DependencyFlags.SoftDependency)]`, every DsmpBridge call in a separate
+  class with `[MethodImpl(MethodImplOptions.NoInlining)]` methods, called only when
+  `IL2CPPChainloader.Instance.Plugins.ContainsKey("dsmp.bridge")`.
+- Build: Directory.Build.props finds the reference DLLs (DSMP_BIE_LIB, ../lib, else ~/ds_multiplayer/ext/bepinex_bridge/lib);
+  deterministic, no SourceLink, no embedded sources: a checkout and the loader's pinned-tree build give the same bytes
+  (1.1.0: sha256 c5312b50...; SourceLink had put the checkout path into the DLL's pdb data).
+- Shipping: ds_modloader `loader/modules/build_bridge.sh` (called by build_mods.sh after the strip) builds the DLL from the
+  pinned ds_multiplayer tree into mods_all/{mac,win}/dsmp-bridge (mod.json: kind bepinex, scope gameplay, hidden,
+  platforms.any); package_mods.sh -> dsmp-bridge-1.1.0.zip (DLL, mod.json, ds_multiplayer license). Its own zip, never
+  inside the multiplayer zip: an enabled bepinex mod makes the Mac start install and start BepInEx.
+  Scope gameplay: the bridge adds no state, but a peer without it (or with 1.0.0) does not run managed actions and draws
+  a local random, so the join check must compare it.
+- Test `tests/absent/run.sh` (dotnet console + a C stand-in multiplayer.dylib, no game): none / api 1 / api 2 native,
+  and a mod running WITHOUT DsmpBridge.dll (soft-dependency pattern + DsmpLite): 27 checks PASS. It fails when
+  Installed goes back to == 1 (checked) or a marshalled argument breaks.
+- Probe `plugin/DsmpRandProbe` (test only) + `tests/rand_pair.py` (Mac pair, both peers dsload + multiplayer module +
+  BepInEx clone per copy + DsmpBridge + probe). One-copy start smoke (17:44, api-1 module): 47 s to
+  the title, bridge found api 1, Harmony postfix on Refactor.Tick.TickFlow.Tick installed.
+
+## Rand pair result (2026-10-18 20:38-20:41, pair EF, multiplayer module from mpapi 47280ad, both peers BepInEx)
+- PASS all: both peers api 2 with random, session on, Tick patch in; RandShared 0 in MonoBehaviour.Update on both.
+- 12 draw sets compared (6 in bridge handlers sent from both peers, 6 in the Harmony postfix on TickFlow.Tick), each
+  6 x Random.Range(int) + 6 x Random.value + 6 x Random.Range(float) + 6 x Multiplayer.Rand: same steps, Multiplayer.Rand
+  equal in 12/12 with RandShared 1, UnityEngine.Random equal in 12/12 (0/6 handler, 0/6 Tick sets differ).
+- Host det counters: draws_sim 381, draws_view_in_sim 0: the C# UnityEngine.Random calls (through Il2CppInterop) landed on the
+  SIM stream, from a handler and from the Tick postfix. Chat broadcast from both peers: Shown.
+- Full-state checks at steps 3600 and 4200 equal, 0 desyncs on both, fingerprints equal on 2283 common ticks.
