@@ -430,10 +430,10 @@ def item4_run(w, rep, a, mac):
         new = w.wait_restart(old, 120)
         rep.check(I, 'soft restart: the new game took the control port', new != old, f'pid {old} -> {new}, {time.time() - t:.0f} s')
     except W.GameError as e:
-        rl = w.text(W.PROF + r'\rig.log') or ''
-        if 'bind/listen failed' in rl:                               # the release build without the winbot port fix
+        newp = [p['pid'] for p in w.procs() if p['pid'] != old]
+        if newp:                                                     # a build without the winbot port fix: B never gets the port
             port_ok = False
-            w.pid = next((p['pid'] for p in w.procs() if p['pid'] != old), None)
+            w.pid = newp[0]
             log('no control port in the restarted game (build without the port fix): host view + logs')
         else:
             rep.check(I, 'soft restart', False, e)
