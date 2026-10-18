@@ -2027,6 +2027,7 @@ static struct {
     int go;                 /* the button was clicked: start once the stock box has closed */
     int busy, wait_box_shown, st_shown, pct_shown, auto_done;   /* go counts the frames it waits */
     double shown_ms;
+    int names_pending; double plan_ms;   /* the loader still fetches a missing mod's name: ask again, show by 4 s at most */
     char host[DSNET_MODLINES_MAX], rejoin[300], text[2048];
 } HM;
 static int (*hm_plan)(const char *, int, char *, size_t), (*hm_get)(const char *, int, const char *, char *, size_t), (*hm_state)(int *, char *, size_t);
@@ -2051,21 +2052,28 @@ static int hostmods_loader(void) {                                   /* 1 = the 
     }
     return hm_plan && hm_get && hm_state;
 }
+/* the plan into HM.text / can_fix / names_pending; returns the loader's answer (<= 0 = no box) */
+static int hostmods_replan(void) {
+    static char json[32768]; static dsmc_plan pl;
+    json[0] = 0;
+    int r = hm_plan(HM.host, HM.vanilla, json, sizeof json);
+    if (r <= 0 || dsmc_plan_parse(json, &pl) <= 0) { rig_log("mpmenu: hostmods: plan %d (%.200s): text notice", r, json); return r > 0 ? 0 : r; }
+    dsmc_hostmods_text(&pl, HM.vanilla, HM.text, sizeof HM.text, HM_ROWS); dsi_utf8_fix_end(HM.text);
+    HM.can_fix = pl.can_fix != 0; HM.names_pending = pl.names_pending != 0;
+    return r;
+}
 /* the box from the loader's plan (1 = it will show; 0 = use the text notice) */
 static int hostmods_prepare(void) {
     if (!hostmods_loader()) return 0;
     static int (*mh)(int *, char *, size_t); static int (*rl)(uint64_t, char *, size_t); static int looked;
     if (!looked) { looked = 1; mh = (int (*)(int *, char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_modset_host"); rl = (int (*)(uint64_t, char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_rejoin_line"); }
     if (!mh || !mh(&HM.vanilla, HM.host, sizeof HM.host)) return 0;
-    static char json[32768]; static dsmc_plan pl;
-    json[0] = 0;
-    int r = hm_plan(HM.host, HM.vanilla, json, sizeof json);
-    if (r <= 0 || dsmc_plan_parse(json, &pl) <= 0) { rig_log("mpmenu: hostmods: plan %d (%.200s): text notice", r, json); return 0; }
-    dsmc_hostmods_text(&pl, HM.vanilla, HM.text, sizeof HM.text, HM_ROWS); dsi_utf8_fix_end(HM.text);
-    HM.can_fix = pl.can_fix != 0;
+    int r = hostmods_replan();
+    if (r <= 0) return 0;
+    HM.plan_ms = now_ms_();
     if (!rl || !rl(joined_steamid, HM.rejoin, sizeof HM.rejoin)) HM.rejoin[0] = 0;
     HM.pending = 1; HM.tries = 0; HM.go = 0;
-    rig_log("mpmenu: hostmods: plan %d differences, can_fix %d, downloads %d, rejoin %s", r, HM.can_fix, pl.downloads, HM.rejoin[0] ? HM.rejoin : "(none)");
+    rig_log("mpmenu: hostmods: plan %d differences, can_fix %d, names pending %d, rejoin %s", r, HM.can_fix, HM.names_pending, HM.rejoin[0] ? HM.rejoin : "(none)");
     return 1;
 }
 static void modset_notice(void) {                                    /* wrong gameplay mods: the notice box names them */
@@ -2681,7 +2689,11 @@ static void hostmods_poll(void) {
 static void hostmods_frame(void) {
     Obj v = lbox_view();
     if ((lbox_up == BX_HOSTMODS || lbox_up == BX_HOSTMODS_INFO) && !lbox_ours(v)) lbox_up = BX_NONE;   /* closed another way */
-    if (HM.pending && title_calm >= 90 && !M.confirm_leave && lbox_up == BX_NONE) {
+    if (HM.pending && HM.names_pending && frames % 10 == 0) {               /* a missing mod's name: ask the loader again */
+        if (now_ms_() - HM.plan_ms > 4000) { HM.names_pending = 0; rig_log("mpmenu: hostmods: names not ready in 4 s: ids shown"); }
+        else if (hostmods_replan() <= 0) HM.pending = 0;                    /* cannot happen with the same lines; no box then */
+    }
+    if (HM.pending && !HM.names_pending && title_calm >= 90 && !M.confirm_leave && lbox_up == BX_NONE) {
         box_show(BX_HOSTMODS, HM.text, HM.can_fix ? TR("Get the host's mods") : TR("Close"), HM.can_fix ? TR("Close") : NULL);
         if (lbox_up == BX_HOSTMODS) { HM.pending = 0; HM.shown_ms = now_ms_(); hm_log_box(HM.text); }
         else if (++HM.tries > 120) {                                        /* no notice box at all: the button line says it */
