@@ -987,9 +987,22 @@ __attribute__((visibility("default"))) int mp_game_modset_text(char *out, size_t
     static char host[DSNET_MODLINES_MAX]; int rule = 0;
     if (dsnet_reject_host_mods(&rule, host, sizeof host) != 0) host[0] = 0;
     char body[1024];
+    static int (*plan)(const char *, int, char *, size_t);
     {   /* mod settings: the setting's label and value words in the player's language (the loader's dsl_setting_text) */
-        static int looked; if (!looked) { looked = 1; dsmc_set_setting_text((dsmc_setting_fn)dlsym(RTLD_DEFAULT, "dsl_setting_text")); } }
-    if (!dsmc_guest_text(host, dsnet_my_mod_lines(), rule == 1, NULL, body, sizeof body, NULL))
+        static int looked; if (!looked) { looked = 1; dsmc_set_setting_text((dsmc_setting_fn)mpmenu_loader_sym("dsl_setting_text"));
+                                          plan = (int (*)(const char *, int, char *, size_t))mpmenu_loader_sym("dsl_hostmods_plan"); } }
+    static char names[4096]; names[0] = 0;          /* "id\tName": the mods' display names from the loader's plan (installed: */
+    if (plan && host[0]) {                          /* its mod.json; missing: the official release's, once fetched), else ids */
+        static char json[32768]; static dsmc_plan pl; size_t k = 0;
+        if (plan(host, rule == 1, json, sizeof json) > 0 && dsmc_plan_parse(json, &pl) > 0)
+            for (int i = 0; i < pl.n && k < sizeof names - 1; i++)
+                if (pl.row[i].name[0] && strcmp(pl.row[i].name, pl.row[i].id) && !strpbrk(pl.row[i].name, "\t\n")) {
+                    int w = snprintf(names + k, sizeof names - k, "%s\t%s\n", pl.row[i].id, pl.row[i].name);
+                    if (w < 0 || (size_t)w >= sizeof names - k) { names[k] = 0; break; }
+                    k += (size_t)w;
+                }
+    }
+    if (!dsmc_guest_text(host, dsnet_my_mod_lines(), rule == 1, names, body, sizeof body, NULL))
         snprintf(body, sizeof body, "%s", dsnet_reject_text(DSNET_REJ_MODSET));   /* same lines, other hash: the host's words */
     else {                                     /* loader releases differ: say so first (the host's words already do) */
         char rel[96];

@@ -270,4 +270,6 @@ int   mpmenu_register_host_choice(const char *id, const char *label, const char 
 int   mpmenu_register_host_choice2(const char *id, const char *label, const char *tip, void (*draw_page)(void *panel),
                                    int (*page_start)(char *err, size_t errn), int (*lobby_start)(char *err, size_t errn));
 const char *mpmenu_host_choice_now(void);
+/* a loader export by name (Windows: from baselib.dll, which dlsym does not see); NULL = this loader has none */
+void *mpmenu_loader_sym(const char *n);
 #endif

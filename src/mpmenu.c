@@ -2040,6 +2040,7 @@ static void *hm_sym(const char *n) {
 #endif
     return dlsym(RTLD_DEFAULT, n);
 }
+void *mpmenu_loader_sym(const char *n) { return hm_sym(n); }        /* mp_game.c: a loader export (Windows: baselib.dll) */
 static int hostmods_loader(void) {                                   /* 1 = the loader has the hostmods API */
     static int looked;
     if (!looked) {

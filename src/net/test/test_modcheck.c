@@ -59,7 +59,7 @@ static void settings_row(void) {
     CHECK(strstr(t, "Gold multiplier: host x7, you x1") && !strstr(t, "gold_mult@") && !strstr(t, "difficulty"), "settings row: %s", t);
     dsmc_set_setting_text(NULL);
     dsmc_hostmods_text(&pl, 0, t, sizeof t, 6);
-    CHECK(strstr(t, "gold_mult: host 7, you 1") && !strstr(t, "@"), "settings row without the loader's words: %s", t);
+    CHECK(strstr(t, "Gold mult: host 7, you 1") && !strstr(t, "gold_mult") && !strstr(t, "@"), "settings row without the loader's words: %s", t);
 }
 
 int main(void) {

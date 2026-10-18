@@ -40,6 +40,22 @@ typedef int (*dsmc_setting_fn)(const char *mod, const char *setting, const char 
 static dsmc_setting_fn dsmc_setting_text;
 __attribute__((unused)) static void dsmc_set_setting_text(dsmc_setting_fn fn) { dsmc_setting_text = fn; }
 
+/* "max_units" -> "Max units": a setting id the player can read, for a setting the loader has no words for (no
+ * dsl_setting_text: the Windows loader up to v0.1.15 does not export it; or a mod this copy lacks) */
+static void dsmc_readable(const char *id, char *out, size_t n) {
+    snprintf(out, n, "%s", id);
+    for (char *p = out; *p; p++) if (*p == '_' || *p == '-' || *p == '.') *p = ' ';
+    if (out[0] >= 'a' && out[0] <= 'z') out[0] = (char)(out[0] - 'a' + 'A');
+}
+/* the label (lab) and the value (vx) of one setting line in the player's words: the loader's when it knows the
+ * setting, else the readable id and on / off translated (numbers and choice ids as they are) */
+static void dsmc_set_words(const char *mod, const char *setting, const char *v, char *lab, size_t ln, char *vx, size_t vn) {
+    char l2[160] = "";
+    if (dsmc_setting_text && !dsmc_setting_text(mod, setting, v, l2, sizeof l2, vx, vn)) { if (l2[0]) snprintf(lab, ln, "%s", l2); return; }
+    dsmc_readable(setting, lab, ln);
+    snprintf(vx, vn, "%s", !strcmp(v, "on") ? DSMC_TR(TR_NOOP("on")) : !strcmp(v, "off") ? DSMC_TR(TR_NOOP("off")) : v);
+}
+
 static int dsmc_parse(const char *s, dsmc_mod *m, int max) {
     int k = 0;
     while (s && *s && k < max) {
@@ -133,11 +149,9 @@ static int dsmc_slist(dsmc_buf *b, const dsmc_mod *h, int nh, const dsmc_mod *g,
             char mod[112], nm[96], lab[160], hx[160], gx[160];
             snprintf(mod, sizeof mod, "%.*s", (int)(sl - src[i].id), src[i].id);
             dsmc_name_of(names, mod, nm, sizeof nm);
-            snprintf(lab, sizeof lab, "%s", sl + 1); snprintf(hx, sizeof hx, "%s", hv); snprintf(gx, sizeof gx, "%s", gv);
-            if (dsmc_setting_text) {
-                if (strcmp(hv, "-")) dsmc_setting_text(mod, sl + 1, hv, lab, sizeof lab, hx, sizeof hx);
-                if (strcmp(gv, "-")) dsmc_setting_text(mod, sl + 1, gv, lab, sizeof lab, gx, sizeof gx);
-            }
+            dsmc_readable(sl + 1, lab, sizeof lab); snprintf(hx, sizeof hx, "%s", hv); snprintf(gx, sizeof gx, "%s", gv);
+            if (strcmp(hv, "-")) dsmc_set_words(mod, sl + 1, hv, lab, sizeof lab, hx, sizeof hx);
+            if (strcmp(gv, "-")) dsmc_set_words(mod, sl + 1, gv, lab, sizeof lab, gx, sizeof gx);
             dsmc_put(b, DSMC_TR(TR_NOOP("%s: %s (host %s, you %s)")), nm, lab, hx, gx);
         }
     }
@@ -240,14 +254,10 @@ static int dsmc_set_diff(const char *host_set, const char *my_set, dsmc_buf *b) 
             const char *hv = pass ? NULL : at + 1, *gv = pass ? at + 1 : has ? ov : NULL;
             char mod[112], lab[160], hx[160], gx[160];
             snprintf(mod, sizeof mod, "%.*s", (int)(sl - line), line);
-            snprintf(lab, sizeof lab, "%s", sl + 1);
+            dsmc_readable(sl + 1, lab, sizeof lab);
             snprintf(hx, sizeof hx, "%s", hv ? hv : DSMC_TR(TR_NOOP("default"))); snprintf(gx, sizeof gx, "%s", gv ? gv : DSMC_TR(TR_NOOP("default")));
-            if (dsmc_setting_text) {
-                char l2[160] = "";
-                if (hv) dsmc_setting_text(mod, sl + 1, hv, l2, sizeof l2, hx, sizeof hx);
-                if (gv) dsmc_setting_text(mod, sl + 1, gv, l2, sizeof l2, gx, sizeof gx);
-                if (l2[0]) snprintf(lab, sizeof lab, "%s", l2);
-            }
+            if (hv) dsmc_set_words(mod, sl + 1, hv, lab, sizeof lab, hx, sizeof hx);
+            if (gv) dsmc_set_words(mod, sl + 1, gv, lab, sizeof lab, gx, sizeof gx);
             if (c++) dsmc_put(b, "%s", DSMC_TR(TR_NOOP("; ")));
             dsmc_put(b, DSMC_TR(TR_NOOP("%s: host %s, you %s")), lab, hx, gx);
         }
