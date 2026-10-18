@@ -323,7 +323,7 @@
  "Host: units you click go to %s.": "ホスト：クリックしたユニットは%sへ移ります。",
  "How Teams Work": "チームの仕組み",
  "How long a chat message stays on screen (3 to 120 seconds). Press Enter to see the recent messages again.": "チャットメッセージが画面に残る時間（3〜120秒）。Enterを押すと最近のメッセージを再表示します。",
- "How many units each player may bring into the hub (1, 2, 3, 4 or 6). Up to 4 units go into each dive.": "各プレイヤーがハブに連れていけるユニット数（1、2、3、4、6）。1回のダンジョン突入には最大4体まで参加します。",
+ "How many units each player may bring into the hub (1, 2, 3, 4 or 6). Each dive takes up to the game's party limit (4 in the unmodded game).": "各プレイヤーがハブに連れていけるユニット数（1、2、3、4、6）。1回のダンジョン突入に参加できるのはゲームのパーティ上限まで（MODなしのゲームでは4体）です。",
  "How the clan's population limit is shared. Shared: one limit for everyone, first come. Per player: each player has the full limit. Split equally: the limit is divided between players. Multiplied: limit times players, shared. A hire needs room here and under Units per Player.": "クランの人口上限の共有方法。共有：全員で1つの上限を先着順で使う。プレイヤーごと：各プレイヤーが上限いっぱいまで使える。均等分割：上限をプレイヤー間で分ける。乗算：上限×プレイヤー数を共有。募集にはここの上限とプレイヤーごとのユニット数の両方に空きが必要です。",
  "How this multiplayer world plays: pause, speed, gear, units and events. Saved with the world; new worlds start with your last rules.": "このマルチプレイワールドの遊び方：一時停止、速度、装備、ユニット、イベント。ワールドと一緒に保存されます。新しいワールドは前回のルールで始まります。",
  "IP %s": "IP %s",

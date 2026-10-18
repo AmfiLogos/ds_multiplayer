@@ -212,6 +212,31 @@ static int marks_of(dsnet_client *c, int p, uint8_t (*out)[16]) {   /* up to the
     return n > 0 ? (n > TM_MAX_MARK ? TM_MAX_MARK : n) : 0;
 }
 
+/* the game's PlayerPartyMax, live (owner zetu 2026-10-18: a mod may set "max units in the dungeon" 4..8; the stock
+   ExpeditionPlanPresenter.OnUnitSelected caps the party with it). Static int Refactor.SystemVar.Campaign
+   <PlayerPartyMax>k__BackingField (+0x24 of the static fields; getter 0x83EF5C): the nested class from
+   il2cpp_class_get_nested_types (0x6F8C04) of Refactor.SystemVar, read with il2cpp_field_static_get_value (0x6F94B8)
+   after il2cpp_runtime_class_init (0x6F9720). Gameplay settings are equal on every peer (mod-set check), so every
+   peer reads the same value. 0 = not found (the model then uses 4). */
+static int party_cap_live(void) {
+    static void *fld; static int tries; static int64_t next; static int logged = -1;
+    if (!fld) {
+        if (!ord_debug_class || tries >= 20 || rig_frames < next) return 0;
+        tries++; next = rig_frames + 600;
+        void *outer = ord_debug_class("Refactor", "SystemVar"), *k = NULL, *it = NULL, *nk;
+        while (outer && (nk = F(0x6F8C04, void *(*)(void *, void **))(outer, &it))) {
+            const char *nm = F(0x6F8C20, const char *(*)(void *))(nk);
+            if (nm && !strcmp(nm, "Campaign")) { k = nk; break; }
+        }
+        void *f = k ? F(0x6F8C14, void *(*)(void *, const char *))(k, "<PlayerPartyMax>k__BackingField") : NULL;
+        if (!f) { if (tries == 1 || tries == 20) rig_log("teams: SystemVar.Campaign.PlayerPartyMax not found (outer %p, class %p): party cap %d", outer, k, TM_PARTY_CAP_DEFAULT); return 0; }
+        F(0x6F9720, void (*)(void *))(k);                                       /* il2cpp_runtime_class_init */
+        fld = f;
+    }
+    int32_t v = 0; F(0x6F94B8, void (*)(void *, void *))(fld, &v);             /* il2cpp_field_static_get_value */
+    if (v != logged) { logged = v; rig_log("teams: game PlayerPartyMax %d (party cap %d)", v, v > 0 ? (v > TM_PARTY_MAXN ? TM_PARTY_MAXN : v) : TM_PARTY_CAP_DEFAULT); }
+    return v;
+}
 static int admin_mode(void);
 static void model_refresh(void) {
     dsnet_client *c = cli();
@@ -220,6 +245,7 @@ static void model_refresh(void) {
     st.in_dungeon = cur_map() == 1;
     st.admin = admin_mode();
     st.max_mark = c && dsnet_units_per_player ? dsnet_units_per_player(c) : 0;
+    st.party_cap = party_cap_live();
     st.present = c && dsnet_present_mask ? dsnet_present_mask(c) : (st.me >= 0 ? 1u << st.me : 0);
     for (int map = 0; map <= 1; map++) {                     /* base first (stock order), then the dungeon party */
         Obj ud = units_dict(map);
@@ -383,7 +409,7 @@ static int propose(int region, const uint8_t (*panel)[16], int np) {
     if (prop.active && prop.proposer != st.me) { char pn_[40]; pname(prop.proposer, pn_); notice(TR("%s's proposal is open: approve or decline it first"), pn_); return -1; }
     tm_prop_res r; tm_proposal_party(&st, panel, np, &r);
     if (r.err == 3) { notice("%s", TR("Choose at least one unit for the expedition")); return -1; }
-    if (r.err == 1) { notice(TR("At most %d units can go on an expedition (now %d)"), TM_PARTY_CAP, r.n); return -1; }
+    if (r.err == 1) { notice(TR("At most %d units can go on an expedition (now %d)"), tm_party_cap(&st), r.n); return -1; }
     if (r.err == 2) { char nm[40]; pname(r.err_player, nm); notice(TR("Max %d units per player: %s has more"), tm_mark_limit(&st), nm); return -1; }
     mp_session *s = sess();
     for (int k = 0; s && k < r.nclaim; k++) mp_claim(s, r.claim[k]);
@@ -1271,7 +1297,7 @@ static void prop_layout(void) {
             if (!going) p_text(lx, y - 26 - card_h * cs / 2, tw, 24, 14, AL_LEFT, 0, ui_col(C_SEC, TR("No units: watches the expedition")));
             y -= rh;
         }
-        snprintf(t, sizeof t, "%s", ui_colf(prop_np > TM_PARTY_CAP ? C_WARN : C_MAIN, TR("%d / %d members"), prop_np, TM_PARTY_CAP));
+        snprintf(t, sizeof t, "%s", ui_colf(prop_np > tm_party_cap(&st) ? C_WARN : C_MAIN, TR("%d / %d members"), prop_np, tm_party_cap(&st)));
         p_text(lx, yb + 90, tw, 22, 15, AL_CENTER, 0, t);
         snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>", prop_wait_s);
         p_text(lx, yb + 68, tw, 22, 14, AL_CENTER, 0, t); h_ptip[1] = pool_prop.t[pool_prop.ut - 1];
@@ -2440,7 +2466,7 @@ static char *state_json(int rc) {
     { model_refresh(); char pn_[40] = ""; if (prop.active) pname(prop.proposer, pn_);
       bput(&b, ",\"prop\":{\"active\":%d,\"proposer\":%d,\"region\":%d,\"shown\":%d,\"waiting\":%u,\"members\":%d,\"cap\":%d,\"secs\":%d,\"start_region\":%d,\"ok\":",
            prop.active, prop.active ? prop.proposer : -1, prop.active ? prop.region : -1, prop_shown, tm_prop_waiting(&prop, &st),
-           prop.active ? prop_np : tm_party_members(&st), TM_PARTY_CAP, prop.active ? prop_secs_left() : 0, start_region);
+           prop.active ? prop_np : tm_party_members(&st), tm_party_cap(&st), prop.active ? prop_secs_left() : 0, start_region);
       bstr(&b, prop_shown ? prop_ok_s : ""); bput(&b, ",\"no\":"); bstr(&b, prop_shown ? prop_no_s : "");
       bput(&b, ",\"wait_text\":"); bstr(&b, prop_shown ? prop_wait_s : ""); bput(&b, ",\"event\":"); bstr(&b, prop_event);
       bput(&b, ",\"by\":"); bstr(&b, pn_); bput(&b, ",\"mark_limit\":%d", tm_mark_limit(&st));
@@ -2464,7 +2490,7 @@ static char *state_json(int rc) {
       bstr(&b, tt); bput(&b, ",\"time\":"); bstr(&b, vis ? side_time_s : ""); bput(&b, ",\"next\":"); bstr(&b, nx); bput(&b, ",\"side\":"); bstr(&b, sd);
       bput(&b, ",\"panels\":[");                              /* unit panel owners, in panel order (GetPanelOwner 0xEECF18) */
       { Obj cip = vis ? AT(v, 0x58, Obj) : NULL;
-        for (int i = 0; cip && i < 4; i++) { Obj o = F(0xEECF18, Obj (*)(Obj, int, void *))(cip, i, NULL);
+        for (int i = 0; cip && i < tm_party_cap(&st); i++) { Obj o = F(0xEECF18, Obj (*)(Obj, int, void *))(cip, i, NULL);
           if (i) bput(&b, ","); if (o && unit_faction(o) == 1) put_guid(&b, (const uint8_t *)o + UNIT_GUID); else bput(&b, "null"); } }
       bput(&b, "]");
       bput(&b, ",\"greyed\":%d,\"storage\":[", gear_greyed);

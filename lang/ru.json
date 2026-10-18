@@ -333,7 +333,7 @@
  "Host: units you click go to %s.": "Хост: юниты, на которые вы нажмёте, перейдут к %s.",
  "How Teams Work": "Как работают команды",
  "How long a chat message stays on screen (3 to 120 seconds). Press Enter to see the recent messages again.": "Сколько секунд сообщение чата остаётся на экране (от 3 до 120). Нажмите Enter, чтобы снова увидеть недавние сообщения.",
- "How many units each player may bring into the hub (1, 2, 3, 4 or 6). Up to 4 units go into each dive.": "Сколько юнитов каждый игрок может привести в хаб (1, 2, 3, 4 или 6). В каждый спуск идёт до 4 юнитов.",
+ "How many units each player may bring into the hub (1, 2, 3, 4 or 6). Each dive takes up to the game's party limit (4 in the unmodded game).": "Сколько юнитов каждый игрок может привести в хаб (1, 2, 3, 4 или 6). В каждый спуск идёт не больше лимита отряда игры (4 в игре без модов).",
  "How the clan's population limit is shared. Shared: one limit for everyone, first come. Per player: each player has the full limit. Split equally: the limit is divided between players. Multiplied: limit times players, shared. A hire needs room here and under Units per Player.": "Как делится лимит населения клана. Общий: один лимит для всех, кто первый. На игрока: у каждого игрока полный лимит. Поровну: лимит делится между игроками. Умножен: лимит × число игроков, общий. Найм требует места и здесь, и в «Юнитов на игрока».",
  "How this multiplayer world plays: pause, speed, gear, units and events. Saved with the world; new worlds start with your last rules.": "Как идёт игра в этом мире мультиплеера: пауза, скорость, снаряжение, юниты и события. Сохраняется вместе с миром; новые миры начинаются с ваших последних правил.",
  "IP %s": "IP %s",

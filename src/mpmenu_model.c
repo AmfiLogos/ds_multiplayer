@@ -113,7 +113,7 @@ const char *mpm_fe_tip(int row) {
         TR_NOOP("Permanent: a unit that dies in the expedition is removed from its home save, with the gear it wears at home. Not permanent: it goes home in its state from the last multiplayer save where it was alive."),
         TR_NOOP("Counts: levels, skills and experience gained in the hub go home. Does not count: units go home exactly as they left."),
         TR_NOOP("Comes back: items your units find in dungeons go into your home storage. Items made from the hub's stock always stay in the hub."),
-        TR_NOOP("How many units each player may bring into the hub (1, 2, 3, 4 or 6). Up to 4 units go into each dive."),
+        TR_NOOP("How many units each player may bring into the hub (1, 2, 3, 4 or 6). Each dive takes up to the game's party limit (4 in the unmodded game)."),
         TR_NOOP("Fixed in a Foreign Expedition: each player has their own storage, so every item knows its owner when results go home."),
         TR_NOOP("Off: recruiting is not offered in the hub. On: players can recruit in the hub; recruits belong to the player who hired them and stay in the hub (they never go home).") };
     return row >= 0 && row < MPM_FE_ROWS ? TR(t[row]) : "";

@@ -273,7 +273,7 @@ void tm_proposal_party(const tm_state *s, const uint8_t (*panel)[16], int np, tm
         per[o]++;
     }
     if (!r->n) { r->err = 3; return; }
-    if (r->n > TM_PARTY_CAP) { r->err = 1; return; }
+    if (r->err == 1 || r->n > tm_party_cap(s)) { r->err = 1; return; }   /* over TM_PARTY_MAXN, or over the game's cap */
     for (int p = 0; p < TM_MAX_PLAYERS; p++) if (per[p] > tm_mark_limit(s)) { r->err = 2; r->err_player = p; return; }
 }
 int tm_party_of(const tm_state *s, const uint8_t (*party)[16], int n, int player, int proposer, uint8_t (*out)[16]) {

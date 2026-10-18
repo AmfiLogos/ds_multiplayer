@@ -85,28 +85,31 @@ other		0x6bc142		not-an-address	no caller in the Mac binary (a constant)	custom/
 other		0x6c0730		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:8
 other		0x6e40d2		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/dtoa.c:462
 other		0x6f81b3		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:8
-export	il2cpp_resolve_icall	0x6f8b90	0x49ded0	ok		research/rig_access_spec.md:238,src/mpmenu.c:2405,src/mpmenu.c:3393,src/mpmenu.c:532,src/rig_cmd.c:33,src/ui_game.c:4200,+2
-export	il2cpp_array_new	0x6f8ba8	0x49d2e0	ok		src/mpmenu.c:231,src/mpmenu.c:3247,src/ord_game.c:78,src/ord_test/OFFSETS.md:142,src/ord_test/ord_smoke.c:140,src/ord_test/ord_smoke.c:300,+1
-export	il2cpp_assembly_get_image	0x6f8bbc	0x48a740	ok		src/mpmenu.c:111,src/ord_game.c:75,src/ord_test/OFFSETS.md:139
-export	il2cpp_class_is_assignable_from	0x6f8be0	0x4435a0	ok		src/mpmenu.c:32,src/mpmenu.c:56,src/ui_game.c:242,src/ui_game.c:28,src/ui_teams.c:45,src/ui_teams.c:62,+1
-export	il2cpp_class_from_name	0x6f8bf4	0x49d360	ok		src/mpmenu.c:112,src/ord_game.c:76,src/ord_test/OFFSETS.md:140
-export	il2cpp_class_get_field_from_name	0x6f8c14	0x49d3d0	ok		src/mpmenu.c:347
-export	il2cpp_class_get_method_from_name	0x6f8c1c	0x49d410	ok		custom/cm_mp.c:134,src/mpmenu.c:155,src/mpmenu.c:160,src/mpmenu.c:337,src/mpmenu.c:338
-export	il2cpp_class_get_name	0x6f8c20	0x49d430	ok		src/mp_fog.c:40,src/ord_game.c:77,src/ord_test/OFFSETS.md:141,src/trn_game.c:32
-export	il2cpp_class_get_type	0x6f8c9c	0x45a690	ok		custom/pvp/pvp_ui.c:196,custom/pvp/pvp_ui.c:541,src/mp_game.c:857,src/mpmenu.c:102,src/mpmenu.c:1113,src/mpmenu.c:122,+11
-export	il2cpp_domain_get	0x6f91f4	0x49d6a0	ok		src/mpmenu.c:107,src/ord_game.c:73,src/ord_test/OFFSETS.md:137
-export	il2cpp_domain_get_assemblies	0x6f9200	0x49d6b0	ok		src/mpmenu.c:109,src/ord_game.c:74,src/ord_test/OFFSETS.md:138
-export	il2cpp_field_get_offset	0x6f949c	0x49d710	ok		src/mpmenu.c:348
+export	il2cpp_resolve_icall	0x6f8b90	0x49ded0	ok		research/rig_access_spec.md:238,src/mpmenu.c:159,src/mpmenu.c:2784,src/mpmenu.c:3775,src/mpmenu.c:783,src/rig_cmd.c:33,+3
+export	il2cpp_array_new	0x6f8ba8	0x49d2e0	ok		src/mpmenu.c:277,src/mpmenu.c:3629,src/ord_game.c:78,src/ord_test/OFFSETS.md:142,src/ord_test/ord_smoke.c:140,src/ord_test/ord_smoke.c:300,+1
+export	il2cpp_assembly_get_image	0x6f8bbc	0x48a740	ok		src/mpmenu.c:116,src/ord_game.c:75,src/ord_test/OFFSETS.md:139
+export	il2cpp_class_is_assignable_from	0x6f8be0	0x4435a0	ok		src/mpmenu.c:32,src/mpmenu.c:56,src/ui_game.c:250,src/ui_game.c:28,src/ui_teams.c:45,src/ui_teams.c:62,+1
+export	il2cpp_class_from_name	0x6f8bf4	0x49d360	ok		src/mpmenu.c:117,src/ord_game.c:76,src/ord_test/OFFSETS.md:140
+export	il2cpp_class_get_nested_types	0x6f8c04	0x49d450	ok		src/ui_teams.c:218,src/ui_teams.c:227
+export	il2cpp_class_get_field_from_name	0x6f8c14	0x49d3d0	ok		src/mpmenu.c:393,src/ui_teams.c:231
+export	il2cpp_class_get_method_from_name	0x6f8c1c	0x49d410	ok		custom/cm_mp.c:134,src/mpmenu.c:201,src/mpmenu.c:206,src/mpmenu.c:383,src/mpmenu.c:384
+export	il2cpp_class_get_name	0x6f8c20	0x49d430	ok		src/mp_fog.c:47,src/ord_game.c:77,src/ord_test/OFFSETS.md:141,src/trn_game.c:32,src/ui_teams.c:228
+export	il2cpp_class_get_type	0x6f8c9c	0x45a690	ok		custom/pvp/pvp_ui.c:196,custom/pvp/pvp_ui.c:541,src/mp_game.c:896,src/mpmenu.c:107,src/mpmenu.c:1458,src/mpmenu.c:168,+11
+export	il2cpp_domain_get	0x6f91f4	0x49d6a0	ok		src/mpmenu.c:112,src/ord_game.c:73,src/ord_test/OFFSETS.md:137
+export	il2cpp_domain_get_assemblies	0x6f9200	0x49d6b0	ok		src/mpmenu.c:114,src/ord_game.c:74,src/ord_test/OFFSETS.md:138
+export	il2cpp_field_get_offset	0x6f949c	0x49d710	ok		src/mpmenu.c:394
+export	il2cpp_field_static_get_value	0x6f94b8	0x49d790	ok		src/ui_teams.c:218,src/ui_teams.c:236
 export	il2cpp_gchandle_new	0x6f9540	0x49da40	ok		src/UI_NOTES.md:113,src/mpmenu_kit.h:18,src/ord_game.c:81,src/ord_test/OFFSETS.md:145,src/trn_game.c:29,src/ui_game.c:22,+2
-export	il2cpp_gchandle_new_weakref	0x6f9544	0x49da50	ok		src/mp_fog.c:41
-export	il2cpp_gchandle_get_target	0x6f9598	0x45cf40	ok		src/mp_fog.c:42,src/mpmenu_kit.h:19,src/ui_game.c:23,src/ui_teams.c:40,src/ui_tip.c:41
-export	il2cpp_gc_wbarrier_set_field	0x6f95c8	0x49da00	ok		src/ord_game.c:83,src/ord_test/OFFSETS.md:147,src/ord_test/ord_smoke.c:26,src/trn_game.c:31,src/ui_game.c:1485,src/ui_game.c:1486,+4
-export	il2cpp_gchandle_free	0x6f95e4	0x45ce60	ok		src/mp_fog.c:43,src/mpmenu_kit.h:20,src/ord_game.c:82,src/ord_test/OFFSETS.md:146,src/trn_game.c:30,src/ui_game.c:24,+2
-export	il2cpp_object_get_class	0x6f96c0	0x48a740	ok		src/mpmenu.c:32,src/mpmenu.c:55,src/ui_game.c:241,src/ui_game.c:28,src/ui_teams.c:44,src/ui_teams.c:61,+1
-export	il2cpp_object_new	0x6f96cc	0x49ddf0	ok		src/mpmenu.c:771,src/ord_game.c:79,src/ord_test/OFFSETS.md:143,src/ord_test/ord_smoke.c:64,src/ui_game.c:1483,src/ui_game.c:1516,+3
+export	il2cpp_gchandle_new_weakref	0x6f9544	0x49da50	ok		src/mp_fog.c:48
+export	il2cpp_gchandle_get_target	0x6f9598	0x45cf40	ok		src/mp_fog.c:49,src/mpmenu_kit.h:19,src/ui_game.c:23,src/ui_teams.c:40,src/ui_tip.c:41
+export	il2cpp_gc_wbarrier_set_field	0x6f95c8	0x49da00	ok		src/ord_game.c:83,src/ord_test/OFFSETS.md:147,src/ord_test/ord_smoke.c:26,src/trn_game.c:31,src/ui_game.c:1495,src/ui_game.c:1496,+4
+export	il2cpp_gchandle_free	0x6f95e4	0x45ce60	ok		src/mp_fog.c:50,src/mpmenu_kit.h:20,src/ord_game.c:82,src/ord_test/OFFSETS.md:146,src/trn_game.c:30,src/ui_game.c:24,+2
+export	il2cpp_object_get_class	0x6f96c0	0x48a740	ok		src/mpmenu.c:32,src/mpmenu.c:55,src/ui_game.c:249,src/ui_game.c:28,src/ui_teams.c:44,src/ui_teams.c:61,+1
+export	il2cpp_object_new	0x6f96cc	0x49ddf0	ok		src/mpmenu.c:1040,src/ord_game.c:79,src/ord_test/OFFSETS.md:143,src/ord_test/ord_smoke.c:64,src/ui_game.c:1493,src/ui_game.c:1526,+3
 export	il2cpp_runtime_invoke	0x6f971c	0x49dee0	ok		src/ord_game.c:84,src/ord_test/OFFSETS.md:148
-export	il2cpp_string_new	0x6f9738	0x49e320	ok		custom/fe/fe_hub.c:124,custom/pvp/pvp_game.c:594,src/UI_NOTES.md:113,src/mp_game.c:1264,src/mpmenu_kit.h:17,src/ord_game.c:80,+7
-export	il2cpp_type_get_object	0x6f97ac	0x49e560	ok		custom/pvp/pvp_ui.c:196,custom/pvp/pvp_ui.c:541,src/mp_game.c:858,src/mpmenu.c:102,src/mpmenu.c:1113,src/mpmenu.c:122,+11
+export	il2cpp_runtime_class_init	0x6f9720	0x443e20	ok		src/ui_teams.c:219,src/ui_teams.c:233
+export	il2cpp_string_new	0x6f9738	0x49e320	ok		custom/fe/fe_hub.c:124,custom/pvp/pvp_game.c:594,src/UI_NOTES.md:113,src/mp_game.c:1304,src/mpmenu_kit.h:17,src/ord_game.c:80,+7
+export	il2cpp_type_get_object	0x6f97ac	0x49e560	ok		custom/pvp/pvp_ui.c:196,custom/pvp/pvp_ui.c:541,src/mp_game.c:897,src/mpmenu.c:107,src/mpmenu.c:1458,src/mpmenu.c:168,+11
 internal	il2cpp internal	0x6fb6fc	0x443af0	ok-vote	149/150 caller twins agree	research/PLAN_V13.md:42,src/rig_cmd.c:27
 internal	il2cpp internal	0x6fb9c4	0x443d40	ok-vote	150/150 caller twins agree	src/rig_cmd.c:30
 other		0x701700		not-an-address	no caller in the Mac binary (a constant)	custom/fights/quickjs/libunicode-table.h:8
@@ -129,20 +132,20 @@ code-inside	Refactor.SubUI_ResearchProgressBar$$SetProgressGage+0x42	0x800e42		C
 code-inside	Refactor.Tooltip_Choice$$SetActionTooltip+0x10	0x803040		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:9
 method	Refactor.VectorExtensions$$ToWorldPosition	0x80c458	0x5a6a00	ok		research/rig_access_spec.md:116
 method	Refactor.VectorExtensions$$ToLogicalPosition	0x80c474	0x5a67f0	ok		research/rig_access_spec.md:116
-method	Refactor.TextKeyExtensions$$GetText	0x80ebac	0x5a3490	ok		custom/cm_mp.c:156,custom/fe/fe_menu.c:35,custom/pvp/pvp_ui.c:226,custom/pvp/pvp_ui.c:395,src/ui_game.c:105,src/ui_game.c:115,+2
+method	Refactor.TextKeyExtensions$$GetText	0x80ebac	0x5a3490	ok		custom/cm_mp.c:156,custom/fe/fe_menu.c:35,custom/pvp/pvp_ui.c:226,custom/pvp/pvp_ui.c:395,src/ui_game.c:111,src/ui_game.c:121,+2
 method	Refactor.CampaignSaveLoader$$TryRefreshSave	0x812ab8	0x58c970	ok		research/rig_access_spec.md:171,src/MP_NOTES.md:163,src/mp_game.c:133
 method	Refactor.CampaignSaveLoader$$TryLoad	0x8143cc	0x58c4b0	ok		research/plan_foreign_expedition_spectator.md:125,research/rig_access_spec.md:179
 method	Refactor.CampaignSaveLoader$$IsValidLoadData	0x814718	0x589b50	ok		research/plan_foreign_expedition_spectator.md:125,research/rig_access_spec.md:164
 method	Refactor.CampaignSaveLoader$$Save	0x814890	0x58b9f0	ok		research/plan_foreign_expedition_spectator.md:126,research/transitions_design.md:96,src/MP_NOTES.md:155,src/MP_NOTES.md:61,src/MP_NOTES.md:86,src/mp_game.c:132,+2
 method	Refactor.CampaignSaveLoader$$KeepOnlyRetainedCampaignSave	0x814e88	0x589d20	ok		research/plan_foreign_expedition_spectator.md:168,src/MP_NOTES.md:157,src/mp_game.c:134
 method	Refactor.CampaignSaveLoader$$Delete	0x815748	0x589740	ok		src/MP_NOTES.md:209,src/mp_game.c:234
-method	Refactor.ResourceLoader$$LoadItemIcon	0x829df4	0x5a1b30	ok		src/ui_game.c:594,src/ui_game.c:597
+method	Refactor.ResourceLoader$$LoadItemIcon	0x829df4	0x5a1b30	ok		src/ui_game.c:602,src/ui_game.c:605
 method	Refactor.FactionRelationInfo$$Init	0x82aeec	0x5996a0	ok		research/plan_pvp.md:40
 method	Refactor.FactionRelationInfo$$GetRelation	0x82bba0	0x5991b0	ok		custom/pvp/pvp_game.c:41,custom/pvp/pvp_game.c:9,research/PLAN_V13.md:33,research/plan_pvp.md:198,research/plan_pvp.md:45
 method	Refactor.FactionRelationInfo$$GetRelationsOf	0x82be08	0x599280	ok		research/plan_pvp.md:57
 method	Refactor.FactionRelationInfo$$IsRelation	0x82c5dc	0x59a120	ok		custom/pvp/pvp_game.c:43,research/plan_pvp.md:47
 method	Refactor.FactionRelationInfo$$IsAffectTarget	0x82c604	0x59a000	ok		research/plan_pvp.md:47
-method	Refactor.SystemVar.Campaign$$get_PlayerPartyMax	0x83ef5c	0x5a8cc0	ok		research/plan_pvp.md:25
+method	Refactor.SystemVar.Campaign$$get_PlayerPartyMax	0x83ef5c	0x5a8cc0	ok		research/plan_pvp.md:25,src/ui_teams.c:217
 method	Refactor.CombatStateApplyData$$.ctor	0x8457a0	0x5b52f0	ok		research/plan_pvp.md:213,research/plan_pvp.md:71
 method	Refactor.DeadlyApplyData$$.ctor	0x845de4	0x56af40	ok		custom/pvp/pvp_game.c:289
 method	Refactor.MoveApplyData$$Set	0x84743c	0x5c3640	ok		research/plan_pvp.md:101
@@ -152,12 +155,12 @@ method	Refactor.EntityTargetSelector$$Self	0x848dc4	0x5b8850	ok		research/orders
 method	Refactor.EntityTargetSelector$$SelectFromSpecificTargets	0x848f4c	0x5b85c0	ok		research/orders_catalog.md:121,research/orders_catalog.md:271,src/ord_game.c:38,src/ord_test/OFFSETS.md:104
 method	Refactor.EntityTargetSelector$$SpecificTarget	0x84927c	0x5b8c60	ok		research/orders_catalog.md:119,research/orders_catalog.md:271,src/ord_game.c:36,src/ord_test/OFFSETS.md:102
 method	Refactor.EntityTargetSelector$$SpecificUsableTarget	0x8493cc	0x5b8d80	ok		research/orders_catalog.md:120,research/orders_catalog.md:271,src/ord_game.c:37,src/ord_test/OFFSETS.md:103
-method	Refactor.CameraHandlerPresenter$$Refresh	0x85b50c	0x5d3700	ok		src/UI_NOTES.md:286,src/ui_game.c:3870,src/ui_game.c:5321
-method	Refactor.SubUI_SettlerNameCase$$Init	0x85e50c	0x5eb860	ok		PLAN.md:358,src/MPMENU_NOTES.md:150,src/mpmenu.c:3216
-method	Refactor.SaveLoadView$$RefreshLoadPanel	0x85ed7c	0x5e8540	ok		src/MPMENU_NOTES.md:163,src/mpmenu.c:3217
-method	Refactor.SaveLoadView$$RefreshPanelSize	0x85fbc8	0x5e9400	ok		src/mpmenu.c:2942
-method	Refactor.SaveLoadView$$UnselectAllSlots	0x860030	0x5eabd0	ok		src/mpmenu.c:3002
-method	Refactor.SaveLoadView$$LockLoadButtons	0x86047c	0x5e7b40	ok		src/mpmenu.c:3002
+method	Refactor.CameraHandlerPresenter$$Refresh	0x85b50c	0x5d3700	ok		src/UI_NOTES.md:286,src/ui_game.c:4053,src/ui_game.c:5541
+method	Refactor.SubUI_SettlerNameCase$$Init	0x85e50c	0x5eb860	ok		PLAN.md:358,src/MPMENU_NOTES.md:150,src/mpmenu.c:3598
+method	Refactor.SaveLoadView$$RefreshLoadPanel	0x85ed7c	0x5e8540	ok		src/MPMENU_NOTES.md:163,src/mpmenu.c:3599
+method	Refactor.SaveLoadView$$RefreshPanelSize	0x85fbc8	0x5e9400	ok		src/mpmenu.c:3322
+method	Refactor.SaveLoadView$$UnselectAllSlots	0x860030	0x5eabd0	ok		src/mpmenu.c:3382
+method	Refactor.SaveLoadView$$LockLoadButtons	0x86047c	0x5e7b40	ok		src/mpmenu.c:3382
 method	Refactor.SaveLoadHelper$$RefreshSaveCache	0x8711d4	0x5e1540	ok		research/plan_foreign_expedition_spectator.md:125,research/rig_access_spec.md:172,src/MP_NOTES.md:164
 method	Refactor.SaveLoadHelper$$GetCampaignSavePath	0x871ea4	0x5dee10	ok		research/rig_access_spec.md:159
 method	Refactor.SaveLoadHelper$$GetAllSavePaths	0x87262c	0x5debb0	ok		research/plan_foreign_expedition_spectator.md:124
@@ -166,9 +169,9 @@ method	Refactor.SaveLoadHelper$$SaveFile	0x87573c	0x5e1ba0	ok		research/plan_for
 method	Refactor.SaveLoadHelper$$GetSaveDirectory	0x877010	0x5df6e0	ok		research/rig_access_spec.md:159
 code-inside	Refactor.SaveLoadHelper$$GetCorruptSavePaths+0x29e	0x878142		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:801
 method	Refactor.Sound.BackgroundAudioMute$$OnApplicationFocus	0x8805a4	0x5f6440	ok		research/rig_access_spec.md:237
-method	Refactor.Sound.OneTimeSFXSoundHandler$$PlayUISFX	0x8877b0	0x602490	ok		src/UI_NOTES.md:265,src/UI_NOTES.md:285,src/ui_game.c:3816
+method	Refactor.Sound.OneTimeSFXSoundHandler$$PlayUISFX	0x8877b0	0x602490	ok		src/UI_NOTES.md:265,src/UI_NOTES.md:285,src/ui_game.c:3999
 code-inside	Refactor.Setting.LanguageSetting$$SetCurrentLanguageType+0x44	0x898744		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:802
-method	Refactor.Setting.LanguageSetting$$GetFont	0x898a28	0x61df50	ok		src/ui_teams.c:551,src/ui_teams.c:554
+method	Refactor.Setting.LanguageSetting$$GetFont	0x898a28	0x61df50	ok		src/ui_teams.c:580,src/ui_teams.c:583
 method	Refactor.Combat.CooldownCondition.<OnSuccessCondition>d__2$$MoveNext	0x8a4fe4	0x623e30	ok		research/bugreport_gcd_cdr.md:42
 method	Refactor.Combat.SkillCooldownCalculator$$GetAdjustedCooldown	0x8a5408	0x620520	ok		research/bugreport_gcd_cdr.md:42
 method	Refactor.Combat.SkillCooldownCalculator$$GetAdjustedGlobalCooldown	0x8a54b8	0x620640	ok		research/bugreport_gcd_cdr.md:46
@@ -262,7 +265,7 @@ code-inside	Refactor.Control.ConstructionMode$$TryReplaceDoorForImmediateWall+0x
 method	Refactor.Control.ConstructionMode$$DragSelection	0xc013f4	0x9202e0	ok		research/orders_catalog.md:159,src/ord_game.c:65,src/ord_test/OFFSETS.md:130
 method	Refactor.Control.ActionOrder$$Execute	0xc04a38	0x9190b0	ok		research/orders_catalog.md:269,research/orders_catalog.md:97,src/ord_game.c:34,src/ord_test/OFFSETS.md:100
 method	Refactor.Control.SkillOrder$$Use	0xc04d64	0x9376a0	ok		research/orders_catalog.md:98
-method	Refactor.Control.PortalOrder$$Open	0xc050b0	0x936c10	ok		research/orders_catalog.md:101,src/ui_teams.c:1918,src/ui_teams.c:1974
+method	Refactor.Control.PortalOrder$$Open	0xc050b0	0x936c10	ok		research/orders_catalog.md:101,src/ui_teams.c:1960,src/ui_teams.c:2016
 method	Refactor.Control.DefaultCommand$$ReserveWayPoint	0xc0535c	0x927d40	ok		research/orders_catalog.md:103
 method	Refactor.Control.DefaultCommand$$AltClick	0xc0543c	0x9279b0	ok		research/orders_catalog.md:104
 method	Refactor.Control.DefaultCommand$$RightClick	0xc054a8	0x927e50	ok		research/orders_catalog.md:96
@@ -287,13 +290,13 @@ method	Refactor.Control.PickUpMode$$DragSelection	0xc10bec	0x936680	ok		research
 method	Refactor.Control.UseSkillMode$$LeftClickInteraction	0xc110b4	0x938c40	ok		research/orders_catalog.md:107
 method	Refactor.Control.UseSkillMode$$GetPossibleTarget	0xc1158c	0x938550	ok		research/orders_catalog.md:127
 method	Refactor.Control.InteractionOptionControl$$RegisterInteractionOption	0xc2562c	0x9577f0	ok		src/ord_test/ord_smoke.c:164
-method	Refactor.Map.FogOfWarPresenter$$SetDefaultVision	0xc2b09c	0x93ec60	ok		src/mp_fog.c:31
-method	Refactor.Map.FogOfWarView$$LoadVisible	0xc2b69c	0x941af0	ok		src/mp_fog.c:35
-method	Refactor.Map.FogOfWarView$$SetVisible	0xc2b838	0x942080	ok		src/mp_fog.c:33
-method	Refactor.Map.FogOfWarPresenter$$RefreshVision	0xc2b9d4	0x93e730	ok		src/mp_fog.c:30
-method	Refactor.Map.FogOfWarView$$SetNotVisited	0xc2beb8	0x941e90	ok		src/mp_fog.c:39
-method	Refactor.Map.FogOfWarView$$SetHalfVisible	0xc2c054	0x941af0	ok		src/mp_fog.c:34
-method	Refactor.Map.FogOfWarPresenter$$RefreshImplementedArea	0xc2c3dc	0x93e340	ok		src/mp_fog.c:32
+method	Refactor.Map.FogOfWarPresenter$$SetDefaultVision	0xc2b09c	0x93ec60	ok		src/mp_fog.c:38
+method	Refactor.Map.FogOfWarView$$LoadVisible	0xc2b69c	0x941af0	ok		src/mp_fog.c:42
+method	Refactor.Map.FogOfWarView$$SetVisible	0xc2b838	0x942080	ok		src/mp_fog.c:40
+method	Refactor.Map.FogOfWarPresenter$$RefreshVision	0xc2b9d4	0x93e730	ok		src/mp_fog.c:37
+method	Refactor.Map.FogOfWarView$$SetNotVisited	0xc2beb8	0x941e90	ok		src/mp_fog.c:46
+method	Refactor.Map.FogOfWarView$$SetHalfVisible	0xc2c054	0x941af0	ok		src/mp_fog.c:41
+method	Refactor.Map.FogOfWarPresenter$$RefreshImplementedArea	0xc2c3dc	0x93e340	ok		src/mp_fog.c:39
 code-inside	Refactor.Map.HousingRoomFeedbackPresenter$$UpdateFeedback+0x30	0xc30130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:12
 code-inside	Refactor.Map.WorldTilemapViewPresenter$$RefreshSingleFloorDecoTile+0x2d0	0xc38240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:12
 code-inside	Refactor.Map.BaseAreaRoomsDictionary$$.ctor+0x14	0xc48230		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:13
@@ -343,7 +346,7 @@ method	Refactor.Main.EntityLifecycleHelper$$DeadUnit	0xc990cc	0x9c1790	ok		resea
 method	Refactor.Main.EntityLifecycleHelper$$DespawnUnit	0xc9998c	0x9c2140	ok		research/plan_pvp.md:100,research/plan_pvp.md:237
 method	Refactor.Main.EntityLifecycleHelper$$DespawnBuilding	0xc9a84c	0x9c1ab0	ok		research/plan_pvp.md:100
 method	Refactor.Main.EntityLifecycleHelper$$ChangeUnitFaction	0xc9c7b4	0x9bf8b0	ok		research/plan_pvp.md:69
-method	Refactor.Main.LevelUpHelper$$SetLevelUpTargetUnit	0xc9f8b8	0x9cbb50	ok		research/orders_catalog.md:179,src/UI_NOTES.md:98,src/ui_game.c:5295
+method	Refactor.Main.LevelUpHelper$$SetLevelUpTargetUnit	0xc9f8b8	0x9cbb50	ok		research/orders_catalog.md:179,src/UI_NOTES.md:98,src/ui_game.c:5515
 code-inside	Refactor.Main.LevelUpHelper$$GetAvailableRequiredItemAmount+0xe8	0xca0130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:14
 method	Refactor.Main.LevelUpHelper$$GetOfferedMajorStat	0xca1808	0x9c9ab0	ok		custom/units/pvp_build.c:8
 method	Refactor.Main.MapLoadingChecker$$StartLoading	0xca3b50	0x9cd290	ok		research/transitions_design.md:50
@@ -380,7 +383,7 @@ method	Refactor.Main.GameSpeedAction$$Execute	0xcd7b94	0xa04350	ok		research/ord
 code-inside	Refactor.Main.HideAlertAction$$RecordTutorial+0x16d	0xcd8101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:16
 code-inside	Refactor.Main.SpawnItemMapAction$$get_ActionText+0x94	0xce0130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:16
 code-inside	Refactor.Main.ActionPerformer$$get__isCurrentComplete+0xfc	0xce8130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:16
-method	Refactor.Main.EventFlowProcessor$$StartEvent	0xcea620	0xa02340	ok		custom/pvp/pvp_game.c:1019,custom/pvp/pvp_game.c:352,src/ui_game.c:1491,src/ui_game.c:1570
+method	Refactor.Main.EventFlowProcessor$$StartEvent	0xcea620	0xa02340	ok		custom/pvp/pvp_game.c:1019,custom/pvp/pvp_game.c:352,src/ui_game.c:1501,src/ui_game.c:1580
 method	Refactor.Main.EventProcessor$$Update	0xcec070	0xa03820	ok		research/determinism_audit.md:212,src/DETERMINISM_NOTES.md:57,src/rig_det.c:28
 code-inside	Refactor.Main.EntityObjectFactory$$InstantiateHUD+0x64	0xcf0100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:17
 method	Refactor.Main.TradeCommitRequest$$.ctor	0xcf4694	0xa0ff30	ok		src/ord_game.c:47,src/ord_test/OFFSETS.md:113
@@ -391,15 +394,15 @@ code-inside	BehaviorDesigner.Runtime.Tasks.Movement.Pursue$$OnReset+0xa6	0xd1009
 method	Refactor.Main.MainFlow$$get_IsCampaignStarted	0xd19408	0xa3b080	ok		research/rig_access_spec.md:100,research/rig_access_spec.md:128
 method	Refactor.Main.MainFlow$$get_CurrentMap	0xd19434	0xa3b740	ok		research/rig_access_spec.md:100,research/rig_access_spec.md:129
 method	Refactor.Main.MainFlow$$InitCore	0xd19728	0xa37490	ok		research/orders_catalog.md:279,research/orders_catalog.md:78
-method	Refactor.Main.MainFlow$$Update	0xd1b648	0xa3b1d0	ok		PLAN.md:69,research/determinism_audit.md:35,research/determinism_audit.md:5,src/rig_main.c:127
+method	Refactor.Main.MainFlow$$Update	0xd1b648	0xa3b1d0	ok		PLAN.md:69,research/determinism_audit.md:35,research/determinism_audit.md:5,src/rig_main.c:128
 method	Refactor.Main.TimeHandler$$Update	0xd1ba98	0xa454a0	ok		research/determinism_audit.md:47,src/DETERMINISM_NOTES.md:56,src/rig_det.c:26
-method	Refactor.Main.CameraSetting$$SetPosition	0xd22c54	0xa2ccb0	ok		custom/pvp/pvp_game.c:843,research/ping_camera_v10.md:256,src/ui_game.c:3883,src/ui_game.c:4185,src/ui_game.c:4668
-method	Refactor.Main.CameraSetting$$SetOrthoSize	0xd22db0	0xa2cbd0	ok		custom/pvp/pvp_game.c:844,research/ping_camera_v10.md:256,src/ui_game.c:4186,src/ui_game.c:4667
-method	Refactor.Main.CameraSetting$$GetPosition	0xd23584	0xa2c7d0	ok		custom/pvp/pvp_game.c:841,research/ping_camera_v10.md:220,research/ping_camera_v10.md:255,src/ui_game.c:1732,src/ui_game.c:3882,src/ui_game.c:4087,+6
-method	Refactor.Main.CameraSetting$$GetOrthoSize	0xd23590	0x9458f0	ok		custom/pvp/pvp_game.c:842,research/ping_camera_v10.md:220,research/ping_camera_v10.md:255,src/ui_game.c:4087,src/ui_game.c:4108,src/ui_game.c:4179,+3
+method	Refactor.Main.CameraSetting$$SetPosition	0xd22c54	0xa2ccb0	ok		custom/pvp/pvp_game.c:843,research/ping_camera_v10.md:256,src/ui_game.c:4066,src/ui_game.c:4368,src/ui_game.c:4883
+method	Refactor.Main.CameraSetting$$SetOrthoSize	0xd22db0	0xa2cbd0	ok		custom/pvp/pvp_game.c:844,research/ping_camera_v10.md:256,src/ui_game.c:4369,src/ui_game.c:4882
+method	Refactor.Main.CameraSetting$$GetPosition	0xd23584	0xa2c7d0	ok		custom/pvp/pvp_game.c:841,research/ping_camera_v10.md:220,research/ping_camera_v10.md:255,src/ui_game.c:1744,src/ui_game.c:3665,src/ui_game.c:4065,+7
+method	Refactor.Main.CameraSetting$$GetOrthoSize	0xd23590	0x9458f0	ok		custom/pvp/pvp_game.c:842,research/ping_camera_v10.md:220,research/ping_camera_v10.md:255,src/ui_game.c:4270,src/ui_game.c:4291,src/ui_game.c:4362,+3
 method	Refactor.Main.GameSpeedSetting$$SetSpeed	0xd24114	0xa35fb0	ok		research/orders_catalog.md:218,research/rig_access_spec.md:152,research/transitions_design.md:51,src/MP_NOTES.md:40,src/mp_game.c:27
 method	Refactor.Main.GameSpeedSetting$$AddPauseReason	0xd24848	0xa35ac0	ok		research/orders_catalog.md:220,research/rig_access_spec.md:152,src/MP_NOTES.md:41,src/mp_game.c:28
-method	Refactor.Main.GameSpeedSetting$$RemovePauseReason	0xd249bc	0xa35e20	ok		research/orders_catalog.md:220,research/rig_access_spec.md:152,src/MP_NOTES.md:42,src/UI_NOTES.md:155,src/mp_game.c:29,src/ui_game.c:3234
+method	Refactor.Main.GameSpeedSetting$$RemovePauseReason	0xd249bc	0xa35e20	ok		research/orders_catalog.md:220,research/rig_access_spec.md:152,src/MP_NOTES.md:42,src/UI_NOTES.md:155,src/mp_game.c:29,src/ui_game.c:3345
 method	Refactor.Main.GameSpeedSetting$$GetMultiplier	0xd24b34	0xa35c40	ok		research/rig_access_spec.md:137
 method	Refactor.Main.GameSpeedSetting$$SetLock	0xd24b98	0xa35f30	ok		research/orders_catalog.md:219,research/transitions_design.md:51
 method	Refactor.Main.StoreRuntimeHandler.SteamRuntime$$get_IsEnabled	0xd25730	0x5d3ee0	ok		rig/NOTES.md:29,rig/make_instance.sh:21,rig/make_instance.sh:34,rig/make_mp_app.sh:120
@@ -408,13 +411,13 @@ method	Refactor.Main.TickFlowHandler$$EnqueueEvent	0xd28034	0xa42800	ok		researc
 method	Refactor.Main.TickFlowHandler$$Update	0xd28120	0xa45010	ok		research/determinism_audit.md:57,research/orders_catalog.md:221,research/orders_catalog.md:40
 method	Refactor.Main.TickFlowHandler$$HandleEvent	0xd28214	0xa43150	ok		research/determinism_audit.md:159,research/rig_access_spec.md:209
 method	Refactor.Main.TickFlowHandler$$CompleteEntityInitializationForTransition	0xd28dbc	0xa41fc0	ok		research/transitions_design.md:61
-method	Refactor.Main.RuntimeDataContainer$$GetDataReader	0xd2bd44	0xa3c3a0	ok		src/ui_game.c:5224,src/ui_game.c:5229
+method	Refactor.Main.RuntimeDataContainer$$GetDataReader	0xd2bd44	0xa3c3a0	ok		src/ui_game.c:5443,src/ui_game.c:5448
 code-inside	Refactor.Main.TaskGeneratorContainer$$InitializeTaskGenerator+0x3ac	0xd30130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:17
 method	Refactor.Main.TaskGeneratorContainer$$CancelPublishedTasks	0xd306d8	0xa65c40	ok		research/orders_catalog.md:161
 method	Refactor.Main.TaskGeneratorContainer$$RemoveTaskByTargets	0xd30b44	0xa670c0	ok		research/orders_catalog.md:163
 method	Refactor.Main.TaskGeneratorContainer$$GenerateTask	0xd312ac	0xa65db0	ok		research/orders_catalog.md:159
 method	Refactor.Main.TaskGeneratorContainer$$GenerateTasks	0xd314b0	0xa65f80	ok		research/orders_catalog.md:162
-method	Refactor.Main.UI.UIPrefabSO$$GetUIPrefab	0xd3236c	0xa69b20	ok		src/MPMENU_NOTES.md:94,src/mpmenu.c:1024,src/mpmenu.c:1030,src/ui_teams.c:409,src/ui_teams.c:462,src/ui_teams.c:486,+1
+method	Refactor.Main.UI.UIPrefabSO$$GetUIPrefab	0xd3236c	0xa69b20	ok		src/MPMENU_NOTES.md:94,src/mpmenu.c:1369,src/mpmenu.c:1375,src/ui_teams.c:438,src/ui_teams.c:491,src/ui_teams.c:515,+1
 method	Refactor.Main.InputModule.InputBinding$$ConvertInputStreamToEventData	0xd345a4	0xa4bfb0	ok		research/orders_catalog.md:34
 method	Refactor.Main.InputModule.InputEventFactory$$ConvertKeyInputToEventData	0xd357fc	0xa4ce10	ok		research/orders_catalog.md:35
 method	Refactor.Main.InputModule.InputEventFactory$$ConvertMouseInputToEventData	0xd362dc	0xa4d690	ok		research/orders_catalog.md:35
@@ -425,7 +428,7 @@ method	Refactor.Main.InputModule.InputDispatcher$$<Update>b__8_0	0xd3baa4	0xa4c8
 method	Refactor.Main.InputModule.InputStream$$AddUIInput	0xd3f514	0xa53ea0	ok		research/orders_catalog.md:33
 method	Refactor.Main.InputModule.InputStream$$AddKeyInput	0xd406ac	0xa53dd0	ok		research/orders_catalog.md:33
 method	Refactor.Main.InputModule.InputStream$$AddMouseInput	0xd40738	0xa53e40	ok		research/orders_catalog.md:33
-method	Refactor.Main.InputModule.KeyInputDispatcher$$IsTextInputFocused	0xd42bbc	0xa62590	ok		src/MPMENU_NOTES.md:118,src/UI_NOTES.md:219,src/UI_NOTES.md:284,src/mpmenu.c:3218,src/mpmenu.c:3777,src/ui_game.c:3805
+method	Refactor.Main.InputModule.KeyInputDispatcher$$IsTextInputFocused	0xd42bbc	0xa62590	ok		src/MPMENU_NOTES.md:118,src/UI_NOTES.md:219,src/UI_NOTES.md:284,src/mpmenu.c:3600,src/mpmenu.c:4160,src/ui_game.c:3988
 method	Refactor.Main.InputModule.UIInputStream$$AddInput	0xd44c50	0xa67cf0	ok		research/orders_catalog.md:33,research/orders_catalog.md:7
 method	Refactor.Main.Processor.ControlModeProcessor$$LeftClick	0xd4548c	0xa495c0	ok		research/orders_catalog.md:167,research/orders_catalog.md:287
 method	Refactor.Main.Processor.ControlModeProcessor$$RightClick	0xd45628	0xa49910	ok		research/orders_catalog.md:96
@@ -433,13 +436,13 @@ method	Refactor.Main.Processor.ControlModeProcessor$$Drag	0xd457dc	0xa493b0	ok		
 method	Refactor.Main.Processor.ControlModeProcessor$$GetProcessor	0xd45b2c	0xa49510	ok		research/orders_catalog.md:80,src/ord_game.c:48,src/ord_test/OFFSETS.md:114
 code-inside	Refactor.Main.Processor.ItemControlProcessor$$RouteDungeonReturnInventoryItem+0xcc	0xd48130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:18
 method	Refactor.Main.Processor.ItemControlProcessor$$EquipItem	0xd4d574	0xa58250	ok		research/plan_pvp.md:308
-method	Refactor.Main.Processor.SelectProcessor$$Toggle	0xd54574	0xa82840	ok		src/ui_game.c:3059,src/ui_game.c:5308
-method	Refactor.Main.Processor.SelectProcessor$$Select	0xd54b7c	0xa82740	ok		src/ui_game.c:3059,src/ui_game.c:5307
+method	Refactor.Main.Processor.SelectProcessor$$Toggle	0xd54574	0xa82840	ok		src/ui_game.c:3170,src/ui_game.c:5528
+method	Refactor.Main.Processor.SelectProcessor$$Select	0xd54b7c	0xa82740	ok		src/ui_game.c:3170,src/ui_game.c:5527
 code-inside	Refactor.Main.Event.RecruitHelper$$ParseItems+0x18	0xd60240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:18
 method	Refactor.Main.Event.RecruitHelper$$ApplyModifiers	0xd60c08	0xa79cd0	ok		PLAN.md:182,custom/units/pvp_build.c:137
 method	Refactor.Main.Event.TickRequested$$.ctor	0xd61e0c	0x8e1990	ok		src/rig_det.c:32
 method	Refactor.Main.Event.QuitToTitleSceneRequested$$.ctor	0xd61e50	0x8e1990	ok		custom/pvp/pvp_ui.c:318,src/MP_NOTES.md:179,src/MP_NOTES.md:182,src/mp_game.c:34
-method	Refactor.Main.Event.CreateCampaignRequested$$.ctor	0xd61edc	0xa74500	ok		src/mpmenu.c:3498
+method	Refactor.Main.Event.CreateCampaignRequested$$.ctor	0xd61edc	0xa74500	ok		src/mpmenu.c:3880
 method	Refactor.Main.Event.MapTransitionRequest$$ToEvent	0xd62060	0xa79610	ok		research/orders_catalog.md:207
 method	Refactor.Main.Event.ChangeMapRequested$$.ctor	0xd621e8	0xa74100	ok		research/plan_pvp.md:85,research/transitions_design.md:114,src/trn_game.c:24
 method	Refactor.Main.Event.GoDownDungeonRequested$$.ctor	0xd622ac	0x5a7340	ok		src/trn_game.c:22
@@ -463,7 +466,7 @@ method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6ba08	0xa7193
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6bf3c	0xa718a0	ok		research/transitions_design.md:38
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6bfd0	0xa71af0	ok		research/transitions_design.md:38
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6c76c	0xa719d0	ok		research/rig_access_spec.md:177,research/transitions_design.md:38
-method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6c800	0xa71830	ok		research/rig_access_spec.md:187,research/transitions_design.md:38,src/MPMENU_NOTES.md:64,src/mpmenu.c:3214
+method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6c800	0xa71830	ok		research/rig_access_spec.md:187,research/transitions_design.md:38,src/MPMENU_NOTES.md:64,src/mpmenu.c:3596
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$LoadCampaign	0xd6c900	0xa71310	ok		research/plan_modloader.md:18,research/plan_modloader.md:90
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$TryGetSaveHeader	0xd6ca44	0xa73320	ok		research/rig_access_spec.md:171
 method	Refactor.Main.Event.CampaignLoadingEventHandler$$OnEvent	0xd6f114	0xa71a60	ok		research/orders_catalog.md:207,research/transitions_design.md:31
@@ -507,9 +510,9 @@ method	Refactor.Main.Event.CraftingEventHandler$$OnEvent	0xd7e8a0	0xa89b90	ok		r
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd7eac4	0xa8dd80	ok		research/plan_pvp.md:68
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd80c1c	0xa94370	ok		research/orders_catalog.md:176
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd80fe8	0xa90800	ok		research/orders_catalog.md:175
-method	Refactor.Main.Event.EntityEventHandler$$CheckGameOver	0xd854ec	0xa8a9a0	ok		custom/pvp/pvp_game.c:236,research/plan_pvp.md:107,research/plan_pvp.md:230,src/ui_game.c:1345,src/ui_game.c:1349
-code-inside	Refactor.Main.Event.EntityEventHandler$$CheckGameOver+0x34c	0xd85838		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	src/ui_game.c:1345
-method	Refactor.Main.Event.EntityEventHandler$$RecordDeadUnit	0xd858f0	0xa958b0	ok		src/ui_game.c:1349
+method	Refactor.Main.Event.EntityEventHandler$$CheckGameOver	0xd854ec	0xa8a9a0	ok		custom/pvp/pvp_game.c:236,research/plan_pvp.md:107,research/plan_pvp.md:230,src/ui_game.c:1355,src/ui_game.c:1359
+code-inside	Refactor.Main.Event.EntityEventHandler$$CheckGameOver+0x34c	0xd85838		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	src/ui_game.c:1355
+method	Refactor.Main.Event.EntityEventHandler$$RecordDeadUnit	0xd858f0	0xa958b0	ok		src/ui_game.c:1359
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd86008	0xa8f570	ok		research/orders_catalog.md:177
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd86980	0xa8f760	ok		research/orders_catalog.md:177
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd86d64	0xa93250	ok		research/orders_catalog.md:148
@@ -517,7 +520,7 @@ method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd86ef4	0xa92850	ok		res
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd872c4	0xa915e0	ok		research/orders_catalog.md:179
 code-inside	Refactor.Main.Event.EntityEventHandler$$RollIronModeLevelUp+0x42c	0xd88230		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:19
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd88cf4	0xa8d690	ok		research/orders_catalog.md:179
-method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd895c4	0xa8d340	ok		src/UI_NOTES.md:99,src/ui_game.c:5296
+method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd895c4	0xa8d340	ok		src/UI_NOTES.md:99,src/ui_game.c:5516
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd89fc8	0xa933a0	ok		research/orders_catalog.md:180
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd8aed8	0xa94c10	ok		research/orders_catalog.md:105
 method	Refactor.Main.Event.EntityEventHandler$$OnEvent	0xd8ba38	0xa94740	ok		research/orders_catalog.md:106
@@ -528,7 +531,7 @@ method	Refactor.Main.Event.FarmingEventHandler$$OnEvent	0xd8e8e4	0xaa7da0	ok		re
 method	Refactor.Main.Event.FarmingEventHandler$$InitializeSelectedFarm	0xd8ebb8	0xaa7380	ok		research/orders_catalog.md:186
 method	Refactor.Main.Event.FarmingEventHandler$$OnEvent	0xd8f334	0xaa8070	ok		research/orders_catalog.md:186
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd92804	0xaab720	ok		research/orders_catalog.md:182
-method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd94930	0xaade00	ok		src/UI_NOTES.md:214,src/ui_game.c:4694,src/ui_game.c:5319
+method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd94930	0xaade00	ok		src/UI_NOTES.md:214,src/ui_game.c:4909,src/ui_game.c:5539
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd96040	0xab1860	ok		research/orders_catalog.md:181,src/ord_core.c:437
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd96708	0xaaa280	ok		research/orders_catalog.md:181,src/ord_core.c:437
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd970bc	0xaae5a0	ok		research/orders_catalog.md:147
@@ -555,7 +558,7 @@ method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd9a580	0xab0380	ok		rese
 method	Refactor.Main.Event.InputEventHandler$$OnEvent	0xd9a818	0xaabd30	ok		research/orders_catalog.md:189
 method	Refactor.Main.Event.InputEventHandler$$SaveConfirmed	0xd9b960	0xab26f0	ok		src/MP_NOTES.md:68
 method	Refactor.Main.Event.InputEventHandler$$RunPreSaveStabilization	0xd9ba8c	0xab2570	ok		research/transitions_design.md:199,src/MP_NOTES.md:68
-method	Refactor.Main.Event.InteractionEventHandler$$OnEvent	0xd9c6b4	0xab3cb0	ok		src/ui_game.c:1471,src/ui_game.c:5299
+method	Refactor.Main.Event.InteractionEventHandler$$OnEvent	0xd9c6b4	0xab3cb0	ok		src/ui_game.c:1481,src/ui_game.c:5519
 method	Refactor.Main.Event.ItemEventHandler$$OnEvent	0xd9c800	0xabaf30	ok		research/orders_catalog.md:183
 method	Refactor.Main.Event.ItemEventHandler$$OnEvent	0xd9cdd4	0xab6c80	ok		research/orders_catalog.md:141
 method	Refactor.Main.Event.ItemEventHandler$$OnEvent	0xd9e27c	0xabbcc0	ok		research/orders_catalog.md:146
@@ -585,6 +588,7 @@ method	Refactor.Main.Event.ItemEventHandler$$OnEvent	0xda3628	0xab7fa0	ok		resea
 method	Refactor.Main.Event.ItemEventHandler$$OnEvent	0xda3b80	0xab6ad0	ok		research/orders_catalog.md:145
 method	Refactor.Main.Event.CampaignEntityLoadHelper$$InsertUnitTo	0xda7e44	0xaa1820	ok		research/plan_pvp.md:231,research/plan_pvp.md:98
 method	Refactor.Main.Event.CampaignEntityLoadHelper$$SpawnDungeonNPC	0xda8b30	0xaa3800	ok		custom/pvp/pvp_game.c:233,research/plan_pvp.md:225,research/plan_pvp.md:96
+method	Refactor.Main.Event.CampaignViewLoadHelper.<CallFadeOut>d__15$$MoveNext	0xdb02b8	0xad3fe0	ok		src/mp_game.c:319,src/mp_game.c:329
 method	Refactor.Main.Event.MapTransitionAbortService$$Abort	0xdb29c0	0xac1960	ok		research/transitions_design.md:63
 method	Refactor.Main.Event.MapTransitionAbortService$$RecoverFromException	0xdb2a8c	0xac1a10	ok		research/transitions_design.md:63
 method	Refactor.Main.Event.MapTransitionAbortService$$UnlockAndResumeGameSpeed	0xdb2bf8	0xac1b20	ok		research/transitions_design.md:63
@@ -622,7 +626,7 @@ method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbd464	0xacac50	
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbd4a4	0xacab00	ok		research/orders_catalog.md:164
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbd540	0xaca1a0	ok		research/orders_catalog.md:164
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbd690	0xac7fc0	ok		research/orders_catalog.md:164
-method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbd6c4	0xac89f0	ok		src/ui_game.c:5306
+method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbd6c4	0xac89f0	ok		src/ui_game.c:5526
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbe248	0xac9b90	ok		research/orders_catalog.md:109
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbe600	0xac8be0	ok		research/determinism_audit.md:168,research/determinism_audit.md:246,research/orders_catalog.md:107
 method	Refactor.Main.Event.PlayerControlEventHandler$$OnEvent	0xdbf040	0xaca500	ok		research/orders_catalog.md:212
@@ -654,8 +658,8 @@ method	Refactor.Main.Event.QuickLoadRequested$$.ctor	0xdce578	0x5146c0	ok		resea
 method	Refactor.Main.Event.SetGameSpeedStopOrRollBackRequested$$.ctor	0xdcf008	0x5146c0	ok		research/rig_access_spec.md:149
 method	Refactor.Main.Event.SetGameSpeedRequested$$.ctor	0xdcf018	0x5143b0	ok		research/rig_access_spec.md:144,src/rig_cmd.c:286
 method	Refactor.Main.Event.ChangeGameSpeedRequested$$.ctor	0xdcf088	0x8f15f0	ok		research/rig_access_spec.md:147,src/rig_cmd.c:285
-method	Refactor.Main.Event.CompleteNarrativeIntroRequested$$.ctor	0xdcf898	0x5146c0	ok		src/mpmenu.c:3504
-method	Refactor.Main.Event.LoadCampaignRequested$$.ctor	0xdcfd78	0x5a7340	ok		custom/fe/fe_hub.c:124,research/rig_access_spec.md:182,src/mpmenu.c:3426,src/rig_cmd.c:317,src/rig_cmd.c:347
+method	Refactor.Main.Event.CompleteNarrativeIntroRequested$$.ctor	0xdcf898	0x5146c0	ok		src/mpmenu.c:3886
+method	Refactor.Main.Event.LoadCampaignRequested$$.ctor	0xdcfd78	0x5a7340	ok		custom/fe/fe_hub.c:124,research/rig_access_spec.md:182,src/mpmenu.c:3808,src/rig_cmd.c:317,src/rig_cmd.c:347
 method	Refactor.Main.Event.PreSaveStabilizer$$TryStabilize	0xdcfe2c	0xae36d0	ok		research/transitions_design.md:199
 code-inside	Refactor.Main.Event.PreSaveStabilizer$$TryStabilize+0x254	0xdd0080		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:803
 method	Refactor.Main.Event.DirectTaskHelper$$OrderSharedTask	0xdd0274	0xadfa70	ok		research/orders_catalog.md:102
@@ -678,83 +682,83 @@ code-inside	Refactor.Component.UnitStatusRegressionAudit$$ComputeSnapshotFingerp
 code-inside	Refactor.Component.Status.Status_Mood$$get_Value+0x4	0xdf8080		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:804
 code-inside	Refactor.Component.Status.MoodAffecterResolver$$CalculateMoodValue+0x6c	0xdf8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:20
 code-inside	Refactor.View.BuildingObject$$CacheBedOwnerNameText+0x10b	0xe10097		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:804
-method	Refactor.View.EntityGraphic$$ApplyMaterialProperties	0xe139c8	0xb17430	ok		src/UI_NOTES.md:276,src/UI_NOTES.md:285,src/ui_game.c:2875,src/ui_game.c:5322
+method	Refactor.View.EntityGraphic$$ApplyMaterialProperties	0xe139c8	0xb17430	ok		src/UI_NOTES.md:276,src/UI_NOTES.md:285,src/ui_game.c:2986,src/ui_game.c:5542
 code-inside	Refactor.View.EntityGraphic$$ChangeGameSpeed+0x9a	0xe1413e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:804
-method	Refactor.View.UnitEntityHUD$$Init	0xe16944	0xb23e90	ok		src/UI_NOTES.md:91,src/ui_game.c:5285
+method	Refactor.View.UnitEntityHUD$$Init	0xe16944	0xb23e90	ok		src/UI_NOTES.md:91,src/ui_game.c:5505
 method	Refactor.View.UnitEntityHUD$$SetName	0xe17ad0	0xb26970	ok		src/UI_NOTES.md:92
 code-inside	Refactor.View.EntityInteractOutlinerView$$ClearCurrentOutline+0x8c	0xe1c080		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:804
-method	Refactor.View.EntityObjectPresenter$$OnRefreshHideVision	0xe1fd90	0xb1e970	ok		src/mp_fog.c:37
+method	Refactor.View.EntityObjectPresenter$$OnRefreshHideVision	0xe1fd90	0xb1e970	ok		src/mp_fog.c:44
 code-inside	Refactor.View.EntityObjectPresenter$$OnRefreshHideVision+0x5c0	0xe20350		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:20
 code-inside	Refactor.View.EntityObjectPresenter$$OnRefreshHideVision+0x72e	0xe204be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:805
-method	Refactor.View.EntityObjectView$$SetVisible	0xe24640	0xb2f080	ok		src/mp_fog.c:36
-method	Refactor.View.UnitObject$$SetHUD	0xe26cfc	0x5c3fe0	ok		src/ui_game.c:2855,src/ui_game.c:5305
-method	Refactor.View.ViewIntData$$.ctor	0xe33aa8	0x8f15f0	ok		src/mp_game.c:384
+method	Refactor.View.EntityObjectView$$SetVisible	0xe24640	0xb2f080	ok		src/mp_fog.c:43
+method	Refactor.View.UnitObject$$SetHUD	0xe26cfc	0x5c3fe0	ok		src/ui_game.c:2966,src/ui_game.c:5525
+method	Refactor.View.ViewIntData$$.ctor	0xe33aa8	0x8f15f0	ok		src/mp_game.c:419
 code-inside	Refactor.View.ViewGuidDeltaData$$PrintMembers+0x184	0xe38350		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:21
 code-inside	Util.UnitVisualDatabase$$RefreshSearchTypesFromEnums+0x93c	0xe50350		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:21
-method	Util.UnitVisualDatabase$$GetPortraitSprite	0xe51a58	0xb55690	ok		src/mpmenu.c:456,src/mpmenu.c:459
-method	Util.UnityUtil$$IsPointerOverUIByRaycast	0xe548c8	0xb58820	ok		src/ui_teams.c:2423
-method	Util.UnityUtil$$IsPointerOverUI	0xe54ba4	0xb58b40	ok		src/UI_NOTES.md:284,src/ui_game.c:3809,src/ui_teams.c:1958,src/ui_teams.c:1978,src/ui_teams.c:2423
-method	Refactor.View.ViewUpdateDispatcher$$AddViewUpdateCall	0xe5ac14	0xb77bc0	ok		src/mp_game.c:385
+method	Util.UnitVisualDatabase$$GetPortraitSprite	0xe51a58	0xb55690	ok		src/mpmenu.c:707,src/mpmenu.c:710
+method	Util.UnityUtil$$IsPointerOverUIByRaycast	0xe548c8	0xb58820	ok		src/ui_teams.c:2465
+method	Util.UnityUtil$$IsPointerOverUI	0xe54ba4	0xb58b40	ok		src/UI_NOTES.md:284,src/ui_game.c:3992,src/ui_teams.c:2000,src/ui_teams.c:2020,src/ui_teams.c:2465
+method	Refactor.View.ViewUpdateDispatcher$$AddViewUpdateCall	0xe5ac14	0xb77bc0	ok		src/mp_game.c:420
 code-inside	Refactor.UI.SubUI_CampaignSetting$$SetDifficultyDecreaseButtonInteractable+0x30	0xe69040		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:21
-method	Refactor.UI.SubUI_TitleMenuButton$$OnPointerClick	0xe6ff20	0xb6f690	ok		src/MPMENU_NOTES.md:19,src/UI_NOTES.md:87,src/mpmenu.c:3212
+method	Refactor.UI.SubUI_TitleMenuButton$$OnPointerClick	0xe6ff20	0xb6f690	ok		src/MPMENU_NOTES.md:19,src/UI_NOTES.md:87,src/mpmenu.c:3594
 method	Refactor.UI.TitleMenuView$$InitOnActivate	0xe70708	0xb70420	ok		src/UI_NOTES.md:86
-method	Refactor.UI.TitleMenuView$$OnNewGamePressed	0xe71020	0xb70e80	ok		src/MPMENU_NOTES.md:23,src/mpmenu.c:2566
-method	Refactor.UI.TitleMenuView$$OnLoadCampaignPressed	0xe710b8	0xb70da0	ok		src/MPMENU_NOTES.md:23,src/mpmenu.c:2150,src/mpmenu.c:2565,src/mpmenu.c:3570
+method	Refactor.UI.TitleMenuView$$OnNewGamePressed	0xe71020	0xb70e80	ok		src/MPMENU_NOTES.md:23,src/mpmenu.c:2945
+method	Refactor.UI.TitleMenuView$$OnLoadCampaignPressed	0xe710b8	0xb70da0	ok		src/MPMENU_NOTES.md:23,src/mpmenu.c:2529,src/mpmenu.c:2944,src/mpmenu.c:3952
 method	Refactor.UI.InteractionOption$$.ctor	0xe72ac8	0x5a7340	ok		src/ord_test/ord_smoke.c:163
 method	Refactor.UI.AutoSaveHandlerView$$CallAutoSave	0xe83e98	0xb7ad30	ok		src/TRN_NOTES.md:33,src/trn_game.c:38
 method	Refactor.UI.AutoSavePresenter$$CallAutoSave	0xe84070	0xb7ae30	ok		research/transitions_design.md:37,research/transitions_design.md:93,src/TRN_NOTES.md:33,src/trn_game.c:37
-method	Refactor.UI.CampaignInfoPresenter$$SetPlayerCount	0xe852dc	0xb7c070	ok		src/UI_NOTES.md:201,src/ui_game.c:4899,src/ui_game.c:5320
+method	Refactor.UI.CampaignInfoPresenter$$SetPlayerCount	0xe852dc	0xb7c070	ok		src/UI_NOTES.md:201,src/ui_game.c:5118,src/ui_game.c:5540
 method	Refactor.UI.SubUI_CampaignClockUI$$SetSpeedChangeOnUI	0xe86444	0xb8d850	ok		src/UI_NOTES.md:94
-method	Refactor.UI.SubUI_CampaignClockUI$$Initialize	0xe865e8	0xb8d640	ok		research/plan_pvp.md:118,src/UI_NOTES.md:93,src/ui_game.c:5286
+method	Refactor.UI.SubUI_CampaignClockUI$$Initialize	0xe865e8	0xb8d640	ok		research/plan_pvp.md:118,src/UI_NOTES.md:93,src/ui_game.c:5506
 method	Refactor.UI.SubUI_CampaignOverviewUI$$SetPlayerCount	0xe871fc	0xb8dc60	ok		src/UI_NOTES.md:202
-method	Refactor.UI.SubUI_PolicyPortrait$$Refresh	0xe95ee8	0xbb55a0	ok		src/ui_teams.c:1197,src/ui_teams.c:1717,src/ui_teams.c:416,src/ui_teams.c:698
-method	Refactor.UI.DungeonResultView$$OnClick_Return	0xea2460	0xba25c0	ok		src/ui_game.c:1379,src/ui_game.c:5302
-method	Refactor.UI.DungeonResultView$$OnClick_GoDown	0xea2c1c	0xba24e0	ok		src/ui_game.c:1379,src/ui_game.c:5303
+method	Refactor.UI.SubUI_PolicyPortrait$$Refresh	0xe95ee8	0xbb55a0	ok		src/ui_teams.c:1227,src/ui_teams.c:1753,src/ui_teams.c:445,src/ui_teams.c:727
+method	Refactor.UI.DungeonResultView$$OnClick_Return	0xea2460	0xba25c0	ok		src/ui_game.c:1389,src/ui_game.c:5522
+method	Refactor.UI.DungeonResultView$$OnClick_GoDown	0xea2c1c	0xba24e0	ok		src/ui_game.c:1389,src/ui_game.c:5523
 code-inside	Refactor.UI.SubUI_EntityInspectionTrait$$.ctor+0x3a	0xea83ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:805
-method	Refactor.UI.EventNodeUIView$$SetChoices	0xedd9d0	0xbe01b0	ok		src/UI_NOTES.md:101,src/ui_game.c:5298
-method	Refactor.UI.EventNodeUIView$$SetEventUI	0xeddbe0	0xbe04e0	ok		src/UI_NOTES.md:100,src/ui_game.c:5297
-method	Refactor.UI.EventNodeUIView$$OnClickChoice	0xedf334	0xbdfea0	ok		src/UI_NOTES.md:102,src/ui_game.c:5311
+method	Refactor.UI.EventNodeUIView$$SetChoices	0xedd9d0	0xbe01b0	ok		src/UI_NOTES.md:101,src/ui_game.c:5518
+method	Refactor.UI.EventNodeUIView$$SetEventUI	0xeddbe0	0xbe04e0	ok		src/UI_NOTES.md:100,src/ui_game.c:5517
+method	Refactor.UI.EventNodeUIView$$OnClickChoice	0xedf334	0xbdfea0	ok		src/UI_NOTES.md:102,src/ui_game.c:5531
 method	Refactor.UI.ExpeditionPlanPartyContext$$Activate	0xedfb68	0xbe4b90	ok		src/ord_test/ord_smoke.c:303
 method	Refactor.UI.ExpeditionPlanPartyContext$$ReplacePartyMembers	0xedfb74	0xbe4d80	ok		research/orders_catalog.md:207,src/ord_game.c:71,src/ord_test/OFFSETS.md:136
 method	Refactor.UI.ExpeditionPlanPartyContext$$Deactivate	0xedfd6c	0xbe4c70	ok		src/ord_test/ord_smoke.c:304
 method	Refactor.UI.ExpeditionPlanPartyContext$$.ctor	0xedff4c	0xbe4fc0	ok		src/ord_game.c:66,src/ord_test/OFFSETS.md:131
-method	Refactor.UI.ExpeditionPlanPresenter$$OnActivateView	0xee09f4	0xbe6010	ok		src/ui_teams.c:1973
-method	Refactor.UI.ExpeditionPlanPresenter$$OnDeactivateView	0xee1764	0xbe6a60	ok		src/ui_teams.c:1977
-method	Refactor.UI.ExpeditionPlanPresenter$$OnUnitSelected	0xee250c	0xbe70b0	ok		src/ui_teams.c:1755,src/ui_teams.c:1814,src/ui_teams.c:2615
-method	Refactor.UI.ExpeditionPlanPresenter$$OnUnitUnselected	0xee2728	0xbe7250	ok		src/ui_teams.c:1740,src/ui_teams.c:1830,src/ui_teams.c:2611
-method	Refactor.UI.ExpeditionPlanPresenter$$OnSelectRegion	0xee2890	0xbe6f20	ok		src/ui_teams.c:1734
-method	Refactor.UI.ExpeditionPlanPresenter$$OnClickBack	0xee3008	0xbe6720	ok		src/ui_teams.c:1976
-method	Refactor.UI.ExpeditionPlanView$$Close	0xee3384	0xb627f0	ok		src/ui_teams.c:1643,src/ui_teams.c:1838,src/ui_teams.c:1916,src/ui_teams.c:1936,src/ui_teams.c:1937,src/ui_teams.c:1955
-method	Refactor.UI.ExpeditionPlanPresenter$$OnClickNext	0xee3428	0xbe69c0	ok		src/ui_teams.c:1758,src/ui_teams.c:1975,src/ui_teams.c:2625
-method	Refactor.UI.ExpeditionPlanView$$InputOnAccept	0xee3a50	0xbebc90	ok		src/ui_teams.c:1641,src/ui_teams.c:1972,src/ui_teams.c:2014,src/ui_teams.c:2620
-method	Refactor.UI.ExpeditionPlanView$$QuickActInventorySlot	0xee4748	0xbec3d0	ok		src/ui_teams.c:2683
+method	Refactor.UI.ExpeditionPlanPresenter$$OnActivateView	0xee09f4	0xbe6010	ok		src/ui_teams.c:2015
+method	Refactor.UI.ExpeditionPlanPresenter$$OnDeactivateView	0xee1764	0xbe6a60	ok		src/ui_teams.c:2019
+method	Refactor.UI.ExpeditionPlanPresenter$$OnUnitSelected	0xee250c	0xbe70b0	ok		src/ui_teams.c:1791,src/ui_teams.c:1850,src/ui_teams.c:2657
+method	Refactor.UI.ExpeditionPlanPresenter$$OnUnitUnselected	0xee2728	0xbe7250	ok		src/ui_teams.c:1776,src/ui_teams.c:1866,src/ui_teams.c:2653
+method	Refactor.UI.ExpeditionPlanPresenter$$OnSelectRegion	0xee2890	0xbe6f20	ok		src/ui_teams.c:1770
+method	Refactor.UI.ExpeditionPlanPresenter$$OnClickBack	0xee3008	0xbe6720	ok		src/ui_teams.c:2018
+method	Refactor.UI.ExpeditionPlanView$$Close	0xee3384	0xb627f0	ok		src/ui_teams.c:1679,src/ui_teams.c:1874,src/ui_teams.c:1958,src/ui_teams.c:1978,src/ui_teams.c:1979,src/ui_teams.c:1997
+method	Refactor.UI.ExpeditionPlanPresenter$$OnClickNext	0xee3428	0xbe69c0	ok		src/ui_teams.c:1794,src/ui_teams.c:2017,src/ui_teams.c:2667
+method	Refactor.UI.ExpeditionPlanView$$InputOnAccept	0xee3a50	0xbebc90	ok		src/ui_teams.c:1677,src/ui_teams.c:2014,src/ui_teams.c:2056,src/ui_teams.c:2662
+method	Refactor.UI.ExpeditionPlanView$$QuickActInventorySlot	0xee4748	0xbec3d0	ok		src/ui_teams.c:2725
 code-inside	Refactor.UI.ExpeditionInventorySessionState$$FindLatestMatchBySource+0x88	0xee8100		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:21
-method	Refactor.UI.SubUI_CheckInventoryPanelUI$$GetPanelOwner	0xeecf18	0xbfc160	ok		src/ui_teams.c:2449,src/ui_teams.c:2451
+method	Refactor.UI.SubUI_CheckInventoryPanelUI$$GetPanelOwner	0xeecf18	0xbfc160	ok		src/ui_teams.c:2491,src/ui_teams.c:2493
 code-inside	Refactor.UI.SubUI_ExpeditionInventorySlot$$OnDrop+0x8	0xef1240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:22
-method	Refactor.UI.SubUI_SelectRegionUI$$InitOnActivate	0xef3a80	0xc06fc0	ok		src/ui_game.c:3090,src/ui_game.c:5309
-method	Refactor.UI.SubUI_SelectRegionUI$$SetUnit	0xef42e0	0xc082a0	ok		src/ui_game.c:3091,src/ui_game.c:5310
-method	Refactor.UI.FactionManagementView$$InitOnCreate	0xef4e08	0xbf3340	ok		src/ui_game.c:5288
-method	Refactor.UI.FactionManagementView$$ActivateButton	0xef5500	0xbf30a0	ok		src/ui_game.c:5290
-method	Refactor.UI.FactionManagementView$$OnWorldRefresh	0xef590c	0xbf3f90	ok		src/ui_game.c:5289
-method	Refactor.UI.ForcedBaseReturnView$$OnClick_ReturnBase	0xef8694	0xbf5e70	ok		src/ui_game.c:5300
-method	Refactor.UI.PauseUIPresenter$$OnSpeedChanged	0xf13234	0xc19a10	ok		src/ui_game.c:2070,src/ui_game.c:5304
-method	Refactor.UI.SubUI_UnitShortCutParts$$Initialize	0xf1a67c	0xc29c10	ok		src/UI_NOTES.md:88,src/ui_game.c:5282,src/ui_teams.c:5
-method	Refactor.UI.SubUI_UnitShortCutParts$$RefreshUnitName	0xf1aeb0	0xc2a500	ok		src/UI_NOTES.md:89,src/ui_game.c:5283
+method	Refactor.UI.SubUI_SelectRegionUI$$InitOnActivate	0xef3a80	0xc06fc0	ok		src/ui_game.c:3201,src/ui_game.c:5529
+method	Refactor.UI.SubUI_SelectRegionUI$$SetUnit	0xef42e0	0xc082a0	ok		src/ui_game.c:3202,src/ui_game.c:5530
+method	Refactor.UI.FactionManagementView$$InitOnCreate	0xef4e08	0xbf3340	ok		src/ui_game.c:5508
+method	Refactor.UI.FactionManagementView$$ActivateButton	0xef5500	0xbf30a0	ok		src/ui_game.c:5510
+method	Refactor.UI.FactionManagementView$$OnWorldRefresh	0xef590c	0xbf3f90	ok		src/ui_game.c:5509
+method	Refactor.UI.ForcedBaseReturnView$$OnClick_ReturnBase	0xef8694	0xbf5e70	ok		src/ui_game.c:5520
+method	Refactor.UI.PauseUIPresenter$$OnSpeedChanged	0xf13234	0xc19a10	ok		src/ui_game.c:2083,src/ui_game.c:5524
+method	Refactor.UI.SubUI_UnitShortCutParts$$Initialize	0xf1a67c	0xc29c10	ok		src/UI_NOTES.md:88,src/ui_game.c:5502,src/ui_teams.c:5
+method	Refactor.UI.SubUI_UnitShortCutParts$$RefreshUnitName	0xf1aeb0	0xc2a500	ok		src/UI_NOTES.md:89,src/ui_game.c:5503
 method	Refactor.UI.SubUI_UnitShortCutParts$$SetSelected	0xf1af50	0xc2b1f0	ok		src/ui_teams.c:6
-method	Refactor.UI.SubUI_UnitShortCutParts$$OnPointerClick	0xf1b91c	0xc2a4a0	ok		src/UI_NOTES.md:90,src/ui_game.c:5284
-method	Refactor.UI.QuickSlotUI$$OnSelect_SkillSlot	0xf2195c	0xc24fc0	ok		src/UI_NOTES.md:235,src/ui_game.c:5315
-method	Refactor.UI.QuickSlotUI$$OnInteract_SkillSlot	0xf219f4	0xc24ed0	ok		src/UI_NOTES.md:235,src/ui_game.c:5316
-method	Refactor.UI.QuickSlotUI$$OnClick_AmmoSlot	0xf21a88	0xc248a0	ok		src/UI_NOTES.md:235,src/ui_game.c:5317
-method	Refactor.UI.QuickSlotUI$$OnClick_ItemQuickSlot	0xf21b30	0xc24a80	ok		src/UI_NOTES.md:235,src/ui_game.c:5318
-method	Refactor.UI.RecruitPresenter$$GetRemainingRecruitTimeText	0xf26334	0xc2e8e0	ok		src/ui_game.c:4808,src/ui_game.c:4943
-method	Refactor.UI.RecruitView$$OnRecruitCandidate	0xf27e18	0xc2f9c0	ok		src/ui_game.c:4912,src/ui_game.c:5314
+method	Refactor.UI.SubUI_UnitShortCutParts$$OnPointerClick	0xf1b91c	0xc2a4a0	ok		src/UI_NOTES.md:90,src/ui_game.c:5504
+method	Refactor.UI.QuickSlotUI$$OnSelect_SkillSlot	0xf2195c	0xc24fc0	ok		src/UI_NOTES.md:235,src/ui_game.c:5535
+method	Refactor.UI.QuickSlotUI$$OnInteract_SkillSlot	0xf219f4	0xc24ed0	ok		src/UI_NOTES.md:235,src/ui_game.c:5536
+method	Refactor.UI.QuickSlotUI$$OnClick_AmmoSlot	0xf21a88	0xc248a0	ok		src/UI_NOTES.md:235,src/ui_game.c:5537
+method	Refactor.UI.QuickSlotUI$$OnClick_ItemQuickSlot	0xf21b30	0xc24a80	ok		src/UI_NOTES.md:235,src/ui_game.c:5538
+method	Refactor.UI.RecruitPresenter$$GetRemainingRecruitTimeText	0xf26334	0xc2e8e0	ok		src/ui_game.c:5027,src/ui_game.c:5162
+method	Refactor.UI.RecruitView$$OnRecruitCandidate	0xf27e18	0xc2f9c0	ok		src/ui_game.c:5131,src/ui_game.c:5534
 code-inside	Refactor.UI.SubUI_CandidateCard$$SetCard+0xda	0xf282ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:805
-method	Refactor.UI.SubUI_SystemMenuButton$$Init	0xf2db60	0xc36990	ok		custom/pvp/pvp_ui.c:706,src/MPMENU_NOTES.md:20,src/mpmenu.c:1079,src/mpmenu.c:3066,src/mpmenu.c:631
-method	Refactor.UI.SubUI_SystemMenuButton$$SetInteractable	0xf2dc14	0xb6f870	ok		src/mpmenu.c:1595,src/mpmenu.c:1596,src/ui_game.c:3241,src/ui_game.c:3263,src/ui_game.c:3266
-method	Refactor.UI.SubUI_SystemMenuButton$$OnPressButton	0xf2dc30	0xc36a40	ok		custom/pvp/pvp_ui.c:730,src/MPMENU_NOTES.md:20,src/mpmenu.c:3211,src/mpmenu.c:3476,src/mpmenu.c:3478,src/mpmenu.c:3481
-method	Refactor.UI.SystemMenuView$$OnReturnToGamePressed	0xf2ed1c	0xc37f00	ok		custom/pvp/pvp_ui.c:306,custom/pvp/pvp_ui.c:332,src/MPMENU_NOTES.md:25,src/mpmenu.c:1830,src/mpmenu.c:1872,src/mpmenu.c:2662,+2
-method	Refactor.UI.SystemMenuView$$OnLoadCampaignPressed	0xf2eea8	0xc37bb0	ok		src/MPMENU_NOTES.md:64,src/mpmenu.c:3213,src/mpmenu.c:3580
-method	Refactor.UI.SystemMenuView$$QuitToTitleSceneCallback	0xf2f234	0xc0fe10	ok		src/MP_NOTES.md:131,src/mp_game.c:39,src/mpmenu.c:3575
+method	Refactor.UI.SubUI_SystemMenuButton$$Init	0xf2db60	0xc36990	ok		custom/pvp/pvp_ui.c:706,src/MPMENU_NOTES.md:20,src/mpmenu.c:1424,src/mpmenu.c:3446,src/mpmenu.c:893
+method	Refactor.UI.SubUI_SystemMenuButton$$SetInteractable	0xf2dc14	0xb6f870	ok		src/mpmenu.c:1940,src/mpmenu.c:1941,src/ui_game.c:3352,src/ui_game.c:3374,src/ui_game.c:3377
+method	Refactor.UI.SubUI_SystemMenuButton$$OnPressButton	0xf2dc30	0xc36a40	ok		custom/pvp/pvp_ui.c:730,src/MPMENU_NOTES.md:20,src/mpmenu.c:3593,src/mpmenu.c:3858,src/mpmenu.c:3860,src/mpmenu.c:3863
+method	Refactor.UI.SystemMenuView$$OnReturnToGamePressed	0xf2ed1c	0xc37f00	ok		custom/pvp/pvp_ui.c:306,custom/pvp/pvp_ui.c:332,src/MPMENU_NOTES.md:25,src/mpmenu.c:2190,src/mpmenu.c:2233,src/mpmenu.c:3041,+2
+method	Refactor.UI.SystemMenuView$$OnLoadCampaignPressed	0xf2eea8	0xc37bb0	ok		src/MPMENU_NOTES.md:64,src/mpmenu.c:3595,src/mpmenu.c:3962
+method	Refactor.UI.SystemMenuView$$QuitToTitleSceneCallback	0xf2f234	0xc0fe10	ok		src/MP_NOTES.md:131,src/mp_game.c:39,src/mpmenu.c:3957
 method	Refactor.UI.Tooltip_Base$$HideLastDivider	0xf379a8	0xc40150	ok		research/tooltips_v9.md:16,src/ui_tip.c:104
 method	Refactor.UI.Tooltip_Base$$StopAlignmentRoutine	0xf38364	0xc40530	ok		src/ui_tip.c:312
 method	Refactor.UI.Tooltip_Base$$SetTooltipAlignment	0xf387dc	0xc40c20	ok		src/ui_tip.c:116,src/ui_tip.c:130,src/ui_tip.c:15
@@ -768,31 +772,31 @@ method	Refactor.UI.TooltipUI$$HideToolTip	0xf4aa04	0xc5efc0	ok		research/tooltip
 code-inside	Refactor.UI.TooltipUIPresenter$$ShowTooltipAtScreenPosition+0xd2	0xf4c12e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:806
 code-inside	Refactor.UI.TradeUIView$$ActivateUI+0x15b	0xf54103		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:806
 method	Refactor.UI.EssentialPopUpUI_Base$$SetTimeLock	0xf59e20	0xc4d550	ok		src/UI_NOTES.md:71
-method	Refactor.UI.PopUpUI_Base$$SetTimeLock	0xf5a538	0xc535b0	ok		src/UI_NOTES.md:70,src/UI_NOTES.md:97,src/ui_game.c:5293
-method	Refactor.UI.PopUpUI_Base$$UnsetTimeLock	0xf5a6f0	0xc537a0	ok		src/UI_NOTES.md:97,src/ui_game.c:5294
-method	Refactor.UI.PopUpViewContainer$$IsActiveAny	0xf62338	0xc81950	ok		src/UI_NOTES.md:178,src/mpmenu.c:3166,src/ui_game.c:2401,src/ui_game.c:3969
-method	Refactor.UI.PopUpViewContainer$$ActivateView	0xf62554	0xc80f50	ok		src/MPMENU_NOTES.md:24,src/UI_NOTES.md:96,src/mpmenu.c:496,src/ui_game.c:5287
-method	Refactor.UI.PopUpViewContainer$$DeactivateView	0xf62a88	0xc813d0	ok		src/UI_NOTES.md:103,src/UI_NOTES.md:131,src/mpmenu.c:3553,src/mpmenu.c:607,src/ui_game.c:1310,src/ui_game.c:1435
-method	Refactor.UI.PopUpViewContainer$$IsActivated	0xf62d64	0xc818f0	ok		src/MPMENU_NOTES.md:24,src/mpmenu.c:495,src/ui_game.c:1237,src/ui_game.c:1239,src/ui_game.c:1308
+method	Refactor.UI.PopUpUI_Base$$SetTimeLock	0xf5a538	0xc535b0	ok		src/UI_NOTES.md:70,src/UI_NOTES.md:97,src/ui_game.c:5513
+method	Refactor.UI.PopUpUI_Base$$UnsetTimeLock	0xf5a6f0	0xc537a0	ok		src/UI_NOTES.md:97,src/ui_game.c:5514
+method	Refactor.UI.PopUpViewContainer$$IsActiveAny	0xf62338	0xc81950	ok		src/UI_NOTES.md:178,src/mpmenu.c:3547,src/ui_game.c:2509,src/ui_game.c:4152
+method	Refactor.UI.PopUpViewContainer$$ActivateView	0xf62554	0xc80f50	ok		src/MPMENU_NOTES.md:24,src/UI_NOTES.md:96,src/mpmenu.c:747,src/ui_game.c:5507
+method	Refactor.UI.PopUpViewContainer$$DeactivateView	0xf62a88	0xc813d0	ok		src/UI_NOTES.md:103,src/UI_NOTES.md:131,src/mpmenu.c:3935,src/mpmenu.c:869,src/ui_game.c:1320,src/ui_game.c:1445
+method	Refactor.UI.PopUpViewContainer$$IsActivated	0xf62d64	0xc818f0	ok		src/MPMENU_NOTES.md:24,src/mpmenu.c:746,src/ui_game.c:1247,src/ui_game.c:1249,src/ui_game.c:1318
 method	Refactor.UI.CommonNoticeView$$Init	0xf64ab4	0xc708d0	ok		src/UI_NOTES.md:104,src/UI_NOTES.md:59
-method	Refactor.UI.CommonNoticeView$$Show_Select	0xf652a8	0xc71230	ok		src/mpmenu.c:1798,src/mpmenu.c:1834,src/mpmenu.c:1876,src/ui_game.c:1038,src/ui_game.c:1070
-method	Refactor.UI.CommonNoticeView$$Show_Confirm	0xf65498	0xc710e0	ok		src/MPMENU_NOTES.md:74,src/mpmenu.c:1770,src/mpmenu.c:1789,src/mpmenu.c:1877
-method	Refactor.UI.CommonNoticeView$$OnClick_Cancle	0xf65638	0xc70a00	ok		src/UI_NOTES.md:104,src/UI_NOTES.md:59,src/mpmenu.c:1847,src/mpmenu.c:1886,src/mpmenu.c:2232,src/mpmenu.c:3664,+1
-method	Refactor.UI.CommonNoticeView$$OnClick_Confirm	0xf65a18	0xc70a50	ok		src/UI_NOTES.md:104,src/UI_NOTES.md:59,src/mpmenu.c:3664,src/ui_game.c:5291
+method	Refactor.UI.CommonNoticeView$$Show_Select	0xf652a8	0xc71230	ok		src/mpmenu.c:2157,src/mpmenu.c:2194,src/mpmenu.c:2237,src/ui_game.c:1047,src/ui_game.c:1079
+method	Refactor.UI.CommonNoticeView$$Show_Confirm	0xf65498	0xc710e0	ok		src/MPMENU_NOTES.md:74,src/mpmenu.c:2128,src/mpmenu.c:2147,src/mpmenu.c:2238
+method	Refactor.UI.CommonNoticeView$$OnClick_Cancle	0xf65638	0xc70a00	ok		src/UI_NOTES.md:104,src/UI_NOTES.md:59,src/mpmenu.c:2208,src/mpmenu.c:2248,src/mpmenu.c:2611,src/mpmenu.c:4047,+1
+method	Refactor.UI.CommonNoticeView$$OnClick_Confirm	0xf65a18	0xc70a50	ok		src/UI_NOTES.md:104,src/UI_NOTES.md:59,src/mpmenu.c:4047,src/ui_game.c:5511
 method	Refactor.UI.Util.InteractableButton$$OnPointerClick	0xf66024	0xc7b980	ok		src/UI_NOTES.md:87
-method	Refactor.UI.SubUI_SaveFileButton$$SetData	0xf70150	0xc84420	ok		src/MPMENU_NOTES.md:60,src/mpmenu.c:3215
-method	Refactor.UI.Util.TooltipFeedback$$SetSimpleText	0xf7b154	0xc85f30	ok		src/ui_game.c:3255,src/ui_game.c:3264
-method	Refactor.UI.Util.TooltipFeedback$$ClearTooltip	0xf7b3d4	0xc852e0	ok		src/ui_game.c:3268
+method	Refactor.UI.SubUI_SaveFileButton$$SetData	0xf70150	0xc84420	ok		src/MPMENU_NOTES.md:60,src/mpmenu.c:3597
+method	Refactor.UI.Util.TooltipFeedback$$SetSimpleText	0xf7b154	0xc85f30	ok		src/ui_game.c:3366,src/ui_game.c:3375
+method	Refactor.UI.Util.TooltipFeedback$$ClearTooltip	0xf7b3d4	0xc852e0	ok		src/ui_game.c:3379
 code-inside	Util.Sheet.DataSheetValidationRuleRegistry$$CreateTextRules+0x228	0xf801b4		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:22
 code-inside	Util.BuildingAreaConstructor.BuildingAreaDatabase$$CanDemolishDecoration+0x50	0xf88350		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:22
 method	Refactor.DungeonPortalHandler$$Process	0xf9e298	0xcb83a0	ok		PLAN.md:33,custom/pvp/pvp_game.c:235,research/plan_pvp.md:103,research/plan_pvp.md:229
-method	Refactor.LevelUpHandler$$Process	0xf9e860	0xcbf950	ok		research/orders_catalog.md:179,src/UI_NOTES.md:98,src/ui_game.c:1471
+method	Refactor.LevelUpHandler$$Process	0xf9e860	0xcbf950	ok		research/orders_catalog.md:179,src/UI_NOTES.md:98,src/ui_game.c:1481
 code-inside	Refactor.CombatInfoReader$$HasCombatBehaviour+0x3c	0xfa0240		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:22
 method	Refactor.StatusReader$$GetValue	0xfa0ee4	0xcc3e90	ok		research/rig_access_spec.md:117,src/rig_cmd.c:120,src/rig_det.c:1176
 method	Refactor.TaskReader$$GetTaskType	0xfa3c54	0xcc4360	ok		research/rig_access_spec.md:119
 method	Refactor.BlueprintEntity$$get_Guid	0xfa3eac	0x52e1a0	ok		research/orders_catalog.md:72
 method	Refactor.BuildingEntity$$get_Guid	0xfa4280	0x52e1a0	ok		research/orders_catalog.md:68
-method	Refactor.EntityDisplayNameExtensions$$GetDisplayName	0xfa467c	0xcb8720	ok		custom/pvp/pvp_ui.c:252,src/UI_NOTES.md:107,src/mpmenu.c:2120,src/ui_game.c:91,src/ui_teams.c:1359,src/ui_teams.c:1721
+method	Refactor.EntityDisplayNameExtensions$$GetDisplayName	0xfa467c	0xcb8720	ok		custom/pvp/pvp_ui.c:252,src/UI_NOTES.md:107,src/mpmenu.c:2499,src/ui_game.c:97,src/ui_teams.c:1389,src/ui_teams.c:1757
 method	Refactor.EntityDisplayNameExtensions$$GetDisplayName	0xfa47a0	0xcb8830	ok		custom/pvp/pvp_game.c:912,research/rig_access_spec.md:112,src/rig_cmd.c:222
 method	Refactor.UnitEntity$$get_Faction	0xfa4950	0xcac7a0	ok		research/plan_pvp.md:37,research/rig_access_spec.md:114
 method	Refactor.UnitEntity$$get_NameTextKey	0xfa49a0	0xcc60c0	ok		research/rig_access_spec.md:113
@@ -808,9 +812,9 @@ method	Refactor.UnitEntity$$get_SubFaction	0xfa8584	0xcc6110	ok		research/plan_p
 method	Refactor.ConstructionTargetControl$$SetConstructionKey	0xfa9288	0xcb72d0	ok		research/orders_catalog.md:159,research/orders_catalog.md:287
 method	Refactor.ConstructionTargetControl$$SetConstructionRotation	0xfa9320	0x5a7430	ok		research/orders_catalog.md:159,research/orders_catalog.md:287
 method	Refactor.IsHostileUnitExposer$$.ctor	0xfa96e0	0x52f250	ok		research/plan_pvp.md:62
-method	Refactor.ClanDataContainer$$get_CurrentPopulation	0xfab3f4	0x5773f0	ok		src/ui_game.c:4886,src/ui_game.c:5312
-method	Refactor.ClanDataContainer$$get_MaxPopulation	0xfab404	0x50e3a0	ok		src/ui_game.c:4887,src/ui_game.c:5313
-method	Refactor.ClanDataContainer$$GetAvailableExpeditionRegions	0xfabc40	0xcb3160	ok		src/ui_teams.c:267
+method	Refactor.ClanDataContainer$$get_CurrentPopulation	0xfab3f4	0x5773f0	ok		src/ui_game.c:5105,src/ui_game.c:5532
+method	Refactor.ClanDataContainer$$get_MaxPopulation	0xfab404	0x50e3a0	ok		src/ui_game.c:5106,src/ui_game.c:5533
+method	Refactor.ClanDataContainer$$GetAvailableExpeditionRegions	0xfabc40	0xcb3160	ok		src/ui_teams.c:296
 code-inside	Refactor.BuildingDataInterface$$Has+0xb4	0xfb0130		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:23
 method	Refactor.BuildingRemoveHelper$$RemoveBuildingProcess	0xfb4e70	0xcaf250	ok		research/orders_catalog.md:159
 method	Refactor.BuildingRemoveHelper$$DemolishFarm	0xfb5130	0xcadf40	ok		research/orders_catalog.md:160
@@ -823,7 +827,7 @@ method	Refactor.InMapDataInterface$$GetCenterOfWorldOccupies	0xfc9a18	0xccd860	o
 method	Refactor.CampaignSaveHelper$$RequestAutoSave	0xfca3c0	0xcc87d0	ok		research/transitions_design.md:174,research/transitions_design.md:175,research/transitions_design.md:95,src/TRN_NOTES.md:32,src/trn_game.c:34
 method	Refactor.CampaignSaveHelper$$StartAutoSave	0xfca970	0xcc9810	ok		research/transitions_design.md:94
 method	Refactor.CampaignSaveHelper$$IsAutoSaveTimingSafe	0xfcac00	0xcc83c0	ok		research/transitions_design.md:95
-method	Refactor.CampaignSaveHelper$$SaveAutoSaveFile	0xfcb300	0xcc92d0	ok		research/transitions_design.md:96,src/mp_game.c:1029,src/mp_game.c:1262
+method	Refactor.CampaignSaveHelper$$SaveAutoSaveFile	0xfcb300	0xcc92d0	ok		research/transitions_design.md:96,src/mp_game.c:1068,src/mp_game.c:1302
 method	Refactor.CampaignSaveHelper$$GetCurrentAutoSaveCapacity	0xfcb670	0xcc8070	ok		src/MPMENU_NOTES.md:63
 method	Refactor.CampaignSaveHelper.<ProcessPendingAutoSave>d__50$$MoveNext	0xfcce18	0xce4560	ok		research/transitions_design.md:95,src/TRN_NOTES.md:32,src/trn_game.c:36
 method	Refactor.CampaignSaveHelper.<StartAutoSave>d__53$$MoveNext	0xfcd068	0xce4e30	ok		research/transitions_design.md:143,research/transitions_design.md:175,research/transitions_design.md:94,src/TRN_NOTES.md:32,src/trn_game.c:35
@@ -831,13 +835,13 @@ method	Refactor.BossHUDPresenter$$Deactivate	0xfd524c	0xcc6b60	ok		research/plan
 method	Refactor.BossHUDPresenter$$Init	0xfd54c8	0xcc6d70	ok		research/plan_pvp.md:116
 method	Refactor.BossHUDPresenter$$Activate	0xfd5638	0xcc6a30	ok		research/plan_pvp.md:116
 method	Refactor.HelpNoticeView$$InitOnCreate	0xfdc94c	0xccc4a0	ok		src/UI_NOTES.md:95
-method	Refactor.HelpNoticeView$$Show	0xfdc9fc	0xccc780	ok		src/UI_NOTES.md:95,src/ui_game.c:278,src/ui_teams.c:158
+method	Refactor.HelpNoticeView$$Show	0xfdc9fc	0xccc780	ok		src/UI_NOTES.md:95,src/ui_game.c:286,src/ui_teams.c:161
 method	AstarPath$$FlushGraphUpdates	0xfdf880	0xceff30	ok		src/DETERMINISM_NOTES.md:61,src/rig_det.c:47
 method	AstarPath$$BlockUntilCalculated	0xfe138c	0xcef090	ok		src/DETERMINISM_NOTES.md:60,src/rig_det.c:46
 method	AstarPath$$StartPath	0xfe19c0	0xcf24a0	ok		src/DETERMINISM_NOTES.md:60,src/rig_det.c:45
 code-inside	AstarPath.<ScanGraph>d__141$$MoveNext+0x255	0xfe4081		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:806
 code-inside	Pathfinding.RichAI$$FinalMovement+0x308	0xff0000		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/cutils.h:234
-code-inside	Pathfinding.Polygon$$CompressMesh+0x473	0xffffff		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	src/net/steam/dsnet_steam.c:842,src/ui_game.c:2920
+code-inside	Pathfinding.Polygon$$CompressMesh+0x473	0xffffff		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	src/net/steam/dsnet_steam.c:842,src/ui_game.c:3031
 code-inside	Pathfinding.Polygon$$CompressMesh+0x480	0x100000c		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	rig/make_instance.sh:20,rig/make_instance.sh:33
 code-inside	Pathfinding.Polygon$$TraceContours+0x166	0x100023e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:807
 code-inside	Pathfinding.NodeLink3$$Apply+0x77e	0x101c0be		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:807
@@ -909,7 +913,7 @@ code-inside	System.Array$$InternalArray__ICollection_Contains<AstarDebugger.Path
 code-inside	System.Array$$InternalArray__IEnumerable_GetEnumerator<KVPair<int, TransformAccessJob.TransformData>>+0x81	0x14e8101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:35
 code-inside	System.Array$$InternalArray__IEnumerable_GetEnumerator<KeyValuePair<object, double>>+0x89	0x14f0101		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:35
 code-inside	System.Array$$InternalArray__get_Item<Dictionary.Entry<ValueTuple<Int32Enum, Int32Enum>, Int32Enum>>+0x21	0x161c085		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:811
-method	Refactor.Main.EntityComponent$$GetComponentOf<object>	0x185f284	0x1221020	ok		research/orders_catalog.md:109,src/ord_game.c:53,src/ord_test/OFFSETS.md:119,src/ui_teams.c:2468
+method	Refactor.Main.EntityComponent$$GetComponentOf<object>	0x185f284	0x1221020	ok		research/orders_catalog.md:109,src/ord_game.c:53,src/ord_test/OFFSETS.md:119,src/ui_teams.c:2510
 method	Refactor.EntityExtensions$$GetComponent<object>	0x185fedc	0x1221d80	ok		custom/pvp/pvp_game.c:328,research/PLAN_V13.md:41,research/rig_access_spec.md:117,research/rig_access_spec.md:119,research/rig_access_spec.md:120,src/rig_cmd.c:119,+7
 code-inside	System.Linq.Enumerable$$CombineSelectors<Vector2, Vector2, float>+0x2e	0x18882ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:811
 method	Refactor.IsHostileUnitExposer$$CanVerify<object, object>	0x1990548	0x12d3280	ok		research/plan_pvp.md:63
@@ -992,7 +996,7 @@ code-inside	Edgar.GraphBasedGenerator.Common.ChainDecomposition.Legacy.BreadthFi
 code-inside	System.Collections.Immutable.ImmutableArray.Builder<object>$$IndexOf+0x24a	0x331c122		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:816
 code-inside	System.Collections.Immutable.ImmutableSortedSet.Builder<__Il2CppFullySharedGenericType>$$UnionWith+0x1da	0x332812e		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:817
 code-inside	System.Numerics.Vector<__Il2CppFullySharedGenericStructType>$$GreaterThan+0x2fde	0x35281ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:817
-method	Refactor.UI.ViewObjectLoader<Int32Enum>$$EnqueueActivatePool	0x355e84c	0x21e5880	ok		src/ui_game.c:5301
+method	Refactor.UI.ViewObjectLoader<Int32Enum>$$EnqueueActivatePool	0x355e84c	0x21e5880	ok		src/ui_game.c:5521
 code-inside	System.Collections.Concurrent.ConcurrentQueue.<Enumerate>d__28<__Il2CppFullySharedGenericType>$$MoveNext+0x244	0x3768084		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:817
 code-inside	Edgar.Legacy.Core.LayoutEvolvers.SimulatedAnnealing.SimulatedAnnealingEvolver.<Evolve>d__18<__Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType, __Il2CppFullySharedGenericType>$$MoveNext+0xbc2	0x37701ae		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:817
 code-inside	System.Linq.OrderedEnumerable.<GetEnumerator>d__1<KeyValuePair<Int32Enum, object>>$$System.Collections.IEnumerator.Reset+0x25	0x38cc085		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:818
@@ -1037,64 +1041,66 @@ method	System.Random$$Next	0x4276aa0	0x2af4b40	ok		src/rig_det.c:479
 method	System.Object$$GetType	0x42b1e58	0x2b35990	ok		src/ord_game.c:54,src/ord_test/OFFSETS.md:120
 code-inside	Newtonsoft.Json.Converters.XmlNodeWrapper$$get_ChildNodes+0x149	0x43f0081		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	custom/fights/quickjs/libunicode-table.h:823
 method	System.Numerics.Hashing.HashHelpers$$.cctor	0x46e0ba8	0x2f1b1e0	ok		src/rig_det.c:465
-method	TMPro.TMP_FontAsset$$HasCharacter	0x4eee580	0x3767d30	ok		src/ui_game.c:1052,src/ui_game.c:2332,src/ui_game.c:655,src/ui_teams.c:482
-method	TMPro.TMP_InputField$$get_text	0x4efae84	0x28bead0	ok		src/mpmenu.c:1687,src/mpmenu.c:2425,src/mpmenu.c:2427,src/mpmenu.c:3706,src/mpmenu.c:3789,src/mpmenu.c:612
-method	TMPro.TMP_InputField$$set_text	0x4efae8c	0x3786670	ok		src/mpmenu.c:3492
-method	TMPro.TMP_InputField$$SetTextWithoutNotify	0x4efb000	0x37826b0	ok		src/mpmenu.c:2362,src/mpmenu.c:2398,src/mpmenu.c:2418,src/mpmenu.c:2426,src/mpmenu.c:2443,src/mpmenu.c:581
-method	TMPro.TMP_InputField$$get_placeholder	0x4efb9cc	0x28be950	ok		src/mpmenu.c:2361,src/mpmenu.c:579
-method	TMPro.TMP_InputField$$set_characterLimit	0x4efc2d8	0x37851f0	ok		src/mpmenu.c:2357,src/mpmenu.c:577
-method	TMPro.TMP_InputField$$set_contentType	0x4efc75c	0x3785360	ok		src/mpmenu.c:578
-method	TMPro.TMP_Text$$get_font	0x4f0a59c	0xfea660	ok		src/mpmenu.c:1025,src/mpmenu.c:1116,src/mpmenu.c:385,src/ui_game.c:1051,src/ui_game.c:2315,src/ui_game.c:2318,+10
-method	TMPro.TMP_Text$$set_font	0x4f0a5a4	0x37a2ef0	ok		src/mpmenu.c:1025,src/mpmenu.c:1117,src/mpmenu.c:396,src/mpmenu.c:403,src/ui_game.c:2192,src/ui_teams.c:561
-method	TMPro.TMP_Text$$get_fontSharedMaterial	0x4f0a6b4	0x90c0f0	ok		src/ui_game.c:683,src/ui_teams.c:532,src/ui_teams.c:535
-method	TMPro.TMP_Text$$get_fontSize	0x4f0b338	0x37a1430	ok		src/ui_game.c:1672,src/ui_game.c:980,src/ui_game.c:988,src/ui_teams.c:2291
-method	TMPro.TMP_Text$$set_fontSize	0x4f0b340	0x37a2dc0	ok		src/mpmenu.c:405,src/ui_game.c:1104,src/ui_game.c:1417,src/ui_game.c:2194,src/ui_game.c:4078,src/ui_game.c:968,+4
-method	TMPro.TMP_Text$$get_enableAutoSizing	0x4f0b5d4	0x37a11c0	ok		src/ui_game.c:981
-method	TMPro.TMP_Text$$set_enableAutoSizing	0x4f0b5dc	0x37a26f0	ok		src/mpmenu.c:404,src/ui_game.c:1103,src/ui_game.c:1417,src/ui_game.c:2193,src/ui_game.c:968,src/ui_game.c:991,+2
-method	TMPro.TMP_Text$$get_alignment	0x4f0b7ac	0x37a1050	ok		src/mpmenu.c:2859,src/ui_game.c:984
-method	TMPro.TMP_Text$$set_alignment	0x4f0b7bc	0x37a2410	ok		src/mpmenu.c:1838,src/mpmenu.c:1881,src/mpmenu.c:406,src/ui_game.c:1072,src/ui_game.c:1102,src/ui_game.c:2196,+6
-method	TMPro.TMP_Text$$set_textWrappingMode	0x4f0ba48	0x37a3a20	ok		src/mpmenu.c:407
-method	TMPro.TMP_Text$$set_enableWordWrapping	0x4f0bab4	0x37a2900	ok		src/ui_game.c:2195,src/ui_game.c:3165,src/ui_teams.c:531
-method	TMPro.TMP_Text$$set_overflowMode	0x4f0bb74	0x37a36f0	ok		src/mpmenu.c:408
-method	TMPro.TMP_Text$$set_richText	0x4f0c254	0x37a3890	ok		src/mpmenu.c:409
-method	TMPro.TMP_Text$$get_preferredWidth	0x4f0d81c	0x37a1ac0	ok		src/mpmenu.c:1318,src/mpmenu.c:2828
+method	TMPro.TMP_FontAsset$$HasCharacter	0x4eee580	0x3767d30	ok		src/ui_game.c:1061,src/ui_game.c:2364,src/ui_game.c:663,src/ui_teams.c:511
+method	TMPro.TMP_InputField$$get_text	0x4efae84	0x28bead0	ok		src/mpmenu.c:2032,src/mpmenu.c:2804,src/mpmenu.c:2806,src/mpmenu.c:4089,src/mpmenu.c:4172,src/mpmenu.c:874
+method	TMPro.TMP_InputField$$set_text	0x4efae8c	0x3786670	ok		src/mpmenu.c:3874
+method	TMPro.TMP_InputField$$SetTextWithoutNotify	0x4efb000	0x37826b0	ok		src/mpmenu.c:2741,src/mpmenu.c:2777,src/mpmenu.c:2797,src/mpmenu.c:2805,src/mpmenu.c:2822,src/mpmenu.c:843
+method	TMPro.TMP_InputField$$get_placeholder	0x4efb9cc	0x28be950	ok		src/mpmenu.c:2740,src/mpmenu.c:841
+method	TMPro.TMP_InputField$$set_characterLimit	0x4efc2d8	0x37851f0	ok		src/mpmenu.c:2736,src/mpmenu.c:839
+method	TMPro.TMP_InputField$$set_contentType	0x4efc75c	0x3785360	ok		src/mpmenu.c:840
+method	TMPro.TMP_Text$$get_font	0x4f0a59c	0xfea660	ok		src/mpmenu.c:1370,src/mpmenu.c:1461,src/mpmenu.c:431,src/ui_game.c:1060,src/ui_game.c:2347,src/ui_game.c:2350,+10
+method	TMPro.TMP_Text$$set_font	0x4f0a5a4	0x37a2ef0	ok		src/mpmenu.c:1370,src/mpmenu.c:1462,src/mpmenu.c:442,src/mpmenu.c:449,src/ui_game.c:2208,src/ui_teams.c:590
+method	TMPro.TMP_Text$$get_fontSharedMaterial	0x4f0a6b4	0x90c0f0	ok		src/ui_game.c:691,src/ui_teams.c:561,src/ui_teams.c:564
+method	TMPro.TMP_Text$$get_fontSize	0x4f0b338	0x37a1430	ok		src/mpmenu.c:648,src/ui_game.c:1683,src/ui_game.c:988,src/ui_game.c:996,src/ui_teams.c:2333
+method	TMPro.TMP_Text$$set_fontSize	0x4f0b340	0x37a2dc0	ok		src/mpmenu.c:451,src/mpmenu.c:485,src/mpmenu.c:580,src/ui_game.c:1000,src/ui_game.c:1114,src/ui_game.c:1427,+6
+method	TMPro.TMP_Text$$get_enableAutoSizing	0x4f0b5d4	0x37a11c0	ok		src/mpmenu.c:647,src/ui_game.c:989
+method	TMPro.TMP_Text$$set_enableAutoSizing	0x4f0b5dc	0x37a26f0	ok		src/mpmenu.c:450,src/mpmenu.c:485,src/mpmenu.c:518,src/mpmenu.c:563,src/mpmenu.c:580,src/mpmenu.c:601,+8
+method	TMPro.TMP_Text$$set_fontSizeMin	0x4f0b634	0x37a2d60	ok		src/mpmenu.c:515,src/mpmenu.c:560,src/ui_teams.c:1662
+method	TMPro.TMP_Text$$set_fontSizeMax	0x4f0b68c	0x37a2d00	ok		src/mpmenu.c:514,src/mpmenu.c:561,src/ui_teams.c:1600,src/ui_teams.c:1663
+method	TMPro.TMP_Text$$get_alignment	0x4f0b7ac	0x37a1050	ok		src/mpmenu.c:3239,src/ui_game.c:992
+method	TMPro.TMP_Text$$set_alignment	0x4f0b7bc	0x37a2410	ok		src/mpmenu.c:2199,src/mpmenu.c:2243,src/mpmenu.c:452,src/ui_game.c:1004,src/ui_game.c:1081,src/ui_game.c:1112,+6
+method	TMPro.TMP_Text$$set_textWrappingMode	0x4f0ba48	0x37a3a20	ok		src/mpmenu.c:453,src/mpmenu.c:486,src/mpmenu.c:519,src/mpmenu.c:562,src/mpmenu.c:581,src/mpmenu.c:600
+method	TMPro.TMP_Text$$set_enableWordWrapping	0x4f0bab4	0x37a2900	ok		src/ui_game.c:2211,src/ui_game.c:3276,src/ui_teams.c:1661,src/ui_teams.c:560
+method	TMPro.TMP_Text$$set_overflowMode	0x4f0bb74	0x37a36f0	ok		src/mpmenu.c:454
+method	TMPro.TMP_Text$$set_richText	0x4f0c254	0x37a3890	ok		src/mpmenu.c:455
+method	TMPro.TMP_Text$$get_preferredWidth	0x4f0d81c	0x37a1ac0	ok		src/mpmenu.c:1663,src/mpmenu.c:3208
 code-inside	TMPro.ShaderUtilities$$get_ShaderRef_MobileSDF+0x4	0x4f35d98		CHECK	inside a method body: a mask/constant, an old-build address, or a mid-function site (needs a byte pattern)	research/PLAN_V13.md:42
 method	UnityEngine.AudioListener$$set_volume	0x5067948	0x38e1780	ok		research/rig_access_spec.md:237,src/rig_cmd.c:158
-method	UnityEngine.SpriteRenderer$$get_color	0x507413c	0x3900480	ok		src/ui_game.c:2936,src/ui_game.c:2994
-method	UnityEngine.SpriteRenderer$$set_color	0x507424c	0x3900e00	ok		src/ui_game.c:2938
-method	UnityEngine.SortingLayer$$get_layers	0x5079198	0x38ffb50	ok		src/ui_teams.c:2318
-method	UnityEngine.Application$$Quit	0x507b150	0x38e91a0	ok		src/MP_NOTES.md:184,src/mp_game.c:737
-method	UnityEngine.Application$$Quit	0x507b1a0	0x38e91e0	ok		src/MP_NOTES.md:184,src/mp_game.c:736
+method	UnityEngine.SpriteRenderer$$get_color	0x507413c	0x3900480	ok		src/ui_game.c:3047,src/ui_game.c:3105
+method	UnityEngine.SpriteRenderer$$set_color	0x507424c	0x3900e00	ok		src/ui_game.c:3049
+method	UnityEngine.SortingLayer$$get_layers	0x5079198	0x38ffb50	ok		src/ui_teams.c:2360
+method	UnityEngine.Application$$Quit	0x507b150	0x38e91a0	ok		src/MP_NOTES.md:184,src/mp_game.c:772
+method	UnityEngine.Application$$Quit	0x507b1a0	0x38e91e0	ok		src/MP_NOTES.md:184,src/mp_game.c:771
 method	UnityEngine.Application$$set_runInBackground	0x507b3fc	0x38ea7d0	ok		research/rig_access_spec.md:236,src/rig_cmd.c:146
-method	UnityEngine.Application$$get_persistentDataPath	0x507b74c	0x38e9dd0	ok		custom/pvp/pvp_ui.c:362,research/rig_access_spec.md:162,rig/NOTES.md:49,src/rig_cmd.c:201,src/rig_main.c:128,src/ui_game.c:126,+3
+method	UnityEngine.Application$$get_persistentDataPath	0x507b74c	0x38e9dd0	ok		custom/pvp/pvp_ui.c:362,research/rig_access_spec.md:162,rig/NOTES.md:49,src/rig_cmd.c:201,src/rig_main.c:129,src/ui_game.c:132,+3
 method	UnityEngine.Application$$get_version	0x507b9cc	0x38ea2b0	ok		custom/fe/fe_game.c:562,custom/fe/fe_hub.c:60
 method	UnityEngine.Application$$OpenURL	0x507becc	0x38e9010	ok		research/rig_access_spec.md:248
 method	UnityEngine.Application$$set_targetFrameRate	0x507c0bc	0x38ea810	ok		research/rig_access_spec.md:234,src/rig_cmd.c:145
 method	UnityEngine.Application$$SetStackTraceLogType	0x507c1ac	0x38e9280	ok		src/rig_cmd.c:153
-method	UnityEngine.Camera$$get_nearClipPlane	0x507fc2c	0x38f0ff0	ok		src/mpmenu.c:3389,src/ui_teams.c:2320
-method	UnityEngine.Camera$$set_orthographicSize	0x50805e8	0x38f2080	ok		custom/pvp/pvp_game.c:849,src/ui_game.c:4415
-method	UnityEngine.Camera$$get_cullingMask	0x5080bc8	0x38f0a50	ok		src/ui_game.c:4245,src/ui_teams.c:2325
-method	UnityEngine.Camera$$set_backgroundColor	0x5080f9c	0x38f1b60	ok		src/ui_game.c:4248
-method	UnityEngine.Camera$$set_clearFlags	0x5081194	0x38f1c30	ok		src/ui_game.c:4247
-method	UnityEngine.Camera$$set_targetTexture	0x5081cb8	0x38f2320	ok		research/rig_access_spec.md:255,research/rig_access_spec.md:265,src/mpmenu.c:3395,src/mpmenu.c:3405,src/rig_cmd.c:439,src/rig_cmd.c:448,+1
-method	UnityEngine.Camera$$WorldToScreenPoint	0x50829a8	0x38eff70	ok		src/UI_NOTES.md:282,src/ui_game.c:3790
-method	UnityEngine.Camera$$ScreenToWorldPoint	0x5082be8	0x38ef7f0	ok		src/UI_NOTES.md:282,src/ui_game.c:3791
-method	UnityEngine.Camera$$get_main	0x5083208	0x38f0f50	ok		custom/pvp/pvp_game.c:846,research/rig_access_spec.md:252,src/mpmenu.c:3375,src/rig_cmd.c:431,src/ui_game.c:3789,src/ui_teams.c:2310
-method	UnityEngine.Screen$$get_width	0x5092c94	0x3926a00	ok		research/rig_access_spec.md:253,src/UI_NOTES.md:282,src/mpmenu.c:3365,src/mpmenu.c:3377,src/mpmenu.c:3465,src/ui_game.c:3792,+10
-method	UnityEngine.Screen$$get_height	0x5092cd4	0x3926960	ok		research/rig_access_spec.md:253,src/UI_NOTES.md:283,src/mpmenu.c:3365,src/mpmenu.c:3377,src/mpmenu.c:3465,src/ui_game.c:3793,+7
+method	UnityEngine.Camera$$get_nearClipPlane	0x507fc2c	0x38f0ff0	ok		src/mpmenu.c:3771,src/ui_teams.c:2362
+method	UnityEngine.Camera$$set_orthographicSize	0x50805e8	0x38f2080	ok		custom/pvp/pvp_game.c:849,src/ui_game.c:4630
+method	UnityEngine.Camera$$get_cullingMask	0x5080bc8	0x38f0a50	ok		src/ui_game.c:4428,src/ui_teams.c:2367
+method	UnityEngine.Camera$$set_backgroundColor	0x5080f9c	0x38f1b60	ok		src/ui_game.c:4431
+method	UnityEngine.Camera$$set_clearFlags	0x5081194	0x38f1c30	ok		src/ui_game.c:4430
+method	UnityEngine.Camera$$set_targetTexture	0x5081cb8	0x38f2320	ok		research/rig_access_spec.md:255,research/rig_access_spec.md:265,src/mpmenu.c:3777,src/mpmenu.c:3787,src/rig_cmd.c:439,src/rig_cmd.c:448,+1
+method	UnityEngine.Camera$$WorldToScreenPoint	0x50829a8	0x38eff70	ok		src/UI_NOTES.md:282,src/ui_game.c:3973
+method	UnityEngine.Camera$$ScreenToWorldPoint	0x5082be8	0x38ef7f0	ok		src/UI_NOTES.md:282,src/ui_game.c:3974
+method	UnityEngine.Camera$$get_main	0x5083208	0x38f0f50	ok		custom/pvp/pvp_game.c:846,research/rig_access_spec.md:252,src/mpmenu.c:3757,src/rig_cmd.c:431,src/ui_game.c:3972,src/ui_teams.c:2352
+method	UnityEngine.Screen$$get_width	0x5092c94	0x3926a00	ok		research/rig_access_spec.md:253,src/UI_NOTES.md:282,src/mpmenu.c:3747,src/mpmenu.c:3759,src/mpmenu.c:3847,src/ui_game.c:3975,+10
+method	UnityEngine.Screen$$get_height	0x5092cd4	0x3926960	ok		research/rig_access_spec.md:253,src/UI_NOTES.md:283,src/mpmenu.c:3747,src/mpmenu.c:3759,src/mpmenu.c:3847,src/ui_game.c:3976,+7
 method	UnityEngine.QualitySettings$$set_vSyncCount	0x5097cd8	0x3924440	ok		research/rig_access_spec.md:235,src/rig_cmd.c:144
-method	UnityEngine.Renderer$$get_enabled	0x509e968	0x3925190	ok		src/ui_game.c:3000
-method	UnityEngine.Material$$get_shader	0x50a8f80	0x391da60	ok		src/ui_game.c:684
-method	UnityEngine.Material$$GetColor	0x50b2b8c	0x3914850	ok		src/ui_game.c:685
-method	UnityEngine.Texture$$set_filterMode	0x50be5c0	0x39361a0	ok		src/ui_game.c:4258
-method	UnityEngine.Texture2D$$.ctor	0x50c4e5c	0x39335e0	ok		research/rig_access_spec.md:260,src/mpmenu.c:235,src/mpmenu.c:3368,src/mpmenu.c:3400,src/rig_cmd.c:443
-method	UnityEngine.Texture2D$$Apply	0x50c5f34	0x392e2a0	ok		research/rig_access_spec.md:263,src/mpmenu.c:3371,src/mpmenu.c:3403,src/rig_cmd.c:446
-method	UnityEngine.Texture2D$$ReadPixels	0x50c63b0	0x3930eb0	ok		research/rig_access_spec.md:262,src/mpmenu.c:3370,src/mpmenu.c:3402,src/rig_cmd.c:445
-method	UnityEngine.RenderTexture$$set_active	0x50ce6a4	0x3945aa0	ok		research/rig_access_spec.md:258,research/rig_access_spec.md:264,src/mpmenu.c:3366,src/mpmenu.c:3398,src/mpmenu.c:3404,src/rig_cmd.c:441,+1
-method	UnityEngine.RenderTexture$$Release	0x50cf5b8	0x3945810	ok		src/ui_game.c:4261
-method	UnityEngine.RenderTexture$$ReleaseTemporary	0x50cfe6c	0x3945760	ok		research/rig_access_spec.md:266,src/mpmenu.c:3406,src/rig_cmd.c:449
-method	UnityEngine.RenderTexture$$.ctor	0x50d1d9c	0x3946c40	ok		src/ui_game.c:4256
-method	UnityEngine.RenderTexture$$GetTemporary	0x50d2e38	0x3944a00	ok		research/rig_access_spec.md:254,src/mpmenu.c:3394,src/rig_cmd.c:438
+method	UnityEngine.Renderer$$get_enabled	0x509e968	0x3925190	ok		src/ui_game.c:3111
+method	UnityEngine.Material$$get_shader	0x50a8f80	0x391da60	ok		src/ui_game.c:692
+method	UnityEngine.Material$$GetColor	0x50b2b8c	0x3914850	ok		src/ui_game.c:693
+method	UnityEngine.Texture$$set_filterMode	0x50be5c0	0x39361a0	ok		src/ui_game.c:4441
+method	UnityEngine.Texture2D$$.ctor	0x50c4e5c	0x39335e0	ok		research/rig_access_spec.md:260,src/mpmenu.c:281,src/mpmenu.c:3750,src/mpmenu.c:3782,src/rig_cmd.c:443
+method	UnityEngine.Texture2D$$Apply	0x50c5f34	0x392e2a0	ok		research/rig_access_spec.md:263,src/mpmenu.c:3753,src/mpmenu.c:3785,src/rig_cmd.c:446
+method	UnityEngine.Texture2D$$ReadPixels	0x50c63b0	0x3930eb0	ok		research/rig_access_spec.md:262,src/mpmenu.c:3752,src/mpmenu.c:3784,src/rig_cmd.c:445
+method	UnityEngine.RenderTexture$$set_active	0x50ce6a4	0x3945aa0	ok		research/rig_access_spec.md:258,research/rig_access_spec.md:264,src/mpmenu.c:3748,src/mpmenu.c:3780,src/mpmenu.c:3786,src/rig_cmd.c:441,+1
+method	UnityEngine.RenderTexture$$Release	0x50cf5b8	0x3945810	ok		src/ui_game.c:4444
+method	UnityEngine.RenderTexture$$ReleaseTemporary	0x50cfe6c	0x3945760	ok		research/rig_access_spec.md:266,src/mpmenu.c:3788,src/rig_cmd.c:449
+method	UnityEngine.RenderTexture$$.ctor	0x50d1d9c	0x3946c40	ok		src/ui_game.c:4439
+method	UnityEngine.RenderTexture$$GetTemporary	0x50d2e38	0x3944a00	ok		research/rig_access_spec.md:254,src/mpmenu.c:3776,src/rig_cmd.c:438
 method	UnityEngine.Random$$InitState	0x50e7710	0x3964b70	ok		research/rig_access_spec.md:223,src/rig_det.c:38
 method	UnityEngine.Random$$get_state	0x50e7760	0x3964d80	ok		research/rig_access_spec.md:221,research/rig_access_spec.md:225
 method	UnityEngine.Random$$get_state_Injected	0x50e77b0	0x3964d40	ok		research/rig_access_spec.md:220,src/rig_cmd.c:129,src/rig_det.c:39
@@ -1104,114 +1110,114 @@ method	UnityEngine.Random$$Range	0x50e78b4	0x3964bf0	ok		src/DETERMINISM_NOTES.m
 method	UnityEngine.Random$$Range	0x50e7910	0x3964bb0	ok		src/DETERMINISM_NOTES.md:63,src/rig_det.c:35
 method	UnityEngine.Random$$RandomRangeInt	0x50e7974	0x3964bb0	ok		src/DETERMINISM_NOTES.md:63,src/rig_det.c:36
 method	UnityEngine.Random$$get_value	0x50e79d8	0x3964dc0	ok		src/DETERMINISM_NOTES.md:64,src/rig_det.c:37
-method	UnityEngine.ResourcesAPIInternal$$FindObjectsOfTypeAll	0x50e8010	0x3965100	ok		src/ui_game.c:1743,src/ui_game.c:3933,src/ui_game.c:552,src/ui_game.c:568,src/ui_game.c:581
-method	UnityEngine.Behaviour$$get_enabled	0x50ecdb4	0x3951f80	ok		src/ui_game.c:311
-method	UnityEngine.Behaviour$$set_enabled	0x50ecea0	0x3952110	ok		custom/pvp/pvp_ui.c:546,src/mpmenu.c:618,src/ui_game.c:2098,src/ui_game.c:2252,src/ui_game.c:312,src/ui_game.c:336,+4
-method	UnityEngine.Behaviour$$get_isActiveAndEnabled	0x50ecfb8	0x3952040	ok		src/ui_teams.c:2461,src/ui_teams.c:2562
+method	UnityEngine.ResourcesAPIInternal$$FindObjectsOfTypeAll	0x50e8010	0x3965100	ok		src/ui_game.c:1756,src/ui_game.c:4116,src/ui_game.c:560,src/ui_game.c:576,src/ui_game.c:589
+method	UnityEngine.Behaviour$$get_enabled	0x50ecdb4	0x3951f80	ok		src/ui_game.c:319
+method	UnityEngine.Behaviour$$set_enabled	0x50ecea0	0x3952110	ok		custom/pvp/pvp_ui.c:546,src/mpmenu.c:880,src/ui_game.c:2111,src/ui_game.c:2269,src/ui_game.c:320,src/ui_game.c:344,+4
+method	UnityEngine.Behaviour$$get_isActiveAndEnabled	0x50ecfb8	0x3952040	ok		src/ui_teams.c:2503,src/ui_teams.c:2604
 method	UnityEngine.Component$$get_transform	0x50ed864	0x39531e0	ok		custom/pvp/pvp_game.c:847,src/mpmenu_kit.h:23,src/ui_game.c:33,src/ui_teams.c:76,src/ui_tip.c:367
 method	UnityEngine.Component$$get_gameObject	0x50ed970	0x3953060	ok		src/mpmenu_kit.h:22,src/ui_game.c:32,src/ui_teams.c:73,src/ui_tip.c:44
-method	UnityEngine.Component$$GetComponent	0x50eda7c	0x3952840	ok		custom/pvp/pvp_ui.c:542,src/mpmenu.c:103,src/mpmenu.c:1114,src/mpmenu.c:168,src/mpmenu.c:2021,src/mpmenu.c:383,+2
+method	UnityEngine.Component$$GetComponent	0x50eda7c	0x3952840	ok		custom/pvp/pvp_ui.c:542,src/mpmenu.c:108,src/mpmenu.c:1459,src/mpmenu.c:214,src/mpmenu.c:2400,src/mpmenu.c:429,+2
 method	UnityEngine.GameObject$$GetComponent	0x50edaa8	0x3958290	ok		src/ui_teams.c:100
-method	UnityEngine.Component$$GetComponentInChildren	0x50eddf4	0x39524b0	ok		src/ui_game.c:2103,src/ui_game.c:2236,src/ui_game.c:2314,src/ui_game.c:2317,src/ui_game.c:2321,src/ui_game.c:2924,+3
-method	UnityEngine.Component$$GetComponentsInChildren	0x50edfd0	0x3952a60	ok		src/ui_game.c:293,src/ui_game.c:2931,src/ui_game.c:2991,src/ui_game.c:307,src/ui_game.c:3191,src/ui_game.c:320
+method	UnityEngine.Component$$GetComponentInChildren	0x50eddf4	0x39524b0	ok		src/ui_game.c:2116,src/ui_game.c:2253,src/ui_game.c:2346,src/ui_game.c:2349,src/ui_game.c:2353,src/ui_game.c:3035,+3
+method	UnityEngine.Component$$GetComponentsInChildren	0x50edfd0	0x3952a60	ok		src/ui_game.c:301,src/ui_game.c:3042,src/ui_game.c:3102,src/ui_game.c:315,src/ui_game.c:328,src/ui_game.c:3302
 method	UnityEngine.Component$$GetComponentInParent	0x50ee21c	0x39525e0	ok		src/ui_tip.c:151
-method	UnityEngine.GameObject$$AddComponent	0x50f2b90	0x3956620	ok		src/mpmenu.c:775,src/ui_game.c:2255,src/ui_game.c:2258,src/ui_game.c:4236,src/ui_game.c:4270,src/ui_teams.c:1160,+9
-method	UnityEngine.GameObject$$get_transform	0x50f300c	0x395a520	ok		custom/pvp/pvp_ui.c:77,src/ui_game.c:2102,src/ui_game.c:2317,src/ui_teams.c:75,src/ui_teams.c:78
-method	UnityEngine.GameObject$$get_layer	0x50f3118	0x395a160	ok		src/mpmenu.c:777,src/ui_game.c:4244,src/ui_game.c:4272,src/ui_teams.c:2329
-method	UnityEngine.GameObject$$set_layer	0x50f3204	0x395a7c0	ok		src/mpmenu.c:777,src/ui_game.c:4272,src/ui_teams.c:2330,src/ui_teams.c:2353
+method	UnityEngine.GameObject$$AddComponent	0x50f2b90	0x3956620	ok		src/mpmenu.c:1044,src/ui_game.c:2272,src/ui_game.c:2275,src/ui_game.c:4419,src/ui_game.c:4453,src/ui_teams.c:1190,+9
+method	UnityEngine.GameObject$$get_transform	0x50f300c	0x395a520	ok		custom/pvp/pvp_ui.c:77,src/ui_game.c:2115,src/ui_game.c:2349,src/ui_teams.c:75,src/ui_teams.c:78
+method	UnityEngine.GameObject$$get_layer	0x50f3118	0x395a160	ok		src/mpmenu.c:1046,src/ui_game.c:4427,src/ui_game.c:4455,src/ui_teams.c:2371
+method	UnityEngine.GameObject$$set_layer	0x50f3204	0x395a7c0	ok		src/mpmenu.c:1046,src/ui_game.c:4455,src/ui_teams.c:2372,src/ui_teams.c:2395
 method	UnityEngine.GameObject$$SetActive	0x50f3520	0x3959550	ok		src/UI_NOTES.md:113,src/mpmenu_kit.h:24,src/ui_game.c:34,src/ui_teams.c:79,src/ui_tip.c:45
 method	UnityEngine.GameObject$$get_activeSelf	0x50f3638	0x3959e60	ok		src/UI_NOTES.md:109,src/mpmenu_kit.h:25,src/ui_game.c:35,src/ui_teams.c:80,src/ui_tip.c:378
-method	UnityEngine.GameObject$$get_activeInHierarchy	0x50f3724	0x3959da0	ok		src/mpmenu.c:700,src/ui_game.c:1671,src/ui_game.c:1776,src/ui_game.c:2402,src/ui_game.c:3143,src/ui_game.c:3150,+16
-method	UnityEngine.GameObject$$.ctor	0x50f4674	0x3959b50	ok		src/mpmenu.c:773,src/ui_game.c:4223
+method	UnityEngine.GameObject$$get_activeInHierarchy	0x50f3724	0x3959da0	ok		src/mpmenu.c:969,src/ui_game.c:1682,src/ui_game.c:1789,src/ui_game.c:2481,src/ui_game.c:2483,src/ui_game.c:2510,+18
+method	UnityEngine.GameObject$$.ctor	0x50f4674	0x3959b50	ok		src/mpmenu.c:1042,src/ui_game.c:4406
 method	UnityEngine.Object$$op_Implicit	0x50faf88	0x3962630	ok		src/mpmenu.c:53,src/mpmenu_kit.h:21,src/ui_game.c:25,src/ui_teams.c:42,src/ui_tip.c:43
-method	UnityEngine.Object$$get_name	0x50fb198	0x3962520	ok		src/mpmenu.c:1095,src/mpmenu.c:193,src/mpmenu.c:201,src/mpmenu.c:2128,src/mpmenu.c:3343,src/mpmenu.c:3614,+31
+method	UnityEngine.Object$$get_name	0x50fb198	0x3962520	ok		src/mpmenu.c:1440,src/mpmenu.c:239,src/mpmenu.c:247,src/mpmenu.c:2507,src/mpmenu.c:3725,src/mpmenu.c:3996,+31
 method	UnityEngine.Object$$Instantiate	0x50fc30c	0x3960490	ok		src/UI_NOTES.md:113,src/mpmenu_kit.h:28,src/ui_game.c:37,src/ui_teams.c:82
-method	UnityEngine.Object$$Destroy	0x50fc8f8	0x395f4e0	ok		research/rig_access_spec.md:269,src/mpmenu.c:3111,src/mpmenu.c:3356,src/mpmenu.c:3410,src/rig_cmd.c:451,src/ui_game.c:1632,+2
-method	UnityEngine.Object$$FindObjectsOfType	0x50fccc0	0x395ffe0	ok		custom/pvp/pvp_ui.c:196,src/mpmenu.c:2116,src/mpmenu.c:3379,src/mpmenu.c:3511,src/ui_teams.c:2314,src/ui_teams.c:2635
-method	UnityEngine.Object$$FindObjectsOfType	0x50fcd74	0x3960050	ok		src/ui_game.c:1666,src/ui_game.c:1765
-method	UnityEngine.Object$$FindObjectOfType	0x50fd97c	0x395fd30	ok		src/mp_game.c:859,src/mpmenu.c:123,src/ui_game.c:229,src/ui_game.c:262,src/ui_game.c:263,src/ui_teams.c:141,+3
+method	UnityEngine.Object$$Destroy	0x50fc8f8	0x395f4e0	ok		research/rig_access_spec.md:269,src/mpmenu.c:3491,src/mpmenu.c:3738,src/mpmenu.c:3792,src/rig_cmd.c:451,src/ui_game.c:1642,+2
+method	UnityEngine.Object$$FindObjectsOfType	0x50fccc0	0x395ffe0	ok		custom/pvp/pvp_ui.c:196,src/mpmenu.c:2495,src/mpmenu.c:3761,src/mpmenu.c:3893,src/ui_teams.c:2356,src/ui_teams.c:2677
+method	UnityEngine.Object$$FindObjectsOfType	0x50fcd74	0x3960050	ok		src/ui_game.c:1677,src/ui_game.c:1778
+method	UnityEngine.Object$$FindObjectOfType	0x50fd97c	0x395fd30	ok		src/mp_game.c:898,src/mpmenu.c:169,src/ui_game.c:237,src/ui_game.c:270,src/ui_game.c:271,src/ui_teams.c:144,+3
 method	UnityEngine.Time$$get_deltaTime	0x5104258	0x399a120	ok		research/rig_access_spec.md:240,src/rig_det.c:637,src/rig_det.c:650
 method	UnityEngine.Time$$get_timeScale	0x5104398	0x399a320	ok		research/rig_access_spec.md:240
 method	UnityEngine.Time$$set_timeScale	0x51043d8	0x399a410	ok		research/rig_access_spec.md:240
 method	UnityEngine.Time$$get_frameCount	0x510442c	0x399a180	ok		research/rig_access_spec.md:240
-method	UnityEngine.RectTransform$$get_rect	0x5106978	0x3993820	ok		custom/pvp/pvp_ui.c:557,src/mpmenu.c:2858,src/mpmenu.c:2992,src/ui_game.c:2165,src/ui_game.c:2167,src/ui_game.c:2745,+10
-method	UnityEngine.RectTransform$$set_anchorMin	0x5106b64	0x3993b80	ok		src/mpmenu.c:292,src/mpmenu.c:300,src/ui_game.c:1099,src/ui_game.c:1850,src/ui_game.c:2201,src/ui_game.c:2207,+9
-method	UnityEngine.RectTransform$$set_anchorMax	0x5106d48	0x3993aa0	ok		src/mpmenu.c:293,src/mpmenu.c:300,src/ui_game.c:1100,src/ui_game.c:1851,src/ui_game.c:2202,src/ui_game.c:2208,+9
-method	UnityEngine.RectTransform$$get_anchoredPosition	0x5106e38	0x3993160	ok		custom/pvp/pvp_ui.c:558,custom/pvp/pvp_ui.c:563,custom/pvp/pvp_ui.c:571,custom/pvp/pvp_ui.c:577,src/ui_game.c:43,src/ui_teams.c:95,+1
-method	UnityEngine.RectTransform$$set_anchoredPosition	0x5106f2c	0x3993df0	ok		custom/pvp/pvp_ui.c:560,custom/pvp/pvp_ui.c:563,src/mpmenu.c:296,src/mpmenu.c:302,src/ui_game.c:44,src/ui_teams.c:92
-method	UnityEngine.RectTransform$$get_sizeDelta	0x510701c	0x3993900	ok		src/mpmenu.c:1317,src/ui_game.c:45
-method	UnityEngine.RectTransform$$set_sizeDelta	0x5107110	0x39949a0	ok		src/mpmenu.c:1317,src/mpmenu.c:1318,src/mpmenu.c:295,src/mpmenu.c:302,src/mpmenu.c:306,src/mpmenu.c:897,+2
+method	UnityEngine.RectTransform$$get_rect	0x5106978	0x3993820	ok		custom/pvp/pvp_ui.c:557,src/mpmenu.c:3238,src/mpmenu.c:3372,src/ui_game.c:2181,src/ui_game.c:2183,src/ui_game.c:2855,+10
+method	UnityEngine.RectTransform$$set_anchorMin	0x5106b64	0x3993b80	ok		src/mpmenu.c:338,src/mpmenu.c:346,src/mpmenu.c:832,src/ui_game.c:1109,src/ui_game.c:1863,src/ui_game.c:2218,+10
+method	UnityEngine.RectTransform$$set_anchorMax	0x5106d48	0x3993aa0	ok		src/mpmenu.c:339,src/mpmenu.c:346,src/mpmenu.c:832,src/ui_game.c:1110,src/ui_game.c:1864,src/ui_game.c:2219,+10
+method	UnityEngine.RectTransform$$get_anchoredPosition	0x5106e38	0x3993160	ok		custom/pvp/pvp_ui.c:558,custom/pvp/pvp_ui.c:563,custom/pvp/pvp_ui.c:571,custom/pvp/pvp_ui.c:577,src/mpmenu.c:1135,src/mpmenu.c:831,+3
+method	UnityEngine.RectTransform$$set_anchoredPosition	0x5106f2c	0x3993df0	ok		custom/pvp/pvp_ui.c:560,custom/pvp/pvp_ui.c:563,src/mpmenu.c:1259,src/mpmenu.c:342,src/mpmenu.c:348,src/mpmenu.c:834,+2
+method	UnityEngine.RectTransform$$get_sizeDelta	0x510701c	0x3993900	ok		src/mpmenu.c:1055,src/mpmenu.c:1056,src/mpmenu.c:1072,src/mpmenu.c:1662,src/mpmenu.c:831,src/ui_game.c:45
+method	UnityEngine.RectTransform$$set_sizeDelta	0x5107110	0x39949a0	ok		src/mpmenu.c:1072,src/mpmenu.c:1206,src/mpmenu.c:1662,src/mpmenu.c:1663,src/mpmenu.c:341,src/mpmenu.c:348,+4
 method	UnityEngine.RectTransform$$get_pivot	0x5107200	0x3993740	ok		custom/pvp/pvp_ui.c:558,src/ui_tip.c:243
-method	UnityEngine.RectTransform$$set_pivot	0x51072f4	0x39948c0	ok		custom/pvp/pvp_ui.c:559,src/mpmenu.c:294,src/mpmenu.c:301,src/ui_game.c:1101,src/ui_game.c:1414,src/ui_game.c:1852,+14
-method	UnityEngine.Transform$$get_localPosition	0x51074f4	0x39a22d0	ok		src/mpmenu.c:1047
-method	UnityEngine.Transform$$set_localPosition	0x5107724	0x39a30f0	ok		src/mpmenu.c:1068
-method	UnityEngine.RectTransform$$get_offsetMin	0x51077b4	0x3993560	ok		src/mpmenu.c:2968
-method	UnityEngine.RectTransform$$set_offsetMin	0x510794c	0x3994460	ok		src/mpmenu.c:2969
-method	UnityEngine.RectTransform$$GetWorldCorners	0x51089d0	0x3991d40	ok		src/mpmenu.c:3248
-method	UnityEngine.Transform$$get_parent	0x510992c	0x399ca00	ok		src/mpmenu.c:2856,src/mpmenu_kit.h:29,src/ui_game.c:38,src/ui_teams.c:84,src/ui_tip.c:158
-method	UnityEngine.Transform$$get_position	0x5109a08	0x39a2770	ok		custom/pvp/pvp_game.c:848,src/mpmenu.c:1190,src/mpmenu.c:1201,src/ui_game.c:2164,src/ui_game.c:2166,src/ui_game.c:2744,+8
-method	UnityEngine.Transform$$set_position	0x5109b04	0x39a34d0	ok		custom/pvp/pvp_game.c:848,src/mpmenu.c:1190,src/mpmenu.c:1202,src/ui_game.c:4414,src/ui_teams.c:1687,src/ui_tip.c:245,+1
-method	UnityEngine.Transform$$set_localEulerAngles	0x510a3b4	0x39a2fc0	ok		src/UI_NOTES.md:284,src/ui_game.c:3804
-method	UnityEngine.Transform$$get_localScale	0x510aefc	0x39a24a0	ok		src/ui_game.c:2412,src/ui_teams.c:2597,src/ui_teams.c:652,src/ui_tip.c:376
-method	UnityEngine.Transform$$set_localScale	0x510aff8	0x39a32b0	ok		custom/pvp/pvp_ui.c:605,src/ui_game.c:2413,src/ui_teams.c:96
-method	UnityEngine.Transform$$SetParent	0x510b2c4	0x39a0170	ok		src/mpmenu.c:2856,src/mpmenu.c:2864,src/mpmenu.c:778,src/ui_game.c:4273
-method	UnityEngine.Transform$$TransformPoint	0x510e0ac	0x39a0b00	ok		src/UI_NOTES.md:285,src/ui_game.c:3961,src/ui_game.c:5213,src/ui_teams.c:1524,src/ui_teams.c:2374,src/ui_teams.c:2490,+3
-method	UnityEngine.Transform$$get_childCount	0x510eae4	0x39a1cf0	ok		custom/pvp/pvp_ui.c:222,custom/pvp/pvp_ui.c:249,custom/pvp/pvp_ui.c:458,src/mpmenu.c:1035,src/mpmenu.c:1092,src/mpmenu.c:1105,+13
-method	UnityEngine.Transform$$SetAsFirstSibling	0x510ec94	0x399fb50	ok		src/ui_teams.c:1175,src/ui_teams.c:787,src/ui_teams.c:835
-method	UnityEngine.Transform$$SetAsLastSibling	0x510ed6c	0x399fc10	ok		src/mpmenu.c:2865,src/ui_teams.c:85
+method	UnityEngine.RectTransform$$set_pivot	0x51072f4	0x39948c0	ok		custom/pvp/pvp_ui.c:559,src/mpmenu.c:340,src/mpmenu.c:347,src/ui_game.c:1111,src/ui_game.c:1424,src/ui_game.c:1865,+14
+method	UnityEngine.Transform$$get_localPosition	0x51074f4	0x39a22d0	ok		src/mpmenu.c:1392
+method	UnityEngine.Transform$$set_localPosition	0x5107724	0x39a30f0	ok		src/mpmenu.c:1413
+method	UnityEngine.RectTransform$$get_offsetMin	0x51077b4	0x3993560	ok		src/mpmenu.c:3348
+method	UnityEngine.RectTransform$$set_offsetMin	0x510794c	0x3994460	ok		src/mpmenu.c:3349
+method	UnityEngine.RectTransform$$GetWorldCorners	0x51089d0	0x3991d40	ok		src/mpmenu.c:3630
+method	UnityEngine.Transform$$get_parent	0x510992c	0x399ca00	ok		src/mpmenu.c:3236,src/mpmenu_kit.h:29,src/ui_game.c:38,src/ui_teams.c:84,src/ui_tip.c:158
+method	UnityEngine.Transform$$get_position	0x5109a08	0x39a2770	ok		custom/pvp/pvp_game.c:848,src/mpmenu.c:1535,src/mpmenu.c:1546,src/ui_game.c:2180,src/ui_game.c:2182,src/ui_game.c:2854,+8
+method	UnityEngine.Transform$$set_position	0x5109b04	0x39a34d0	ok		custom/pvp/pvp_game.c:848,src/mpmenu.c:1535,src/mpmenu.c:1547,src/ui_game.c:4629,src/ui_teams.c:1723,src/ui_tip.c:245,+1
+method	UnityEngine.Transform$$set_localEulerAngles	0x510a3b4	0x39a2fc0	ok		src/UI_NOTES.md:284,src/ui_game.c:3987
+method	UnityEngine.Transform$$get_localScale	0x510aefc	0x39a24a0	ok		src/ui_game.c:2520,src/ui_teams.c:2639,src/ui_teams.c:681,src/ui_tip.c:376
+method	UnityEngine.Transform$$set_localScale	0x510aff8	0x39a32b0	ok		custom/pvp/pvp_ui.c:605,src/ui_game.c:2521,src/ui_teams.c:96
+method	UnityEngine.Transform$$SetParent	0x510b2c4	0x39a0170	ok		src/mpmenu.c:1047,src/mpmenu.c:3236,src/mpmenu.c:3244,src/ui_game.c:4456
+method	UnityEngine.Transform$$TransformPoint	0x510e0ac	0x39a0b00	ok		src/UI_NOTES.md:285,src/ui_game.c:4144,src/ui_game.c:5432,src/ui_teams.c:1554,src/ui_teams.c:2416,src/ui_teams.c:2532,+3
+method	UnityEngine.Transform$$get_childCount	0x510eae4	0x39a1cf0	ok		custom/pvp/pvp_ui.c:222,custom/pvp/pvp_ui.c:249,custom/pvp/pvp_ui.c:458,src/mpmenu.c:1380,src/mpmenu.c:1437,src/mpmenu.c:1450,+13
+method	UnityEngine.Transform$$SetAsFirstSibling	0x510ec94	0x399fb50	ok		src/ui_teams.c:1205,src/ui_teams.c:816,src/ui_teams.c:865
+method	UnityEngine.Transform$$SetAsLastSibling	0x510ed6c	0x399fc10	ok		src/mpmenu.c:3245,src/ui_teams.c:85
 method	UnityEngine.Transform$$SetSiblingIndex	0x510ee44	0x39a0450	ok		src/UI_NOTES.md:108,src/mpmenu_kit.h:31,src/ui_game.c:40
 method	UnityEngine.Transform$$GetSiblingIndex	0x510f070	0x399cd80	ok		src/UI_NOTES.md:108,src/mpmenu_kit.h:30,src/ui_game.c:39
-method	UnityEngine.Transform$$Find	0x510f3c0	0x399c2e0	ok		src/mpmenu.c:1025,src/mpmenu.c:1026,src/ui_game.c:2189,src/ui_teams.c:450
-method	UnityEngine.Transform$$get_lossyScale	0x510f4f8	0x39a2680	ok		src/mpmenu.c:1066,src/ui_game.c:2164,src/ui_game.c:2166,src/ui_game.c:2706,src/ui_game.c:2746,src/ui_game.c:3293,+6
-method	UnityEngine.Transform$$GetChild	0x510fc60	0x399c6b0	ok		custom/pvp/pvp_ui.c:222,custom/pvp/pvp_ui.c:249,custom/pvp/pvp_ui.c:458,src/mpmenu.c:1036,src/mpmenu.c:1094,src/mpmenu.c:1106,+13
-method	UnityEngine.Events.UnityEvent$$Invoke	0x51171f4	0x39a57b0	ok		src/ui_game.c:2039,src/ui_game.c:2048
-method	UnityEngine.U2D.SpriteAtlas$$GetSprite	0x5157130	0x39c2f60	ok		src/ui_game.c:578,src/ui_game.c:587
-method	UnityEngine.ImageConversion$$EncodeToPNG	0x51657d8	0x39cf200	ok		research/rig_access_spec.md:267,src/mpmenu.c:3355,src/mpmenu.c:3409,src/rig_cmd.c:450,src/ui_game.c:1628
-method	UnityEngine.GUIUtility$$get_systemCopyBuffer	0x518aea0	0x39f54b0	ok		custom/pvp/pvp_ui.c:495,src/MPMENU_NOTES.md:37,src/UI_NOTES.md:110,src/mpmenu.c:1688,src/mpmenu.c:3220,src/mpmenu.c:3708,+2
-method	UnityEngine.GUIUtility$$set_systemCopyBuffer	0x518afe0	0x39f58b0	ok		src/MPMENU_NOTES.md:37,src/mpmenu.c:2633,src/mpmenu.c:3221,src/mpmenu.c:3491
-method	UnityEngine.Input$$GetMouseButton	0x51acd80	0x3a0e530	ok		src/ui_game.c:2776,src/ui_game.c:3704,src/ui_game.c:4530,src/ui_teams.c:1589,src/ui_teams.c:2004
-method	UnityEngine.Input$$GetMouseButtonDown	0x51acdd0	0x3a0e4b0	ok		custom/pvp/pvp_ui.c:610,custom/pvp/pvp_ui.c:909,src/mpmenu.c:2516,src/mpmenu.c:2905,src/mpmenu.c:3014,src/ui_game.c:1134,+12
-method	UnityEngine.Input$$GetMouseButtonUp	0x51ace20	0x3a0e4f0	ok		src/UI_NOTES.md:283,src/ui_game.c:4591,src/ui_teams.c:2006
-method	UnityEngine.Input$$GetKey	0x51ad054	0x3a0e390	ok		src/UI_NOTES.md:283,src/ui_game.c:4597
-method	UnityEngine.Input$$GetKeyDown	0x51ad280	0x3a0e340	ok		src/UI_NOTES.md:283,src/ui_game.c:4524,src/ui_game.c:4596
-method	UnityEngine.Input$$get_mousePosition	0x51ad4dc	0x3a0e930	ok		custom/pvp/pvp_ui.c:611,custom/pvp/pvp_ui.c:910,src/mpmenu.c:2270,src/mpmenu.c:2515,src/mpmenu.c:2906,src/mpmenu.c:3015,+15
-method	UnityEngine.ScreenCapture$$CaptureScreenshotAsTexture	0x51fa520	0x3a5efc0	ok		research/rig_access_spec.md:271,src/ui_game.c:1627
-method	UnityEngine.UI.Image$$set_sprite	0x5257600	0x3ad8380	ok		src/mpmenu.c:1025,src/mpmenu.c:1125,src/mpmenu.c:320,src/mpmenu.c:569,src/ui_game.c:614,src/ui_game.c:627,+1
-method	UnityEngine.UI.Image$$set_type	0x52579cc	0x3ad8670	ok		src/ui_game.c:615
-method	UnityEngine.UI.Graphic$$set_color	0x52602f8	0x3ad04b0	ok		src/mpmenu.c:2510,src/mpmenu.c:2511,src/mpmenu.c:322,src/mpmenu.c:412,src/mpmenu.c:570,src/mpmenu.c:806,+3
-method	UnityEngine.UI.Graphic$$get_raycastTarget	0x5260340	0xc53990	ok		src/ui_teams.c:2555
-method	UnityEngine.UI.Graphic$$set_raycastTarget	0x5260348	0x3ad05b0	ok		src/mpmenu.c:1127,src/mpmenu.c:2322,src/mpmenu.c:2328,src/mpmenu.c:2331,src/mpmenu.c:2356,src/mpmenu.c:2849,+10
-method	UnityEngine.UI.Graphic$$get_canvas	0x5260544	0x3acfd80	ok		src/ui_game.c:1086,src/ui_game.c:2384,src/ui_game.c:2563,src/ui_game.c:3324,src/ui_game.c:3947,src/ui_game.c:5214,+2
-method	UnityEngine.UI.Graphic$$get_depth	0x5261b60	0x3ad0010	ok		src/ui_teams.c:2554
-method	UnityEngine.UI.Graphic$$get_material	0x5261cac	0x3ad0260	ok		src/ui_game.c:3015
-method	UnityEngine.UI.Image$$get_sprite	0x5266f04	0x8c1610	ok		custom/pvp/pvp_ui.c:248,src/mpmenu.c:1025,src/mpmenu.c:1123,src/mpmenu.c:2127,src/mpmenu.c:3634,src/mpmenu.c:567,+5
-method	UnityEngine.UI.Image$$set_preserveAspect	0x5267348	0x3ad8310	ok		src/ui_game.c:616
-method	UnityEngine.UI.Image$$set_fillAmount	0x5267504	0x3ad8010	ok		src/ui_game.c:456,src/ui_game.c:617
-method	UnityEngine.CanvasGroup$$get_alpha	0x546f9a8	0x3cd75d0	ok		src/ui_teams.c:2409
-method	UnityEngine.CanvasGroup$$set_alpha	0x546fa94	0x3cd7860	ok		src/ui_teams.c:1899,src/ui_teams.c:720
-method	UnityEngine.CanvasGroup$$get_blocksRaycasts	0x546fdb0	0x3cd7510	ok		src/ui_teams.c:2563
-method	UnityEngine.CanvasGroup$$get_ignoreParentGroups	0x546ffb4	0x3cd76d0	ok		src/ui_teams.c:2563
-method	UnityEngine.RectTransformUtility$$RectangleContainsScreenPoint	0x5473d40	0x3cddfd0	ok		src/ui_game.c:633,src/ui_teams.c:1424,src/ui_teams.c:2553
-method	UnityEngine.RectTransformUtility$$WorldToScreenPoint	0x5474610	0x3cde8a0	ok		src/ui_game.c:5217,src/ui_tip.c:168,src/ui_tip.c:169
-method	UnityEngine.Canvas$$get_renderMode	0x5475018	0x3cdb6f0	ok		src/mpmenu.c:3385,src/ui_game.c:5215,src/ui_game.c:632,src/ui_teams.c:1419,src/ui_teams.c:2334,src/ui_teams.c:2560,+2
-method	UnityEngine.Canvas$$set_renderMode	0x5475104	0x3cdca60	ok		src/mpmenu.c:3388,src/mpmenu.c:3407,src/ui_teams.c:2339,src/ui_teams.c:2352
-method	UnityEngine.Canvas$$get_isRootCanvas	0x547521c	0x3cdb0d0	ok		src/mpmenu.c:3384,src/ui_teams.c:2331,src/ui_teams.c:2641
-method	UnityEngine.Canvas$$get_scaleFactor	0x5475418	0x3cdba30	ok		src/ui_teams.c:610
-method	UnityEngine.Canvas$$set_planeDistance	0x5475f18	0x3cdc8b0	ok		src/mpmenu.c:3389,src/ui_teams.c:2341
-method	UnityEngine.Canvas$$get_overrideSorting	0x547611c	0x3cdb310	ok		src/ui_teams.c:2336,src/ui_teams.c:2561,src/ui_teams.c:2643
-method	UnityEngine.Canvas$$set_overrideSorting	0x5476208	0x3cdc6f0	ok		src/ui_game.c:2257,src/ui_teams.c:1161,src/ui_teams.c:1632,src/ui_teams.c:2356,src/ui_teams.c:646,src/ui_tip.c:259
-method	UnityEngine.Canvas$$get_sortingOrder	0x5476320	0x3cdbdd0	ok		src/ui_teams.c:1544,src/ui_teams.c:2335,src/ui_teams.c:2509,src/ui_teams.c:2561,src/ui_teams.c:2642,src/ui_teams.c:679
-method	UnityEngine.Canvas$$set_sortingOrder	0x547640c	0x3cdcfc0	ok		src/ui_game.c:2257,src/ui_game.c:2274,src/ui_teams.c:1162,src/ui_teams.c:1544,src/ui_teams.c:1633,src/ui_teams.c:2357,+2
-method	UnityEngine.Canvas$$get_sortingLayerID	0x5476728	0x3cdbbb0	ok		src/ui_teams.c:2332,src/ui_teams.c:2643
-method	UnityEngine.Canvas$$set_sortingLayerID	0x5476814	0x3cdcce0	ok		src/ui_teams.c:2333,src/ui_teams.c:2354
-method	UnityEngine.Canvas$$get_rootCanvas	0x5476fac	0x3cdb950	ok		src/ui_game.c:1087,src/ui_game.c:2385,src/ui_game.c:2564,src/ui_game.c:3325,src/ui_game.c:3948,src/ui_game.c:5214,+4
-method	UnityEngine.Canvas$$get_worldCamera	0x5477610	0x3cdc0d0	ok		src/mpmenu.c:3386,src/ui_game.c:5216,src/ui_game.c:632,src/ui_teams.c:1420,src/ui_teams.c:2337,src/ui_tip.c:167
-method	UnityEngine.Canvas$$set_worldCamera	0x547771c	0x3cdd320	ok		src/mpmenu.c:3387,src/mpmenu.c:3407,src/ui_teams.c:2340,src/ui_teams.c:2352,src/ui_teams.c:2358
-method	UnityEngine.Canvas$$ForceUpdateCanvases	0x5477fec	0x3cda870	ok		src/mpmenu.c:3396,src/mpmenu.c:3408,src/ui_teams.c:2344,src/ui_teams.c:2362
-method	UnityEngine.UI.RawImage$$set_texture	0x54920b4	0x3cf73b0	ok		src/ui_game.c:4260,src/ui_game.c:4304
-method	UnityEngine.UI.ScrollRect$$set_verticalNormalizedPosition	0x549a6f0	0x3cfd250	ok		src/mpmenu.c:3549
-method	UnityEngine.UI.Selectable$$get_interactable	0x549c6ac	0xb289e0	ok		src/mpmenu.c:3822
-method	UnityEngine.UI.Selectable$$set_interactable	0x549c6b4	0x3d038d0	ok		src/ui_game.c:282,src/ui_game.c:3196,src/ui_game.c:3202,src/ui_game.c:326,src/ui_game.c:334
+method	UnityEngine.Transform$$Find	0x510f3c0	0x399c2e0	ok		src/mpmenu.c:1370,src/mpmenu.c:1371,src/ui_game.c:2205,src/ui_teams.c:479
+method	UnityEngine.Transform$$get_lossyScale	0x510f4f8	0x39a2680	ok		src/mpmenu.c:1411,src/ui_game.c:2180,src/ui_game.c:2182,src/ui_game.c:2816,src/ui_game.c:2856,src/ui_game.c:3404,+6
+method	UnityEngine.Transform$$GetChild	0x510fc60	0x399c6b0	ok		custom/pvp/pvp_ui.c:222,custom/pvp/pvp_ui.c:249,custom/pvp/pvp_ui.c:458,src/mpmenu.c:1381,src/mpmenu.c:1439,src/mpmenu.c:1451,+13
+method	UnityEngine.Events.UnityEvent$$Invoke	0x51171f4	0x39a57b0	ok		src/ui_game.c:2052,src/ui_game.c:2061
+method	UnityEngine.U2D.SpriteAtlas$$GetSprite	0x5157130	0x39c2f60	ok		src/ui_game.c:586,src/ui_game.c:595
+method	UnityEngine.ImageConversion$$EncodeToPNG	0x51657d8	0x39cf200	ok		research/rig_access_spec.md:267,src/mpmenu.c:3737,src/mpmenu.c:3791,src/rig_cmd.c:450,src/ui_game.c:1638
+method	UnityEngine.GUIUtility$$get_systemCopyBuffer	0x518aea0	0x39f54b0	ok		custom/pvp/pvp_ui.c:495,src/MPMENU_NOTES.md:37,src/UI_NOTES.md:110,src/mpmenu.c:2033,src/mpmenu.c:3602,src/mpmenu.c:4091,+2
+method	UnityEngine.GUIUtility$$set_systemCopyBuffer	0x518afe0	0x39f58b0	ok		src/MPMENU_NOTES.md:37,src/mpmenu.c:3012,src/mpmenu.c:3603,src/mpmenu.c:3873,src/ui_game.c:2443
+method	UnityEngine.Input$$GetMouseButton	0x51acd80	0x3a0e530	ok		src/ui_game.c:2886,src/ui_game.c:3884,src/ui_game.c:4745,src/ui_teams.c:1620,src/ui_teams.c:2046
+method	UnityEngine.Input$$GetMouseButtonDown	0x51acdd0	0x3a0e4b0	ok		custom/pvp/pvp_ui.c:610,custom/pvp/pvp_ui.c:909,src/mpmenu.c:2895,src/mpmenu.c:3285,src/mpmenu.c:3394,src/ui_game.c:1144,+12
+method	UnityEngine.Input$$GetMouseButtonUp	0x51ace20	0x3a0e4f0	ok		src/UI_NOTES.md:283,src/ui_game.c:4806,src/ui_teams.c:2048
+method	UnityEngine.Input$$GetKey	0x51ad054	0x3a0e390	ok		src/UI_NOTES.md:283,src/ui_game.c:4812
+method	UnityEngine.Input$$GetKeyDown	0x51ad280	0x3a0e340	ok		src/UI_NOTES.md:283,src/ui_game.c:4739,src/ui_game.c:4811
+method	UnityEngine.Input$$get_mousePosition	0x51ad4dc	0x3a0e930	ok		custom/pvp/pvp_ui.c:611,custom/pvp/pvp_ui.c:910,src/mpmenu.c:2649,src/mpmenu.c:2894,src/mpmenu.c:3286,src/mpmenu.c:3395,+15
+method	UnityEngine.ScreenCapture$$CaptureScreenshotAsTexture	0x51fa520	0x3a5efc0	ok		research/rig_access_spec.md:271,src/ui_game.c:1637
+method	UnityEngine.UI.Image$$set_sprite	0x5257600	0x3ad8380	ok		src/mpmenu.c:1370,src/mpmenu.c:1470,src/mpmenu.c:366,src/mpmenu.c:820,src/ui_game.c:622,src/ui_game.c:635,+1
+method	UnityEngine.UI.Image$$set_type	0x52579cc	0x3ad8670	ok		src/ui_game.c:2385,src/ui_game.c:623
+method	UnityEngine.UI.Graphic$$set_color	0x52602f8	0x3ad04b0	ok		src/mpmenu.c:1101,src/mpmenu.c:1271,src/mpmenu.c:2889,src/mpmenu.c:2890,src/mpmenu.c:368,src/mpmenu.c:459,+3
+method	UnityEngine.UI.Graphic$$get_raycastTarget	0x5260340	0xc53990	ok		src/ui_teams.c:2597
+method	UnityEngine.UI.Graphic$$set_raycastTarget	0x5260348	0x3ad05b0	ok		src/mpmenu.c:1101,src/mpmenu.c:1105,src/mpmenu.c:1272,src/mpmenu.c:1472,src/mpmenu.c:2701,src/mpmenu.c:2707,+10
+method	UnityEngine.UI.Graphic$$get_canvas	0x5260544	0x3acfd80	ok		src/ui_game.c:1096,src/ui_game.c:2492,src/ui_game.c:2672,src/ui_game.c:3435,src/ui_game.c:4130,src/ui_game.c:5433,+2
+method	UnityEngine.UI.Graphic$$get_depth	0x5261b60	0x3ad0010	ok		src/ui_teams.c:2596
+method	UnityEngine.UI.Graphic$$get_material	0x5261cac	0x3ad0260	ok		src/ui_game.c:3126
+method	UnityEngine.UI.Image$$get_sprite	0x5266f04	0x8c1610	ok		custom/pvp/pvp_ui.c:248,src/mpmenu.c:1370,src/mpmenu.c:1468,src/mpmenu.c:2506,src/mpmenu.c:4017,src/mpmenu.c:818,+5
+method	UnityEngine.UI.Image$$set_preserveAspect	0x5267348	0x3ad8310	ok		src/ui_game.c:2385,src/ui_game.c:624
+method	UnityEngine.UI.Image$$set_fillAmount	0x5267504	0x3ad8010	ok		src/ui_game.c:464,src/ui_game.c:625
+method	UnityEngine.CanvasGroup$$get_alpha	0x546f9a8	0x3cd75d0	ok		src/ui_teams.c:2451
+method	UnityEngine.CanvasGroup$$set_alpha	0x546fa94	0x3cd7860	ok		src/ui_teams.c:1935,src/ui_teams.c:749
+method	UnityEngine.CanvasGroup$$get_blocksRaycasts	0x546fdb0	0x3cd7510	ok		src/ui_teams.c:2605
+method	UnityEngine.CanvasGroup$$get_ignoreParentGroups	0x546ffb4	0x3cd76d0	ok		src/ui_teams.c:2605
+method	UnityEngine.RectTransformUtility$$RectangleContainsScreenPoint	0x5473d40	0x3cddfd0	ok		src/ui_game.c:641,src/ui_teams.c:1454,src/ui_teams.c:2595
+method	UnityEngine.RectTransformUtility$$WorldToScreenPoint	0x5474610	0x3cde8a0	ok		src/ui_game.c:5436,src/ui_tip.c:168,src/ui_tip.c:169
+method	UnityEngine.Canvas$$get_renderMode	0x5475018	0x3cdb6f0	ok		src/mpmenu.c:3767,src/ui_game.c:5434,src/ui_game.c:640,src/ui_teams.c:1449,src/ui_teams.c:2376,src/ui_teams.c:2602,+2
+method	UnityEngine.Canvas$$set_renderMode	0x5475104	0x3cdca60	ok		src/mpmenu.c:3770,src/mpmenu.c:3789,src/ui_teams.c:2381,src/ui_teams.c:2394
+method	UnityEngine.Canvas$$get_isRootCanvas	0x547521c	0x3cdb0d0	ok		src/mpmenu.c:3766,src/ui_teams.c:2373,src/ui_teams.c:2683
+method	UnityEngine.Canvas$$get_scaleFactor	0x5475418	0x3cdba30	ok		src/ui_teams.c:639
+method	UnityEngine.Canvas$$set_planeDistance	0x5475f18	0x3cdc8b0	ok		src/mpmenu.c:3771,src/ui_teams.c:2383
+method	UnityEngine.Canvas$$get_overrideSorting	0x547611c	0x3cdb310	ok		src/ui_teams.c:2378,src/ui_teams.c:2603,src/ui_teams.c:2685
+method	UnityEngine.Canvas$$set_overrideSorting	0x5476208	0x3cdc6f0	ok		src/ui_game.c:2274,src/ui_teams.c:1191,src/ui_teams.c:1668,src/ui_teams.c:2398,src/ui_teams.c:675,src/ui_tip.c:259
+method	UnityEngine.Canvas$$get_sortingOrder	0x5476320	0x3cdbdd0	ok		src/ui_teams.c:1574,src/ui_teams.c:2377,src/ui_teams.c:2551,src/ui_teams.c:2603,src/ui_teams.c:2684,src/ui_teams.c:708
+method	UnityEngine.Canvas$$set_sortingOrder	0x547640c	0x3cdcfc0	ok		src/ui_game.c:2274,src/ui_game.c:2291,src/ui_teams.c:1192,src/ui_teams.c:1574,src/ui_teams.c:1669,src/ui_teams.c:2399,+2
+method	UnityEngine.Canvas$$get_sortingLayerID	0x5476728	0x3cdbbb0	ok		src/ui_teams.c:2374,src/ui_teams.c:2685
+method	UnityEngine.Canvas$$set_sortingLayerID	0x5476814	0x3cdcce0	ok		src/ui_teams.c:2375,src/ui_teams.c:2396
+method	UnityEngine.Canvas$$get_rootCanvas	0x5476fac	0x3cdb950	ok		src/ui_game.c:1097,src/ui_game.c:2493,src/ui_game.c:2673,src/ui_game.c:3436,src/ui_game.c:4131,src/ui_game.c:5433,+4
+method	UnityEngine.Canvas$$get_worldCamera	0x5477610	0x3cdc0d0	ok		src/mpmenu.c:3768,src/ui_game.c:5435,src/ui_game.c:640,src/ui_teams.c:1450,src/ui_teams.c:2379,src/ui_tip.c:167
+method	UnityEngine.Canvas$$set_worldCamera	0x547771c	0x3cdd320	ok		src/mpmenu.c:3769,src/mpmenu.c:3789,src/ui_teams.c:2382,src/ui_teams.c:2394,src/ui_teams.c:2400
+method	UnityEngine.Canvas$$ForceUpdateCanvases	0x5477fec	0x3cda870	ok		src/mpmenu.c:3778,src/mpmenu.c:3790,src/ui_teams.c:2386,src/ui_teams.c:2404
+method	UnityEngine.UI.RawImage$$set_texture	0x54920b4	0x3cf73b0	ok		src/ui_game.c:4443,src/ui_game.c:4487
+method	UnityEngine.UI.ScrollRect$$set_verticalNormalizedPosition	0x549a6f0	0x3cfd250	ok		src/mpmenu.c:3931
+method	UnityEngine.UI.Selectable$$get_interactable	0x549c6ac	0xb289e0	ok		src/mpmenu.c:4205
+method	UnityEngine.UI.Selectable$$set_interactable	0x549c6b4	0x3d038d0	ok		src/ui_game.c:290,src/ui_game.c:3307,src/ui_game.c:3313,src/ui_game.c:334,src/ui_game.c:342
 other		0x57041b0		not-an-address	constant / bounds / data	src/mp_game.c:264
 other		0x604b000		not-an-address	constant / bounds / data	rig/NOTES.md:48
 other		0x624dd2f		not-an-address	constant / bounds / data	custom/fights/quickjs/dtoa.c:234
@@ -1232,13 +1238,13 @@ metadata	Refactor.Main.Event.BanAutoFixItemRequested_TypeInfo	0x664a338	0x4eeb20
 metadata	Refactor.Main.Event.BatchPolicyRequested_TypeInfo	0x664a510	0x4eeeea0	ok		src/ord_test/OFFSETS_events.md:245,src/ord_test/OFFSETS_events.md:246
 metadata	BehaviorDesigner.Runtime.BehaviorManager_TypeInfo	0x664a570	0x4eefae0	ok		src/rig_det.c:49
 metadata	Refactor.Main.Event.CandidateRecruitRequested_TypeInfo	0x664b010	0x4f06108	ok		src/ord_test/OFFSETS_events.md:188,src/ord_test/OFFSETS_events.md:189,src/ord_test/OFFSETS_events.md:190,src/ord_test/OFFSETS_events.md:191
-metadata	UnityEngine.Canvas_TypeInfo	0x664b018	0x4f06218	ok		src/mpmenu.c:3378
+metadata	UnityEngine.Canvas_TypeInfo	0x664b018	0x4f06218	ok		src/mpmenu.c:3760
 metadata	Refactor.Main.Event.CarryUnitGetDownRequested_TypeInfo	0x664b098	0x4f07318	ok		src/ord_test/OFFSETS_events.md:27,src/ord_test/OFFSETS_events.md:28
 metadata	Refactor.Main.Event.ChangeGameSpeedRequested_TypeInfo	0x664b1a8	0x4f09738	ok		research/rig_access_spec.md:147,src/rig_cmd.c:285
 metadata	Refactor.Main.Event.ChangeItemSlotRequested_TypeInfo	0x664b1b0	0x4f09848	ok		src/ord_test/OFFSETS_events.md:88,src/ord_test/OFFSETS_events.md:89,src/ord_test/OFFSETS_events.md:90,src/ord_test/OFFSETS_events.md:91,src/ord_test/OFFSETS_events.md:92
 metadata	Refactor.Main.Event.ChangeMapRequested_TypeInfo	0x664b1d0	0x4f09c88	ok		src/ord_test/OFFSETS_events.md:160,src/ord_test/OFFSETS_events.md:161,src/ord_test/OFFSETS_events.md:162,src/ord_test/OFFSETS_events.md:163,src/ord_test/OFFSETS_events.md:164,src/ord_test/OFFSETS_events.md:165,+7
 metadata	Refactor.Main.Event.ClearDungeonRegionRequested_TypeInfo	0x664b348	0x4f0ce78	ok		src/ord_test/OFFSETS_events.md:174
-metadata	Refactor.Main.Event.CompleteNarrativeIntroRequested_TypeInfo	0x664b6f8	0x4f14bb0	ok		src/mpmenu.c:3504
+metadata	Refactor.Main.Event.CompleteNarrativeIntroRequested_TypeInfo	0x664b6f8	0x4f14bb0	ok		src/mpmenu.c:3886
 metadata	Refactor.Main.Event.CopyPolicyRequested_TypeInfo	0x664baf8	0x4f1d3a8	ok		src/ord_test/OFFSETS_events.md:241
 metadata	Refactor.Main.Event.CraftingOptionRequested_TypeInfo	0x664bbb0	0x4f1ec10	ok		src/ord_test/OFFSETS_events.md:207,src/ord_test/OFFSETS_events.md:208,src/ord_test/OFFSETS_events.md:209
 metadata	Refactor.Main.Event.CraftingPendingRequested_TypeInfo	0x664bbb8	0x4f1ed20	ok		src/ord_test/OFFSETS_events.md:210,src/ord_test/OFFSETS_events.md:211
@@ -1246,7 +1252,7 @@ metadata	Refactor.Main.Event.CraftingPriorityRequested_TypeInfo	0x664bbc0	0x4f1e
 metadata	Refactor.Main.Event.CraftingRepeatRequested_TypeInfo	0x664bbd0	0x4f1f050	ok		src/ord_test/OFFSETS_events.md:212,src/ord_test/OFFSETS_events.md:213,src/ord_test/OFFSETS_events.md:214,src/ord_test/OFFSETS_events.md:215
 metadata	Refactor.Main.Event.CraftingTaskGenerateRequested_TypeInfo	0x664bbe8	0x4f1f380	ok		src/ord_test/OFFSETS_events.md:202,src/ord_test/OFFSETS_events.md:203,src/ord_test/OFFSETS_events.md:204
 metadata	Refactor.Main.Event.CraftingTaskRemoveRequested_TypeInfo	0x664bbf0	0x4f1f490	ok		src/ord_test/OFFSETS_events.md:205,src/ord_test/OFFSETS_events.md:206
-metadata	Refactor.Main.Event.CreateCampaignRequested_TypeInfo	0x664bc18	0x4f1f9e0	ok		src/mpmenu.c:3497
+metadata	Refactor.Main.Event.CreateCampaignRequested_TypeInfo	0x664bc18	0x4f1f9e0	ok		src/mpmenu.c:3879
 metadata	Refactor.DeadlyApplyData_TypeInfo	0x664c368	0x4f2f260	ok		custom/pvp/pvp_game.c:288
 metadata	Refactor.Main.Event.DespawnBuildingRequested_TypeInfo	0x664c8d0	0x4f3a760	ok		custom/pvp/pvp_game.c:603
 metadata	Refactor.Main.Event.DirectOrderRequested_TypeInfo	0x664c9a0	0x4f3c210	ok		research/rig_access_spec.md:203,src/rig_cmd.c:274,src/rig_det.c:52
@@ -1275,7 +1281,7 @@ metadata	Refactor.ObserverDriven.InputObserver_TypeInfo	0x6650188	0x4efddc0	ok		
 metadata	Refactor.UI.InteractionOption_TypeInfo	0x66503c8	0x4f02a38	ok		src/ord_test/ord_smoke.c:162
 metadata	Refactor.ItemDropSelector_TypeInfo	0x66506c8	0x4f09028	ok		src/rig_det.c:678
 metadata	Refactor.Main.Event.LearnSkillRequested_TypeInfo	0x6650e78	0x4f19558	ok		src/ord_test/OFFSETS_events.md:184,src/ord_test/OFFSETS_events.md:185,src/ord_test/OFFSETS_events.md:186
-metadata	Refactor.Main.Event.LoadCampaignRequested_TypeInfo	0x6651118	0x4f1ee90	ok		custom/fe/fe_hub.c:123,research/rig_access_spec.md:181,src/mpmenu.c:3425,src/ord_test/OFFSETS_events.md:260,src/rig_cmd.c:316,src/rig_cmd.c:346
+metadata	Refactor.Main.Event.LoadCampaignRequested_TypeInfo	0x6651118	0x4f1ee90	ok		custom/fe/fe_hub.c:123,research/rig_access_spec.md:181,src/mpmenu.c:3807,src/ord_test/OFFSETS_events.md:260,src/rig_cmd.c:316,src/rig_cmd.c:346
 metadata	Refactor.Task.MoveNearByTask_TypeInfo	0x6651bd0	0x4f35958	ok		research/rig_access_spec.md:212
 metadata	Refactor.Main.Event.MoveQuickSlotRequested_TypeInfo	0x6651c20	0x4f363a8	ok		src/ord_test/OFFSETS_events.md:146,src/ord_test/OFFSETS_events.md:147,src/ord_test/OFFSETS_events.md:148,src/ord_test/OFFSETS_events.md:149
 metadata	Refactor.Task.MoveTask_TypeInfo	0x6651c78	0x4f36f00	ok		research/rig_access_spec.md:201,src/rig_cmd.c:272,src/rig_det.c:50
@@ -1310,7 +1316,7 @@ metadata	Refactor.Main.Event.SplitDropItemRequested_TypeInfo	0x6654a40	0x4ee3c28
 metadata	Refactor.Main.Event.SplitMoveItemRequested_TypeInfo	0x6654a48	0x4ee3d30	ok		src/ord_test/OFFSETS_events.md:72,src/ord_test/OFFSETS_events.md:73,src/ord_test/OFFSETS_events.md:74,src/ord_test/OFFSETS_events.md:75,src/ord_test/OFFSETS_events.md:76
 metadata	Refactor.Main.Event.SplitSendItemRequested_TypeInfo	0x6654a50	0x4ee3e38	ok		src/ord_test/OFFSETS_events.md:67,src/ord_test/OFFSETS_events.md:68,src/ord_test/OFFSETS_events.md:69,src/ord_test/OFFSETS_events.md:70,src/ord_test/OFFSETS_events.md:71
 metadata	Refactor.Main.Event.SwapShortCutRequested_TypeInfo	0x6655248	0x4ef44c0	ok		src/ord_test/OFFSETS_events.md:150,src/ord_test/OFFSETS_events.md:151,src/ord_test/OFFSETS_events.md:152
-metadata	UnityEngine.Texture2D_TypeInfo	0x6655970	0x4f03750	ok		research/rig_access_spec.md:259,src/mpmenu.c:234,src/mpmenu.c:3367,src/mpmenu.c:3399,src/rig_cmd.c:442
+metadata	UnityEngine.Texture2D_TypeInfo	0x6655970	0x4f03750	ok		research/rig_access_spec.md:259,src/mpmenu.c:280,src/mpmenu.c:3749,src/mpmenu.c:3781,src/rig_cmd.c:442
 metadata	Refactor.Main.Event.TickRequested_TypeInfo	0x6655aa0	0x4f05fa0	ok		src/rig_det.c:33
 metadata	Refactor.Main.Event.ToggleAutoPickUpRequested_TypeInfo	0x6655c28	0x4f094c0	ok		src/ord_test/OFFSETS_events.md:153
 metadata	Refactor.Main.Event.ToggleAutoSkillRequested_TypeInfo	0x6655c30	0x4f095d0	ok		src/ord_test/OFFSETS_events.md:24,src/ord_test/OFFSETS_events.md:25,src/ord_test/OFFSETS_events.md:26
@@ -1330,16 +1336,16 @@ metadata	Refactor.Main.Event.UnitConsumeClearCopyRequested_TypeInfo	0x6656428	0x
 metadata	Refactor.Main.Event.UnitConsumeCopyRequested_TypeInfo	0x6656430	0x4f1a5a0	ok		src/ord_test/OFFSETS_events.md:250
 metadata	Refactor.Main.Event.UnitConsumePasteRequested_TypeInfo	0x6656438	0x4f1a6b0	ok		src/ord_test/OFFSETS_events.md:251
 metadata	Refactor.Main.Event.UnitConsumePresetRequested_TypeInfo	0x6656440	0x4f1a7c0	ok		src/ord_test/OFFSETS_events.md:248,src/ord_test/OFFSETS_events.md:249
-metadata	Refactor.UnitEntity_TypeInfo	0x6656458	0x4f1aaf0	ok		research/rig_access_spec.md:105,src/rig_cmd.c:361,src/ui_game.c:61
+metadata	Refactor.UnitEntity_TypeInfo	0x6656458	0x4f1aaf0	ok		research/rig_access_spec.md:105,src/rig_cmd.c:361,src/ui_game.c:67
 metadata	Refactor.Main.Event.UnlockResearchRequested_TypeInfo	0x66566d0	0x4f1fba8	ok		src/ord_test/OFFSETS_events.md:224,src/ord_test/OFFSETS_events.md:225
 metadata	Refactor.Main.Event.UnsetItemQuickSlotRequested_TypeInfo	0x6656728	0x4f20758	ok		src/ord_test/OFFSETS_events.md:135,src/ord_test/OFFSETS_events.md:136
 metadata	Refactor.Main.Event.UnsetQuickSlotRequested_TypeInfo	0x6656730	0x4f20868	ok		src/ord_test/OFFSETS_events.md:143,src/ord_test/OFFSETS_events.md:144,src/ord_test/OFFSETS_events.md:145
 metadata	Refactor.Main.Event.UseSkillTargetRequested_TypeInfo	0x6656808	0x4f22518	ok		src/ord_test/OFFSETS_events.md:13,src/ord_test/OFFSETS_events.md:14,src/ord_test/OFFSETS_events.md:15,src/ord_test/OFFSETS_events.md:16,src/ord_test/OFFSETS_events.md:17
-metadata	UnityEngine.Vector3_TypeInfo	0x6656b28	0x4f28d18	ok		src/mpmenu.c:3247
-metadata	Refactor.View.ViewIntData_TypeInfo	0x6656d48	0x4f2d558	ok		src/mp_game.c:383
+metadata	UnityEngine.Vector3_TypeInfo	0x6656b28	0x4f28d18	ok		src/mpmenu.c:3629
+metadata	Refactor.View.ViewIntData_TypeInfo	0x6656d48	0x4f2d558	ok		src/mp_game.c:418
 metadata	Refactor.Main.Event.WorkPriorityRequested_TypeInfo	0x6657110	0x4f357a0	ok		src/ord_test/OFFSETS_events.md:230,src/ord_test/OFFSETS_events.md:231
 metadata	Refactor.Main.Event.WorkToggleRequested_TypeInfo	0x6657118	0x4f358a8	ok		src/ord_test/OFFSETS_events.md:228,src/ord_test/OFFSETS_events.md:229
-metadata	Method$Refactor.Main.EntityComponent.GetComponentOf<InventoryComponent>()	0x66919e0	0x4f32f70	ok		src/ord_game.c:70,src/ord_test/OFFSETS.md:135,src/ui_teams.c:2468
+metadata	Method$Refactor.Main.EntityComponent.GetComponentOf<InventoryComponent>()	0x66919e0	0x4f32f70	ok		src/ord_game.c:70,src/ord_test/OFFSETS.md:135,src/ui_teams.c:2510
 metadata	Method$Refactor.Main.EntityComponent.GetComponentOf<SkillComponent>()	0x66919e8	0x4f33080	ok		src/ord_game.c:93,src/ord_test/OFFSETS.md:156
 metadata	Method$Refactor.EntityExtensions.GetComponent<AffecterReader>()	0x6691af0	0x4f35348	ok		research/rig_access_spec.md:120,src/rig_det.c:1183
 metadata	Method$Refactor.EntityExtensions.GetComponent<CombatInfoReader>()	0x6691b00	0x4f35558	ok		research/rig_access_spec.md:120,src/rig_cmd.c:366,src/rig_det.c:1115
@@ -3931,6 +3937,13 @@ field	Refactor.Main.Event.CampaignMapTransitionPhaseRunner._screenTransitionHand
 field	Refactor.Main.Event.CampaignMapTransitionPhaseRunner._tickFlows	0x50	0x50	ok		
 field	Refactor.Main.Event.CampaignMapTransitionPhaseRunner._timeData	0x58	0x58	ok		
 field	Refactor.Main.Event.CampaignMapTransitionPhaseRunner._viewLoadHelper	0xb0	0xb0	ok		
+field	Refactor.Main.Event.CampaignViewLoadHelper._campaignSetting	0x30	0x30	ok		
+field	Refactor.Main.Event.CampaignViewLoadHelper._controlProcessor	0x38	0x38	ok		
+field	Refactor.Main.Event.CampaignViewLoadHelper._mapLoadingChecker	0x40	0x40	ok		
+field	Refactor.Main.Event.CampaignViewLoadHelper._staticUIs	0x20	0x20	ok		
+field	Refactor.Main.Event.CampaignViewLoadHelper._systemViews	0x18	0x18	ok		
+field	Refactor.Main.Event.CampaignViewLoadHelper._viewDispatcher	0x10	0x10	ok		
+field	Refactor.Main.Event.CampaignViewLoadHelper._viewPresenters	0x28	0x28	ok		
 field	Refactor.Main.Event.CandidateRecruitRequested.Faction	0x20	0x20	ok		
 field	Refactor.Main.Event.CandidateRecruitRequested.Index	0x10	0x10	ok		
 field	Refactor.Main.Event.CandidateRecruitRequested.Map	0x14	0x14	ok		
@@ -5991,6 +6004,16 @@ field	Refactor.UI.RenameUnitView._currentNameTextKey	0x70	0x70	ok
 field	Refactor.UI.RenameUnitView._defaultNameTextKey	0x78	0x78	ok		
 field	Refactor.UI.RenameUnitView._nameInputField	0x48	0x48	ok		
 field	Refactor.UI.RenameUnitView._targetGuid	0x60	0x60	ok		
+field	Refactor.UI.ScreenFadeEffectView.<IsFadeOutCompleted>k__BackingField	0x51	0x51	ok		
+field	Refactor.UI.ScreenFadeEffectView.EffectMaterial	0x28	0x28	ok		
+field	Refactor.UI.ScreenFadeEffectView._fadeCoroutine	0x20	0x20	ok		
+field	Refactor.UI.ScreenFadeEffectView._fadingEase	0x3c	0x3c	ok		
+field	Refactor.UI.ScreenFadeEffectView._image	0x30	0x30	ok		
+field	Refactor.UI.ScreenFadeEffectView._loadingUI	0x48	0x48	ok		
+field	Refactor.UI.ScreenFadeEffectView._objLoading	0x40	0x40	ok		
+field	Refactor.UI.ScreenFadeEffectView._ownsEffectMaterial	0x38	0x38	ok		
+field	Refactor.UI.ScreenFadeEffectView.isLoading	0x50	0x50	ok		
+field	Refactor.UI.ScreenFadeEffectView.static:FadeAmount	0x0	0x0	ok		
 field	Refactor.UI.SkillSlotUI._activated	0x198	0x198	ok		
 field	Refactor.UI.SkillSlotUI._autoSkill	0x170	0x170	ok		
 field	Refactor.UI.SkillSlotUI._autoSkillOff	0x180	0x180	ok		
@@ -6587,6 +6610,9 @@ field	Refactor.View.ViewMouseData.<UpdateType>k__BackingField	0x10	0x10	ok
 field	Refactor.View.ViewPresenterContainer._factory	0x10	0x10	ok		
 field	Refactor.View.ViewPresenterContainer._listenerMapping	0x20	0x20	ok		
 field	Refactor.View.ViewPresenterContainer._viewPresenters	0x18	0x18	ok		
+field	Refactor.View.ViewScreenFadeOutData.<FadeOutAudio>k__BackingField	0x15	0x15	ok		
+field	Refactor.View.ViewScreenFadeOutData.<ShowLoadingUI>k__BackingField	0x14	0x14	ok		
+field	Refactor.View.ViewScreenFadeOutData.<UpdateType>k__BackingField	0x10	0x10	ok		
 field	Refactor.View.ViewUpdateDispatcher._lock	0x38	0x38	ok		
 field	Refactor.View.ViewUpdateDispatcher._objectContainer	0x28	0x28	ok		
 field	Refactor.View.ViewUpdateDispatcher._timeHandler	0x30	0x30	ok		
@@ -8316,6 +8342,10 @@ field	UnityEngine.UI.CanvasScaler.m_ReferenceResolution	0x2c	0x2c	ok
 field	UnityEngine.UI.CanvasScaler.m_ScaleFactor	0x28	0x28	ok		
 field	UnityEngine.UI.CanvasScaler.m_ScreenMatchMode	0x34	0x34	ok		
 field	UnityEngine.UI.CanvasScaler.m_UiScaleMode	0x20	0x20	ok		
+field	UnityEngine.UI.ContentSizeFitter.m_HorizontalFit	0x20	0x20	ok		
+field	UnityEngine.UI.ContentSizeFitter.m_Rect	0x28	0x28	ok		
+field	UnityEngine.UI.ContentSizeFitter.m_Tracker	0x30	0x30	ok		
+field	UnityEngine.UI.ContentSizeFitter.m_VerticalFit	0x24	0x24	ok		
 field	UnityEngine.UI.Extensions.Menu.DestroyWhenClosed	0x20	0x20	ok		
 field	UnityEngine.UI.Extensions.Menu.DisableMenusUnderneath	0x21	0x21	ok		
 field	UnityEngine.UI.Extensions.Menu<T>.static:<Instance>k__BackingField	0x0	0x0	ok		

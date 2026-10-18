@@ -306,6 +306,11 @@ static void test_proposal_party(void) {
     tm_proposal_party(&s, (const uint8_t (*)[16])&unk, 1, &r); CHECK(r.err == 3 && r.n == 0);
     tm_proposal_party(&s, (const uint8_t (*)[16])list, 1, &r); CHECK(r.err == 0 && r.n == 1);
     memcpy(list[1], p[0], 16); tm_proposal_party(&s, (const uint8_t (*)[16])list, 2, &r); CHECK(r.err == 0 && r.n == 1);   /* duplicate */
+    /* the game's live PlayerPartyMax (a mod sets 4..8): 2 players x 4 go when it is 8; over a cap of 6 is refused */
+    tm_state b; setup(&b, 0, 0x3, 8); b.max_mark = 4; b.party_cap = 8;
+    for (int i = 0; i < 8; i++) b.owner[i] = i < 4 ? 0 : 1;
+    tm_proposal_party(&b, (const uint8_t (*)[16])b.guid, 8, &r); CHECK(r.err == 0 && r.n == 8);
+    b.party_cap = 6; tm_proposal_party(&b, (const uint8_t (*)[16])b.guid, 7, &r); CHECK(r.err == 1);
 }
 static void test_region(void) {
     int pick[TM_MAX_PLAYERS]; for (int i = 0; i < TM_MAX_PLAYERS; i++) pick[i] = -1;
