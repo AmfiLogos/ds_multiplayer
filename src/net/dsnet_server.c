@@ -224,7 +224,8 @@ static void spectator_send_state(dsnet_server *s, sconn *c) {
 }
 
 /* HELLO mod fields after the build id: u8 rule, u8 len, modset, u16 len, lines. Returns the name's offset, 0 = malformed.
-   c->mods gets "id@version, ..." (each line up to its first ':') for the refusal words. */
+   c->mods gets "id@version, ..." (each line up to its first ':') for the refusal words; mod setting lines
+   ("<mod>/<setting>@<value>", loader API 5) are left out of it (settings_diff names them). */
 static uint32_t hello_mods(sconn *c, const uint8_t *p, uint32_t n, uint32_t o) {
     if (o + 2 > n) return 0;
     c->rule = p[o] == DSNET_MATCH_VANILLA; uint32_t ml = p[o + 1]; o += 2;
@@ -236,11 +237,38 @@ static uint32_t hello_mods(sconn *c, const uint8_t *p, uint32_t n, uint32_t o) {
     size_t k = 0; c->mods[0] = 0;
     for (const char *l = c->lines; *l; ) {
         const char *e = l; while (*e && *e != '\n' && *e != ':') e++;
-        if (k + (size_t)(e - l) + 3 < sizeof c->mods) k += (size_t)snprintf(c->mods + k, sizeof c->mods - k, "%s%.*s", k ? ", " : "", (int)(e - l), l);
+        const char *sl = memchr(l, '/', (size_t)(e - l));
+        if (!sl && k + (size_t)(e - l) + 3 < sizeof c->mods) k += (size_t)snprintf(c->mods + k, sizeof c->mods - k, "%s%.*s", k ? ", " : "", (int)(e - l), l);
         while (*e && *e != '\n') e++;
         l = *e ? e + 1 : e;
     }
     return o + dl;
+}
+/* "zetu/gold_mult: host 2, you 3, ..." for the host's setting lines whose value differs on the guest (no such line on
+   the guest: "you -"). Returns how many. */
+static int settings_diff(const char *hl, const char *gl, char *out, size_t n) {
+    int c = 0; size_t o = 0; if (n) out[0] = 0;
+    for (const char *l = hl; *l; ) {
+        size_t len = strcspn(l, "\n");
+        const char *at = memchr(l, '@', len), *sl = memchr(l, '/', len);
+        if (sl && at && sl < at) {
+            size_t kl = (size_t)(at - l) + 1;                                   /* "<mod>/<setting>@" */
+            const char *gv = NULL; size_t gn = 0;
+            for (const char *q = gl; *q; ) {
+                size_t ql = strcspn(q, "\n");
+                if (ql >= kl && !memcmp(q, l, kl)) { gv = q + kl; gn = ql - kl; break; }
+                q += ql; if (*q) q++;
+            }
+            if (!gv || gn != len - kl || memcmp(gv, at + 1, gn)) {
+                int w = snprintf(out + o, o < n ? n - o : 0, "%s%.*s: host %.*s, you %.*s", c ? ", " : "", (int)(at - l), l,
+                                 (int)(len - kl), at + 1, gv ? (int)gn : 1, gv ? gv : "-");
+                if (w > 0) o += (size_t)w;
+                c++;
+            }
+        }
+        l += len; if (*l) l++;
+    }
+    return c;
 }
 static const char *eff_modset(const sconn *c) { return c->modset[0] ? c->modset : DSNET_MODSET_NONE; }
 static const char *mods_or_none(const sconn *c) { return strcmp(eff_modset(c), DSNET_MODSET_NONE) ? (c->mods[0] ? c->mods : "unnamed mods") : "none"; }
@@ -260,8 +288,11 @@ static int modset_refused(dsnet_server *s, const sconn *c, char *why, size_t n) 
         if (dsnet_release_text_en(h->release, c->release, rel, sizeof rel)) k = (size_t)snprintf(why, n, "%s ", rel);   /* wire words: English */
         if (k >= n) return 1;
         why += k; n -= k;
-        snprintf(why, n, "your gameplay mods are different from the host's (host: %s; you: %s). Join from the launcher to get the host's mods",
-                 mods_or_none(h), mods_or_none(c));
+        char sd[200];                                  /* same mods, other setting values: name the settings */
+        if (!strcmp(mods_or_none(h), mods_or_none(c)) && settings_diff(h->lines, c->lines, sd, sizeof sd))
+            snprintf(why, n, "your mod settings are different from the host's (%s). Set the same values in the Mods window", sd);
+        else snprintf(why, n, "your gameplay mods are different from the host's (host: %s; you: %s). Join from the launcher to get the host's mods",
+                      mods_or_none(h), mods_or_none(c));
         return 1;
     }
     return 0;

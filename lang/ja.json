@@ -882,5 +882,9 @@
  "your game version is different from the host's: update both games": "あなたのゲームのバージョンはホストと異なります：両方のゲームを更新してください",
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "あなたのゲームプレイMODはホストと異なります：ホストのMODを使ってランチャーからゲームを起動してください",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "あなたのMODはホストと異なるバージョンです：両プレイヤーが同じDungeon Settlers Moddedのバージョンを使う必要があります",
- "‹ Newer": "‹ 新しい順"
+ "‹ Newer": "‹ 新しい順",
+ "Your mod settings are not the same as the host's.": "あなたのMOD設定はホストのものと一致しません。",
+ "Other setting values:": "異なる設定値：",
+ "%s: %s (host %s, you %s)": "%s：%s（ホスト %s、あなた %s）",
+ "Set the same values in the Mods window (Settings of that mod), then join again.": "MODウィンドウ（そのMODの設定）で同じ値にしてから、もう一度参加してください。"
 }

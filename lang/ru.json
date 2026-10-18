@@ -900,5 +900,9 @@
  "your game version is different from the host's: update both games": "версия вашей игры отличается от версии хоста: обновите обе игры",
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "ваши игровые моды отличаются от модов хоста: запустите игру из лаунчера с модами хоста",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "версия ваших модов отличается от версии хоста: обоим игрокам нужна одна и та же версия Dungeon Settlers Modded",
- "‹ Newer": "‹ Новые"
+ "‹ Newer": "‹ Новые",
+ "Your mod settings are not the same as the host's.": "Ваши настройки модов не совпадают с настройками хоста.",
+ "Other setting values:": "Другие значения настроек:",
+ "%s: %s (host %s, you %s)": "%s: %s (хост %s, вы %s)",
+ "Set the same values in the Mods window (Settings of that mod), then join again.": "Установите те же значения в окне модов (настройки этого мода), затем подключитесь снова."
 }
