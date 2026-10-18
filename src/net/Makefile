@@ -4,7 +4,7 @@ SRC      = dsnet_link.c dsnet_server.c dsnet_client.c
 OBJ      = $(SRC:%.c=build/%.o) build/ds_i18n.o
 I18N     = ../ds_i18n.c
 
-all: build/libdsnet.a build/test_dsnet build/test_link build/test_srv build/test_sim
+all: build/libdsnet.a build/test_dsnet build/test_link build/test_srv build/test_sim build/test_modcheck
 
 build/%.o: %.c dsnet.h dsnet_internal.h
 	@mkdir -p build
@@ -30,7 +30,13 @@ build/test_srv: test/test_srv.c dsnet_server.c build/dsnet_link.o build/dsnet_cl
 build/test_sim: test/test_sim.c dsnet_client.c build/dsnet_link.o build/dsnet_server.o build/ds_i18n.o
 	$(CC) $(CFLAGS) $< build/dsnet_link.o build/dsnet_server.o build/ds_i18n.o -lpthread -o $@
 
-test: build/test_dsnet build/test_link build/test_srv build/test_sim
+# ds_modcheck.h (header only): settings suffix, DSMP_REJOIN line, the loader's hostmods plan JSON
+build/test_modcheck: test/test_modcheck.c ds_modcheck.h
+	@mkdir -p build
+	$(CC) $(CFLAGS) -fsanitize=address,undefined $< -o $@
+
+test: build/test_dsnet build/test_link build/test_srv build/test_sim build/test_modcheck
+	nice -n 19 ./build/test_modcheck
 	nice -n 19 ./build/test_link
 	nice -n 19 ./build/test_srv
 	nice -n 19 ./build/test_sim
