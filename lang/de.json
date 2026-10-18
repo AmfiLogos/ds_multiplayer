@@ -462,6 +462,7 @@
  "Only the host can change the rules.": "Nur der Host kann die Regeln ändern.",
  "Only the host saves this world": "Nur der Host speichert diese Welt",
  "Only the host saves this world. It is saved on the host's computer.": "Nur der Host speichert diese Welt. Sie wird auf dem Computer des Hosts gespeichert.",
+ "Open Settings": "Einstellungen öffnen",
  "Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer.": "Öffne einen deiner Spielstände für andere Spieler. Freunde treten deiner Welt bei und spielen mit deinen Einheiten. Die Welt bleibt auf deinem Computer.",
  "Opens Steam's invite window so you can invite friends into this world.": "Öffnet das Steam-Einladungsfenster, damit du Freunde in diese Welt einladen kannst.",
  "Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version.": "Öffnet das Steam-Einladungsfenster, damit du Freunde einladen kannst, ohne deine Adresse zu teilen. Benötigt die Steam-Version.",
@@ -835,6 +836,7 @@
   "schaut auf denselben Kartenausschnitt wie du.",
   "schauen auf denselben Kartenausschnitt wie du."
  ],
+ "macOS blocked the local network for Dungeon Settlers. Allow it in System Settings > Privacy & Security > Local Network.": "macOS hat das lokale Netzwerk für Dungeon Settlers blockiert. Erlaube es unter Systemeinstellungen > Datenschutz & Sicherheit > Lokales Netzwerk.",
  "majority": "Mehrheit",
  "multiplied": "multipliziert",
  "no pause": "keine Pause",
