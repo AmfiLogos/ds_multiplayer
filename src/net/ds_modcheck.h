@@ -214,10 +214,11 @@ __attribute__((unused)) static void dsmc_set_show(const char *s, char *out, size
 }
 /* ================================================================ "Get the host's mods" (v0.1.14, hostmods CONTRACT)
  * The loader's dsl_hostmods_plan answers JSON {"rows":[{"id","name","host_ver","my_ver","my_on","official","action",
- * "host_set","my_set"}...],"can_fix":0|1,"downloads":N}; the box text is built from it here (pure C, unit-tested).
+ * "host_set","my_set"}...],"can_fix":0|1,"downloads":N,"names_pending":0|1}; the box text is built from it here (pure C, unit-tested).
  * Mod settings are their own lines (`<mod>/<setting>@<value>`, lane modsettings) in the lines given to the loader. */
 typedef struct { char id[64], name[96], host_ver[32], my_ver[32], action[16], host_set[256], my_set[256]; int my_on, official; } dsmc_prow;
-typedef struct { int n, can_fix, downloads; dsmc_prow row[DSMC_MAX_MODS]; } dsmc_plan;
+typedef struct { int n, can_fix, downloads, names_pending; dsmc_prow row[DSMC_MAX_MODS]; } dsmc_plan;   /* names_pending: the loader still
+                                     fetches the name of a mod this copy does not have (ask again shortly) */
 
 __attribute__((unused)) static const char *dsmc_j_ws(const char *p) { while (p && (*p == ' ' || *p == '\n' || *p == '\r' || *p == '\t')) p++; return p; }
 __attribute__((unused)) static const char *dsmc_j_after_str(const char *p) {          /* p at '"': just after the closing quote (NULL: broken) */
@@ -306,6 +307,7 @@ __attribute__((unused)) static int dsmc_plan_parse(const char *json, dsmc_plan *
     if (!r || *r != '[') return -1;
     pl->can_fix = dsmc_j_int(dsmc_j_get(json, "can_fix"), 0);
     pl->downloads = dsmc_j_int(dsmc_j_get(json, "downloads"), 0);
+    pl->names_pending = dsmc_j_int(dsmc_j_get(json, "names_pending"), 0);
     const char *p = dsmc_j_ws(r + 1);
     while (p && *p == '{' && pl->n < DSMC_MAX_MODS) {
         dsmc_prow *w = &pl->row[pl->n++];
