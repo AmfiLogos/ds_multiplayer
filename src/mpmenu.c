@@ -2197,6 +2197,7 @@ static void lobby_hold(int on) {
  * the title is up; if the box cannot be found, the text goes to the Multiplayer button line as before. */
 static uintptr_t h_cnv; static void *k_cnv;
 static int notice_tries, title_calm;
+static void lbox_grow(Obj v);
 static void notice_frame(const mpm_obs *o) {
     /* the title (~3 s calm), or the world for a failed start / join that stays there (MPM_FAILED: the host's world, or
        a guest's own world); never in the world for a session that ended, since the guest goes back to the title then */
@@ -2218,6 +2219,7 @@ static void notice_frame(const mpm_obs *o) {
     txt_fit_stock(AT(v, 0x30, Obj));                                        /* a long text auto-sizes in the stock box */
     tmp_set(AT(v, 0x40, Obj), TR("OK"));
     u_go_active(u_go(v), true);
+    lbox_grow(v);                                                           /* a text too long for the stock box: it grows */
     rig_log("mpmenu: notice box: %s", M.notice);
     M.notice[0] = 0; notice_tries = 0;
 }
@@ -2236,6 +2238,78 @@ static int lbox_ours(Obj v) {
     char t[2048] = ""; str_utf8(tmp_get(AT(v, 0x30, Obj)), t, sizeof t);
     char want[2048]; str_utf8(u_str_ok(lbox_text), want, sizeof want);       /* the same ASCII-safe form as the read-back */
     return !strcmp(t, want);
+}
+/* The stock box grows to our text (CommonNoticeView: Panel_Notice > Img_BackGroundBox, pivot top, 546 x 208, whose
+ * GridLayoutGroup lays the button row from its top + padding; Txt_Notice beside it, 520 x 108.6, centred). A text too
+ * long for that rect even at the fit engine's smallest size (txt_fit_h): the text rect, the box and the grid's top padding
+ * grow by the overflow; the box half up, half down (it stays centred), so the text keeps its margins and the buttons stay
+ * at the box's bottom, under the text. Capped at the screen (5% margin): the text then auto-sizes (fit engine). The stock
+ * values come back as soon as the view shows another text or closes (lbox_fit_frame): the game's own notices as before. */
+static struct { int on, pad_top; uintptr_t h_bg, h_tx; float bg_h, bg_y, tx_h, tx_y, extra; uint32_t hash; } LG;
+static void *lg_pad, *lg_top, *lg_settop, *lg_mark, *lg_pivot;
+static int lg_methods(void) {
+    static int looked;
+    if (!looked) { looked = 1; lg_pad = mth("UnityEngine.UI", "LayoutGroup", "get_padding", 0); lg_top = mth("UnityEngine", "RectOffset", "get_top", 0);
+                   lg_settop = mth("UnityEngine", "RectOffset", "set_top", 1); lg_mark = mth("UnityEngine.UI", "LayoutRebuilder", "MarkLayoutForRebuild", 1);
+                   lg_pivot = mth("UnityEngine", "RectTransform", "get_pivot", 0); }
+    return lg_pad && lg_top && lg_settop && lg_mark && lg_pivot;
+}
+static Obj lg_padding(Obj bg) { Obj g = comp_of(bg, "UnityEngine.UI", "LayoutGroup"); return g && lg_methods() ? MCALL(lg_pad, Obj, Obj, const void *)(g, lg_pad) : NULL; }
+static void lg_set(Obj rt, float h, float y) {                               /* sizeDelta.y, anchoredPosition.y */
+    V2 sd = F(0x510701C, V2 (*)(Obj, void *))(rt, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL);
+    sd.y = h; ap.y = y;
+    F(0x5107110, void (*)(Obj, V2, void *))(rt, sd, NULL); F(0x5106F2C, void (*)(Obj, V2, void *))(rt, ap, NULL);
+}
+static void lbox_restore(void) {
+    if (!LG.on) return;
+    LG.on = 0;
+    Obj bg = u_gc_get(LG.h_bg), tx = u_gc_get(LG.h_tx);
+    if (u_alive(tx) && mm_is(tx, K_RT)) lg_set(tx, LG.tx_h, LG.tx_y);
+    if (u_alive(bg) && mm_is(bg, K_RT)) {
+        lg_set(bg, LG.bg_h, LG.bg_y);
+        Obj po = lg_padding(bg);
+        if (po) MCALL(lg_settop, void, Obj, int, const void *)(po, LG.pad_top, lg_settop);
+        MCALL(lg_mark, void, Obj, const void *)(bg, lg_mark);
+    }
+    u_gc_free(LG.h_bg); u_gc_free(LG.h_tx); LG.h_bg = LG.h_tx = 0;
+    rig_log("mpmenu: notice box: stock size again (was %.0f higher)", LG.extra);
+}
+static void lbox_grow(Obj v) {
+    lbox_restore();
+    if (!u_alive(v) || !u_on(v) || !fit_methods() || !lg_methods()) return;
+    Obj t = AT(v, 0x30, Obj); if (!u_alive(t) || !mm_is(t, K_TMP)) return;
+    Obj tx = u_tr(t), bg = tr_find(u_tr(v), "Panel_Notice/Img_BackGroundBox");
+    if (!mm_is(tx, K_RT) || !u_alive(bg) || !mm_is(bg, K_RT)) return;
+    Obj po = lg_padding(bg); if (!po) return;
+    fit_rect r = MCALL(m_fit_rect, fit_rect, Obj, const void *)(tx, m_fit_rect);
+    float need = txt_fit_h(t, r.w, r.h), extra = need > r.h + 1 ? (float)(int)(need - r.h + 4.99f) : 0;
+    if (extra < 1) return;
+    V2 bsd = F(0x510701C, V2 (*)(Obj, void *))(bg, NULL), bap = F(0x5106E38, V2 (*)(Obj, void *))(bg, NULL);
+    V2 tsd = F(0x510701C, V2 (*)(Obj, void *))(tx, NULL), tap = F(0x5106E38, V2 (*)(Obj, void *))(tx, NULL);
+    float br[4] = { 0 }; rect_of(bg, br);
+    float sh = (float)F(0x5092CD4, int (*)(void *))(NULL), sc = bsd.y > 1 ? (br[3] - br[1]) / bsd.y : 0;   /* screen px per canvas unit */
+    if (sc > 0 && sh > 0) {                                                  /* the box grows by extra / 2 each way: room on its tighter side */
+        float room = br[1] - sh * 0.05f; if (sh * 0.95f - br[3] < room) room = sh * 0.95f - br[3];
+        float mx = (float)(int)(2 * room / sc); if (mx < 0) mx = 0;
+        if (extra > mx) { rig_log("mpmenu: notice box: %.0f higher needed, the screen has room for %.0f (the text auto-sizes)", extra, mx); extra = mx; }
+        if (extra < 1) return;
+    }
+    V2 bpv = MCALL(lg_pivot, V2, Obj, const void *)(bg, lg_pivot), tpv = MCALL(lg_pivot, V2, Obj, const void *)(tx, lg_pivot);
+    LG.bg_h = bsd.y; LG.bg_y = bap.y; LG.tx_h = tsd.y; LG.tx_y = tap.y; LG.extra = extra;
+    LG.pad_top = MCALL(lg_top, int, Obj, const void *)(po, lg_top);
+    lg_set(tx, tsd.y + extra, tap.y + extra * (tpv.y - 0.5f));               /* the same centre */
+    lg_set(bg, bsd.y + extra, bap.y + extra * (bpv.y - 0.5f));               /* the same centre, extra / 2 more each way */
+    MCALL(lg_settop, void, Obj, int, const void *)(po, LG.pad_top + (int)extra, lg_settop);   /* the button row: extra lower from the box's top */
+    MCALL(lg_mark, void, Obj, const void *)(bg, lg_mark);
+    char rb[2048] = ""; str_utf8(tmp_get(t), rb, sizeof rb); LG.hash = fit_hash(rb);
+    LG.h_bg = u_gc_new(bg); LG.h_tx = u_gc_new(tx); LG.on = 1;
+    rig_log("mpmenu: notice box: %.0f higher for its text (needs %.0f, rect %.0f)", extra, need, r.h);
+}
+static void lbox_fit_frame(void) {                                           /* the box closed or shows another text: stock size */
+    if (!LG.on) return;
+    Obj v = lbox_view(); char t[2048] = "";
+    if (u_alive(v) && u_on(v)) str_utf8(tmp_get(AT(v, 0x30, Obj)), t, sizeof t);
+    if (!t[0] || fit_hash(t) != LG.hash) lbox_restore();
 }
 static int leave_box_text(char *out, size_t cap) {             /* returns how many other players are in (they go back to the title) */
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
@@ -2267,6 +2341,7 @@ static void leave_box_show(void) {
     tmp_set(AT(v, 0x50, Obj), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }   /* centred, as the ui lane's boxes */
     u_go_active(u_go(v), true);
+    lbox_grow(v);
     lbox_up = BX_LEAVE;
     rig_log("mpmenu: Leave box: %s", lbox_text);
 }
@@ -2311,6 +2386,7 @@ static void box_show(int kind, const char *text, const char *yes, const char *no
     if (no) tmp_set(AT(v, 0x50, Obj), no);
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }
     u_go_active(u_go(v), true);
+    lbox_grow(v);                                                           /* a text too long for the stock box: it grows (lbox_fit_frame: back) */
     lbox_up = kind;
     rig_log("mpmenu: box %d: %s", kind, text);
 }
@@ -2648,6 +2724,7 @@ static void hm_info_update(const char *head, const char *body) {             /* 
     if (lbox_up != BX_HOSTMODS_INFO || !lbox_ours(v)) return;
     snprintf(lbox_text, sizeof lbox_text, "<size=130%%>%s</size>\n%s", head, body); dsi_utf8_fix_end(lbox_text);
     tmp_set(AT(v, 0x30, Obj), lbox_text);
+    lbox_grow(v);
 }
 static void hostmods_click(int confirm) {
     if (confirm && HM.can_fix) { HM.go = 1; rig_log("mp: hostmods: Get the host's mods"); }
@@ -3803,6 +3880,7 @@ void mpmenu_frame(void) {
     leave_box_frame();
     invite_frame(&o);
     hostmods_frame();
+    lbox_fit_frame();
     rejoin_frame(&o);
     tag_frame(&o);
     tag_click_frame();
@@ -3957,12 +4035,32 @@ static int click_px(float x, float y, const char *via) {                     /* 
     rig_log("mpmenu: test click at %.0f,%.0f (points, scale %.1f)", pt.x, pt.y, sc);
     return 2;
 }
+static int tree_det;                                                        /* mpm_tree {detail:1}: RectTransform values + layout components */
 static void tree(Buf *b, Obj tr, int depth, int *n) {
     if (!u_alive(tr) || *n > 200) return;
     char nm[96] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(tr, NULL), nm, sizeof nm);
     float r[4] = {0}; rect_of(tr, r);
     bput(b, "%s{\"d\":%d,\"name\":", (*n)++ ? "," : "", depth); bstr(b, nm);
-    bput(b, ",\"on\":%d,\"rect\":[%.0f,%.0f,%.0f,%.0f]}", u_go_active_self(u_go(tr)), r[0], r[1], r[2], r[3]);
+    bput(b, ",\"on\":%d,\"rect\":[%.0f,%.0f,%.0f,%.0f]", u_go_active_self(u_go(tr)), r[0], r[1], r[2], r[3]);
+    if (tree_det && mm_is(tr, K_RT)) {
+        static void *ma0, *ma1, *mpv;
+        if (!ma0) { ma0 = mth("UnityEngine", "RectTransform", "get_anchorMin", 0); ma1 = mth("UnityEngine", "RectTransform", "get_anchorMax", 0); mpv = mth("UnityEngine", "RectTransform", "get_pivot", 0); }
+        V2 sd = F(0x510701C, V2 (*)(Obj, void *))(tr, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(tr, NULL);
+        V2 a0 = ma0 ? MCALL(ma0, V2, Obj, const void *)(tr, ma0) : (V2){ -1, -1 }, a1 = ma1 ? MCALL(ma1, V2, Obj, const void *)(tr, ma1) : (V2){ -1, -1 };
+        V2 pv = mpv ? MCALL(mpv, V2, Obj, const void *)(tr, mpv) : (V2){ -1, -1 };
+        bput(b, ",\"amin\":[%.2f,%.2f],\"amax\":[%.2f,%.2f],\"pivot\":[%.2f,%.2f],\"size\":[%.1f,%.1f],\"pos\":[%.1f,%.1f],\"comps\":[",
+             a0.x, a0.y, a1.x, a1.y, pv.x, pv.y, sd.x, sd.y, ap.x, ap.y);
+        static const char *cl[][2] = { { "UnityEngine.UI", "GridLayoutGroup" }, { "UnityEngine.UI", "VerticalLayoutGroup" }, { "UnityEngine.UI", "HorizontalLayoutGroup" },
+                                       { "UnityEngine.UI", "ContentSizeFitter" }, { "UnityEngine.UI", "LayoutElement" }, { "UnityEngine.UI", "Image" },
+                                       { "UnityEngine.UI", "Button" }, { "TMPro", "TMP_Text" }, { "UnityEngine", "Canvas" } };
+        int c = 0; for (size_t i = 0; i < sizeof cl / sizeof cl[0]; i++) if (comp_of(tr, cl[i][0], cl[i][1])) { bput(b, "%s", c++ ? "," : ""); bstr(b, cl[i][1]); }
+        bput(b, "]");
+        Obj po = lg_padding(tr);
+        if (po) { static void *mb, *mal; if (!mb) { mb = mth("UnityEngine", "RectOffset", "get_bottom", 0); mal = mth("UnityEngine.UI", "LayoutGroup", "get_childAlignment", 0); }
+                  bput(b, ",\"pad_top\":%d,\"pad_bottom\":%d,\"align\":%d", MCALL(lg_top, int, Obj, const void *)(po, lg_top), mb ? MCALL(mb, int, Obj, const void *)(po, mb) : -1,
+                       mal ? MCALL(mal, int, Obj, const void *)(comp_of(tr, "UnityEngine.UI", "LayoutGroup"), mal) : -1); }
+    }
+    bput(b, "}");
     if (depth >= 4) return;
     int k = (mm_is(tr, K_TR) ? F(0x510EAE4, int (*)(Obj, void *))(tr, NULL) : 0);
     for (int i = 0; i < k; i++) tree(b, (mm_is(tr, K_TR) ? F(0x510FC60, Obj (*)(Obj, int, void *))(tr, i, NULL) : NULL), depth + 1, n);
@@ -4079,8 +4177,9 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         return !strcmp(how, "backbuffer") ? backbuffer_shot(p) : ui_shot(p);
     }
     if (!strcmp(cmd, "mpm_tree")) {                                         /* hierarchy of the Esc menu (layout debugging) */
-        char wh[16] = ""; jstr(line, "what", wh, sizeof wh);                /* "load": the load list (SaveLoadView) */
-        Obj v = !strcmp(wh, "load") ? find_view_x(&h_slv, &k_slv, "Refactor", "SaveLoadView", true) : !strcmp(wh, "title") ? title_view() : esc_view(); if (!v) return strdup("{\"ok\":false,\"error\":\"no view\"}");
+        char wh[16] = ""; jstr(line, "what", wh, sizeof wh);                /* "load": the load list (SaveLoadView); "notice": the stock notice box */
+        double dt = 0; jnum(line, "detail", &dt); tree_det = dt != 0;
+        Obj v = !strcmp(wh, "load") ? find_view_x(&h_slv, &k_slv, "Refactor", "SaveLoadView", true) : !strcmp(wh, "title") ? title_view() : !strcmp(wh, "notice") ? lbox_view() : esc_view(); if (!v) return strdup("{\"ok\":false,\"error\":\"no view\"}");
         Buf b = {0}; int n = 0; bput(&b, "{\"ok\":true,\"screen\":[%d,%d],\"tree\":[", F(0x5092C94, int (*)(void *))(NULL), F(0x5092CD4, int (*)(void *))(NULL));
         tree(&b, u_tr(v), 0, &n); bput(&b, "]}"); return b.p;
     }
@@ -4280,6 +4379,15 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     if (!strcmp(cmd, "mpm_return_game")) { Obj ev = esc_view(); if (ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL); return strdup("{\"ok\":true}"); }   /* test: Esc menu > Return to Game */
     if (!strcmp(cmd, "mpm_hostmods")) {                                     /* test: {test:1} = DSMP_HOSTMODS_TEST (auto click); state of the hostmods box */
         double v = -1; jnum(line, "test", &v); if (v >= 0) { hostmods_loader(); hm_test = v != 0; }
+        char pf[1024] = "";                                                 /* {plan_file:<dsl_hostmods_plan JSON>, vanilla:0|1}: the box from that plan (layout tests) */
+        if (jstr(line, "plan_file", pf, sizeof pf)) {
+            static char pj[32768]; static dsmc_plan pl; FILE *f = fopen(pf, "rb"); size_t nr = f ? fread(pj, 1, sizeof pj - 1, f) : 0; if (f) fclose(f); pj[nr] = 0;
+            double va = 0; jnum(line, "vanilla", &va); hostmods_loader();
+            if (dsmc_plan_parse(pj, &pl) <= 0) return strdup("{\"ok\":false,\"error\":\"bad plan\"}");
+            HM.vanilla = va != 0; HM.host[0] = 0; HM.rejoin[0] = 0;
+            dsmc_hostmods_text(&pl, HM.vanilla, HM.text, sizeof HM.text, HM_ROWS); dsi_utf8_fix_end(HM.text);
+            HM.can_fix = pl.can_fix != 0; HM.names_pending = 0; HM.pending = 1; HM.tries = 0; HM.go = 0; HM.auto_done = 1;
+        }
         Buf b = {0}; bput(&b, "{\"ok\":true,\"loader\":%d,\"test\":%d,\"pending\":%d,\"box\":%d,\"can_fix\":%d,\"busy\":%d,\"rejoined\":%d,\"rejoin_state\":%d,\"rejoin\":",
                           hostmods_loader(), hm_test, HM.pending, lbox_up == BX_HOSTMODS, HM.can_fix, HM.busy, hm_rejoined, RJ.state);
         bstr(&b, HM.rejoin); bput(&b, "}"); return b.p;
