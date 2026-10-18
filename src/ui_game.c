@@ -97,6 +97,21 @@ static void unit_name(Obj unit, char *out, size_t cap) {   /* EntityDisplayNameE
     str_utf8(F(0xFA467C, Obj (*)(Obj, void *))(unit, NULL), out, cap);
     if (!out[0]) snprintf(out, cap, "%s", TR("this unit"));
 }
+/* the name of a unit by guid: the current map, then the base (0) and the dungeon (1), then the last name seen
+   (4-player test: after a return to base the lent unit was on no map we looked at -> "Ann took back this unit") */
+static void unit_name_g(const uint8_t g[16], char *out, size_t cap) {
+    static struct { uint8_t g[16]; char n[64]; } seen[32]; static int next;
+    Guid gg; memcpy(&gg, g, 16);
+    Obj u = find_unit(cur_map(), gg);
+    for (int m = 0; !u && m < 2; m++) u = find_unit(m, gg);
+    out[0] = 0;
+    if (u) str_utf8(F(0xFA467C, Obj (*)(Obj, void *))(u, NULL), out, cap);   /* GetDisplayName */
+    int k = 0; while (k < 32 && memcmp(seen[k].g, g, 16)) k++;
+    if (out[0]) {
+        if (k == 32) { k = next++ & 31; memcpy(seen[k].g, g, 16); }
+        snprintf(seen[k].n, sizeof seen[k].n, "%s", out);
+    } else snprintf(out, cap, "%s", k < 32 && seen[k].n[0] ? seen[k].n : TR("this unit"));
+}
 
 /* i18n: "<color=hex>text</color>" with the colour outside the translated text (8 rotating buffers: one call
    may use a few at once) */
@@ -785,10 +800,8 @@ int ui_check_order(const uint8_t g[16]) {
     int o = owner_of_guid(g);
     dsnet_client *c = cli();
     if (c ? dsnet_may_order(c, me(), g) : may_order(o)) return 1;   /* own, free->host, reserved->host admin/temp, admin */
-    Guid gg; memcpy(&gg, g, 16);
-    Obj u = find_unit(cur_map(), gg);
     char un[64], why[256];
-    unit_name(u, un, sizeof un); not_mine_text(g, why, sizeof why);
+    unit_name_g(g, un, sizeof un); not_mine_text(g, why, sizeof why);
     if (o < 0 && o != UI_RESERVED) notice(TR("%s: %s. Right-click its portrait to take it."), un, why);
     else notice("%s: %s", un, why);
     return 0;
@@ -3418,7 +3431,7 @@ static void lend_do(const uint8_t g[16], int act, int arg) {
     else if (act == LA_GIVE) rc = dsnet_give_back(c, g);
     else if (act == LA_RELEASE) {                            /* ux_flow F18: say it, as the portrait path does */
         rc = mp_release(s, g);
-        Guid gg; memcpy(&gg, g, 16); char un[64]; unit_name(find_unit(cur_map(), gg), un, sizeof un);
+        char un[64]; unit_name_g(g, un, sizeof un);
         if (!rc) notice(TR("You release %s"), un);
     }
     else if (act >= LA_FOLLOW) { coop_act(act, arg); return; }
@@ -3449,9 +3462,8 @@ static void lmenu_draw(void) {
         Obj t = u_gc_get(h_lrow[i]);
         show(t, i < lmenu_n);
         if (i >= lmenu_n) continue;
-        Guid gg; memcpy(&gg, lmenu_unit, 16);
         char un[64], nm[40], txt[160]; ui_players p; players(&p);
-        unit_name(find_unit(cur_map(), gg), un, sizeof un);
+        unit_name_g(lmenu_unit, un, sizeof un);
         const char *col = i == lmenu_hover ? "#d9be8f" : "#ccbeb8";
         if (lrow_act[i] == LA_FOLLOW) snprintf(txt, sizeof txt, TR("<color=%s>Follow %s's view</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
         else if (lrow_act[i] == LA_UNFOLLOW) snprintf(txt, sizeof txt, TR("<color=%s>Stop following</color>"), col);
@@ -3519,8 +3531,7 @@ static void lend_messages(dsnet_client *c, const ui_players *p) {
     seen = seq;
     uint8_t g[16]; int owner = -1, from = -1, to = -1, why = -1;
     if (dsnet_lend_last(c, g, &owner, &from, &to, &why)) return;
-    Guid gg; memcpy(&gg, g, 16);
-    char un[64], on_[40], bn[40]; unit_name(find_unit(cur_map(), gg), un, sizeof un);
+    char un[64], on_[40], bn[40]; unit_name_g(g, un, sizeof un);
     int lender = owner >= 0 ? owner : 0, borrower = why == DSNET_LEND_LENT ? to : from;
     ui_player_label(p, lender, on_);
     ui_player_label(p, borrower >= 0 ? borrower : 0, bn);
