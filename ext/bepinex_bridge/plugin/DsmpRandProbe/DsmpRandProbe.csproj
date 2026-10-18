@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- TEST ONLY (not for players): tests/rand_pair.py -->
+  <PropertyGroup><AssemblyName>DsmpRandProbe</AssemblyName><RootNamespace>DsmpRandProbe</RootNamespace><Version>1.0.0</Version></PropertyGroup>
+  <ItemGroup>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(Lib)UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(Lib)Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(Lib)0Harmony.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <ItemGroup><ProjectReference Include="../DsmpBridge/DsmpBridge.csproj"><Private>false</Private></ProjectReference></ItemGroup>
+</Project>
