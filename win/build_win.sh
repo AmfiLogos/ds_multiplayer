@@ -40,7 +40,7 @@ PM+=(-ffile-prefix-map=$C=/custom -ffile-prefix-map=$DSMP_ROOT=/mp)
 RL=(-Wl,--no-insert-timestamp)                                   # and no build time in the PE headers
 CF=($PM -O2 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_STDIO=1 -fno-strict-aliasing -DCM_SAME_IMAGE)
 TARGET=${DSMP_TARGET:-baselib}
-if [[ $TARGET == module ]]; then CF+=(-DDSMP_MODULE); INC+=(-I${DSL_SDK:-~/ds_launcher/loader/sdk}); fi
+if [[ $TARGET == module ]]; then CF+=(-DDSMP_MODULE); INC=(-I${DSL_SDK:-~/ds_launcher/loader/sdk} $INC); fi   # the loader's dsl_sdk.h before sdk/ (an older copy)
 GEN=(build/gen/*.c build/gen/net/dsnet_link.c build/gen/net/dsnet_server.c build/gen/net/dsnet_client.c)
 CM_SOLO=(); CM_MP=(); while read k f; do if [[ $k == solo ]]; then CM_SOLO+=(build/gen_cm/$f); else CM_MP+=(build/gen_cm/$f); fi; done < build/gen_cm/lists.txt
 # rig baselib.dll: Custom Modes in the same DLL (its mp part calls the solo part: My Units, fe_json); cm_module.c is the
