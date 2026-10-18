@@ -69,7 +69,7 @@ class Report:
 # ------------------------------------------------------------------ the Mac side (hidden test copy W, loader + the release's Mac mods)
 class Mac:
     def __init__(self, build=None):
-        self.env = dict(os.environ)
+        self.env = dict(os.environ, DSRIG_CTL='1')                     # v0.1.15: the Mac control socket opens only with it
         if build:
             self.env['MAC_BUILD'] = build
 
@@ -199,8 +199,10 @@ def mods_state(w):
 def item1(w, rep, a):
     """fresh install + update; ZET-U off; normal save without ZET-U warning; crash consent once (item 6)"""
     I = '1'
-    for kind, setup in (('fresh', a.setup), ('update', a.setup)):
-        if kind == 'fresh':
+    for kind, setup in ((('update', a.setup),) if a.update_only else (('fresh', a.setup), ('update', a.setup))):
+        if kind == 'update' and a.update_only:
+            pass                                                     # the new Setup over the installed release
+        elif kind == 'fresh':
             if w.exists(W.ROOT):
                 w.kill_all()
                 w.move(W.ROOT, W.WORK + r'\to_delete\install_' + time.strftime('%Y%m%d-%H%M%S'))   # never deleted
@@ -690,8 +692,11 @@ def itemP(w, rep, a):
     w.start()                                                        # winrig always sets DSRIG_PORT + DSRIG_CTL
     rep.check(I, 'with the test variables: the tool connects', (w.ping() or {}).get('pid') == w.pid, w.pid)
     out = http_probe(w, w.port)
-    rep.check(I, 'test mode: an HTTP-looking connection is refused and closed, its ping body not answered',
-              'closed=yes' in out and '"pong"' not in out, out.strip()[-300:])
+    refused = 'closed=yes' in out and '"pong"' not in out
+    if a.http_record:                                                # v0.1.15 has no HTTP refusal: record what happens
+        rep.check(I, f'test mode, HTTP-looking connection (recorded): {"refused + closed" if refused else "NOT refused"}', True, out.strip()[-300:])
+    else:
+        rep.check(I, 'test mode: an HTTP-looking connection is refused and closed, its ping body not answered', refused, out.strip()[-300:])
     rep.check(I, 'the game still runs after the HTTP probe', w.alive() and (w.ping() or {}).get('pid') == w.pid)
     fresh_logs(w, rep, 'P')
     w.stop()
@@ -703,7 +708,9 @@ def main():
     p.add_argument('--items', default='1,2,3,4,5'); p.add_argument('--mac-build'); p.add_argument('--mp-dll')
     p.add_argument('--save-base', default=os.path.join(SAVES, 'base_25846389.json'))
     p.add_argument('--save-dungeon', default=os.path.join(SAVES, 'boss_golem_25846389.json'))
-    p.add_argument('--save-host', default=SEED_7)                    # Mac host for items 3 / 4 (vmwin2's passing rejoin: this save)
+    p.add_argument('--save-host', default=SEED_7)
+    p.add_argument('--update-only', action='store_true')
+    p.add_argument('--http-record', action='store_true')             # item P: record the HTTP case instead of failing on it             # item 1: only the new Setup over the installed one                    # Mac host for items 3 / 4 (vmwin2's passing rejoin: this save)
     a = p.parse_args()
     rep = Report(os.path.abspath(a.out))
     w = W.Win(); w.up()
