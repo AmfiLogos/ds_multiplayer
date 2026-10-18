@@ -75,7 +75,7 @@ static char *c_inject(const char *line) {
         int off = atoi(at + 1);
         const char *v = strchr(ke, ':'); if (!v) break; v++;
         while (*v == ' ') v++;
-        char sv[256] = "";
+        char sv[4096] = "";                                /* a guid list: 37 chars a guid (was 256: lists cut to 6 guids) */
         if (*v == '"') { const char *e = strchr(v + 1, '"'); size_t l = e ? (size_t)(e - v - 1) : 0; if (l >= sizeof sv) l = sizeof sv - 1; memcpy(sv, v + 1, l); sv[l] = 0; p = e ? e + 1 : v + 1; }
         char *f = (char *)o + off;
         if (!strcmp(kind, "i32")) *(int32_t *)f = atoi(v);
@@ -87,8 +87,11 @@ static char *c_inject(const char *line) {
         else if (!strcmp(kind, "ni32")) { f[0] = 1; *(int32_t *)(f + 4) = atoi(v); }
         else if (!strcmp(kind, "str")) SETREF(o, f, F(0x6F9738, Obj (*)(const char *))(sv));
         else if (!strcmp(kind, "lguid")) {                 /* "g1,g2" -> List<Guid> */
-            uint8_t gl[32][16]; int gn = 0; char tmp[256]; snprintf(tmp, sizeof tmp, "%s", sv);
-            for (char *t = strtok(tmp, ","); t && gn < 32; t = strtok(NULL, ",")) if (guid_parse(t, (Guid *)gl[gn])) gn++;
+            uint8_t gl[32][16]; int gn = 0; char tmp[sizeof sv]; snprintf(tmp, sizeof tmp, "%s", sv);
+            for (char *t = strtok(tmp, ","); t; t = strtok(NULL, ",")) {
+                if (gn == 32 || !guid_parse(t, (Guid *)gl[gn])) return err_json("bad or too many guids in the list");
+                gn++;
+            }
             SETREF(o, f, ord_debug_lguid_new((const uint8_t (*)[16])gl, gn));
         }
         else if (!strcmp(kind, "ent")) {
