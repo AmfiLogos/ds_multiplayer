@@ -2047,6 +2047,7 @@ static int hostmods_loader(void) {                                   /* 1 = the 
         hm_plan = (int (*)(const char *, int, char *, size_t))hm_sym("dsl_hostmods_plan");
         hm_get = (int (*)(const char *, int, const char *, char *, size_t))hm_sym("dsl_hostmods_get");
         hm_state = (int (*)(int *, char *, size_t))hm_sym("dsl_hostmods_state");
+        dsmc_set_setting_text((dsmc_setting_fn)hm_sym("dsl_setting_text"));   /* the box's settings: labels and values in the player's language */
         const char *t = getenv("DSMP_HOSTMODS_TEST"); if (t && !strcmp(t, "1")) hm_test = 1;
         rig_log("mpmenu: hostmods: loader API %s%s", hm_plan && hm_get && hm_state ? "found" : "not found (older loader: text notice)", hm_test ? ", test hook on" : "");
     }

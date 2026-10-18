@@ -97,11 +97,13 @@
  "%s: %s (host %s, you %s)": "%s：%s（ホスト %s、あなた %s）",
  "%s: %s. Right-click its portrait to take it.": "%s：%s。ポートレートを右クリックして引き取ります。",
  "%s: disconnected": "%s：切断",
+ "%s: host %s, you %s": "%s：ホスト %s、あなた %s",
  "%s<color=#a69085> pinged a spot.</color>": "%s<color=#a69085>が場所にピンを立てました。</color>",
  "(click for options)": "（クリックでオプション）",
  "(none)": "（なし）",
  "(off)": "（オフ）",
  ", ": "、",
+ "; ": "；",
  "<color=#a69085>%s's colour</color>": "<color=#a69085>%sの色</color>",
  "<color=#a69085>Address:</color> <color=#ccbeb8>%s</color>": "<color=#a69085>アドレス：</color> <color=#ccbeb8>%s</color>",
  "<color=#a69085>Floor %d</color>": "<color=#a69085>%d階</color>",
@@ -876,7 +878,6 @@
  "sees this too||see this too": [
   "もこれを見ています"
  ],
- "settings: host %s, you %s": "設定：ホスト %s、あなた %s",
  "shared": "共有",
  "shared, anyone equips any unit": "共有（誰でも全ユニットを装備可）",
  "shared, equip your own units": "共有（自分のユニットのみ装備）",
