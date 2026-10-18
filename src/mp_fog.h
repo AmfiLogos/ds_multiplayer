@@ -5,4 +5,5 @@
 void mp_fog_install(void);            /* hooks; once at start (mpmenu_install) */
 void mp_fog_set_shared(int on);       /* 1 = vanilla; redraws when it changes */
 void mp_fog_owner_changed(void);      /* unit owners / lends changed: redraw */
-void mp_fog_frame(void);              /* main thread, once per frame (mpmenu_frame) */
+void mp_fog_frame(void);              /* main thread, once per frame (mpmenu_frame); also the blank-view check */
+char *mp_fog_state(int watch);        /* test (mpm_fog): JSON (malloc); watch 0/1 sets the watcher rule, -1 only reads */

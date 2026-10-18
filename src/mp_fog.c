@@ -17,6 +17,11 @@
 // A source counts for me: its guid is in VisionDataHandler._playerVisions AND (dsnet owner == me, or lent to me, or no owner
 // (free unit, building, anything not a unit)). Plus the _temporaryPlayerVisions tiles (shown, never added to my_seen,
 // like vanilla where temporary vision never marks a tile visited).
+// Watcher (owner 2026-10-18): a player with no source of his own on the map (none owned, none lent; a guest watching the
+// host's expedition, a spectator) gets every player source: the expedition owner's vision, the union when several play.
+// Players with units keep the host's rule. Still display only (same masks, same leaves).
+// Blank view (owner 2026-10-18): in a session, a loaded map with no visible tile for 5 s writes one ERROR [view_blank]
+// line (rig.log, and dsload.log through the loader's dsl_log when it is there); once per occurrence, at most once a minute.
 #include "rig.h"
 #include "mp.h"
 #include "mp_game.h"
@@ -25,6 +30,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* hooks */
 #define VA_FOGP_REFRESH_VISION   0xC2B9D4   /* FogOfWarPresenter.RefreshVision(IViewUpdateData)          UpdateType 25 */
@@ -65,6 +71,8 @@ typedef struct {
     Obj vh;                          /* VisionDataHandler the masks were built from */
     int vh_scene, seeded;            /* scene of vh; my_seen was seeded by a SetDefaultVision */
     int64_t built_frame;
+    int watcher;                     /* last rebuild: no source of mine here, every player source counted */
+    int n_own, n_vis, n_all;         /* last rebuild: my sources; tiles shown visible (mask); tiles of all player sources */
 } MapFog;
 
 static MapFog M[NMAP];
@@ -74,6 +82,7 @@ static int g_ctx = CTX_NONE, g_ctx_map = -1;
 static int g_pending;                /* a full redraw is wanted (main thread, steady game) */
 static pthread_t g_main; static int g_main_known;
 static int g_logged_layout, g_logged_range;
+static int g_watch_rule = 1;         /* test switch (mpm_fog {watch:0}): 0 = the old rule, a watcher sees only his own */
 
 static const char *cls_name(Obj o) { return o && *(void **)o ? F(VA_IL_CLASS_NAME, const char *(*)(void *))(*(void **)o) : ""; }
 static int is_cls(Obj o, const char *n) { return o && !strcmp(cls_name(o), n); }
@@ -188,25 +197,37 @@ static int rebuild(int map, Obj vh) {
     int np = set_live(pvs, 24, "_playerVisions HashSet<Guid> stride 24"); if (np < 0) return -1;
     int nt = dict_live(tmp, 20, "_temporaryPlayerVisions Dictionary<Vector2Int,int> stride 20"); if (nt < 0) return -1;
 
-    /* player-side guids that count for me */
-    Guid mine[1024]; int nm = 0;
+    /* player-side guids; cnt = counts for me. Watcher: none is mine or lent to me -> all count. */
+    Guid pg[1024]; char cnt[1024]; int npg = 0, nm = 0, own = 0;
     if (pvs) {
         Obj s = AT(pvs, 0x18, Obj); int last = AT(pvs, 0x24, int32_t);
-        for (int i = 0; i < last && nm < 1024; i++) {
+        for (int i = 0; i < last && npg < 1024; i++) {
             char *e = (char *)s + 0x20 + (int64_t)i * 24;
             if (*(int32_t *)e < 0) continue;
-            if (counts_for_me(c, me, (const uint8_t *)(e + 8))) memcpy(&mine[nm++], e + 8, 16);
+            const uint8_t *g = (const uint8_t *)(e + 8);
+            memcpy(&pg[npg], g, 16); cnt[npg++] = (char)counts_for_me(c, me, g);
+            if (dsnet_owner_of(c, g) == me || dsnet_lent_to(c, g) == me) own++;
         }
     }
-    int nsrc = 0, ntiles = 0, first_area_checked = 0;
-    if (visions && nm) {
+    int was = m->watcher;
+    if (npg) m->watcher = g_watch_rule && !own;          /* no player source at all (a load starting): keep the last state */
+    if (m->watcher) memset(cnt, 1, (size_t)npg);
+    for (int k = 0; k < npg; k++) nm += cnt[k];
+    m->n_own = own;
+    if (m->watcher != was) {
+        rig_log("fog: player %d %s on map %d (%d of %d player sources mine or lent)", me,
+                m->watcher ? "has no units: watches with every player's vision" : "has units again: own vision", map, own, npg);
+        if (filtering()) g_pending = 1;                  /* tiles the refresh does not touch: full redraw next frame */
+    }
+    int nsrc = 0, ntiles = 0, nall = 0, first_area_checked = 0;
+    if (visions && npg) {
         Obj ent = AT(visions, 0x18, Obj); int n = AT(visions, 0x20, int32_t);
         for (int i = 0; i < n; i++) {
             char *e = (char *)ent + 0x20 + (int64_t)i * 0x20;
             if (*(int32_t *)e < 0) continue;
-            int hit = 0;
-            for (int k = 0; k < nm && !hit; k++) hit = !memcmp(&mine[k], e + 8, 16);
-            if (!hit) continue;
+            int k = 0;
+            while (k < npg && memcmp(&pg[k], e + 8, 16)) k++;
+            if (k == npg) continue;
             Obj area = *(Obj *)(e + 0x18);
             if (!area) continue;
             if (!first_area_checked) {
@@ -216,6 +237,8 @@ static int rebuild(int map, Obj vh) {
             Obj list = AT(area, 0x20, Obj); if (!list) continue;
             Obj items = AT(list, 0x10, Obj); int sz = AT(list, 0x18, int32_t);
             if (sz < 0 || (sz && (!items || sz > arr_len(items)))) return layout_fail("VisionArea.Positions List size", sz, (long)arr_len(items));
+            nall += sz;
+            if (!cnt[k]) continue;
             for (int j = 0; j < sz; j++) add_vis(m, *(V2I *)((char *)items + 0x20 + (int64_t)j * 8), 1);
             nsrc++; ntiles += sz;
         }
@@ -224,9 +247,10 @@ static int rebuild(int map, Obj vh) {
         Obj ent = AT(tmp, 0x18, Obj); int n = AT(tmp, 0x20, int32_t);
         for (int i = 0; i < n; i++) {
             char *e = (char *)ent + 0x20 + (int64_t)i * 20;
-            if (*(int32_t *)e >= 0) add_vis(m, *(V2I *)(e + 8), 0);
+            if (*(int32_t *)e >= 0) { add_vis(m, *(V2I *)(e + 8), 0); nall++; }
         }
     }
+    m->n_vis = m->vis_n; m->n_all = nall;
     if (!g_logged_layout) {
         g_logged_layout = 1;
         rig_log("fog: layout ok (map %d): _visions %d live, _playerVisions %d live (%d count for player %d), temporary tiles %d; "
@@ -421,6 +445,53 @@ static void want_redraw(void) {
 /* CTX_REDRAW: same as a refresh, but LoadVisible must not reseed: half_like treats it as a normal explored check.
    (half_like seeds only in CTX_LOAD; in CTX_REDRAW it filters like CTX_REFRESH.) */
 
+/* ------------------------------------------------------------------ blank view (owner 2026-10-18) */
+/* Measured from the masks the leaves follow: per-player fog = my_vis tiles (temporary reveals included), shared = every
+   player source's tiles. Report trigger for the crash reports (ds_modloader lane crashrep): the line starts with
+   "ERROR [view_blank] view: nothing visible for". */
+void ui_view_brief(float *x, float *y, int *follow, int *watching);   /* ui_game.c */
+static double mono_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
+static double b_since, b_next, b_last_log; static int b_logged;
+static void log_report(const char *line) {             /* rig.log + the loader's dsload.log (Mac: dsl_log; Windows: not exported) */
+    static void (*dl)(const char *, ...); static int looked;
+    rig_log("%s", line);
+    if (!looked) { looked = 1; dl = (void (*)(const char *, ...))dlsym(RTLD_DEFAULT, "dsl_log"); }
+    if (dl) dl("multiplayer: %s", line);
+}
+static const char *fog_mode(const MapFog *m) {
+    if (g_bad) return "vanilla (layout check failed)";
+    if (g_shared) return "shared";
+    return m->watcher ? "per player, watching (every player's vision)" : g_watch_rule ? "per player" : "per player (watcher rule off)";
+}
+static int blank_count(int map, MapFog **mo) {          /* visible tiles now, -1 = not measurable (no session, loading, vanilla) */
+    MapFog *m = map >= 0 ? mapfog(map) : NULL; *mo = m;
+    if (!m || !client(NULL) || g_bad || scene() != 2 || busy() || mp_game_load_pending() || !m->vh || m->vh_scene != scene()) return -1;
+    if (m->built_frame != rig_frames && rebuild(map, m->vh) < 0) return -1;
+    return filtering() ? m->n_vis : m->n_all;
+}
+static void blank_check(void) {                        /* main thread, once a second */
+    double t = mono_s();
+    if (t < b_next) return;
+    b_next = t + 1;
+    int me, map = cur_map(); MapFog *m; client(&me);
+    int n = blank_count(map, &m);
+    if (n != 0) {
+        if (b_logged && n > 0) rig_log("view: tiles visible again after %.0f s (map %d, %d visible tiles)", t - b_since, map, n);
+        b_since = 0; b_logged = 0;
+        return;
+    }
+    if (!b_since) b_since = t;
+    if (b_logged || t - b_since < 5 || (b_last_log && t - b_last_log < 60)) return;
+    b_logged = 1; b_last_log = t;
+    float cx = 0, cy = 0; int fol = -1, wat = 0;
+    ui_view_brief(&cx, &cy, &fol, &wat);
+    char line[512];
+    snprintf(line, sizeof line, "ERROR [view_blank] view: nothing visible for %.0f s (map %d, camera (%.1f, %.1f), follow target %d, "
+             "own units %d, fog %s, visible tile count 0, all players' vision tiles %d, player %d%s)",
+             t - b_since, map, cx, cy, fol, m->n_own, fog_mode(m), m->n_all, me, wat ? ", watching box shown" : "");
+    log_report(line);
+}
+
 /* ------------------------------------------------------------------ API */
 void mp_fog_set_shared(int on) {
     on = on ? 1 : 0;
@@ -430,7 +501,16 @@ void mp_fog_set_shared(int on) {
     want_redraw();
 }
 void mp_fog_owner_changed(void) { if (!g_shared && tracking()) want_redraw(); }
-void mp_fog_frame(void) { note_main(); if (g_pending) redraw_now(); }   /* main thread, once per frame (rig_frame) */
+void mp_fog_frame(void) { note_main(); if (g_pending) redraw_now(); blank_check(); }   /* main thread, once per frame (rig_frame) */
+char *mp_fog_state(int watch) {                        /* test (mpm_fog): watch 0/1 sets the watcher rule, -1 reads */
+    if (watch >= 0 && watch != g_watch_rule) { g_watch_rule = watch; rig_log("fog: watcher rule %s (test)", watch ? "on" : "off"); g_pending = 1; }
+    int map = cur_map(); MapFog *m = map >= 0 && map < NMAP ? &M[map] : NULL;
+    char b[400];
+    snprintf(b, sizeof b, "{\"ok\":true,\"watch_rule\":%d,\"shared\":%d,\"bad\":%d,\"map\":%d,\"watcher\":%d,\"own\":%d,\"visible\":%d,\"all\":%d,"
+             "\"blank_s\":%.0f,\"blank_logged\":%d}", g_watch_rule, g_shared, g_bad, map, m ? m->watcher : -1, m ? m->n_own : -1,
+             m ? m->n_vis : -1, m ? m->n_all : -1, b_since ? mono_s() - b_since : 0, b_logged);
+    return strdup(b);
+}
 
 void mp_fog_install(void) {
     int bad = 0;
