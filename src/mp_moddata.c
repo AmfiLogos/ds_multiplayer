@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <dlfcn.h>
+#include <time.h>
 
 static long (*md_pack)(void);
 static size_t (*md_copy)(uint8_t *, size_t);
@@ -28,13 +29,21 @@ static void *md_sym(const char *n) {
     return dlsym(RTLD_DEFAULT, n);
 }
 
-static size_t md_size(void) {                      /* host: the block now (0 = no running mod syncs files) */
+/* host: the block now (0 = no running mod syncs files). The join point asks size() twice (the buffer size, then the
+   write) and then write(): one pack serves all three (files changed in between would not fit the buffer); write()
+   uses it up, the next join point packs again. */
+static long packed_n; static int packed_fresh; static double packed_at;
+static double mono_s(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
+static size_t md_size(void) {
     if (!md_pack) return 0;
-    long n = md_pack();
-    if (n < 0) { rig_log("mp: moddata: the sync files could not be read: no MDAT block (guests keep their own files)"); return 0; }
-    return (size_t)n;
+    double now = mono_s();
+    if (!packed_fresh || now - packed_at > 10.0) {
+        packed_n = md_pack(); packed_at = now; packed_fresh = 1;
+        if (packed_n < 0) rig_log("mp: moddata: the sync files could not be read: no MDAT block (guests keep their own files)");
+    }
+    return packed_n > 0 ? (size_t)packed_n : 0;
 }
-static size_t md_write(uint8_t *out, size_t cap) { return md_copy ? md_copy(out, cap) : 0; }
+static size_t md_write(uint8_t *out, size_t cap) { packed_fresh = 0; return md_copy ? md_copy(out, cap) : 0; }
 
 static int refused, applied;
 static char refused_why[400];
