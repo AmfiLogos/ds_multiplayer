@@ -882,5 +882,9 @@
  "your game version is different from the host's: update both games": "게임 버전이 호스트와 다릅니다: 두 게임 모두 업데이트하십시오",
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "게임플레이 모드가 호스트와 다릅니다: 런처에서 호스트의 모드로 게임을 시작하십시오",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "모드 버전이 호스트와 다릅니다: 두 플레이어 모두 같은 Dungeon Settlers Modded 버전이 필요합니다",
- "‹ Newer": "‹ 더 최근"
+ "‹ Newer": "‹ 더 최근",
+ "Your mod settings are not the same as the host's.": "모드 설정이 호스트와 다릅니다.",
+ "Other setting values:": "다른 설정 값:",
+ "%s: %s (host %s, you %s)": "%s: %s (호스트 %s, 나 %s)",
+ "Set the same values in the Mods window (Settings of that mod), then join again.": "모드 창(해당 모드의 설정)에서 같은 값으로 맞춘 다음 다시 참가하세요."
 }

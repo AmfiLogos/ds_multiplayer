@@ -882,5 +882,9 @@
  "your game version is different from the host's: update both games": "你的遊戲版本與房主不同：請更新兩邊的遊戲",
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "你的遊戲玩法模組與房主不同：請從啟動器以房主的模組啟動遊戲",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "你的模組版本與房主不同：兩位玩家都需要相同的 Dungeon Settlers Modded 版本",
- "‹ Newer": "‹ 較新"
+ "‹ Newer": "‹ 較新",
+ "Your mod settings are not the same as the host's.": "你的模組設定與房主不同。",
+ "Other setting values:": "其他設定值：",
+ "%s: %s (host %s, you %s)": "%s：%s（房主 %s，你 %s）",
+ "Set the same values in the Mods window (Settings of that mod), then join again.": "請在模組視窗（該模組的設定）中設為相同的值，然後重新加入。"
 }
