@@ -97,6 +97,14 @@ and (b) send gameplay actions through our lockstep order path instead of applyin
   and a mod running WITHOUT DsmpBridge.dll (soft-dependency pattern + DsmpLite): 27 checks PASS. It fails when
   Installed goes back to == 1 (checked) or a marshalled argument breaks.
 - Probe `plugin/DsmpRandProbe` (test only) + `tests/rand_pair.py` (Mac pair, both peers dsload + multiplayer module +
-  BepInEx clone per copy + DsmpBridge + probe): NOT RUN yet (needs the mp_api v2 commit on mpapi; run: build the loader with
-  MP_REPO=$HOME/ds_multiplayer MP_PIN=mpapi loader/build.sh, then python3 tests/rand_pair.py). One-copy start smoke (17:44, api-1 module): 47 s to
+  BepInEx clone per copy + DsmpBridge + probe). One-copy start smoke (17:44, api-1 module): 47 s to
   the title, bridge found api 1, Harmony postfix on Refactor.Tick.TickFlow.Tick installed.
+
+## Rand pair result (2026-10-18 20:38-20:41, pair EF, multiplayer module from mpapi 47280ad, both peers BepInEx)
+- PASS all: both peers api 2 with random, session on, Tick patch in; RandShared 0 in MonoBehaviour.Update on both.
+- 12 draw sets compared (6 in bridge handlers sent from both peers, 6 in the Harmony postfix on TickFlow.Tick), each
+  6 x Random.Range(int) + 6 x Random.value + 6 x Random.Range(float) + 6 x Multiplayer.Rand: same steps, Multiplayer.Rand
+  equal in 12/12 with RandShared 1, UnityEngine.Random equal in 12/12 (0/6 handler, 0/6 Tick sets differ).
+- Host det counters: draws_sim 381, draws_view_in_sim 0: the C# UnityEngine.Random calls (through Il2CppInterop) landed on the
+  SIM stream, from a handler and from the Tick postfix. Chat broadcast from both peers: Shown.
+- Full-state checks at steps 3600 and 4200 equal, 0 desyncs on both, fingerprints equal on 2283 common ticks.
