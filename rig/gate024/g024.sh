@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Mac only (owner 2026-10-18): the Windows side is the real Windows VM lane (WIN_GREEN.txt); the Wine checks are in
-# g024w.sh, an optional last check that never blocks the release.
+# Mac only (owner 2026-10-18): the Windows side is the real Windows VM lane (WIN_GREEN.txt); Wine is dropped completely
+# (owner 2026-10-18 evening): no Wine step in any gate; the old Wine script is in rig/old_versions/
 # g024.sh - the v0.1.15 gate (loader v0.1.15: crash reports ask first, notice box fits its text, "Global cooldown fix",
 # hidden-worlds line, mod settings, "Get the host's mods", ZET-U Mod Suite; multiplayer 0.1.12, custom-modes 0.1.7,
 # gcd-cdr 0.1.5, hell-difficulty 0.1.5, zetu-suite 0.1.0; includes the v0.1.14 hotfix). Copy of g023.sh + the hidden-worlds checks

@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Mac only (owner 2026-10-18): the Windows side is the real Windows VM lane (WIN_GREEN.txt); the Wine checks are in
-# g023w.sh, an optional last check that never blocks the release.
+# Mac only (owner 2026-10-18): the Windows side is the real Windows VM lane (WIN_GREEN.txt); Wine is dropped completely
+# (owner 2026-10-18 evening): no Wine step in any gate; the old Wine script is in rig/old_versions/
 # g023.sh - the v0.1.13 gate (loader v0.1.13, multiplayer 0.1.10, custom-modes 0.1.5; int013 = the boot screen, Windows
 # fast start on again + one-batch hooks, normal saves in the modded game, Unit Builder / Gallery / Test Fights, Players
 # panel, PvP rules panel, Windows installer in 10 languages). Copy of g022.sh: the i18n game tests on the v0.1.13 test
