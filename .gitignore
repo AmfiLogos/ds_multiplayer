@@ -77,3 +77,4 @@ fixtures/
 *.dSYM/
 src/ui_test/test_ui
 src/ui_test/teams_test
+rig/gate0*/i18n/7/
