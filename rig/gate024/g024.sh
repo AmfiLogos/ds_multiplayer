@@ -32,6 +32,11 @@ chk g024_host_tests '== ([0-9]+) passed, 0 failed' $LD zsh loader/test/run_tests
 scan() { local M=$(mktemp -d); hdiutil attach -nobrowse -readonly -noautoopen -mountpoint $M $REL/*.dmg >/dev/null || return 1
   python3 $H/banscan.py $M $REL/* $LD/loader/build/win/kit; local rc=$?; hdiutil detach $M -quiet; (( rc == 0 )) && echo "SCAN ALL PASS"; return $rc; }
 chk g024_scan 'SCAN ALL PASS' $WT scan
+modrepos() {   # every module the build ships is an official mod (MOD_REPOS: auto-update, "Get the host's mods"); v0.1.15 shipped zetu-suite outside it at first
+  local bad=0 id; for d in $LD/loader/build/mods_all/mac/*(/); do id=${d:t}
+    command grep -qE "\\{ \"$id\", \"AmfiLogos/ds_[a-z]+\" \\}" $LD/loader/src/dsl_update.c && echo "ok $id" || { echo "MISSING $id"; bad=1; }; done
+  (( bad )) || echo "MOD REPOS PASS"; return $bad; }
+chk g024_mod_repos 'MOD REPOS PASS' $WT modrepos
 lic() {   # both license files in every release file (app, Windows kit and zip, each mod zip) - reviewdocs
   local M=$(mktemp -d) bad=0; hdiutil attach -nobrowse -readonly -noautoopen -mountpoint $M $REL/*.dmg >/dev/null || return 1
   for f in LICENSE.txt THIRD_PARTY_NOTICES.txt; do [[ -s "$M/Dungeon Settlers Modded.app/Contents/Resources/licenses/$f" ]] || { echo "app lacks licenses/$f"; bad=1; }
