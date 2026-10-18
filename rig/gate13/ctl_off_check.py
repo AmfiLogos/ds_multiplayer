@@ -98,7 +98,7 @@ def mac_check(build):
            'DSRIG_DIR': I, 'DSRIG_BATCH': '1', 'DSRIG_FPS': '30', 'DYLD_INSERT_LIBRARIES': os.path.join(k, 'loader', 'dsload.dylib'),
            'DSL_MODS_DIR': md, 'DSML_ROOT': k, 'DSML_USER_MODS_DIR': os.path.join(k, 'mods'), 'DSL_PROFILE': os.path.join(mods, 'active.json'),
            'DSML_SESSION': os.path.join(mods, 'worlds.json'), 'DSML_DATA': os.path.join(I, 'data'),
-           'DSL_NO_ALERT': '1', 'DSL_NOTCH': '0', 'DSL_SOFT_NOACTIVATE': '1'}   # no DSRIG_CTL / DSRIG_PORT / DSRIG_*_DIRS (player)
+           'DSL_NO_ALERT': '1', 'DSL_NOTCH': '0', 'DSL_SOFT_NOACTIVATE': '1', 'DSL_UPDATE': '0'}   # no DSRIG_CTL / DSRIG_PORT / DSRIG_*_DIRS (player)
     args = [exe(), '-batchmode', '-logFile', os.path.join(I, 'player.log'), '-screen-fullscreen', '0', '-screen-width', '960', '-screen-height', '540']
     p = subprocess.Popen(args, env=env, cwd=I, stdin=subprocess.DEVNULL, stdout=open(os.path.join(I, 'stdout.log'), 'ab'),
                          stderr=subprocess.STDOUT, preexec_fn=lambda: os.nice(5), start_new_session=True)
