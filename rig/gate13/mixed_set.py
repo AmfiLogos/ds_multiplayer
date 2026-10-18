@@ -76,6 +76,8 @@ class LCopy(M.Copy):
     def install(self):
         if self.pids(): raise SystemExit(f'copy {self.x} is running (another lane?): not installing over it')
         M.put(os.path.join(OUT, 'dsload.dylib'), os.path.join(self.APP, 'Contents/Frameworks/dsload.dylib'))
+        fl = os.path.join(self.APP, 'Contents/Frameworks/lang')   # loose texts left by i18n test runs: codesign refuses them
+        if os.path.isdir(fl): os.makedirs(os.path.join(self.APP, '..', 'old'), exist_ok=True); os.replace(fl, os.path.join(self.APP, '..', 'old', 'Frameworks_lang-%d' % time.time()))
         M.sh(f'codesign -f -s - "{self.APP}/Contents/MacOS/Dungeon Settlers"')
 
     def begin(self, ids, tag):

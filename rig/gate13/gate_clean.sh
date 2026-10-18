@@ -8,6 +8,8 @@
 # Kept: summary.txt, inputs.txt, every *.log, the checks' summary / json / png files. Never touches the default install
 # folder "Dungeon Settlers Modded" (a test may be using it), the owner's game or anything outside these places.
 OUT=${1:?gate output dir}; setopt NULL_GLOB
+# owner rule 2026-10-18: never delete; everything goes to GATE_TRASH (default ~/ToDelete_2026-10-18/gate/<time>)
+TRASH=${GATE_TRASH:-$HOME/ToDelete_2026-10-18/gate}/$(date +%Y%m%d-%H%M%S)
 DRV="$HOME/Library/Application Support/CrossOver/Bottles/DSMP/drive_c"; LOC="$DRV/users/crossover/AppData/Local"
 items=("$LOC"/"Dungeon Settlers Modded".gate* "$LOC"/"Dungeon Settlers Modded".oldupd* "$DRV"/old_pathwarn/* "$DRV"/DSW/old_gate13/*
        "$LOC"/dsml_update_test_old/*)
@@ -15,6 +17,6 @@ items+=($OUT/*/(root|run|apps|Applications|kit|releases)(/) $OUT/old/*-dir-*(/))
 kb=0; n=0
 for p in $items; do
   [[ -e $p ]] || continue
-  kb=$(( kb + $(du -sk "$p" 2>/dev/null | cut -f1) )); rm -rf "$p" && n=$(( n + 1 ))
+  mkdir -p $TRASH; kb=$(( kb + $(du -sk "$p" 2>/dev/null | cut -f1) )); mv "$p" "$TRASH/${${p#$HOME/}//\//_}" && n=$(( n + 1 ))
 done
-print "gate_clean $(date '+%F %T'): $n item(s), $(( kb / 1024 )) MB freed; $(df -g "$HOME" | awk 'NR==2 {print $4}') GB free" | tee -a $OUT/cleanup.log
+print "gate_clean $(date '+%F %T'): $n item(s), $(( kb / 1024 )) MB moved to $TRASH; $(df -g "$HOME" | awk 'NR==2 {print $4}') GB free" | tee -a $OUT/cleanup.log

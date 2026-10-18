@@ -67,7 +67,7 @@ chk g023_dmg_start 'RESULT ([0-9]+)/\1 pass' $WT python3 $H/dmg_start.py $(print
 chk g023_mod_zip 'RESULT ([0-9]+)/\1 pass' $WT python3 $H/dmg_start.py $(print $REL/*.dmg) $OUT/g023_mod_zip $(print $REL/gcd-cdr-*.zip(N[1]))
 hell() {   # Hell on (copy Z): 20/20 patches + table half loaded from the delta, staff strip on Hell only (crossmods)
   python3 $WT/ext/crossmods13/mac_mods_test.py $LD/loader --game-s 120 || return 1
-  local L=$LD/loader/test_env/instances/Z/dsload.log
+  local L=$HOME/ds_launcher/loader/test_env/instances/Z/dsload.log   # test copies live in ~/ds_launcher (lrig.py / make_instance.sh)
   local a=$(command grep -c "Hell tables: the game loads" $L) b=$(command grep -c "no delta" $L); echo "Hell tables lines $a, no-delta lines $b"
   (( a >= 1 && b == 0 )) && echo "HELL TABLES PASS"; }
 chk g023_hell 'HELL TABLES PASS' $WT hell
@@ -92,14 +92,14 @@ i18npair() { local O=$HOME/ds_mp_ship023/ext/gate023/i18n/out/pair2_ja_ru; [[ -d
   python3 $IG/i18n_eval.py $O --pair ja ru; }
 chk g023_i18n_pair 'RESULT 4/4 pass' $WT i18npair
 chk g023_fastboot_ui '([0-9]+) PASS 0 FAIL' $LD/loader python3 test/soft/fastboot_ui_test.py $OUT/g023_fastboot_ui   # boot ~3 s, Unity splash at the stock place, switch: after the boot, no tooltip, click flips
-# ---- saves (cloud backup, import, safety, save warning: fake cloud and test copy K only)
-chk g023_cloud_unit '== 25 ok, 0 failed' $LD/loader zsh test/cloud/run.sh
-chk g023_cloud '7/7 checks, violations 0' $LD/loader python3 $LR l1_cloud_test.py $OUT/g023_cloud
+# ---- saves (cloud backup (import tests gone with Import a save, v0.1.13: 17 unit, 6 game checks), safety, save warning: fake cloud and test copy K only)
+chk g023_cloud_unit '== 17 ok, 0 failed' $LD/loader zsh test/cloud/run.sh
+chk g023_cloud '6/6 checks, violations 0' $LD/loader python3 $LR l1_cloud_test.py $OUT/g023_cloud
 chk g023_safety '7/7 checks, violations 0' $LD/loader python3 $LR l1_safety_test.py $OUT/g023_safety
 chk g023_savewarn '7/7 checks, violations 0' $LD/loader python3 $LR l1_savewarn_test.py $OUT/g023_savewarn
 chk g023_saves '([0-9]+)/\1 checks, violations 0' $LD/loader python3 $LR l1_saves_test.py $OUT/g023_saves   # game saves played in place: game file gets the progress, modded-only saves apart, Hell asks, delete asks (v0.1.13)
 # ---- auto-update with local test releases (packaging)
-chk g023_update_mac 'RESULT 24/24 pass' $LD zsh loader/test/update/mac_gate.sh $OUT/g023_update_mac $LD/loader/test_env/instances/Z/DungeonSettlers.app
+chk g023_update_mac 'RESULT 24/24 pass' $LD zsh loader/test/update/mac_gate.sh $OUT/g023_update_mac $HOME/ds_launcher/loader/test_env/instances/Z/DungeonSettlers.app
 # ---- multiplayer in the rig
 rigstep() {   # smoke | mp2 on a pair leased as ship018-<pid> (waits up to 8 min), the dylib pinned by rig/pin_run.py
   local R=$HOME/ds_multiplayer/rig N=ship018-$$ P= i rc L=$OUT/g023_$1_raw.log
