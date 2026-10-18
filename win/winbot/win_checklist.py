@@ -11,7 +11,9 @@ layout (item 3, and the ZET-U windows of item 2). They are the game's own frames
 Items (ship013's v0.1.15 list):
   1  fresh install AND update over the previous release: ZET-U installed and OFF; a normal save loads with no ZET-U
      save warning; (6) the crash-report question shows once on the first start, No is stored, not asked again
-  2  ZET-U on (max units 8): a dungeon save loads (Windows hang regression, v0.1.15); units on the map; shots
+  2  ZET-U on (max units 8): the 8-unit checks of the loader's Mac test loader/test/zetu_ui_test.py (party cap, portraits,
+     supplies panels, low-units risk, 8 in the dungeon, Inventory / Status / Skill with 8, result screen; dsload.log lines
+     + the test module zetu-probe, built by zetu_probe/build_probe.sh) and the Windows load hang of v0.1.15; shots
   3  German + Russian shots: title (saves notice, kit notice), Mods window, a mod's Settings page, Load list,
      "Get the host's mods" box
   4  "Get the host's mods": plan, Get, Apply, soft restart, the restarted game rejoins, world arrives, 0 desyncs
@@ -30,7 +32,11 @@ MAC_CTL = os.path.expanduser('~/ds_winlane013/ds_modloader/loader/test_env/insta
 SAVES = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves')
 ZETU = 'zetu-suite'
 BASE_MODS = ['custom-modes', 'gcd-cdr', 'hell-difficulty', 'multiplayer']
-LANG = {'en': 0, 'de': 3, 'ru': 4}                                   # GeneralSettingData.SaveCurrentLanguageType (ds_i18n.h order)
+LANG = {'en': 0, 'de': 3, 'ru': 4}
+TEST_ENV = {'DSL_SOFT_TEST': '1'}                                    # the loader's test request files (warn_load ...), test starts only
+GAME_SAVE_NAME = 'AshHunter__AutoSave_c88ac7e819f54532914b71c9929c4ba8_0.json'
+SEED_7 = os.path.expanduser('~/DungeonSettlers_SaveBackups/2026-10-11-1827/Saves/ElvenExpedition__AutoSave_f816ebc6195c432c9fff754b75ee3738_0.json')
+PROBE = os.path.join(HERE, 'zetu_probe', 'build', 'zetu-probe')                                   # GeneralSettingData.SaveCurrentLanguageType (ds_i18n.h order)
 
 
 def log(*a):
@@ -149,19 +155,26 @@ def scan_logs(w, rep, item):
 
 
 def load_with_boxes(w, guest_save, timeout=240):
-    """load_save; a box shown during the load (save warning, notice) is recorded and confirmed. Returns (status, boxes)"""
-    boxes = []
+    """load_save; the loader's game-save warning (dsl_saves.c, answered Load through the DSL_SOFT_TEST request file)
+    and a stock box shown during the load are recorded and confirmed. Returns (status, warnings + box texts)"""
+    seen = []
+    mark = w.mark('dsload.log')
     w.cmd(cmd='load_save', file=w.expand(guest_save), det=0)
     t = time.time()
     while time.time() - t < timeout:
+        new = w.read(W.PROF + r'\dsload.log', offset=mark)[0].decode('utf-8', 'replace')
+        for l in new.splitlines():
+            if 'saves: warning shown' in l and l not in seen:
+                seen.append(l); time.sleep(1.5)
+                w.write(W.PROF + r'\softrestart\reg_request.json', json.dumps({'cmd': 'warn_load'}))
         b = (w.mpm().get('box') or {})
         if b.get('on'):
-            boxes.append(b.get('text', '')); w.box('confirm'); time.sleep(0.5); continue
+            seen.append('box: ' + b.get('text', '')); w.box('confirm'); time.sleep(0.5); continue
         s = w.loaded()
-        if s:
-            return s, boxes
+        if s and s.get('tick', -1) > 0:
+            return s, seen
         time.sleep(0.5)
-    raise W.GameError(f'save did not load within {timeout} s (boxes {boxes})')
+    raise W.GameError(f'save did not load within {timeout} s (seen {seen})')
 
 
 def put_save(w, local, name):
@@ -196,7 +209,7 @@ def item1(w, rep, a):
         rep.check(I, f'{kind}: {ZETU} installed', w.exists(W.ROOT + '\\mods\\' + ZETU + r'\mod.json'))
         rep.check(I, f'{kind}: {ZETU} not enabled in the profile', ZETU not in act.get('enabled', []), act)
         w.prepare(consent=None)
-        w.start()
+        w.start(env=TEST_ENV)
         if kind == 'fresh':                                          # item 6: the question on the first start
             b = w.wait(lambda: (w.mpm().get('box') or {}).get('on') and w.mpm()['box'], 'the crash-report question', 30)
             rep.check(I, 'crash-report question shown on the first start', 'crash' in b.get('text', '').lower(), b.get('text'))
@@ -206,9 +219,10 @@ def item1(w, rep, a):
         ms = mods_state(w)
         z = ms.get('mod:' + ZETU, {})
         rep.check(I, f'{kind}: Mods window shows {ZETU} OFF', z and not z.get('on'), z)
-        sp = put_save(w, a.save_base, 'WINBOT_base.json')
+        sp = W.WORK + r'\\fake_gamesaves\\' + GAME_SAVE_NAME          # a game-folder save (DSML_GAME_SAVES): the save warning path
+        w.put(a.save_base, sp)
         s, boxes = load_with_boxes(w, sp)
-        rep.check(I, f'{kind}: normal save loads with no ZET-U warning', not any('zet' in b.lower() for b in boxes), boxes or 'no box')
+        rep.check(I, f'{kind}: normal save loads with no ZET-U warning', not any('zet' in b.lower() for b in boxes), boxes or 'no warning')
         scan_logs(w, rep, I)
         fresh_logs(w, rep, f'1_{kind}')
         if kind == 'fresh':                                          # item 6: not asked again
@@ -219,23 +233,126 @@ def item1(w, rep, a):
         w.stop()
 
 
-def item2(w, rep, a):
-    I = '2'
-    w.prepare(active=BASE_MODS[:3] + [ZETU, 'multiplayer'], settings={ZETU: {'max_units': 8}})
-    w.start()
-    sp = put_save(w, a.save_dungeon, 'WINBOT_dungeon.json')
-    t = time.time()
+def probe(w, line, limit=20):
+    """zetu-probe request (the loader's test module, built by zetu_probe/build_probe.sh): the answer lines in dsload.log"""
+    mark = w.mark('dsload.log')
+    w.write(W.PROF + r'\zetu_probe_req.txt', line + '\n')
     try:
-        s, boxes = load_with_boxes(w, sp, 240)
-        rep.check(I, 'ZET-U on: dungeon save loads (no NOW LOADING hang)', True, f'{time.time() - t:.0f} s, map {s.get("map")}, boxes {boxes}')
-        us = [u for u in w.cmd(cmd='list_units').get('units', []) if u.get('faction') == 1 and not u.get('dead')]
-        rep.check(I, 'player units on the map', len(us) > 0, f'{len(us)} units (8-unit expedition needs a save with 8 units)')
-        w.gshot(os.path.join(rep.out, 'shots', '2_zetu_dungeon.png'))
-    except W.GameError as e:
-        rep.check(I, 'ZET-U on: dungeon save loads (no NOW LOADING hang)', False, e)
+        w.wait_log('dsload.log', ['zetu-probe: '], limit, since=mark)
+    except W.GameError:
+        return []
+    time.sleep(0.5)
+    return w.read(W.PROF + r'\dsload.log', offset=mark)[0].decode('utf-8', 'replace').splitlines()   # all new lines (risk rows have no prefix)
+
+
+def item2(w, rep, a):
+    """ZET-U max units 8 on Windows: the checks of the loader's Mac test loader/test/zetu_ui_test.py (run), through
+    the control port, the loader's dsload.log lines and zetu-probe; shots = the game frame for each window"""
+    I = '2'
+    pm = W.ROOT + r'\mods\zetu-probe'
+    w.kill_all()
+    for f in ('zetu-probe.dll', 'mod.json'):
+        w.put(os.path.join(PROBE, f), pm + '\\' + f)
+    try:
+        _item2(w, rep, a, I)
+    finally:
+        w.stop()
+        w.move(pm, W.WORK + r'\to_delete\zetu-probe_' + time.strftime('%Y%m%d-%H%M%S'))   # test module out again (moved)
+
+
+def _item2(w, rep, a, I):
+    import re
+    en = ['custom-modes', 'gcd-cdr', ZETU, 'zetu-probe', 'multiplayer']
+    w.prepare(lang=0, active=en, settings={ZETU: {'max_units': 8}})
+    w.start(env=TEST_ENV)
+    L = w.text(W.PROF + r'\dsload.log') or ''
+    rep.check(I, 'setting read: max units 8', 'max units in the dungeon 8' in L, [l for l in L.splitlines() if 'zetu' in l][-3:])
+    rep.check(I, 'zetu UI ready', ZETU in L and 'expedition UI' in L)
+    rep.check(I, 'probe ready', 'zetu-probe: ready' in L)
+    sp = put_save(w, SEED_7, os.path.basename(SEED_7))
+    t = time.time()
+    s, seen = load_with_boxes(w, sp, 400)
+    rep.check(I, 'ZET-U on: the save loads (no NOW LOADING hang)', True, f'{time.time() - t:.0f} s, map {s.get("map")}')
+    sh = lambda n: w.gshot(os.path.join(rep.out, 'shots', f'2_{n}.png'))
+    tm = lambda **k: w.cmd(cmd='ui_teams', **k)
+    units = lambda m: [x for x in (w.cmd(cmd='list_units', map=m).get('units') or []) if x.get('faction') == 1 and not x.get('dead')]
+    dl = lambda m: w.read(W.PROF + r'\dsload.log', offset=m)[0].decode('utf-8', 'replace')
+    def wait_map(m, limit):
+        return w.wait(lambda: (lambda s: s if s.get('map') == m and not s.get('busy') else None)(w.status()), f'map {m}', limit, 1)
+    def risks():
+        return [l.split('risk row ', 1)[1] for l in probe(w, 'risks') if 'risk row ' in l]
+    LOW = 'Insufficient units selected'
+    w.cmd(cmd='set_speed', speed=1)
+    if units(1):                                                     # the seed save: 4 in the dungeon, 3 at the base
+        probe(w, 'result'); time.sleep(4)
+        d = units(1)
+        w.cmd(cmd='trn_changemap', **{'from': 1, 'to': 0, 'guids': ','.join(u['guid'] for u in d)})
+        wait_map(0, 120); time.sleep(3)
+    base = units(0)
+    for _ in range(4):                                               # recruit until 8 (the game's own recruit event)
+        if len(base) >= 8:
+            break
+        probe(w, 'recruit')
+        try:
+            w.wait(lambda: len(units(0)) > len(base), 'a recruit', 15)
+        except W.GameError:
+            pass
+        base = units(0)
+    rep.check(I, '8 player units at the base', len(base) >= 8, len(base))
+    g8 = [u['guid'] for u in base[:8]]
+    tm(action='go'); w.wait(lambda: (tm(action='state').get('stock') or {}).get('open'), 'expedition window', 30)
+    tm(action='stock_select', units=','.join(g8[:4])); time.sleep(1)
+    tm(action='stock_next'); w.wait(lambda: (tm(action='state').get('stock') or {}).get('state') == 1, 'supplies step', 30)
+    rk = risks()
+    rep.check(I, '7: 4 of max 8: the low unit count risk shows (4 / 8)', any(LOW in x and '4' in x and '8' in x for x in rk), rk)
+    tm(action='stock_close'); time.sleep(2)
+    m0 = w.mark('dsload.log')
+    tm(action='go'); w.wait(lambda: (tm(action='state').get('stock') or {}).get('open'), 'expedition window', 30)
+    tm(action='stock_select', units=','.join(g8)); time.sleep(2)
+    L = dl(m0)
+    sel = re.findall(r'zetu-suite.*expedition: (\d+) selected', L)
+    sh('expedition_8_select')
+    lines = [l for l in L.splitlines() if 'zetu-suite' in l and ('portraits:' in l or 'count text' in l)][-3:]
+    rep.check(I, '1: 8 units selected in the expedition window', sel and sel[-1] == '8', sel[-3:])
+    rep.check(I, '3: portraits 8 in one row, no overlap', re.search(r'portraits: 8 \(4 stock \+ 4 copies\).*, no overlap', L), lines)
+    rep.check(I, '3: count text says (8/8)', re.search(r"count text now '[^']*\(8/8\)'", L), lines)
+    m0 = w.mark('dsload.log')
+    tm(action='stock_next'); w.wait(lambda: (tm(action='state').get('stock') or {}).get('state') == 1, 'supplies step', 30); time.sleep(1)
+    L = dl(m0); sh('expedition_8_supplies')
+    st = tm(action='state').get('stock') or {}
+    rep.check(I, '2: supplies step: 8 panels in one row, no overlap', re.search(r'supplies: 8 unit panels .*, no overlap', L),
+              [l for l in L.splitlines() if 'supplies' in l][-2:])
+    rep.check(I, '2: each of the 8 units has its own panel', len({p for p in (st.get('panels') or []) if p}) == 8, st.get('panels'))
+    rk = risks()
+    rep.check(I, '7: 8 of max 8: no low unit count risk', not any(LOW in x for x in rk), rk)
+    tm(action='stock_accept')
+    wait_map(1, 180); time.sleep(5)
+    rep.check(I, '4: 8 units in the dungeon', len(units(1)) == 8, len(units(1)))
+    p0 = w.a('stat', path=W.PROF + r'\player.log').get('size', 0)
+    probe(w, 'select_all'); time.sleep(2); sh('dungeon_8_units')
+    for t, n, view in ((8, 'inventory', 'EntityInventoryUI'), (6, 'status', 'EntityStatusUI'), (7, 'skill', 'EntitySkillUI')):
+        m0 = w.mark('dsload.log')
+        probe(w, f'toggle {t}')
+        try:
+            w.wait_log('dsload.log', [view + ':'], 10, since=m0)
+        except W.GameError:
+            pass
+        time.sleep(1.5); sh(f'dungeon_8_{n}')
+        L = dl(m0)
+        fit = re.findall(view + r': (\d+) units shown, row scale ([\d.]+), x (-?\d+)\.\.(-?\d+) of (\d+) px', L)
+        rep.check(I, f'5: {n} window: 8 panels (4 stock + 4 copies)', re.search(view + r': 8 panels \(4 stock \+ 4 copies\)', L), [l for l in L.splitlines() if view in l][-2:])
+        rep.check(I, f'5: {n} window: the 8 units inside the screen', fit and fit[-1][0] == '8' and int(fit[-1][2]) >= 0 and int(fit[-1][3]) <= int(fit[-1][4]), fit[-1:])
+        probe(w, f'toggle {t}'); time.sleep(1)
+    P = w.read(W.PROF + r'\player.log', offset=p0)[0].decode('utf-8', 'replace')
+    exc = [l for l in P.splitlines() if 'Exception' in l]
+    rep.check(I, '5: Inventory / Status / Skill with 8 selected: no exception', not exc, exc[:3])
+    m0 = w.mark('dsload.log')
+    probe(w, 'result'); time.sleep(4); sh('results_8')
+    L = dl(m0)
+    rep.check(I, '6: result screen: 8 portraits, no overlap', re.search(r'result: 8 portraits \(4 stock \+ 4 copies\).*, no overlap', L)
+              and re.search(r'result: 8 units \+ 0 dead, 8 portraits shown', L), [l for l in L.splitlines() if 'result' in l][-3:])
     scan_logs(w, rep, I)
     fresh_logs(w, rep, '2')
-    w.stop()
 
 
 def item3(w, rep, a, mac):
