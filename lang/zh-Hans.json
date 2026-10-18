@@ -329,7 +329,7 @@
  "Host: units you click go to %s.": "房主：你点击的单位将归 %s。",
  "How Teams Work": "队伍的运作方式",
  "How long a chat message stays on screen (3 to 120 seconds). Press Enter to see the recent messages again.": "聊天消息在屏幕上停留的时间（3 至 120 秒）。按 Enter 可再次查看最近的消息。",
- "How many units each player may bring into the hub (1, 2, 3, 4 or 6). Up to 4 units go into each dive.": "每位玩家可带入枢纽的单位数量（1、2、3、4 或 6）。每次下潜最多进入 4 个单位。",
+ "How many units each player may bring into the hub (1, 2, 3, 4 or 6). Each dive takes up to the game's party limit (4 in the unmodded game).": "每位玩家可带入枢纽的单位数量（1、2、3、4 或 6）。每次下潜最多进入游戏的队伍上限（未加模组的游戏中为 4 个单位）。",
  "How the clan's population limit is shared. Shared: one limit for everyone, first come. Per player: each player has the full limit. Split equally: the limit is divided between players. Multiplied: limit times players, shared. A hire needs room here and under Units per Player.": "团队人口上限的分配方式。共享：所有人共用一个上限，先到先得。每名玩家：每位玩家各有完整上限。平均分配：上限在玩家之间平分。倍增：上限 × 玩家数，共享。招募需要此处及“每名玩家单位数”下都有空位。",
  "How this multiplayer world plays: pause, speed, gear, units and events. Saved with the world; new worlds start with your last rules.": "此多人游戏世界的玩法：暂停、速度、装备、单位和事件。随世界一起保存；新世界以你上次的规则开始。",
  "IP %s": "IP %s",

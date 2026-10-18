@@ -17,12 +17,15 @@
 #define TM_RESERVED    (-2)        /* = DSNET_OWNER_RESERVED: owned by a player who is away (kept for him) */
 #define TM_READY_TYPE  11          /* DSNET_EXPEDITION_READY: payload u8 ready, u8 n, n x guid[16] */
 #define TM_READY_MAX_PAYLOAD (2 + 16 * TM_MAX_MARK)
+#define TM_PARTY_MAXN  8           /* capacity of a proposal's party (all players together) */
+#define TM_PARTY_CAP_DEFAULT 4     /* the stock game's PlayerPartyMax (GameSystemTable GAMESYSTEM_Campaign_PlayerPartyMax) */
 
 typedef struct tm_state {
     int me;                                    /* local player id */
     int in_dungeon;                            /* 1 = screen is read-only */
     int admin;                                 /* host lobby "Admin mode": only then may the host move other players' units */
     int max_mark;                              /* host rule "units per player" (dsnet_units_per_player: 1..6); 0 = 3 */
+    int party_cap;                             /* the game's live PlayerPartyMax (ui_teams.c reads it; a mod may change it); 0 = 4 */
     uint32_t present;                          /* bit per player in the game */
     uint32_t ready;                            /* bit per player with ready = 1 */
     int nmarked[TM_MAX_PLAYERS];
@@ -42,6 +45,9 @@ typedef struct tm_column {
 int tm_layout(const tm_state *s, tm_column *cols, int max_cols);
 /* units a player may mark for the run: the host rule, capped by TM_MAX_MARK */
 static inline int tm_mark_limit(const tm_state *s) { int m = s->max_mark > 0 ? s->max_mark : 3; return m > TM_MAX_MARK ? TM_MAX_MARK : m; }   /* returns the column count */
+
+/* units on one expedition, all players together: the game's PlayerPartyMax, clamped to 1..TM_PARTY_MAXN */
+static inline int tm_party_cap(const tm_state *s) { int c = s->party_cap > 0 ? s->party_cap : TM_PARTY_CAP_DEFAULT; return c > TM_PARTY_MAXN ? TM_PARTY_MAXN : c; }
 
 int tm_is_marked(const tm_state *s, int player, const uint8_t g[16]);
 
@@ -133,7 +139,6 @@ void tm_panel_party(const tm_state *s, const uint8_t (*panel)[16], int n, tm_pan
  *      each peer that was ready sends ready 0. One proposal at a time. */
 #define TM_ORDER_PROPOSE 21
 #define TM_ORDER_ANSWER  22
-#define TM_PARTY_CAP     4         /* the game's PlayerPartyMax: units on one expedition, all players together */
 #define TM_PROPOSAL_SECONDS 60
 enum { TM_ANS_DECLINE = 0, TM_ANS_CANCEL = 2, TM_ANS_TIMEOUT = 3 };
 typedef struct tm_prop { int active, proposer, region; } tm_prop;
@@ -153,8 +158,7 @@ int tm_party_members(const tm_state *s);
 /* ---- the proposal's party (owner lan_v7 feedback): the proposer picks units in the stock step 1, his and his
  *      allies'. Own units go; free units are taken (claimed) for the proposer; units of present allies go for
  *      their owners (each owner approves and packs his own); reserved / absent / unknown units are skipped.
- *      err: 0 ok, 1 more than TM_PARTY_CAP units, 2 a player over tm_mark_limit (err_player), 3 empty. */
-#define TM_PARTY_MAXN 8
+ *      err: 0 ok, 1 more than tm_party_cap units, 2 a player over tm_mark_limit (err_player), 3 empty. */
 typedef struct tm_prop_res {
     int n; uint8_t party[TM_PARTY_MAXN][16];
     int nclaim; uint8_t claim[TM_PARTY_MAXN][16];
