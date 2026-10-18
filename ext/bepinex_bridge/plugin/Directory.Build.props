@@ -15,6 +15,8 @@
     <Deterministic>true</Deterministic>
     <PathMap>$(MSBuildThisFileDirectory)=/src/</PathMap>
     <DebugType>embedded</DebugType>
+    <EnableSourceLink>false</EnableSourceLink>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="BepInEx.Core"><HintPath>$(Lib)BepInEx.Core.dll</HintPath><Private>false</Private></Reference>
