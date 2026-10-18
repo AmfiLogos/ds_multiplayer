@@ -62,6 +62,7 @@
  "%s lent you this unit. You order it fully (move and skills). Click to give it back.": "%s 把这个单位借给了你。你可以完全指挥它（移动和技能）。点击即可归还。",
  "%s looks at another part of the map. Click to look there.": "%s 正在看地图的另一处。点击即可前往那里查看。",
  "%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it.": "%s 标记了此处。单位到达或玩家在其上按 B 时会消失。",
+ "%s mod:": "%s 模组：",
  "%s orders this unit now. Click to take back control.": "%s 正在指挥此单位。点击即可收回控制权。",
  "%s orders this unit until you take it back. It stays your unit.": "%s 指挥此单位，直到你收回。它仍是你的单位。",
  "%s proposes an expedition to %s": "%s 提议前往 %s 探险",

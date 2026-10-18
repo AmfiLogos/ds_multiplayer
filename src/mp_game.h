@@ -14,6 +14,8 @@ void   rig_det_sim_scope(int enter);      /* 1: save the view RNG, switch to sim
                                              Orders are built inside this scope so their RNG draws / Guids
                                              come from the sim streams, like inject_orders inside sim_cycle. */
 int    rig_det_in_sim(void);              /* in_sim (speed hooks let sim-origin calls through) */
+uint32_t rig_det_seed(void);              /* session seed (DetState.seed) */
+uint32_t rig_det_load_gen(void);          /* +1 at every rig_det_on_load / det state apply */
 size_t rig_det_state_size(void);          /* bytes of the deterministic state not in the game save */
 void   rig_det_state_get(void *out);      /* sim_state, seed, guid_sim_n, sr_sim_n (and any future counter) */
 void   rig_det_state_set(const void *in); /* locked: apply now. Not locked: keep it and apply it at the next

@@ -62,6 +62,7 @@
  "%s lent you this unit. You order it fully (move and skills). Click to give it back.": "%sがこのユニットを貸してくれました。移動もスキルもすべて指示できます。クリックで返却します。",
  "%s looks at another part of the map. Click to look there.": "%sはマップの別の場所を見ています。クリックしてそこを見ます。",
  "%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it.": "%sがこの場所にマークしました。ユニットが到達するか、プレイヤーがその上でBを押すと消えます。",
+ "%s mod:": "%s MOD:",
  "%s orders this unit now. Click to take back control.": "%sがこのユニットに指示中です。クリックして操作を取り戻します。",
  "%s orders this unit until you take it back. It stays your unit.": "あなたが取り戻すまで、%sがこのユニットに指示を出します。あなたのユニットのままです。",
  "%s proposes an expedition to %s": "%sが%sへの探索を提案しています",

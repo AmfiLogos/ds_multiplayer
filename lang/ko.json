@@ -62,6 +62,7 @@
  "%s lent you this unit. You order it fully (move and skills). Click to give it back.": "%s 님이 이 유닛을 빌려줬습니다. 이동과 스킬까지 모든 명령을 내릴 수 있습니다. 클릭하면 돌려줍니다.",
  "%s looks at another part of the map. Click to look there.": "%s 님이 맵의 다른 곳을 보고 있습니다. 클릭하면 그곳을 봅니다.",
  "%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it.": "%s 님이 이 지점을 표시했습니다. 유닛이 도착하거나 플레이어가 그 위에서 B를 누르면 사라집니다.",
+ "%s mod:": "%s 모드:",
  "%s orders this unit now. Click to take back control.": "%s 님이 지금 이 유닛에 명령을 내리고 있습니다. 클릭하면 조작권을 되찾습니다.",
  "%s orders this unit until you take it back. It stays your unit.": "되찾을 때까지 %s 님이 이 유닛에 명령을 내립니다. 유닛은 계속 내 유닛입니다.",
  "%s proposes an expedition to %s": "%s 님이 %s(으)로 탐사를 제안합니다",

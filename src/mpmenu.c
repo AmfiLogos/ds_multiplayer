@@ -17,6 +17,7 @@
 #include "ds_i18n.h"                                     /* TR / TRN, language files, UTF-8 cuts (one DSI_IMPLEMENTATION: ds_i18n.c) */
 #define DSMC_TR(s) TR(s)                                 /* ds_modcheck.h: the hostmods box in the player's language */
 #include "net/ds_modcheck.h"                             /* "Get the host's mods": plan JSON -> box text, DSMP_REJOIN line */
+#include "mp_api.h"                                      /* mod chat lines (chat_line, mp_modchat.c) */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -2968,12 +2969,30 @@ static void chat_esc(const char *in, char *out, size_t cap) {          /* no ric
     for (; *in && o + 8 < cap; in++) { if (*in == '<') { memcpy(out + o, "<​", 4); o += 4; } else out[o++] = *in; }
     out[o] = 0;
 }
+/* mod lines (mp_api v2 chat_line, MP_API.md): "<Mod> mod:" in the system colour, then the escaped text */
+static void mod_line(char *t, size_t cap, const char *who_rich, const char *mod, const char *text) {
+    char m[MP_CHAT_MOD_MAX * 4 + 8], x[MP_CHAT_TEXT_LOCAL * 4 + 8], pre[200];
+    chat_esc(mod, m, sizeof m); chat_esc(text, x, sizeof x);
+    snprintf(pre, sizeof pre, TR("%s mod:"), m);
+    snprintf(t, cap, "%s%s<i><color=#A69085>%s</color></i> %s", who_rich ? who_rich : "", who_rich ? " " : "", pre, x);
+    dsi_utf8_fix_end(t);                                   /* a long escaped text is cut at the line size */
+}
+static mpc_bucket modch_rx[32]; static double modch_rx_logged;   /* per sender: 5 at once, then 1 a second */
 static void chat_pull(dsnet_client *c) {
     dsnet_chat_msg m;
     while (dsnet_chat_poll(c, &m)) {
         char t[300], body[260]; chat_esc(m.text, body, sizeof body);
         const char *col = ui_player_color(m.player);
-        if (m.kind == DSNET_CHAT_TEXT && m.watching)              /* a spectator's line: grey, "(watching)" */
+        char mod[MP_CHAT_MOD_MAX + 1]; const char *mtext;
+        if (m.kind == DSNET_CHAT_TEXT && !m.watching && mpc_decode(m.text, mod, sizeof mod, &mtext)) {   /* a mod's broadcast line */
+            if (m.player < 0 || m.player >= 32 || !mpc_take(&modch_rx[m.player], mono_s(), 5, 1.0)) {
+                if (mono_s() - modch_rx_logged > 5) { modch_rx_logged = mono_s(); rig_log("mpmenu: mod chat lines from player %d dropped (more than 1 a second)", m.player); }
+                continue;
+            }
+            char who[96]; snprintf(who, sizeof who, "<color=%s>%s</color>", col, m.name[0] ? m.name : TR("Player"));
+            mod_line(t, sizeof t, who, mod, mtext);
+        }
+        else if (m.kind == DSNET_CHAT_TEXT && m.watching)              /* a spectator's line: grey, "(watching)" */
         { char wn[96]; snprintf(wn, sizeof wn, TR("%s (watching):"), m.name[0] ? m.name : TR("Spectator"));
             snprintf(t, sizeof t, "<color=%s>%s</color> %s", UI_SPECTATOR_COLOR, wn, body); }
         else if (m.kind == DSNET_CHAT_TEXT) snprintf(t, sizeof t, "<color=%s>%s:</color> %s", col, m.name[0] ? m.name : TR("Player"), body);
@@ -2989,6 +3008,24 @@ static void chat_pull(dsnet_client *c) {
         }
         chat_add(t);
     }
+}
+/* mp_api v2 chat_line / dsmp_bridge_chat: limits per mod name (16 names, more share one): local 5 at once then 1 a
+   second; broadcast 3 at once then 1 every 2 s (receivers also cut each sender to 1 a second) */
+int mpmenu_mod_chat(const char *mod_name, const char *text, int flags) {
+    char m[MP_CHAT_MOD_MAX + 1], x[MP_CHAT_TEXT_LOCAL + 1];
+    int bc = flags == MP_CHAT_BROADCAST;
+    if ((flags != MP_CHAT_LOCAL && !bc) || !mpc_clean(mod_name, m, sizeof m) || !mpc_clean(text, x, bc ? MP_CHAT_TEXT_BROADCAST + 1 : sizeof x)) return MP_CHAT_BAD_ARGS;
+    mp_session *ss = mp_game_session(); dsnet_client *c = ss ? mp_client(ss) : NULL;
+    if (!c) return MP_CHAT_NO_SESSION;
+    if (bc && dsnet_is_spectator(c)) return MP_CHAT_SPECTATOR;
+    static struct { char name[MP_CHAT_MOD_MAX + 1]; mpc_bucket lb, bb; } lim[17]; static int nlim;
+    int k = 0; while (k < nlim && strcmp(lim[k].name, m)) k++;
+    if (k == nlim) { if (nlim < 16) snprintf(lim[nlim++].name, sizeof lim[0].name, "%s", m); else k = 16; }
+    if (bc ? !mpc_take(&lim[k].bb, mono_s(), 3, 2.0) : !mpc_take(&lim[k].lb, mono_s(), 5, 1.0)) return MP_CHAT_RATE_LIMITED;
+    if (!bc) { char t[300]; mod_line(t, sizeof t, NULL, m, x); chat_add(t); return MP_CHAT_SHOWN; }
+    char w[MP_CHAT_MOD_MAX + MP_CHAT_TEXT_BROADCAST + 4];
+    if (mpc_encode(m, x, w, sizeof w) < 0) return MP_CHAT_BAD_ARGS;
+    return dsnet_chat_send(c, w) ? MP_CHAT_NOT_SENT : MP_CHAT_SHOWN;      /* shown here when the server's copy comes back */
 }
 static Obj chat_parent(void) {                            /* the HUD's root canvas (CampaignInfoView's root) */
     static uintptr_t hv; static void *kv;

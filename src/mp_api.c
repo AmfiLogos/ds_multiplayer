@@ -201,6 +201,8 @@ static const mp_api_table api = {
     .modset_lines = a_modset_lines, .register_rig_cmd = a_register_rig_cmd,
     .register_frame = a_register_frame, .register_save_keep = a_register_save_keep, .register_menu = mpmenu_register_hooks,
     .register_host_choice2 = a_register_host_choice2, .host_choice_now = mpmenu_host_choice_now,
+    .rand_u32 = mp_rand_u32, .rand_range = mp_rand_range, .rand_value = mp_rand_value, .rand_shared = mp_rand_shared,
+    .chat_line = mpmenu_mod_chat,
 };
 const mp_api_table *mp_api_get(uint32_t version) {
     if (version > MP_API_VERSION) { rig_log("mp_api: version %u asked, this multiplayer has %d", version, MP_API_VERSION); return NULL; }

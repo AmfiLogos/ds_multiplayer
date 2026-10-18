@@ -17,7 +17,7 @@
 #include <stdint.h>
 
 #define MP_BRIDGE_TYPE    50   /* mp order type (used elsewhere: 1-7, 20-22, 30-37, 48-49) */
-#define MP_BRIDGE_API     1    /* dsmp_bridge_api_version() */
+#define MP_BRIDGE_API     2    /* dsmp_bridge_api_version(); 2 (2026-10-18): rand_*, chat. A plugin accepts >= what it needs */
 #define MP_BRIDGE_CH_MAX  63   /* channel name bytes */
 
 enum { MP_BRIDGE_ROLE_NONE = 0, MP_BRIDGE_ROLE_HOST = 1, MP_BRIDGE_ROLE_GUEST = 2, MP_BRIDGE_ROLE_SPECTATOR = 3 };
@@ -51,6 +51,12 @@ MP_BRIDGE_EXPORT int      dsmp_bridge_send(const char *channel, const uint8_t *d
 MP_BRIDGE_EXPORT int      dsmp_bridge_order(int type, const uint8_t owner[16], const uint8_t *args, int len);
 MP_BRIDGE_EXPORT void     dsmp_bridge_set_dispatch(mp_bridge_dispatch_fn fn);   /* NULL = none */
 MP_BRIDGE_EXPORT void     dsmp_bridge_get_stats(mp_bridge_stats *out);
+/* api 2: seeded random + chat lines (= mp_api v2 rand_* / chat_line; rules in MP_API.md). Strings UTF-8, NUL-ended. */
+MP_BRIDGE_EXPORT uint32_t dsmp_bridge_rand_u32(const char *mod_id, uint32_t stream);
+MP_BRIDGE_EXPORT int      dsmp_bridge_rand_range(const char *mod_id, uint32_t stream, int lo, int hi);   /* lo..hi-1 */
+MP_BRIDGE_EXPORT float    dsmp_bridge_rand_value(const char *mod_id, uint32_t stream);                    /* [0, 1) */
+MP_BRIDGE_EXPORT int      dsmp_bridge_rand_shared(void);   /* 1 = a draw now is shared (main thread, in the lockstep step) */
+MP_BRIDGE_EXPORT int      dsmp_bridge_chat(const char *mod_name, const char *text, int broadcast);   /* MP_CHAT_* (mp_api.h) */
 
 /* mod side */
 struct mp_session;
