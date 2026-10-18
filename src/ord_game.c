@@ -805,9 +805,22 @@ static int qslot_apply(ord_msg *m, int map) {
 }
 
 int ui_map_change_blocks(void) __attribute__((weak_import));   /* ui_game.c: map change running -> notice, 1 */
+int rig_det_mp_ready(void) __attribute__((weak_import));       /* rig_det.c: steps may run (locked, no hold, no game flow) */
+/* Replies to a box the game's LOAD waits for (CampaignLoadingEventHandler.LoadCampaign waits while
+   NeedsLockConsecrationNotice()). While the load runs, the session is not ready, so no step runs: a captured reply
+   would wait for a step forever and the load never ends (host: no join point, guests never get the world).
+   Not ready -> the reply runs here, like the load flow's own speed / pause calls (mp_game.c pass_through). The
+   answer is in the save every peer loads at the join point. Ready -> a normal order. */
+static int load_reply_local(Obj data) {
+    return rig_det_mp_ready && !rig_det_mp_ready() && is_cls(data, "ReplyLockConsecrationNoticeRequested");
+}
 static void h_b8_0(Obj self, Obj data, void *mi) {
     recover();
     if (!emit_fn || executing || !data || !mf) { o_b8_0(self, data, mi); return; }
+    if (load_reply_local(data)) {
+        rig_log("ord: %s during the load (session not ready): runs here, not as an order", "ReplyLockConsecrationNoticeRequested");
+        st.passed_local++; o_b8_0(self, data, mi); return;
+    }
     int i = ev_index(data);
     if (i < 0) {
         if (ui_map_change_blocks && is_cls(data, "InteractGridRequested") && ui_map_change_blocks()) { st.blocked++; return; }
