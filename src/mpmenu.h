@@ -204,6 +204,11 @@ int  mpm_list_mode(const mpm_model *m);                                   /* whi
 int  mpm_list_show(int mode, int show_other, int tagged, int current);    /* 1 = show this world (current = the world being played) */
 const char *mpm_list_toggle_label(int mode);                              /* "Show multiplayer worlds" / "Show single-player worlds" / "" */
 
+/* 1 = host is a literal local-network address: IPv4 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 fe80::/10, fc00::/7
+ * (also as ::ffff:a.b.c.d). Loopback, 100.64/10 (carrier NAT, Tailscale) and names are 0. "[...]" and a "%zone" are allowed.
+ * macOS Local Network privacy blocks exactly these: the join page names the setting (join_poll, mpmenu.c). */
+int  mpm_lan_addr(const char *host);
+
 /* Multiplayer world tag (owner 2026-10-15): <app data>/mp_tags.txt, one line per tagged world, "<campaign guid>\t<name>\t<name>..."
  * = the players who were ever in that world together (a sidecar: the game's save is not touched). Line present = tag on. */
 #define MPM_TAG_NAMES 16

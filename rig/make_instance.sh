@@ -64,7 +64,9 @@ plutil -replace CFBundleIdentifier -string "com.CanOpener.Dungeon-Settlers.mp$X"
 plutil -replace CFBundleName -string "DS rig $X" $PL
 plutil -replace LSBackgroundOnly -bool YES $PL
 plutil -replace LSUIElement -bool YES $PL
-# Info.plist changed -> re-seal ad-hoc (no hardened runtime: DYLD_INSERT_LIBRARIES allowed, no library validation)
-codesign -f -s - "$APP/Contents/MacOS/Dungeon Settlers" 2>&1 | tail -1
+# Info.plist changed -> re-seal ad-hoc (no hardened runtime: DYLD_INSERT_LIBRARIES allowed, no library validation).
+# Signing id = the Steam game's (same Mach-O UUID): macOS Local Network privacy then uses the Steam game's answer, so
+# a hidden copy can reach the Windows VM (172.16.x) with no alert. Its own id was blocked without an alert (rc -4).
+codesign -f -s - -i com.CanOpener.Dungeon-Settlers "$APP/Contents/MacOS/Dungeon Settlers" 2>&1 | tail -1
 mkdir -p $I/home $I/data/Saves
 echo "instance $X ready: $APP"

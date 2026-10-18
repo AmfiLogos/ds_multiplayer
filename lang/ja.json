@@ -457,6 +457,7 @@
  "Only the host can change the rules.": "ルールを変更できるのはホストだけです。",
  "Only the host saves this world": "このワールドを保存できるのはホストだけです",
  "Only the host saves this world. It is saved on the host's computer.": "このワールドを保存できるのはホストだけです。ホストのコンピューターに保存されます。",
+ "Open Settings": "設定を開く",
  "Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer.": "あなたのセーブの一つを他のプレイヤーに公開します。フレンドはあなたのワールドに参加し、あなたのユニットでプレイします。ワールドはあなたのコンピューターに残ります。",
  "Opens Steam's invite window so you can invite friends into this world.": "Steamの招待画面を開き、このワールドにフレンドを招待できます。",
  "Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version.": "Steamの招待画面を開き、アドレスを教えずにフレンドを招待できます。Steam版が必要です。",
@@ -827,6 +828,7 @@
  "looks at the same part of the map as you.||look at the same part of the map as you.": [
   "があなたと同じ場所を見ています。"
  ],
+ "macOS blocked the local network for Dungeon Settlers. Allow it in System Settings > Privacy & Security > Local Network.": "macOSがDungeon Settlersのローカルネットワーク接続をブロックしました。システム設定 > プライバシーとセキュリティ > ローカルネットワーク で許可してください。",
  "majority": "多数決",
  "multiplied": "乗算",
  "no pause": "一時停止なし",

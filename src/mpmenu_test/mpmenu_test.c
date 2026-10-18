@@ -407,6 +407,11 @@ int main(void) {
         mpm_label(&q, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer"));   /* the dropped entry: English */
         CHECK(dsi_set_lang(0) == 1); mpm_label(&q, MPB_BACK, l, sizeof l); CHECK(!strcmp(l, "Back"));
     }
+    /* local-network address (macOS Local Network privacy message): a wrong answer names the wrong cause to the player */
+    CHECK(mpm_lan_addr("172.16.175.128") && mpm_lan_addr("172.31.0.1") && mpm_lan_addr("10.0.0.2") && mpm_lan_addr("192.168.1.20"));
+    CHECK(mpm_lan_addr("169.254.3.4") && mpm_lan_addr("[fe80::1%en0]") && mpm_lan_addr("fd7a::5") && mpm_lan_addr("::ffff:192.168.0.9"));
+    CHECK(!mpm_lan_addr("172.32.0.1") && !mpm_lan_addr("172.15.0.1") && !mpm_lan_addr("100.64.1.1") && !mpm_lan_addr("127.0.0.1"));
+    CHECK(!mpm_lan_addr("::1") && !mpm_lan_addr("8.8.8.8") && !mpm_lan_addr("2001:db8::1") && !mpm_lan_addr("mypc.local") && !mpm_lan_addr(""));
     printf(fails ? "mpmenu_test: %d FAILED\n" : "mpmenu_test: all passed%.0d\n", fails);
     return fails != 0;
 }

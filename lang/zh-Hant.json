@@ -457,6 +457,7 @@
  "Only the host can change the rules.": "只有房主可以變更規則。",
  "Only the host saves this world": "只有房主可以保存此世界",
  "Only the host saves this world. It is saved on the host's computer.": "只有房主可以保存此世界。存檔保存在房主的電腦上。",
+ "Open Settings": "開啟設定",
  "Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer.": "將你的一個存檔開放給其他玩家。好友加入你的世界，並以你的單位遊玩。世界仍保存在你的電腦上。",
  "Opens Steam's invite window so you can invite friends into this world.": "開啟 Steam 邀請視窗，讓你邀請好友加入此世界。",
  "Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version.": "開啟 Steam 邀請視窗，讓你不必分享位址即可邀請好友。需要 Steam 版本。",
@@ -827,6 +828,7 @@
  "looks at the same part of the map as you.||look at the same part of the map as you.": [
   "正在看地圖上與你相同的位置。"
  ],
+ "macOS blocked the local network for Dungeon Settlers. Allow it in System Settings > Privacy & Security > Local Network.": "macOS 已阻擋 Dungeon Settlers 存取區域網路。請在「系統設定 > 隱私權與安全性 > 區域網路」中允許。",
  "majority": "多數",
  "multiplied": "相乘",
  "no pause": "不暫停",

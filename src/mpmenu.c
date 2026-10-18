@@ -2049,6 +2049,7 @@ static void join_by_address(void) {
     snprintf(M.connecting, sizeof M.connecting, "%s:%u", c.host_addr, port);
     rig_log("mpmenu: join by address %s%s: connecting (limit %d ms)", M.connecting, c.spectator ? " to watch" : "", DSNET_CONNECT_TIMEOUT_MS);
 }
+static void lanblock_box(const char *text);                                /* the same text in the stock box + Open Settings */
 static void join_poll(void) {                                              /* each frame: never waits */
     if (!conn) return;
     if (!M.connecting[0]) { dsnet_connect_free(conn); conn = NULL; rig_log("mpmenu: connect cancelled"); return; }
@@ -2058,12 +2059,24 @@ static void join_poll(void) {                                              /* ea
     M.connecting[0] = 0;
     if (r == 1) dsnet_connect_adopt(conn);
     dsnet_connect_free(conn); conn = NULL;
-    rig_log("mpmenu: connect to %s: %d after %.0f ms", addr, r, now_ms_() - conn_t0);
-    if (r == DSNET_CONN_TIMEOUT) snprintf(M.msg, sizeof M.msg, TR("No answer from %s. Check the address, and ask the host to open port %u on the router."), addr, conn_cfg.port);
+    double took = now_ms_() - conn_t0;
+    rig_log("mpmenu: connect to %s: %d after %.0f ms", addr, r, took);
+    int lan_blocked = 0;
+#ifdef __APPLE__
+    /* macOS 15+ Local Network privacy: connect() to a local-network address fails at once (EHOSTUNREACH, ~10 ms);
+       an absent LAN host takes seconds. Then the player needs the setting, not "check the address". */
+    lan_blocked = r == DSNET_CONN_UNREACHABLE && took < 1000 && mpm_lan_addr(conn_cfg.host_addr);
+#endif
+    if (lan_blocked) {
+        snprintf(M.msg, sizeof M.msg, "%s", TR("macOS blocked the local network for Dungeon Settlers. Allow it in System Settings > Privacy & Security > Local Network."));
+        rig_log("mpmenu: connect to %s: local network blocked by macOS (rc %d after %.0f ms)", addr, r, took);
+        lanblock_box(M.msg);
+    }
+    else if (r == DSNET_CONN_TIMEOUT) snprintf(M.msg, sizeof M.msg, TR("No answer from %s. Check the address, and ask the host to open port %u on the router."), addr, conn_cfg.port);
     else if (r == DSNET_CONN_REFUSED) snprintf(M.msg, sizeof M.msg, TR("Nobody is hosting at %s. Check the address and the port."), addr);
     else if (r == DSNET_CONN_BAD_ADDRESS) snprintf(M.msg, sizeof M.msg, TR("Unknown address: %s. Check the address."), addr);
     else if (r < 0) snprintf(M.msg, sizeof M.msg, TR("Cannot reach %s. Check the address and your network."), addr);
-    if (r != 1 && hist_host[0]) { snprintf(M.msg, sizeof M.msg, TR("%s is not hosting this world right now."), hist_host); hist_host[0] = 0; }   /* a Recent worlds row */
+    if (r != 1 && hist_host[0]) { if (!lan_blocked) snprintf(M.msg, sizeof M.msg, TR("%s is not hosting this world right now."), hist_host); hist_host[0] = 0; }   /* a Recent worlds row */
     if (r != 1) { expect_world(""); hist_world[0] = 0; }                  /* no join: the expectation does not carry over */
     if (r != 1) return;
     int rc = mp_game_join(&conn_cfg);                                     /* uses the adopted socket: no connect wait */
@@ -2145,7 +2158,7 @@ static void notice_frame(const mpm_obs *o) {
  * actions; _txtConfirm +0x40 primary right "End for everyone", _txtCancle +0x50 "Cancel"). The ui lane's
  * OnClick_Confirm / OnClick_Cancle hooks hand clicks on a box that is not theirs to mpmenu_notice_click (dlsym). If
  * another box takes the view (its text changes) or it closes another way, it counts as Cancel. */
-enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG };   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
+enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK };   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
 static char lbox_text[400]; static int lbox_up;                             /* lbox_up = BX_* */
 static Obj lbox_view(void) { return find_view_x(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }
 static Obj lbox_view_now(void) { return find_view_now(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }   /* showing a box */
@@ -2233,6 +2246,21 @@ static void box_show(int kind, const char *text, const char *yes, const char *no
     rig_log("mpmenu: box %d: %s", kind, text);
 }
 static void box_close(void) { Obj v = lbox_view(); int ours = lbox_ours(v); lbox_up = BX_NONE; if (ours) F(0xF65638, void (*)(Obj, void *))(v, NULL); }
+/* macOS blocked the local network (join_poll): the message + "Open Settings", which opens Privacy & Security > Local Network.
+ * The player clicked it, so a normal open (NSWorkspace openURL:). Test copies log it and open nothing (rig_quiet.inc). */
+static void lanblock_box(const char *text) {
+    box_show(BX_LANBLOCK, text, TR("Open Settings"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
+}
+static void lanblock_open_settings(void) {
+#ifdef __APPLE__
+    id s = ((id (*)(Class, SEL, const char *))objc_msgSend)(objc_getClass("NSString"), sel_registerName("stringWithUTF8String:"),
+                                                          "x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork");
+    id url = s ? ((id (*)(Class, SEL, id))objc_msgSend)(objc_getClass("NSURL"), sel_registerName("URLWithString:"), s) : nil;
+    id ws = ((id (*)(Class, SEL))objc_msgSend)(objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
+    BOOL ok = url && ws ? ((BOOL (*)(id, SEL, id))objc_msgSend)(ws, sel_registerName("openURL:"), url) : NO;
+    rig_log("mpmenu: Open Settings (Local Network): %s", ok ? "opened" : "failed");
+#endif
+}
 /* ---------------------------------------------------------------- host rule "Spectators" (owner 2026-10-14)
  * Outside the sim (dsnet P_SPECT_RULE, mp_set_spectators): on / off at once; off drops every spectator (BYE reason 2).
  * Off while some watch asks first (the stock box). Saved like the other rules (mp_menu.json, the world's line). */
@@ -2282,12 +2310,14 @@ static void invite_click(int confirm) {
     else if (k == BX_JOINING) { join_box_on = 0; mp_steam_leave(); rig_log("mpmenu: joining cancelled (box)"); }
     else if (k == BX_SPECT_OFF) { if (confirm) spect_apply(0); else rig_log("mpmenu: spectators stay (box: Cancel)"); }
     else if (k == BX_UNTAG) tag_answer(confirm);
+    else if (k == BX_LANBLOCK && confirm) lanblock_open_settings();
 }
 static void invite_frame(const mpm_obs *o) {
     static int looked; if (!looked) { looked = 1; inv_pending = (int (*)(char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_invite_pending"); inv_answer = (int (*)(int))dlsym(RTLD_DEFAULT, "mp_game_invite_answer"); }
     Obj v = lbox_view();
     if (lbox_up == BX_SPECT_OFF && !lbox_ours(v)) { lbox_up = BX_NONE; rig_log("mpmenu: spectators box gone: they stay"); }   /* closed another way = Cancel */
     if (lbox_up == BX_UNTAG && !lbox_ours(v)) { lbox_up = BX_NONE; tag_answer(0); }                                       /* closed another way = Cancel */
+    if (lbox_up == BX_LANBLOCK && !lbox_ours(v)) lbox_up = BX_NONE;                                                      /* closed another way: nothing to do */
     if ((lbox_up == BX_INVITE || lbox_up == BX_NOSAVE || lbox_up == BX_JOINING) && !lbox_ours(v)) {   /* closed or taken by another box: Cancel */
         int k = lbox_up; lbox_up = BX_NONE;
         if (k == BX_JOINING) { if (join_box_on && frames % 30 == 0) join_phase_shown = -1; }   /* shown again below */

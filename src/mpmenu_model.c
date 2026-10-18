@@ -5,6 +5,8 @@
 #include "ds_i18n.h"
 #include <stdio.h>
 #include <string.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
 _Static_assert(MPB_FE_RESLIST < 64 && MPB_POP_NEXT < 80, "mpm_visible: title / lobby buttons need a bit below 64");
 
 /* game words (mpmenu.h): the game side's lookup, else our English through TR */
@@ -636,4 +638,19 @@ void mpm_tag_names(char names[][32], int n, int shown, char *out, size_t cap) {
     else snprintf(out, cap, "%s", head);
     size_t l = strlen(out);
     if (n > k && l < cap) snprintf(out + l, cap - l, " +%d", n - k);
+}
+int mpm_lan_addr(const char *host) {
+    if (!host) return 0;
+    char h[64]; size_t n = 0;
+    for (const char *p = host; *p && *p != '%' && *p != ']' && n + 1 < sizeof h; p++) if (*p != '[') h[n++] = *p;
+    h[n] = 0;
+    unsigned char a[16];
+    if (inet_pton(AF_INET6, h, a) == 1) {
+        if (a[0] == 0xFE && (a[1] & 0xC0) == 0x80) return 1;                /* fe80::/10 link-local */
+        if ((a[0] & 0xFE) == 0xFC) return 1;                                 /* fc00::/7 unique local */
+        static const unsigned char v4m[12] = { 0,0,0,0, 0,0,0,0, 0,0,0xFF,0xFF };
+        if (memcmp(a, v4m, 12)) return 0;
+        memmove(a, a + 12, 4);                                               /* ::ffff:a.b.c.d: the IPv4 rules */
+    } else if (inet_pton(AF_INET, h, a) != 1) return 0;
+    return a[0] == 10 || (a[0] == 172 && (a[1] & 0xF0) == 16) || (a[0] == 192 && a[1] == 168) || (a[0] == 169 && a[1] == 254);
 }
