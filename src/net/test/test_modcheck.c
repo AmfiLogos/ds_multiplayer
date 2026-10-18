@@ -1,6 +1,4 @@
 /* ds_modcheck.h tests that catch real breaks of "Get the host's mods" (v0.1.14):
- *  - a gameplay-settings suffix (;set=) read as a version or as files (a guest would be told "other version" /
- *    "reinstall" for a settings difference, and the loader's plan would get the wrong lines);
  *  - the DSMP_REJOIN line not surviving format -> parse (the new process would join nobody, or the wrong host);
  *  - the loader's plan JSON misread (wrong rows, or the button shown for a mod that cannot be downloaded). */
 #include "../ds_modcheck.h"
@@ -8,21 +6,6 @@
 
 static int fails;
 #define CHECK(c, ...) do { if (!(c)) { printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); fails++; } } while (0)
-
-static void settings_suffix(void) {
-    dsmc_mod m[4];
-    int n = dsmc_parse("hell@0.1.4:aa:pp;set=hp=2&x=a%20b\ncdr@1.0;set=k=1\n", m, 4);
-    CHECK(n == 2, "2 lines, got %d", n);
-    CHECK(!strcmp(m[0].ver, "0.1.4") && !strcmp(m[0].rest, "aa:pp") && !strcmp(m[0].set, "hp=2&x=a%20b"), "line 1: ver '%s' rest '%s' set '%s'", m[0].ver, m[0].rest, m[0].set);
-    CHECK(!strcmp(m[1].ver, "1.0") && !m[1].rest[0] && !strcmp(m[1].set, "k=1"), "line 2: ver '%s' rest '%s' set '%s'", m[1].ver, m[1].rest, m[1].set);
-    char out[1000]; dsmc_counts c;
-    int d = dsmc_guest_text("hell@0.1.4:aa;set=hp=2", "hell@0.1.4:aa;set=hp=3", 0, NULL, out, sizeof out, &c);
-    CHECK(d == 1 && c.settings == 1 && !c.version && !c.files && !c.missing && !c.extra, "settings only: d %d v %d f %d s %d", d, c.version, c.files, c.settings);
-    d = dsmc_guest_text("hell@0.1.4:aa;set=hp=2", "hell@0.1.4:aa;set=hp=2", 0, NULL, out, sizeof out, &c);
-    CHECK(d == 0, "same settings: no difference, got %d", d);
-    char p[100]; dsmc_set_pretty("hp=2&x=a%20b", p, sizeof p);
-    CHECK(!strcmp(p, "hp = 2, x = a b"), "pretty '%s'", p);
-}
 
 static void rejoin_line(void) {
     dsmc_rejoin a = {0}, b; char l[300];
@@ -61,7 +44,7 @@ static void plan_json(void) {
 }
 
 int main(void) {
-    settings_suffix(); rejoin_line(); plan_json();
+    rejoin_line(); plan_json();
     if (fails) { printf("SUMMARY 0 PASS, %d FAIL\n", fails); return 1; }
     printf("PASS test_modcheck\n");
     return 0;

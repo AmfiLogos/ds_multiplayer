@@ -987,6 +987,8 @@ __attribute__((visibility("default"))) int mp_game_modset_text(char *out, size_t
     static char host[DSNET_MODLINES_MAX]; int rule = 0;
     if (dsnet_reject_host_mods(&rule, host, sizeof host) != 0) host[0] = 0;
     char body[1024];
+    {   /* mod settings: the setting's label and value words in the player's language (the loader's dsl_setting_text) */
+        static int looked; if (!looked) { looked = 1; dsmc_set_setting_text((dsmc_setting_fn)dlsym(RTLD_DEFAULT, "dsl_setting_text")); } }
     if (!dsmc_guest_text(host, dsnet_my_mod_lines(), rule == 1, NULL, body, sizeof body, NULL))
         snprintf(body, sizeof body, "%s", dsnet_reject_text(DSNET_REJ_MODSET));   /* same lines, other hash: the host's words */
     else {                                     /* loader releases differ: say so first (the host's words already do) */
