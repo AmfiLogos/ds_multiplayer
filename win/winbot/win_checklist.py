@@ -639,13 +639,37 @@ def itemS(w, rep, a):
         fresh_logs(w, rep, 'S')
 
 
+HTTP_PROBE = r'''$c=New-Object Net.Sockets.TcpClient('127.0.0.1',%d); $s=$c.GetStream(); $s.ReadTimeout=5000
+$b=[Text.Encoding]::ASCII.GetBytes("POST / HTTP/1.1`r`nHost: 127.0.0.1`r`n`r`n{""cmd"":""ping""}`n"); $s.Write($b,0,$b.Length)
+$o=New-Object IO.MemoryStream; $buf=New-Object byte[] 4096; $closed='no'
+try { while ($true) { $n=$s.Read($buf,0,4096); if ($n -le 0) { $closed='yes'; break }; $o.Write($buf,0,$n) } } catch { $closed='timeout' }
+"closed=$closed"; [Text.Encoding]::UTF8.GetString($o.ToArray())'''
+
+
+def http_probe(w, port):
+    """one connection: an HTTP request line, headers, then a valid ping as the body. Must be refused and closed:
+    a web page's POST to 127.0.0.1 would look like this"""
+    w.write(W.WORK + r'\winbot\http_probe.ps1', HTTP_PROBE % port)
+    return w.a('run', exe=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+               args='-NoProfile -ExecutionPolicy Bypass -File ' + w.expand(W.WORK + r'\winbot\http_probe.ps1'), wait_ms=20000, capture=True)['out']
+
+
 def itemP(w, rep, a):
     """the v0.1.15 security fix: the control channel opens only when DSRIG_PORT is set"""
     I = 'P'
     w.prepare(lang=0, active=BASE_MODS, settings={})
     w.kill_all()
     m = w.mark('dsload.log') if w.exists(W.PROF + r'\dsload.log') else 0
-    env = w.start_env({'DSRIG_PORT': None})
+    # what the player starter sets (ds_modloader loader/start/win/ds_modded_win.c:686-701 at int014), and nothing else.
+    # Two values differ, for the owner's rules: DSL_STEAM=0 (no Steam on the VM) and DSML_GAME_SAVES = a test folder
+    # (never the owner's LocalLow / Steam Cloud saves). No DSRIG_CTL, no DSRIG_PORT, no token, no test variables.
+    pe = {'SteamAppId': '2798330', 'SteamGameId': '2798330', 'DSRIG_DIR': W.PROF, 'DSRIG_LIVE': '1', 'DSRIG_FPS': '60',
+          'DSL_MODS_DIR': W.ROOT + r'\mods', 'DSL_PROFILE': W.DATA + r'\Mods\active.json', 'DSL_LOG_DIR': W.PROF,
+          'DSML_SESSION': W.DATA + r'\Mods\worlds.json', 'DSML_BUILD': '25846389', 'DSML_APP': W.GAME, 'DSML_DATA': W.DATA,
+          'DSML_GAME_SAVES': W.WORK + r'\fake_gamesaves', 'DSL_STEAM': '0', 'DSML_ROOT': W.ROOT, 'DOORSTOP_DISABLE': '1'}
+    env = [f'{k}={w.expand(v)}' for k, v in pe.items()]
+    leak = [k for k in w._genv if k.startswith(('DSRIG', 'DSL_', 'DSML'))] if getattr(w, '_genv', None) else []
+    rep.check(I, 'player start: environment used (the agent adds none of the test variables)', not leak, ' '.join(sorted(pe)) + (f' | agent env has {leak}' if leak else ''))
     r = w.a('run', exe=w.expand(W.GAME + r'\DungeonSettlers.exe'), args=w.expand(f'-logFile "{W.PROF}\\player.log"'),
             cwd=w.expand(W.GAME), env=env, show=True, wait_ms=0)
     w.pid = r['pid']; t = time.time()
@@ -663,8 +687,12 @@ def itemP(w, rep, a):
                   'listening' not in rl[-20000:].split('---- rig start')[-1], [l for l in rl.splitlines() if 'control port' in l][-1:])
     finally:
         w.a('kill', pid=w.pid); w.kill_all()
-    w.start()                                                        # winrig always sets DSRIG_PORT
-    rep.check(I, 'with DSRIG_PORT: the tool connects', (w.ping() or {}).get('pid') == w.pid, w.pid)
+    w.start()                                                        # winrig always sets DSRIG_PORT + DSRIG_CTL
+    rep.check(I, 'with the test variables: the tool connects', (w.ping() or {}).get('pid') == w.pid, w.pid)
+    out = http_probe(w, w.port)
+    rep.check(I, 'test mode: an HTTP-looking connection is refused and closed, its ping body not answered',
+              'closed=yes' in out and '"pong"' not in out, out.strip()[-300:])
+    rep.check(I, 'the game still runs after the HTTP probe', w.alive() and (w.ping() or {}).get('pid') == w.pid)
     fresh_logs(w, rep, 'P')
     w.stop()
 

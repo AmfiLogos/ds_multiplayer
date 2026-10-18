@@ -495,7 +495,7 @@ class Win:
 
     def start_env(self, extra=None):
         e = {'SteamAppId': '2798330', 'SteamGameId': '2798330', 'DSRIG_DIR': PROF, 'DSRIG_LIVE': '1', 'DSRIG_FPS': '60',
-             'DSRIG_PORT': str(self.port),                   # the control channel opens only with DSRIG_PORT (Windows, v0.1.15 fix)
+             'DSRIG_PORT': str(self.port), 'DSRIG_CTL': '1',  # the control channel opens only with these (v0.1.15 fix; the starter sets neither)
              'DSL_MODS_DIR': ROOT + r'\mods', 'DSL_PROFILE': DATA + r'\Mods\active.json',
              'DSL_LOG_DIR': PROF, 'DSML_SESSION': DATA + r'\Mods\worlds.json', 'DSML_BUILD': '25846389', 'DSML_APP': GAME,
              'DSML_DATA': DATA, 'DSML_GAME_SAVES': WORK + r'\fake_gamesaves', 'DSL_UI_TEST': UITEST, 'DSL_STEAM': '0',
