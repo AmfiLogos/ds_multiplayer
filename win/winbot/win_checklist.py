@@ -88,14 +88,15 @@ class Mac:
     def status(self):
         return self.cmd(cmd='status')
 
-    def start(self, settings=None):
-        """(re)start copy W; settings = the Mac copy's mod settings (DSL_SETTINGS_FILE)"""
+    def start(self, active, settings=None):
+        """(re)start copy W with these mods enabled (DSL_PROFILE) and mod settings (DSL_SETTINGS_FILE)"""
         self.sh('stop')
-        d = os.path.dirname(MAC_CTL)
-        if settings is not None:
-            os.makedirs(os.path.join(d, 'data', 'Mods'), exist_ok=True)
-            json.dump(settings, open(os.path.join(d, 'data', 'Mods', 'settings.json'), 'w'))
-        self.env.update(DSML_SESSION=os.path.join(d, 'data', 'Mods', 'worlds.json'), DSL_SETTINGS_FILE=os.path.join(d, 'data', 'Mods', 'settings.json'))
+        m = os.path.join(os.path.dirname(MAC_CTL), 'data', 'Mods')
+        os.makedirs(m, exist_ok=True)
+        json.dump({'enabled': list(active), 'order': list(active)}, open(os.path.join(m, 'active.json'), 'w'))
+        json.dump(settings or {}, open(os.path.join(m, 'settings.json'), 'w'))
+        self.env.update(DSML_SESSION=os.path.join(m, 'worlds.json'), DSL_SETTINGS_FILE=os.path.join(m, 'settings.json'),
+                        DSL_PROFILE=os.path.join(m, 'active.json'))
         r = self.sh('start')
         t = time.time()
         while time.time() - t < 240:
@@ -265,7 +266,7 @@ def item3(w, rep, a, mac):
 
 def mac_host_with_extra(mac, a):
     """Mac copy W hosts the base save with ZET-U on + a setting the VM lacks; returns its menu port"""
-    mac.start(settings={ZETU: {'max_units': 7}})
+    mac.start(BASE_MODS[:3] + [ZETU, 'multiplayer'], {ZETU: {'max_units': 7}})
     work = os.path.join(os.path.dirname(MAC_CTL), 'save_in_base.json')
     import shutil; shutil.copy2(a.save_base, work)
     mac.host(work)
@@ -331,7 +332,7 @@ def item4(w, rep, a, mac):
 # -- item 5: cross-play, Mac hosts, the VM joins (xplay.py of lane vmwin2, both sides on the control port)
 def item5(w, rep, a, mac):
     I = '5'
-    mac.start(settings={})
+    mac.start(BASE_MODS, {})
     work = os.path.join(os.path.dirname(MAC_CTL), 'save_in_dungeon.json')
     import shutil; shutil.copy2(a.save_dungeon, work)
     mac.host(work)
@@ -396,10 +397,14 @@ def item5(w, rep, a, mac):
         fight(f'entry {cy}')
         if cy == 1:
             g = host_unit(1)
+            name = next((u.get('name', '') for u in c('mac', cmd='list_units')['units'] if u['guid'] == g), '')
             r1 = c('mac', cmd='ui_lend', guid=g, action='lend', to=1)
-            w.wait(lambda: c('vm', cmd='mp_owner', guid=g).get('owner') == 1 or c('vm', cmd='ui_lend', guid=g).get('lent'), 'the lend on the VM', 30)
+            w.wait(lambda: c('vm', cmd='ui_lend', guid=g).get('controller') == 1, 'the VM sees the unit lent to it', 30)
             r2 = c('mac', cmd='ui_lend', guid=g, action='take')
-            rep.check(I, 'lend + take back', r1.get('ok') and r2.get('ok'), {'lend': r1, 'take': r2})
+            w.wait(lambda: c('vm', cmd='ui_lend', guid=g).get('controller') != 1, 'the VM sees the unit taken back', 30)
+            m = w.mpm(); said = json.dumps([m.get('notice'), (m.get('chat') or {}).get('last')], ensure_ascii=False)
+            rep.check(I, 'lend + take back', r1.get('ok') and r2.get('ok'), {'lend': r1.get('rc'), 'take': r2.get('rc')})
+            rep.check(I, 'the take-back message names the unit', name and name in said, f'{name}: {said[:200]}')
             alive('lend / take back')
         if cy < 3:
             portal = c('mac', cmd='ui_buildings', map=1, subtype=2)['buildings'][0]['guid']
