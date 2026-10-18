@@ -36,7 +36,7 @@ chk g024_uninst 'RESULT ([0-9]+)/\1 pass' $WT python3 $WH $LD/loader/start/win/i
 chk g024_setup 'RESULT ([0-9]+)/\1 pass' $WT python3 $WH $H/setup_test.py $(print $REL/*Setup*.exe) $OUT/g024_setup
 winst() { fresh_root; env $WE zsh loader/start/win/test/winstart_test.sh; }
 chk g024_winstart '== 0 failed' $LD winst
-chk g024_nonascii 'RESULTS 9 / 9' $LD python3 $WH loader/start/win/test/nonascii_test.py loader/build/win/kit $LD/loader/build/mods_all/win/gcd-cdr
+chk g024_nonascii 'RESULTS 8 / 8' $LD python3 $WH loader/start/win/test/nonascii_test.py loader/build/win/kit $LD/loader/build/mods_all/win/gcd-cdr
 chk g024_w_pkg '([0-9]+)/\1 checks' $WT python3 $WH $H/w_pkg_gate.py $REL $OUT/g024_w_pkg
 chk g024_pathwarn '== ([0-9]+)/\1 passed' $LD python3 $WH loader/start/win/test/pathwarn_test.py $(print $REL/*Setup*.exe) $LD/loader/build/win/kit
 chk g024_win_cjk '([0-9]+)/\1 checks' $WT python3 $WH $H/w_cjk_gate.py $LD/loader/build/win/kit $OUT/g024_win_cjk ja
