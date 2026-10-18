@@ -38,6 +38,11 @@ modrepos() {   # every module the build ships is an official mod (MOD_REPOS: aut
     command grep -qE "\\{ \"$id\", \"AmfiLogos/ds_[a-z]+\" \\}" $LD/loader/src/dsl_update.c && echo "ok $id" || { echo "MISSING $id"; bad=1; }; done
   (( bad )) || echo "MOD REPOS PASS"; return $bad; }
 chk g024_mod_repos 'MOD REPOS PASS' $WT modrepos
+chk g024_mods_check 'modules .*: OK' $LD env MP_REPO=$HOME/ds_multiplayer CM_REPO=$CMR DSMP_ROOT=$HOME/ds_multiplayer zsh loader/modules/build_mods.sh --check   # every built module complete, Mac + Windows
+chk g024_rv_gate 'rv gate: ok' $WT python3 tools/rv_gate.py   # every game address goes through rv() (per-game-version tables)
+chk g024_cargo_core 'test result: ok. [1-9][0-9]* passed; 0 failed' $LD nice -n 19 cargo test -p dsml-core
+chk g024_kitonly '== ([0-9]+) passed, 0 failed' $LD zsh loader/test/update/kitonly_test.sh   # unknown game build: mods off, the kit update still found
+chk g024_getmods '== ([0-9]+) passed, 0 failed' $LD zsh loader/test/update/getmods_test.sh   # "Get the host's mods": official releases only, sha256
 lic() {   # both license files in every release file (app, Windows kit and zip, each mod zip) - reviewdocs
   local M=$(mktemp -d) bad=0; hdiutil attach -nobrowse -readonly -noautoopen -mountpoint $M $REL/*.dmg >/dev/null || return 1
   for f in LICENSE.txt THIRD_PARTY_NOTICES.txt; do [[ -s "$M/Dungeon Settlers Modded.app/Contents/Resources/licenses/$f" ]] || { echo "app lacks licenses/$f"; bad=1; }
