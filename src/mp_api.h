@@ -1,4 +1,5 @@
 // mp_api.h - the Multiplayer API (research/MASTER_PLAN.md 2.2 B; M4 split 2026-10-15).
+// Mod makers (C, and C# through mp_bridge.h): src/MP_API.md.
 // Custom Modes (ds_multiplayer/custom, its own dylib) never gets called by name from multiplayer: it registers callbacks
 // here. It finds the table with module_loaded("multiplayer") and dlsym(<multiplayer image>, "mp_api_get"). Multiplayer
 // works alone: with nothing registered every hook point below behaves as "no custom mode".
