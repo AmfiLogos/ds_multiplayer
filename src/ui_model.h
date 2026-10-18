@@ -351,3 +351,11 @@ uint32_t ui_map_key(int map, int floor);
 /* ---------------------------------------------------------------- lobby */
 /* "1.2.3.4:7777", "[::1]:7777", "host.name" (port = def_port). Trims spaces. 0 ok, -1 bad. */
 int ui_parse_address(const char *in, char *host, size_t host_cap, uint16_t *port, uint16_t def_port);
+/* Host address lines (owner 2026-10-18, Players panel): the host's IPv4 addresses (host byte order) with their interface
+   names, as "a.b.c.d:port", sorted: real adapters first (en0 first), then virtual adapters, then VPNs. Loopback
+   (127/8), link-local (169.254/16), 0.0.0.0 and repeats are left out. kind: UI_ADDR_LAN, UI_ADDR_VIRTUAL (VMware,
+   Parallels, VirtualBox, Hyper-V, bridge), UI_ADDR_VPN (utun, ppp, tun, tap). Returns the count written (<= max). */
+enum { UI_ADDR_LAN = 0, UI_ADDR_VIRTUAL = 1, UI_ADDR_VPN = 2 };
+typedef struct ui_host_addr { char addr[24]; int kind; } ui_host_addr;
+int ui_addr_kind(const char *ifname);
+int ui_host_addrs(const char *const *ifnames, const uint32_t *ips, int n, uint16_t port, ui_host_addr *out, int max);

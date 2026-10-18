@@ -800,3 +800,29 @@ int ui_view_marks(float w, float h, float x0, float y0, float x1, float y1, int 
     if (!views_on) return UI_VIEW_NONE;
     return same || covers ? UI_VIEW_SAME : UI_VIEW_BRACKETS;
 }
+
+/* ---------------------------------------------------------------- host address lines (Players panel) */
+static int ui_name_starts(const char *s, const char *p) { return !strncmp(s, p, strlen(p)); }
+int ui_addr_kind(const char *nm) {
+    static const char *const vpn[] = { "utun", "ipsec", "ppp", "tun", "tap", "wg", "zt" };
+    static const char *const virt[] = { "vmnet", "bridge", "vnic", "vboxnet", "veth", "docker" };
+    if (!nm) return UI_ADDR_LAN;
+    for (size_t i = 0; i < sizeof vpn / sizeof vpn[0]; i++) if (ui_name_starts(nm, vpn[i])) return UI_ADDR_VPN;
+    for (size_t i = 0; i < sizeof virt / sizeof virt[0]; i++) if (ui_name_starts(nm, virt[i])) return UI_ADDR_VIRTUAL;
+    return UI_ADDR_LAN;
+}
+int ui_host_addrs(const char *const *ifnames, const uint32_t *ips, int n, uint16_t port, ui_host_addr *out, int max) {
+    int cnt = 0;
+    for (int pass = 0; pass < 4 && cnt < max; pass++)          /* 0: en0, 1: other real adapters, 2: virtual, 3: VPN */
+        for (int i = 0; i < n && cnt < max; i++) {
+            uint32_t ip = ips[i]; const char *nm = ifnames[i] ? ifnames[i] : "";
+            if (!ip || ip >> 24 == 127 || ip >> 16 == 0xA9FE) continue;
+            int kind = ui_addr_kind(nm), en0 = !strcmp(nm, "en0");
+            if (pass == 0 ? !en0 : pass == 1 ? (en0 || kind != UI_ADDR_LAN) : kind != pass - 1) continue;
+            char a[24]; snprintf(a, sizeof a, "%u.%u.%u.%u:%u", ip >> 24, ip >> 16 & 255, ip >> 8 & 255, ip & 255, port);
+            int dup = 0; for (int k = 0; k < cnt && !dup; k++) dup = !strcmp(out[k].addr, a);
+            if (dup) continue;
+            snprintf(out[cnt].addr, sizeof out[cnt].addr, "%s", a); out[cnt].kind = kind; cnt++;
+        }
+    return cnt;
+}

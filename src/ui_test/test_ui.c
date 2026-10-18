@@ -590,12 +590,26 @@ static void test_i18n(void) {
     CHECKS(ui_player_label(&p, 0, nm), "Host");
 }
 
+/* host address lines (owner 2026-10-18): friends type the first line, so the real LAN address comes first; loopback
+   and link-local never show; VMware / VPN lines are marked */
+static void test_host_addrs(void) {
+    const char *nm[] = { "lo0", "vmnet8", "en1", "utun3", "en0", "en0", "bridge100", "en5" };
+    const uint32_t ip[] = { 0x7F000001, 0xC0A8AC01, 0x0A000005, 0x6440A001, 0xC0A80114, 0xC0A80114, 0xC0A84001, 0xA9FE0102 };
+    ui_host_addr a[8]; int n = ui_host_addrs(nm, ip, 8, 47777, a, 8);
+    CHECK(n == 5);
+    CHECKS(a[0].addr, "192.168.1.20:47777"); CHECK(a[0].kind == UI_ADDR_LAN);
+    CHECKS(a[1].addr, "10.0.0.5:47777"); CHECK(a[1].kind == UI_ADDR_LAN);
+    CHECK(a[2].kind == UI_ADDR_VIRTUAL && a[3].kind == UI_ADDR_VIRTUAL && a[4].kind == UI_ADDR_VPN);
+    CHECKS(a[4].addr, "100.64.160.1:47777");
+    CHECK(ui_host_addrs(nm, ip, 8, 47777, a, 2) == 2);
+}
+
 int main(void) {
     test_i18n();
     test_viewui();
     test_mini();
     test_v10();
-    test_claims(); test_votes(); test_popups(); test_story(); test_mapvote(); test_view(); test_story_rules(); test_live(); test_address();
+    test_claims(); test_votes(); test_popups(); test_story(); test_mapvote(); test_view(); test_story_rules(); test_live(); test_address(); test_host_addrs();
     printf("%s: %d checks, %d failed\n", fails ? "FAIL" : "ok", checks, fails);
     return fails != 0;
 }
