@@ -212,3 +212,21 @@ Not tested: anything in the real game (mp_game.c is only syntax checked; the gam
   not-busy and not-ready (title, or still the old campaign when the preflight failed first) with the file gone for 3 s, or 20 s
   in any case, it is written again and re-queued (2 tries; `load_retries`).
 - `mp_game_load_pending()` for the menu's title teardown (skip it while 1); `mp_game_last_reject()` for the join page.
+
+## Mod data sync in the join point (v0.1.16, lane moddata, 2026-10-18) - `mp_moddata.c`
+- A gameplay mod lists files of its data folder `<data>/ModData/<id>/` in mod.json `"sync"` (rules and the folder:
+  ds_modloader `loader/NOTES.md` "Mod data folder + multiplayer sync"). The host's join point save carries them as the
+  mp_api join-point block `MDAT` (registered in `mp_game_install`; tag + u32 len between the det state and the save
+  JSON). The loader builds it (`dsl_moddata_pack` / `_copy`, found by dlsym; Windows: `GetProcAddress` on baselib.dll).
+  No running mod with "sync" = no block (normal joins unchanged).
+- Guest: `md_read` hands the block to `dsl_moddata_apply` before the save is written and loaded. A refusal (block too big,
+  damaged, a name outside the guest's own patterns, a write failure, data fingerprint differs after the copy) makes
+  `g_load` return -1 (the save is not loaded) and the next frame ends the join: `MPM_END_REFUSED` with
+  "Could not join: the mod %s has more data files than can be sent (over 1 MB)" / "... the data files of the mod %s
+  could not be copied from the host" / "... the host's mod data files could not be copied" (all languages); in a
+  running world the guest then goes back to the title. A host block that a guest's older loader cannot take = refused
+  with "update it" in the log.
+- Back on the title with no session (`!S && scene() == 1`): `mp_moddata_session_over` -> `dsl_moddata_session_end`: the
+  session's files go, the guest's own files come back. A game that ended inside a session: the loader does it at the
+  next start.
+- Limits: 1 MB and 256 files per mod. Proof: ds_modloader `loader/test/moddata/moddata_pair.py` (hidden Mac pair).
