@@ -495,6 +495,7 @@ static int g_load(void *u, const uint8_t *data, size_t len) {
             px += 8 + (size_t)pl;
         } else jp->read(NULL, 0);
     }
+    if (mp_moddata_refused(NULL, 0)) { rig_log("mp: join point save not loaded: the host's mod data files were refused"); return -1; }
     char dir[1400], p[1500], tmp[1600];
     snprintf(dir, sizeof dir, "%s/data/Saves", rig_dir); mkdir(dir, 0755);
     snprintf(p, sizeof p, "%s/%s.json", dir, MP_SAVE_NAME);
@@ -880,6 +881,7 @@ void mp_game_install(void) {
     mp_set_log(mp_rig_log);
     install_hooks();
     sync_file_delete("left over from an earlier run");
+    mp_moddata_init();                                       /* mod data sync files in the join point (mp_moddata.c) */
     rejoin_env_read();
     char p[1200]; snprintf(p, sizeof p, "%s/mp.json", rig_dir);
     int rc = mp_config_load(p, &cfg);
@@ -1171,6 +1173,21 @@ void mp_game_poll(void) {
         }
     } else pending_since = 0;
     if (guest_world && !S && scene() == 1) guest_world = 0;    /* back on the title with no session: own saves again */
+    if (!S && scene() == 1) mp_moddata_session_over();        /* ... and the own mod data files (mp_moddata.c) */
+    if (S && !cfg.host) {                                      /* the host's mod data files were refused: no load, the join ends */
+        char why[400]; int r = mp_moddata_refused(why, sizeof why);
+        if (r) {
+            char id[64] = "", m[400]; const char *c = strstr(why, ": ");
+            if (c && c - why < (long)sizeof id) { snprintf(id, sizeof id, "%.*s", (int)(c - why), why); for (char *q = id; *q; q++) if (*q == ' ' || *q == '"') { id[0] = 0; break; } }
+            if (r == 1 && id[0]) snprintf(m, sizeof m, TR("Could not join: the mod %s has more data files than can be sent (over 1 MB)"), id);
+            else if (id[0]) snprintf(m, sizeof m, TR("Could not join: the data files of the mod %s could not be copied from the host"), id);
+            else snprintf(m, sizeof m, "%s", TR("Could not join: the host's mod data files could not be copied"));
+            mp_moddata_clear_refusal();
+            int in_world = scene() != 1;
+            end_session_c(MPM_END_REFUSED, m);
+            if (in_world) quit_pending = 1;                    /* a later join point (reload) in a running world: back to the title */
+        }
+    }
     if (S && !rig_det_locked()) mp_frame(S, 0);              /* not locked yet (title / loading): only runs a pending
                                                                 save load; steps wait for ready() */
     if (steam_join && !S) {

@@ -111,3 +111,8 @@ int  mpx_tag_sig(uint64_t *sig);                                   /* 1 = sig se
 int  mpx_portal_blocked(void);
 char *mpx_rig_cmd(const char *cmd, const char *line);
 const char *mp_session_busy_reason(void);                         /* = api session_busy (also for the loader glue) */
+/* mp_moddata.c: mod data sync files in the join point (block "MDAT"; the loader's dsl_moddata_*) */
+void mp_moddata_init(void);                                       /* registers the block (mp_game_install) */
+int  mp_moddata_refused(char *why, size_t n);                     /* guest: the last block was refused (MD_* code), why = English */
+void mp_moddata_clear_refusal(void);
+void mp_moddata_session_over(void);                               /* title, no session: the guest's own files back */

@@ -202,7 +202,7 @@
 "Connecting to host..."	ui_model.c:145
 "Connection to %s lost"	mpmenu_model.c:236
 "Connection to host lost"	ui_model.c:149
-"Connection to the host lost"	mp_game.c:1201 mpmenu_model.c:237
+"Connection to the host lost"	mp_game.c:1218 mpmenu_model.c:237
 "Connections"	ui_game.c:5378
 "Connects to the host and loads their world. It stops trying after 8 seconds without an answer."	mpmenu.c:3435
 "Copied"	mpmenu.c:1743 ui_game.c:2474
@@ -211,14 +211,17 @@
 "Copy Address"	mpmenu.c:3387 mpmenu.c:3388
 "Copy direct address"	mpmenu_model.c:515
 "Copy the host's address, then press Connect"	mpmenu_model.c:493
-"Could not connect to the host"	mp_game.c:920
+"Could not connect to the host"	mp_game.c:922
 "Could not get the host's mods"	mpmenu.c:2739 mpmenu.c:2740 mpmenu.c:2755 mpmenu.c:2756
-"Could not join"	mp_game.c:1000 net/ds_modcheck.h:391
+"Could not join"	mp_game.c:1002 net/ds_modcheck.h:391
 "Could not join %s's game"	mpmenu_model.c:217
 "Could not join %s's world (Steam). Try again, or use Join by address."	mpmenu.c:3347
 "Could not join the game"	mpmenu_model.c:218
-"Could not join: %s"	mp_game.c:923 mp_game.c:1188 mpmenu.c:2094 mpmenu_model.c:205
-"Could not join: your gameplay mods are not the same as the host's"	mp_game.c:921 mpmenu.c:2093 mpmenu.c:2778
+"Could not join: %s"	mp_game.c:925 mp_game.c:1205 mpmenu.c:2094 mpmenu_model.c:205
+"Could not join: the data files of the mod %s could not be copied from the host"	mp_game.c:1183
+"Could not join: the host's mod data files could not be copied"	mp_game.c:1184
+"Could not join: the mod %s has more data files than can be sent (over 1 MB)"	mp_game.c:1182
+"Could not join: your gameplay mods are not the same as the host's"	mp_game.c:923 mpmenu.c:2093 mpmenu.c:2778
 "Could not save your game"	mpmenu.c:2446
 "Counts"	mpmenu_model.c:92
 "Counts: levels, skills and experience gained in the hub go home. Does not count: units go home exactly as they left."	mpmenu_model.c:114
@@ -455,7 +458,7 @@
 "On: you can order every unit and release the units of absent players."	ui_game.c:5330
 "On: your loading screen closes as soon as the world is ready, 1.5 to 3.5 seconds sooner. Joins and reloads finish faster, but the first moments can stutter. Only your own screen changes."	ui_game.c:5328
 "One clan limit for everyone, first come"	mpmenu_model.c:39
-"Only the host can change the gear of a unit nobody owns"	mp_game.c:1059
+"Only the host can change the gear of a unit nobody owns"	mp_game.c:1061
 "Only the host can change the rules."	mpmenu.c:1754
 "Only the host saves this world"	ui_game.c:3388
 "Only the host saves this world. It is saved on the host's computer."	ui_game.c:5425
@@ -613,7 +616,7 @@
 "Steam could not connect you to the host"	net/steam/dsnet_steam.c:607
 "Steam could not open the host's lobby"	net/steam/dsnet_steam.c:768
 "Steam invite"	mpmenu.c:1628 mpmenu.c:1745 mpmenu.c:1746 mpmenu_model.c:512
-"Steam lobby could not be created"	mp_game.c:1250
+"Steam lobby could not be created"	mp_game.c:1267
 "Steam · with %s"	mpmenu.c:1304
 "Stop Following"	ui_game.c:5300
 "Stopped following %s."	ui_game.c:4358
@@ -649,12 +652,12 @@
 "The host"	mpmenu.c:2004 mpmenu.c:2526 mpmenu.c:2838
 "The host chooses who returns to the settlement"	ui_game.c:1377
 "The host is waiting for you: rejoin from Recent worlds."	mpmenu_model.c:237
-"The host left the game"	mp_game.c:1201 mpmenu_model.c:229
-"The host turned spectators off"	mp_game.c:1200 mpmenu_model.c:233
+"The host left the game"	mp_game.c:1218 mpmenu_model.c:229
+"The host turned spectators off"	mp_game.c:1217 mpmenu_model.c:233
 "The host uses a mod that is not one of our official mods, so the game cannot get the host's mods for you. Ask the host for it, or ask the host to turn it off."	net/ds_modcheck.h:426
 "The host's Gear rule does not let you equip this unit"	ord_game.c:616
-"The host's game could not save the world for you. Try to join again"	mp_game.c:1198
-"The host's world did not arrive. Try to join again"	mp_game.c:1199
+"The host's game could not save the world for you. Try to join again"	mp_game.c:1215
+"The host's world did not arrive. Try to join again"	mp_game.c:1216
 "The map change could not be sent"	ui_game.c:1206
 "The map change could not be started"	ui_game.c:1248
 "The most units each player can control (1, 2, 3, 4 or 6). Changes apply to everyone at once."	ui_game.c:5329
@@ -676,14 +679,14 @@
 "They go back to the title. Nobody can watch until you allow spectators again."	mpmenu.c:2428
 "This host allows no gameplay mods. Client mods (comfort mods) are fine."	net/ds_modcheck.h:392
 "This host allows no gameplay mods. Turn off: %s. Client mods (comfort mods) are fine."	net/ds_modcheck.h:167
-"This is %s's unit. The host's Gear rule lets you equip only your own units"	mp_game.c:1061
+"This is %s's unit. The host's Gear rule lets you equip only your own units"	mp_game.c:1063
 "This is what %s sees now."	ui_game.c:5359
 "This item belongs to %s"	ord_mp.c:88
 "This mode could not start."	mpmenu.c:3311 mpmenu_model.c:195
 "This player controls the unit. Grey: the player is away."	ui_game.c:5433
 "This player is not here. These units wait and go back to them when they rejoin. With Admin Mode, the host can release them."	ui_teams.c:2100
 "This unit is in the dungeon now. The others stay at the settlement."	ui_teams.c:2090
-"This unit is reserved for %s: only its owner can change its gear"	mp_game.c:1058
+"This unit is reserved for %s: only its owner can change its gear"	mp_game.c:1060
 "This world was joined through Steam: needs the Steam version."	mpmenu.c:2683 mpmenu.c:2866
 "Time Left"	ui_teams.c:2135 ui_teams.c:2146
 "Time to pack and answer the proposal. When it runs out, the expedition is cancelled for everyone. Next shows the proposal with Approve and Decline."	ui_teams.c:2146
@@ -749,7 +752,7 @@
 "You are watching: only players change the map"	ui_game.c:1199
 "You are watching: only players plan expeditions"	ui_game.c:1323 ui_teams.c:1978
 "You are watching: only the host saves this world"	ui_game.c:3388
-"You are watching: spectators cannot change gear"	mp_game.c:1055
+"You are watching: spectators cannot change gear"	mp_game.c:1057
 "You are watching: spectators cannot change teams"	ui_teams.c:1476
 "You are watching: spectators cannot give orders"	ui_game.c:795
 "You are watching: spectators cannot recruit"	ui_game.c:5147
@@ -759,7 +762,7 @@
 "You can control at most %d units (host rule)"	ui_game.c:568 ui_game.c:742
 "You can no longer watch this world."	mpmenu_model.c:234
 "You can only mark your own units"	ui_teams.c:1423
-"You cannot equip this unit"	mp_game.c:1053
+"You cannot equip this unit"	mp_game.c:1055
 "You choose%s"	ui_model.c:282
 "You control %s's units until they return"	ui_game.c:2678
 "You decide (no answer in 60 s)"	ui_model.c:272
@@ -767,7 +770,7 @@
 "You have no units on this run. You can watch and chat; %s gives the orders."	ui_game.c:5394
 "You hosted"	mpmenu.c:1303
 "You hosted · with %s"	mpmenu.c:1303
-"You left the game"	mp_game.c:1266
+"You left the game"	mp_game.c:1283
 "You lent %s to %s"	ui_game.c:3541
 "You order this unit again."	ui_game.c:5307 ui_teams.c:2117
 "You pinged a spot."	ui_game.c:4019
@@ -804,9 +807,9 @@
 "a multiplayer game is starting"	mp_api.c:39
 "a player"	ui_game.c:913 ui_game.c:914 ui_game.c:2578 ui_game.c:5375
 "a player who is away"	ui_teams.c:775
-"a player who left"	mp_game.c:1058
+"a player who left"	mp_game.c:1060
 "an absent player"	ui_game.c:209 ui_game.c:2678
-"another player"	mp_game.c:1061 ord_mp.c:88
+"another player"	mp_game.c:1063 ord_mp.c:88
 "any unit"	mpmenu_model.c:138
 "anyone"	mpmenu_model.c:135
 "anyone can pause"	mpmenu.c:2530
@@ -887,7 +890,7 @@
 "you have it, turned off"	net/ds_modcheck.h:374
 "your Multiplayer mod is a different version from the host's: both players need the same version"	net/dsnet_client.c:577
 "your computer does the game's math differently from the host's, so the two games would not stay the same"	net/dsnet_client.c:580
-"your friend"	mp_game.c:1114
+"your friend"	mp_game.c:1116
 "your game version is different from the host's: update both games"	net/dsnet_client.c:578
 "your gameplay mods are different from the host's: start the game from the launcher with the host's mods"	net/dsnet_client.c:584
 "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version"	net/dsnet_client.c:579
