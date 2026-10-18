@@ -495,12 +495,13 @@ class Win:
 
     def start_env(self, extra=None):
         e = {'SteamAppId': '2798330', 'SteamGameId': '2798330', 'DSRIG_DIR': PROF, 'DSRIG_LIVE': '1', 'DSRIG_FPS': '60',
-             'DSRIG_PORT': str(self.port), 'DSL_MODS_DIR': ROOT + r'\mods', 'DSL_PROFILE': DATA + r'\Mods\active.json',
+             'DSRIG_PORT': str(self.port),                   # the control channel opens only with DSRIG_PORT (Windows, v0.1.15 fix)
+             'DSL_MODS_DIR': ROOT + r'\mods', 'DSL_PROFILE': DATA + r'\Mods\active.json',
              'DSL_LOG_DIR': PROF, 'DSML_SESSION': DATA + r'\Mods\worlds.json', 'DSML_BUILD': '25846389', 'DSML_APP': GAME,
              'DSML_DATA': DATA, 'DSML_GAME_SAVES': WORK + r'\fake_gamesaves', 'DSL_UI_TEST': UITEST, 'DSL_STEAM': '0',
              'DSMODDED_NO_STEAM': '1', 'DSML_ROOT': ROOT, 'DOORSTOP_DISABLE': '1', 'DSL_UPDATE': '0'}
-        e.update(extra or {})
-        return [f'{k}={self.expand(v)}' for k, v in e.items()]
+        e.update(extra or {})                                # a value None leaves that variable out
+        return [f'{k}={self.expand(v)}' for k, v in e.items() if v is not None]
 
     def start(self, env=None, args='', title=True, timeout=240):
         """kill leftovers, park the old logs (moved, never deleted), start the game, wait for the title over the port"""

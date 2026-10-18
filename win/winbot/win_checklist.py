@@ -18,6 +18,7 @@ Items (ship013's v0.1.15 list):
      "Get the host's mods" box
   4  "Get the host's mods": plan, Get, Apply, soft restart, the restarted game rejoins, world arrives, 0 desyncs
   5  cross-play with fights: 3 dungeon entries in the same processes, lend + take back, quit to title; 0 crashes, 0 desyncs
+  P  (v0.1.15 security fix) without DSRIG_PORT nothing listens on 47811; with it the tool connects
   S  (test builds) the control port follows a soft restart: --mp-dll = a multiplayer.dll with the winbot port fix
 Output: <out>/summary.json, <out>/RESULT.txt, <out>/shots/*.png, <out>/logs_<item>/ (VM logs).
 """
@@ -638,6 +639,36 @@ def itemS(w, rep, a):
         fresh_logs(w, rep, 'S')
 
 
+def itemP(w, rep, a):
+    """the v0.1.15 security fix: the control channel opens only when DSRIG_PORT is set"""
+    I = 'P'
+    w.prepare(lang=0, active=BASE_MODS, settings={})
+    w.kill_all()
+    m = w.mark('dsload.log') if w.exists(W.PROF + r'\dsload.log') else 0
+    env = w.start_env({'DSRIG_PORT': None})
+    r = w.a('run', exe=w.expand(W.GAME + r'\DungeonSettlers.exe'), args=w.expand(f'-logFile "{W.PROF}\\player.log"'),
+            cwd=w.expand(W.GAME), env=env, show=True, wait_ms=0)
+    w.pid = r['pid']; t = time.time()
+    try:
+        line = w.wait_log('dsload.log', ['fades its title in', 'ui: title font'], 180, since=m)   # a rotated (shorter) log is read from 0
+        time.sleep(5)
+        rep.check(I, 'without DSRIG_PORT: the game reaches the title', True, f'{time.time() - t:.0f} s: {line[:80]}')
+        ns = w.a('run', exe=r'C:\Windows\System32\cmd.exe', args='/c netstat -ano -p tcp | findstr LISTENING', wait_ms=20000, capture=True)['out']
+        lis = [l.strip() for l in ns.splitlines() if ':47811 ' in l]
+        rep.check(I, 'without DSRIG_PORT: nothing listens on 47811', not lis, lis)
+        g = W.hub_req({'op': 'game', 'line': '{"cmd":"ping"}', 'port': 47811, 'timeout_ms': 3000})
+        rep.check(I, 'without DSRIG_PORT: the tool cannot connect', not g.get('ok'), g.get('err') or g.get('resp'))
+        rl = w.text(W.PROF + r'\rig.log') or ''
+        rep.check(I, 'without DSRIG_PORT: no "control port ... listening" in rig.log since the start',
+                  'listening' not in rl[-20000:].split('---- rig start')[-1], [l for l in rl.splitlines() if 'control port' in l][-1:])
+    finally:
+        w.a('kill', pid=w.pid); w.kill_all()
+    w.start()                                                        # winrig always sets DSRIG_PORT
+    rep.check(I, 'with DSRIG_PORT: the tool connects', (w.ping() or {}).get('pid') == w.pid, w.pid)
+    fresh_logs(w, rep, 'P')
+    w.stop()
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--out', required=True); p.add_argument('--setup'); p.add_argument('--prev-setup')
@@ -650,7 +681,7 @@ def main():
     w = W.Win(); w.up()
     mac = Mac(a.mac_build)
     fns = {'1': lambda: item1(w, rep, a), '2': lambda: item2(w, rep, a), '3': lambda: item3(w, rep, a, mac),
-           '4': lambda: item4(w, rep, a, mac), '5': lambda: item5(w, rep, a, mac), 'S': lambda: itemS(w, rep, a)}
+           '4': lambda: item4(w, rep, a, mac), '5': lambda: item5(w, rep, a, mac), 'S': lambda: itemS(w, rep, a), 'P': lambda: itemP(w, rep, a)}
     for k in a.items.split(','):
         t = time.time()
         log(f'---- item {k}')
