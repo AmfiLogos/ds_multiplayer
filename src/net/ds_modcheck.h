@@ -212,6 +212,48 @@ __attribute__((unused)) static void dsmc_set_show(const char *s, char *out, size
     }
     out[o] = 0;
 }
+/* the value of setting `key` ("<mod>/<setting>") in '\n'-joined "<mod>/<setting>@<value>" lines into v; 1 = found */
+static int dsmc_set_value(const char *lines, const char *key, char *v, size_t n) {
+    size_t kl = strlen(key);
+    for (const char *p = lines ? lines : ""; *p;) {
+        const char *e = strchr(p, '\n'); size_t l = e ? (size_t)(e - p) : strlen(p);
+        if (l > kl && !strncmp(p, key, kl) && p[kl] == '@') { size_t vl = l - kl - 1; if (vl >= n) vl = n - 1; memcpy(v, p + kl + 1, vl); v[vl] = 0; return 1; }
+        p = e ? e + 1 : p + l;
+    }
+    return 0;
+}
+/* the settings that differ between a plan row's host_set and my_set, for the player: "<label>: host <value>, you <value>"
+   per setting ("; " between), label and values in the player's language (dsmc_setting_text), a side without the line
+   = "default". Returns how many. */
+static int dsmc_set_diff(const char *host_set, const char *my_set, dsmc_buf *b) {
+    int c = 0;
+    for (int pass = 0; pass < 2; pass++) {                              /* the host's settings, then the guest-only ones */
+        const char *src = pass ? my_set : host_set, *oth = pass ? host_set : my_set;
+        for (const char *p = src ? src : ""; *p;) {
+            const char *e = strchr(p, '\n'); size_t l = e ? (size_t)(e - p) : strlen(p);
+            char line[300]; if (l >= sizeof line) l = sizeof line - 1; memcpy(line, p, l); line[l] = 0; p = e ? e + 1 : p + l;
+            char *at = strchr(line, '@'), *sl = strchr(line, '/');
+            if (!at || !sl || sl > at) continue;
+            *at = 0;
+            char ov[160]; int has = dsmc_set_value(oth, line, ov, sizeof ov);
+            if (pass ? has : (has && !strcmp(ov, at + 1))) continue;   /* same value; pass 1: only lines the host lacks */
+            const char *hv = pass ? NULL : at + 1, *gv = pass ? at + 1 : has ? ov : NULL;
+            char mod[112], lab[160], hx[160], gx[160];
+            snprintf(mod, sizeof mod, "%.*s", (int)(sl - line), line);
+            snprintf(lab, sizeof lab, "%s", sl + 1);
+            snprintf(hx, sizeof hx, "%s", hv ? hv : DSMC_TR(TR_NOOP("default"))); snprintf(gx, sizeof gx, "%s", gv ? gv : DSMC_TR(TR_NOOP("default")));
+            if (dsmc_setting_text) {
+                char l2[160] = "";
+                if (hv) dsmc_setting_text(mod, sl + 1, hv, l2, sizeof l2, hx, sizeof hx);
+                if (gv) dsmc_setting_text(mod, sl + 1, gv, l2, sizeof l2, gx, sizeof gx);
+                if (l2[0]) snprintf(lab, sizeof lab, "%s", l2);
+            }
+            if (c++) dsmc_put(b, "%s", DSMC_TR(TR_NOOP("; ")));
+            dsmc_put(b, DSMC_TR(TR_NOOP("%s: host %s, you %s")), lab, hx, gx);
+        }
+    }
+    return c;
+}
 /* ================================================================ "Get the host's mods" (v0.1.14, hostmods CONTRACT)
  * The loader's dsl_hostmods_plan answers JSON {"rows":[{"id","name","host_ver","my_ver","my_on","official","action",
  * "host_set","my_set"}...],"can_fix":0|1,"downloads":N,"names_pending":0|1}; the box text is built from it here (pure C, unit-tested).
@@ -364,11 +406,9 @@ __attribute__((unused)) static int dsmc_hostmods_text(const dsmc_plan *pl, int v
         dsmc_put(&b, DSMC_TR(TR_NOOP("%s (host %s, you %s)")), nm, w->host_ver[0] ? w->host_ver : "-", mine);
         const char *st = dsmc_action_text(w->action);
         if (*st) dsmc_put(&b, ": %s", st);
-        if (strcmp(w->host_set, w->my_set) && (w->host_set[0] || w->my_set[0])) {
-            char hs[200], ms[200]; dsmc_set_show(w->host_set, hs, sizeof hs); dsmc_set_show(w->my_set, ms, sizeof ms);
-            dsmc_put(&b, "\n   <color=#a69085>");
-            dsmc_put(&b, DSMC_TR(TR_NOOP("settings: host %s, you %s")), hs[0] ? hs : DSMC_TR(TR_NOOP("default")), ms[0] ? ms : DSMC_TR(TR_NOOP("default")));
-            dsmc_put(&b, "</color>");
+        if (w->my_ver[0] && strcmp(w->host_set, w->my_set) && (w->host_set[0] || w->my_set[0])) {   /* a mod I have: the settings that differ */
+            char sd[600]; dsmc_buf z = {sd, sizeof sd, 0}; sd[0] = 0;
+            if (dsmc_set_diff(w->host_set, w->my_set, &z)) dsmc_put(&b, "\n   <color=#a69085>%s</color>", sd);
         }
     }
     if (diff > shown) { dsmc_put(&b, "\n"); dsmc_put(&b, DSMC_TR(TR_NOOP("More differences: %d")), diff - shown); }

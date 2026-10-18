@@ -97,11 +97,13 @@
  "%s: %s (host %s, you %s)": "%s: %s (호스트 %s, 나 %s)",
  "%s: %s. Right-click its portrait to take it.": "%s: %s. 초상화를 우클릭하면 가져옵니다.",
  "%s: disconnected": "%s: 연결 끊김",
+ "%s: host %s, you %s": "%s: 호스트 %s, 나 %s",
  "%s<color=#a69085> pinged a spot.</color>": "%s<color=#a69085> 님이 지점에 핑을 찍었습니다.</color>",
  "(click for options)": "(클릭하여 옵션 보기)",
  "(none)": "(없음)",
  "(off)": "(꺼짐)",
  ", ": ", ",
+ "; ": "; ",
  "<color=#a69085>%s's colour</color>": "<color=#a69085>%s 님의 색상</color>",
  "<color=#a69085>Address:</color> <color=#ccbeb8>%s</color>": "<color=#a69085>주소:</color> <color=#ccbeb8>%s</color>",
  "<color=#a69085>Floor %d</color>": "<color=#a69085>%d층</color>",
@@ -876,7 +878,6 @@
  "sees this too||see this too": [
   "님도 이것을 보고 있습니다"
  ],
- "settings: host %s, you %s": "설정: 호스트 %s, 나 %s",
  "shared": "공유",
  "shared, anyone equips any unit": "공유, 어떤 유닛이든 장착 가능",
  "shared, equip your own units": "공유, 자기 유닛만 장착",

@@ -97,11 +97,13 @@
  "%s: %s (host %s, you %s)": "%s：%s（房主 %s，你 %s）",
  "%s: %s. Right-click its portrait to take it.": "%s：%s。右鍵點擊其頭像即可接管。",
  "%s: disconnected": "%s：已斷線",
+ "%s: host %s, you %s": "%s：房主 %s，你 %s",
  "%s<color=#a69085> pinged a spot.</color>": "%s<color=#a69085> 標記了一個地點。</color>",
  "(click for options)": "（點擊查看選項）",
  "(none)": "（無）",
  "(off)": "（已關閉）",
  ", ": "、",
+ "; ": "；",
  "<color=#a69085>%s's colour</color>": "<color=#a69085>%s 的顏色</color>",
  "<color=#a69085>Address:</color> <color=#ccbeb8>%s</color>": "<color=#a69085>位址：</color> <color=#ccbeb8>%s</color>",
  "<color=#a69085>Floor %d</color>": "<color=#a69085>第 %d 層</color>",
@@ -876,7 +878,6 @@
  "sees this too||see this too": [
   "也看到這個"
  ],
- "settings: host %s, you %s": "設定：房主 %s，你 %s",
  "shared": "共用",
  "shared, anyone equips any unit": "共用，任何人可裝備任何單位",
  "shared, equip your own units": "共用，裝備自己的單位",

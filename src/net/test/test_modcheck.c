@@ -1,6 +1,7 @@
 /* ds_modcheck.h tests that catch real breaks of "Get the host's mods" (v0.1.14):
  *  - the DSMP_REJOIN line not surviving format -> parse (the new process would join nobody, or the wrong host);
- *  - the loader's plan JSON misread (wrong rows, or the button shown for a mod that cannot be downloaded). */
+ *  - the loader's plan JSON misread (wrong rows, or the button shown for a mod that cannot be downloaded);
+ *  - the box printing raw setting lines ("settings-demo/gold_mult@7") instead of "<label>: host 7, you 1". */
 #include "../ds_modcheck.h"
 #include <stdio.h>
 
@@ -43,8 +44,26 @@ static void plan_json(void) {
     CHECK(dsmc_plan_parse("{\"error\":\"x\"}", &pl) < 0 && dsmc_plan_parse("{\"rows\":[{\"id\":\"a\"", &pl) < 0, "bad JSON refused");
 }
 
+static int fake_setting(const char *mod, const char *setting, const char *value, char *label, size_t lcap, char *vtext, size_t vcap) {
+    if (strcmp(mod, "settings-demo") || strcmp(setting, "gold_mult")) return -1;
+    snprintf(label, lcap, "Gold multiplier"); snprintf(vtext, vcap, "x%s", value); return 0;
+}
+static void settings_row(void) {
+    static dsmc_plan pl; char t[2048];
+    const char *j = "{\"rows\":[{\"id\":\"settings-demo\",\"name\":\"Settings demo\",\"host_ver\":\"1.0.0\",\"my_ver\":\"1.0.0\",\"my_on\":1,"
+                    "\"official\":1,\"action\":\"settings\",\"host_set\":\"settings-demo/difficulty@normal\\nsettings-demo/gold_mult@7\","
+                    "\"my_set\":\"settings-demo/difficulty@normal\\nsettings-demo/gold_mult@1\"}],\"can_fix\":1,\"downloads\":0}";
+    CHECK(dsmc_plan_parse(j, &pl) == 1, "settings plan");
+    dsmc_set_setting_text(fake_setting);
+    dsmc_hostmods_text(&pl, 0, t, sizeof t, 6);
+    CHECK(strstr(t, "Gold multiplier: host x7, you x1") && !strstr(t, "gold_mult@") && !strstr(t, "difficulty"), "settings row: %s", t);
+    dsmc_set_setting_text(NULL);
+    dsmc_hostmods_text(&pl, 0, t, sizeof t, 6);
+    CHECK(strstr(t, "gold_mult: host 7, you 1") && !strstr(t, "@"), "settings row without the loader's words: %s", t);
+}
+
 int main(void) {
-    rejoin_line(); plan_json();
+    rejoin_line(); plan_json(); settings_row();
     if (fails) { printf("SUMMARY 0 PASS, %d FAIL\n", fails); return 1; }
     printf("PASS test_modcheck\n");
     return 0;
