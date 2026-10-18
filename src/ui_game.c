@@ -52,6 +52,7 @@ static Obj tmp_get(Obj t) {
     return (*(Obj (**)(Obj, void *))((char *)k + 0x548))(t, *(void **)((char *)k + 0x550));
 }
 void txt_fit(Obj t, float size, int wrap);               /* mpmenu.c: a text too long for its rect auto-sizes (ext/i18n/CJK_FIT.md) */
+float txt_fit_h(Obj t, float w, float h);                 /* mpmenu.c: the height a wrapped text needs in a w x h box */
 void txt_fit_text(Obj t, const char *s);
 void txt_fit_stock(Obj t);                                 /* the stock notice box text: auto size while ours is up */
 float txt_fit_w(Obj t, float w, float h);                  /* mpmenu.c: the width a one-line box needs (its text too long even at 0.75) */
@@ -1625,7 +1626,7 @@ static void hk_recruit_click(Obj v, int idx, void *mi);
 static Obj tr_find(Obj t, const char *path);
 static void hk_ev_click(Obj v, int idx, void *mi); static uintptr_t h_chip_tx[], h_recruit_line, h_recruit_view; static int owners_ro, owners_toggles;
 static double tip_until; static char tip_shown[160]; int ui_conn_text(int player, char *out, int cap); static int ev_rule(void);
-static char *ui_lend_cmd(const char *line); static char *ui_escape_cmd(const char *line); static char *ui_tip_hover_cmd(const char *line); static char *ui_tip_where_cmd(void); static char *ui_players_lists_cmd(const char *line); static void viewer_geom(float *g); static void viewer_move_test(const char *line, int reset); static void viewer_overlay_json(Buf *b, const char *action); static void viewer_follow(int on_); static void viewer_ask(void); static Obj cam_setting(void);
+static char *ui_lend_cmd(const char *line); static char *ui_host_addr_cmd(const char *line); static char *ui_escape_cmd(const char *line); static char *ui_tip_hover_cmd(const char *line); static char *ui_tip_where_cmd(void); static char *ui_players_lists_cmd(const char *line); static void viewer_geom(float *g); static void viewer_move_test(const char *line, int reset); static void viewer_overlay_json(Buf *b, const char *action); static void viewer_follow(int on_); static void viewer_ask(void); static Obj cam_setting(void);
 static int viewer_on, viewer_leader, follow_target; static uintptr_t h_vtitle; static uint32_t followers[UI_MAX_PLAYERS];
 char *ui_exec(const char *cmd, const char *line) {
     teams_lookup();
@@ -1668,6 +1669,7 @@ char *ui_exec(const char *cmd, const char *line) {
         double o = 1; jnum(line, "open", &o); pl_pop = o != 0; plist_frame();
         Buf b = {0}; bput(&b, "{\"ok\":true,\"pop\":%d}", pl_pop); return b.p;
     }
+    if (!strcmp(cmd, "ui_host_addr")) return ui_host_addr_cmd(line);   /* {copy: k}: the host's address lines (+ Copy line k) */
     if (!strcmp(cmd, "ui_units")) { double d = 1; jnum(line, "dir", &d); ui_debug_units(d < 0 ? -1 : 1); Buf b = {0}; bput(&b, "{\"ok\":true}"); return b.p; }
     if (!strcmp(cmd, "ui_texts")) {                          /* ui_texts {min}: active TMP texts at fontSize >= min (finding stock views) */
         double mn = 24; jnum(line, "min", &mn);
@@ -2154,9 +2156,12 @@ enum { PL_HDR, PL_BODY, PL_SEE, PL_NAMES, PL_ADMIN, PL_STATUS, PL_NOTE, PL_BODYR
        PL_MINI, PL_MINIR, PL_MSIZE, PL_MSIZER,               /* spectator: mini overview shown / its size (8k) */
        PL_TEAMS, PL_TEAMSR,                                  /* viewui: Teams button shown / hidden */
        PL_FJOIN, PL_FJOINR,                                  /* Fast join (owner 2026-10-15): this copy's own mp loads */
+       PL_ADDR0, PL_ACOPY0 = PL_ADDR0 + 4, PL_AHINT = PL_ACOPY0 + 4,   /* host: its address lines, Copy labels, router hint */
        PL_COL0, PL_COLR0 = PL_COL0 + 7, PL_N = PL_COLR0 + 7 };
 #define PL_SETMAX 26                                         /* settings rows at most (each: label, value, < >) */
 static uintptr_t h_pl[PL_N], h_plate;                      /* h_plate: the panel frame */
+#define PL_NADDR 4
+static uintptr_t h_acopy[PL_NADDR];                          /* the address lines' Copy buttons (BottomButton) */
 static uintptr_t h_skill_ui, h_status_ui;                    /* character window views (8d) */
 static int pl_written[PL_N];                                 /* row text set by us at least once since it was cloned */
 static void chat_get(int *fade, int *join, int *en); static void chat_step(int row, int dir);
@@ -2375,6 +2380,11 @@ static int plist_style(void) {
     if (chev) rt_centre_in_parent(u_tr(chev));
     for (int r = 0; r <= PL_MAXROWS; r++) for (int b = 0; b < 3; b++) { Obj im = img_make(root, NULL, 4, 5); u_gc_free(h_bars[r][b]); h_bars[r][b] = u_gc_new(im); show(im, 0); }
     for (int k = 0; k < 2 * PL_SETMAX; k++) { Obj a = img_make(root, sprite_get(k % 2 ? SP_ARROW_NEXT : SP_ARROW_PREV), 20, 20); u_gc_free(h_set_arrow[k]); h_set_arrow[k] = u_gc_new(a); show(a, 0); }
+    for (int k = 0; k < PL_NADDR; k++) {                     /* Copy: the whole button frame (no letterbox), its border kept */
+        Obj b = img_make(root, sprite_get(SP_BOTTOMBUTTON), 64, 20);
+        if (ui_is(b, K_IMG)) { F(0x5267348, void (*)(Obj, bool, void *))(b, false, NULL); F(0x52579CC, void (*)(Obj, int, void *))(b, 1, NULL); }   /* preserveAspect off, Sliced */
+        u_gc_free(h_acopy[k]); h_acopy[k] = u_gc_new(b); show(b, 0);
+    }
     u_gc_free(h_plate); h_plate = u_gc_new(fr); u_gc_free(h_hdrbg); h_hdrbg = u_gc_new(hbg); u_gc_free(h_hdrline); h_hdrline = u_gc_new(hln);
     for (int r = 0; r < PL_MAXROWS; r++) { u_gc_free(h_rowbg[r]); h_rowbg[r] = u_gc_new(rbg[r]); }
     u_gc_free(h_gear); h_gear = u_gc_new(gear); u_gc_free(h_cog); h_cog = u_gc_new(cog);
@@ -2384,6 +2394,8 @@ static int plist_style(void) {
         Obj t = u_gc_get(h_pl[i]);
         int value = pl_is_value(i), set = pl_is_label(i) || i == PL_HINT;
         if (i == PL_HDR) tmp_style(t, u_alive(cinzel) ? cinzel : lora, 17, 513);
+        else if (i >= PL_ACOPY0 && i < PL_ACOPY0 + PL_NADDR) tmp_style(t, lora, 12, 514);   /* Copy: centred on its button */
+        else if (i == PL_AHINT) { tmp_style(t, lora, 14, 257); txt_fit(t, 14, 1); }          /* top left, wrapped */
         else tmp_style(t, lora, i == PL_BODYR ? 12 : set || value || i == PL_NOTE ? 14 : 16, value ? 514 : i == PL_BODYR ? 516 : 513);   /* Left / Center / Right */
         if (u_alive(t)) u_set_sibling(u_tr(t), 1 << 20);
         pl_written[i] = 0;
@@ -2403,6 +2415,75 @@ static void bars_put(int slot, int level, float x, float ytop) {
     }
 }
 static void bars_hide(int slot) { for (int b = 0; b < 3; b++) show(u_gc_get(h_bars[slot][b]), 0); }
+/* host address (owner 2026-10-18): what friends type in "Join by address": every usable local IPv4 address of this Mac /
+   PC with the port the host listens on (bound to 0.0.0.0), one line each with a Copy button, then the router hint. The
+   host's own player list only (guests never see it). No public address: nothing is asked of the internet. Read again
+   every 5 s (a network change shows without a restart). */
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <net/if.h>
+static ui_host_addr pl_addr[PL_NADDR]; static int pl_naddr, pl_copied = -1; static double pl_addr_next, pl_copied_until;
+static void host_addrs_read(void) {
+    if (now_s() < pl_addr_next) return;
+    pl_addr_next = now_s() + 5;
+    mp_session *s = sess(); uint16_t port = s ? mp_server_port(s) : 0;
+    struct ifaddrs *ifs = NULL; const char *nm[32]; uint32_t ip[32]; int n = 0, old = pl_naddr;
+    pl_naddr = 0;
+    if (!port || getifaddrs(&ifs)) return;
+    for (struct ifaddrs *i = ifs; i && n < 32; i = i->ifa_next) {
+        if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET || !(i->ifa_flags & IFF_UP) || (i->ifa_flags & IFF_LOOPBACK)) continue;
+        nm[n] = i->ifa_name; ip[n++] = ntohl(((struct sockaddr_in *)i->ifa_addr)->sin_addr.s_addr);
+    }
+    pl_naddr = ui_host_addrs(nm, ip, n, port, pl_addr, PL_NADDR);
+    freeifaddrs(ifs);
+    if (pl_naddr != old) rig_log("ui: host address lines %d (port %u)", pl_naddr, port);
+}
+static void host_addr_copy(int k) {
+    if (k < 0 || k >= pl_naddr) return;
+    F(0x518AFE0, void (*)(Obj, void *))(u_str(pl_addr[k].addr), NULL);                      /* GUIUtility.systemCopyBuffer */
+    pl_copied = k; pl_copied_until = now_s() + 2;
+    rig_log("ui: host address line %d copied", k);
+}
+static float host_addr_rows(int vis, float x, float inner, float L, float y) {
+    if (vis) host_addrs_read();
+    int n = vis ? pl_naddr : 0;
+    float ry = y - 4;
+    for (int k = 0; k < PL_NADDR; k++) {
+        Obj ta = u_gc_get(h_pl[PL_ADDR0 + k]), tc = u_gc_get(h_pl[PL_ACOPY0 + k]), bt = u_gc_get(h_acopy[k]);
+        int v = k < n; show(ta, v); show(tc, v); show(bt, v);
+        if (!v) continue;
+        char row[200], tag[96] = "";                         /* a virtual adapter / VPN: its kind on a small second line */
+        if (pl_addr[k].kind != UI_ADDR_LAN)
+            snprintf(tag, sizeof tag, "\n<size=80%%><color=#a69085>%s</color></size>", pl_addr[k].kind == UI_ADDR_VPN ? TR("VPN") : TR("virtual adapter"));
+        snprintf(row, sizeof row, TR("<color=#a69085>Address:</color> <color=#ccbeb8>%s</color>"), pl_addr[k].addr);
+        dsi_utf8_fix_end(row); if (strlen(row) + strlen(tag) < sizeof row) strcat(row, tag);
+        plist_set(PL_ADDR0 + k, row);
+        plist_set(PL_ACOPY0 + k, ui_col("#ccbeb8", pl_copied == k && now_s() < pl_copied_until ? TR("Copied") : TR("Copy")));
+        float rh = tag[0] ? PL_SET_H + 12 : PL_SET_H;
+        place(ta, x, ry, inner - 72, rh);
+        place(bt, L + PL_W - PL_PAD - 64, ry - 4, 64, 20); place(tc, L + PL_W - PL_PAD - 64, ry - 4, 64, 20);
+        ry -= rh;
+    }
+    Obj th = u_gc_get(h_pl[PL_AHINT]);
+    show(th, n > 0);
+    if (!n) return y;
+    y = ry;
+    plist_set(PL_AHINT, TR("<size=86%><color=#a69085>Friends outside your network need your public IP and the port opened on the router.</color></size>"));
+    float hh = txt_fit_h(th, inner, 14);                    /* a box too small to auto-size into: wraps at its size */
+    place(th, x, y - 2, inner, hh); y -= hh + 6;
+    return y;
+}
+static char *ui_host_addr_cmd(const char *line) {          /* test: the host's address lines as shown (+ Copy line k) */
+    double k = -1; jnum(line, "copy", &k);
+    if (k >= 0) { host_addr_copy((int)k); plist_frame(); }
+    Buf b = {0}; bput(&b, "{\"ok\":true,\"lines\":[");
+    for (int i = 0; i < PL_NADDR; i++) { Obj t = u_gc_get(h_pl[PL_ADDR0 + i]); char tx[300] = "";
+        if (u_alive(t) && F(0x50F3724, bool (*)(Obj, void *))(u_go(t), NULL)) { str_utf8(tmp_get(t), tx, sizeof tx); bput(&b, "%s", b.n && b.p[b.n - 1] != '[' ? "," : ""); bstr(&b, tx); } }
+    Obj th = u_gc_get(h_pl[PL_AHINT]); char hint[400] = "";
+    if (u_alive(th) && F(0x50F3724, bool (*)(Obj, void *))(u_go(th), NULL)) str_utf8(tmp_get(th), hint, sizeof hint);
+    bput(&b, "],\"hint\":"); bstr(&b, hint); bput(&b, ",\"count\":%d,\"host\":%d}", pl_naddr, me() == 0);
+    return b.p;
+}
 static void plist_frame(void) {
     Obj st = u_gc_get(h_status);
     if (!u_alive(st)) return;
@@ -2449,6 +2530,7 @@ static void plist_frame(void) {
         for (int r = 0; r < PL_MAXROWS; r++) show(u_gc_get(h_rowbg[r]), 0);
         for (int r = 0; r <= PL_MAXROWS; r++) bars_hide(r);
         for (int k = 0; k < 2 * PL_SETMAX; k++) show(u_gc_get(h_set_arrow[k]), 0);
+        for (int k = 0; k < PL_NADDR; k++) show(u_gc_get(h_acopy[k]), 0);
         if (!on()) for (int i = 0; i < PL_N; i++) plist_set(i, "");
         if (hide) pl_pop = 0;
         return;
@@ -2636,6 +2718,7 @@ static void plist_frame(void) {
         place(tbr, x, y + 1, inner, PL_ROW_H * (float)rows);
         y -= PL_ROW_H * (float)rows;
     }
+    y = host_addr_rows(show_rows && host, x, inner, L, y);
     /* settings: everyone: see-through, names, tooltips; host: units per player, admin; then the move hint (lan_v8) */
     /* uxmenu (chat): fade time, join / leave lines, chat on / off, after tooltips; host rows last */
     int lab[PL_SETMAX], val[PL_SETMAX], sarg[PL_SETMAX], nall = set_rows(lab, val, sarg);
@@ -2827,6 +2910,7 @@ static void plist_mouse(void) {
           } }
     if (!F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) return;                              /* GetMouseButtonDown(0) */
     if (ui_hit(u_gc_get(h_gear), mx, my)) { pl_pop = !pl_pop; if (pl_pop) uiset.list_open = 1; plist_frame(); return; }
+    for (int k = 0; k < PL_NADDR; k++) if (ui_hit(u_gc_get(h_acopy[k]), mx, my)) { host_addr_copy(k); plist_frame(); return; }
     if (pl_pop) {
         int ids[PL_SETMAX], vv[PL_SETMAX], ag[PL_SETMAX], ns = set_rows(ids, vv, ag);
         for (int k = 0; k < 2 * ns; k++) if (ui_hit(u_gc_get(h_set_arrow[k]), mx, my)) {
