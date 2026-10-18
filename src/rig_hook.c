@@ -62,7 +62,7 @@ static uint32_t enc_b(uintptr_t from, uintptr_t to) { return 0x14000000u | (uint
 
 int rig_hook(uintptr_t rva, void *repl, void **orig, const char *who) {
     if (!next_stub) table_init();
-    uintptr_t site = ds_base + rva;
+    uintptr_t site = ds_base + rv(rva);
     uint32_t insn = *(volatile uint32_t*)site;
     if (is_pc_relative(insn)) { rig_log("%s: hook refused: %#lx starts with PC-relative %08x", who, (unsigned long)rva, insn); return -1; }
     /* after start, stubs go to their own page: making it writable never touches stubs other threads may run */

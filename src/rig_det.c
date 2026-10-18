@@ -100,12 +100,12 @@ static void load_ranges(void) {
     char p[1200]; FILE *f = NULL;
     const char *env = getenv("DSRIG_RANGES");                    /* tests: another ranges file */
     if (env && *env) { snprintf(p, sizeof p, "%s", env); f = fopen(p, "r"); if (!f) rig_log("det: DSRIG_RANGES %s missing", p); }
-    if (!f) { snprintf(p, sizeof p, "%s/../../build/det_ranges.tsv", rig_dir); f = fopen(p, "r"); }
+    if (!f) { snprintf(p, sizeof p, "%s/../../build/%s", rig_dir, rig_rv_ranges_name()); f = fopen(p, "r"); }
     if (!f) {                                         /* MP app: the file ships next to dsrig.dylib (Frameworks) */
         Dl_info di;
         if (dladdr((void *)load_ranges, &di) && di.dli_fname) {
             snprintf(p, sizeof p, "%s", di.dli_fname);
-            char *sl = strrchr(p, '/'); if (sl) snprintf(sl + 1, sizeof p - (size_t)(sl + 1 - p), "det_ranges.tsv");
+            char *sl = strrchr(p, '/'); if (sl) snprintf(sl + 1, sizeof p - (size_t)(sl + 1 - p), "%s", rig_rv_ranges_name());
             f = fopen(p, "r");
         }
     }

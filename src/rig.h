@@ -62,7 +62,14 @@ typedef void *Obj;
 typedef struct { uint64_t lo, hi; } Guid;
 typedef struct { uint32_t s[4]; } RState;
 #define AT(o, off, T) (*(T *)((char *)(o) + (off)))
-#define F(va, T) ((T)(void *)(ds_base + (va)))
+/* rig_rv.c: every game address in the source is one of build RIG_BUILD (the reference version); rv() gives its place
+   in the running version (identity on the reference version, else the version's address table) */
+extern int rig_rv_on;
+uintptr_t rig_rv_slow(uintptr_t ref);
+static inline uintptr_t rv(uintptr_t ref) { return rig_rv_on ? rig_rv_slow(ref) : ref; }
+int rig_rv_load(const char *build, const char *module_dir);
+const char *rig_rv_ranges_name(void);
+#define F(va, T) ((T)(void *)(ds_base + rv(va)))
 extern Obj mf;                         /* MainFlow instance (from the hook) */
 void *md(uint64_t slot);
 Obj obj_new(uint64_t ti_slot);

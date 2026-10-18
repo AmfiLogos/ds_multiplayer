@@ -17,8 +17,8 @@ static bool (*o_iscrit)(void *, void *);
    takes its no-risk branch (the MSVC-inlined start) instead of the confirmation */
 static bool h_iscrit(void *risk, void *mi) { return norisk ? false : o_iscrit(risk, mi); }
 static void (*o_onact)(Obj, void *), (*o_showrisk)(Obj, Obj, void *);
-static uintptr_t gch_new(Obj o) { return ((uint32_t (*)(Obj, bool))(ds_base + 0x49DA40))(o, false); }      /* il2cpp_gchandle_new */
-static Obj gch_get(uintptr_t h) { return h ? ((Obj (*)(uint32_t))(ds_base + 0x45CF40))((uint32_t)h) : NULL; } /* il2cpp_gchandle_get_target */
+static uintptr_t gch_new(Obj o) { return ((uint32_t (*)(Obj, bool))(ds_base + rv(0x49DA40)))(o, false); }      /* il2cpp_gchandle_new */
+static Obj gch_get(uintptr_t h) { return h ? ((Obj (*)(uint32_t))(ds_base + rv(0x45CF40)))((uint32_t)h) : NULL; } /* il2cpp_gchandle_get_target */
 static void h_onact(Obj self, void *mi) { h_pres = gch_new(self); rig_log("win_exp: presenter %p active", self); o_onact(self, mi); }
 static void h_showrisk(Obj view, Obj on_confirm, void *mi) {
     risk_shown++; h_confirm = gch_new(on_confirm);

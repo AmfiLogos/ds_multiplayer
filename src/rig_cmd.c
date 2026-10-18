@@ -25,7 +25,7 @@ Obj mf;                           /* MainFlow instance (from the hook) */
 
 /* ---------------------------------------------------------------- il2cpp / Unity helpers */
 static inline void md_init(uint64_t slot) { F(0x6FB6FC, void (*)(void **))((void **)(ds_base + slot)); }
-void *md(uint64_t slot) { md_init(slot); return *(void **)(ds_base + slot); }
+void *md(uint64_t slot) { slot = rv(slot); md_init(slot); return *(void **)(ds_base + slot); }
 static inline Obj str_new(const char *s) { return F(0x6F9738, Obj (*)(const char *))(s); }
 Obj obj_new(uint64_t ti_slot) { return F(0x6FB9C4, Obj (*)(void *))(md(ti_slot)); }
 static void *icall(const char *name) {
