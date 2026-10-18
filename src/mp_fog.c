@@ -68,9 +68,11 @@ typedef struct {
     uint64_t *vis, *seen;            /* lazily allocated */
     int32_t *vis_list; int vis_n, vis_cap;   /* tiles set in vis (cleared one by one at the next rebuild) */
     uintptr_t presenter_h;           /* weak gchandle (pointer-sized in this il2cpp, like ui_game.c u_gc_new; uint32 crashed) to this map's FogOfWarPresenter */
-    int presenter_scene;
-    Obj vh;                          /* VisionDataHandler the masks were built from */
-    int vh_scene, seeded;            /* scene of vh; my_seen was seeded by a SetDefaultVision */
+    int presenter_epoch;
+    uintptr_t eop_h;                 /* weak gchandle to this map's EntityObjectPresenter (its View is the only view called) */
+    int eop_epoch;
+    uintptr_t vh_h;                  /* weak gchandle to the VisionDataHandler the masks were built from */
+    int vh_epoch, seeded;            /* epoch of vh_h; my_seen was seeded by a SetDefaultVision */
     int64_t built_frame;
     int watcher;                     /* last rebuild: no source of mine here, every player source counted */
     int n_own, n_vis, n_all;         /* last rebuild: my sources; tiles shown visible (mask); tiles of all player sources */
@@ -84,7 +86,16 @@ static int g_pending;                /* a full redraw is wanted (main thread, st
 static pthread_t g_main; static int g_main_known;
 static int g_logged_layout, g_logged_range;
 static int g_watch_rule = 1;         /* test switch (mpm_fog {watch:0}): 0 = the old rule, a watcher sees only his own */
+/* Epoch (hotfix v0.1.13 crash, 2026-10-18): every dungeon is map 1 in scene 2, so "same map + same scene" let objects of an
+   earlier dungeon or an ended session through (SIGSEGV in EntityObjectView.SetVisible on a freed view). Every cached game
+   object is a weak gchandle tagged with the epoch it was seen in; a map load (SetDefaultVision), a scene or map change, a
+   load start and a session start or end start a new epoch and drop them all. Views are never stored: the entity view is
+   read from the live presenter of this epoch at each use. */
+static int g_epoch = 1;
 
+static uintptr_t gch_new(Obj o) { return o ? F(VA_IL_GCH_WEAK, uintptr_t (*)(Obj, bool))(o, false) : 0; }
+static Obj gch_get(uintptr_t h) { return h ? F(VA_IL_GCH_TARGET, Obj (*)(uintptr_t))(h) : NULL; }   /* NULL once collected */
+static void gch_drop(uintptr_t *h) { if (*h) F(VA_IL_GCH_FREE, void (*)(uintptr_t))(*h); *h = 0; }
 static const char *cls_name(Obj o) { return o && *(void **)o ? F(VA_IL_CLASS_NAME, const char *(*)(void *))(*(void **)o) : ""; }
 static int is_cls(Obj o, const char *n) { return o && !strcmp(cls_name(o), n); }
 static void note_main(void) { if (!g_main_known) { g_main = pthread_self(); g_main_known = 1; } }
@@ -103,8 +114,11 @@ static int filtering(void) { return !g_shared && tracking(); }         /* change
    vanilla until a presenter call (SetDefaultVision / RefreshVision / OnRefreshHideVision) hands a live one again.
    (Loader lane 07:31: SIGBUS in rebuild <- decide <- EntityObjectView.SetVisible during the host's join-point reload.) */
 static void drop_vh(void);
+static void epoch_sync(void);
+static void fog_reset(const char *why);
 static int world_changing(void) {
     if (!busy() && !mp_game_load_pending()) return 0;
+    epoch_sync();                                   /* a load starting: new epoch */
     drop_vh();
     return 1;
 }
@@ -185,13 +199,18 @@ static void add_vis(MapFog *m, V2I p, int seen) {
 }
 
 /* rebuild my_vis of `map` from vh (read only). 0 ok, -1 not possible (caller stays vanilla for this call). */
-static void drop_vh(void) { for (int i = 0; i < NMAP; i++) M[i].vh = NULL; if (filtering()) g_pending = 1; }   /* redraw after it */
+static void drop_vh(void) { for (int i = 0; i < NMAP; i++) gch_drop(&M[i].vh_h); if (filtering()) g_pending = 1; }   /* redraw after it */
+static Obj vh_get(MapFog *m) { return m && m->vh_epoch == g_epoch ? gch_get(m->vh_h) : NULL; }
+static void vh_set(MapFog *m, Obj vh) {
+    if (m->vh_epoch == g_epoch && m->vh_h && gch_get(m->vh_h) == vh) return;
+    gch_drop(&m->vh_h); m->vh_h = gch_new(vh); m->vh_epoch = g_epoch;
+}
 static int rebuild(int map, Obj vh) {
     MapFog *m = mapfog(map);
     int me; dsnet_client *c = client(&me);
     if (!m || !c || g_bad || world_changing() || !vh_ok(vh, map)) return -1;
     for (int k = 0; k < m->vis_n; k++) clrb(m->vis, m->vis_list[k]);
-    m->vis_n = 0; m->vh = vh; m->vh_scene = scene(); m->built_frame = rig_frames;
+    m->vis_n = 0; vh_set(m, vh); m->built_frame = rig_frames;
 
     Obj visions = AT(vh, 0x20, Obj), pvs = AT(vh, 0x28, Obj), tmp = AT(vh, 0x50, Obj);
     int nv = dict_live(visions, 0x20, "_visions Dictionary<Guid,VisionArea> stride 0x20"); if (nv < 0) return -1;
@@ -263,16 +282,26 @@ static int rebuild(int map, Obj vh) {
 /* ------------------------------------------------------------------ presenter cache (weak handles) */
 static void cache_presenter(int map, Obj P) {
     MapFog *m = mapfog(map); if (!m) return;
-    Obj cur = m->presenter_h ? F(VA_IL_GCH_TARGET, Obj (*)(uintptr_t))(m->presenter_h) : NULL;
-    if (cur == P && m->presenter_scene == scene()) return;
-    if (m->presenter_h) F(VA_IL_GCH_FREE, void (*)(uintptr_t))(m->presenter_h);
-    m->presenter_h = F(VA_IL_GCH_WEAK, uintptr_t (*)(Obj, bool))(P, false);
-    m->presenter_scene = scene();
+    if (m->presenter_epoch == g_epoch && gch_get(m->presenter_h) == P) return;
+    gch_drop(&m->presenter_h); m->presenter_h = gch_new(P); m->presenter_epoch = g_epoch;
 }
-static Obj presenter_of(int map) {
-    if (map < 0 || map >= NMAP || !M[map].presenter_h || M[map].presenter_scene != scene()) return NULL;
-    Obj P = F(VA_IL_GCH_TARGET, Obj (*)(uintptr_t))(M[map].presenter_h);
-    return (P && is_cls(P, "FogOfWarPresenter") && AT(P, 0x10, Obj)) ? P : NULL;
+static Obj presenter_of(int map) {                  /* this epoch's FogOfWarPresenter of `map`, or NULL */
+    if (map < 0 || map >= NMAP || M[map].presenter_epoch != g_epoch) return NULL;
+    Obj P = gch_get(M[map].presenter_h);
+    return (P && is_cls(P, "FogOfWarPresenter") && AT(P, 0x20, int32_t) == map && AT(P, 0x10, Obj)) ? P : NULL;
+}
+static void cache_eop(int map, Obj P) {
+    if (map < 0 || map >= NMAP) return;
+    MapFog *m = &M[map];
+    if (m->eop_epoch == g_epoch && gch_get(m->eop_h) == P) return;
+    gch_drop(&m->eop_h); m->eop_h = gch_new(P); m->eop_epoch = g_epoch;
+}
+static Obj eov_of(int map) {                        /* the live EntityObjectView of `map` (View of this epoch's presenter), or NULL */
+    if (map < 0 || map >= NMAP || M[map].eop_epoch != g_epoch) return NULL;
+    Obj P = gch_get(M[map].eop_h);
+    if (!P || !is_cls(P, "EntityObjectPresenter") || AT(P, 0x20, int32_t) != map) return NULL;   /* _targetMap */
+    Obj V = AT(P, 0x10, Obj);                       /* ViewPresenter<T>.View */
+    return (is_cls(V, "EntityObjectView") && AT(V, 0x10, Obj)) ? V : NULL;   /* _objectContainer */
 }
 
 /* ------------------------------------------------------------------ presenter hooks */
@@ -289,6 +318,7 @@ static void h_set_default(Obj P, Obj d, void *mi) {
     note_main();
     if (!P || !tracking()) { o_set_default(P, d, mi); return; }
     int map = presenter_map(P); MapFog *m = mapfog(map);
+    epoch_sync(); fog_reset("map load");            /* a map (re)loads: objects of the last one are gone */
     cache_presenter(map, P);
     if (!m) { o_set_default(P, d, mi); return; }
     memset(m->seen, 0, WORDS * 8);                  /* reseed: LoadVisible tiles (shared visited) become my explored */
@@ -300,6 +330,7 @@ static void h_refresh_vision(Obj P, Obj d, void *mi) {
     note_main();
     if (!P || !tracking()) { o_refresh_vision(P, d, mi); return; }
     int map = presenter_map(P);
+    epoch_sync();
     cache_presenter(map, P);
     if (rebuild(map, presenter_vh(P)) < 0) { o_refresh_vision(P, d, mi); return; }
     run_ctx(CTX_REFRESH, map, o_refresh_vision, P, d, mi);
@@ -308,6 +339,7 @@ static void h_refresh_impl(Obj P, Obj d, void *mi) {
     note_main();
     if (!P || !tracking()) { o_refresh_impl(P, d, mi); return; }
     int map = presenter_map(P);
+    epoch_sync();
     cache_presenter(map, P);
     if (rebuild(map, presenter_vh(P)) < 0) { o_refresh_impl(P, d, mi); return; }
     run_ctx(CTX_IMPL, map, o_refresh_impl, P, d, mi);
@@ -345,8 +377,9 @@ static void h_load_visible(Obj V, V2I p, void *mi) { half_like(o_load_visible, V
 /* ------------------------------------------------------------------ enemies (units hidden in my fog) */
 /* EntityObjectPresenter shows/hides units through EntityObjectView.SetVisible(guid, bool). Player units (faction 1) and
    subfaction 2 are always shown in vanilla: passed through. Other units: visible only if vanilla says so AND my_vis
-   has their tile. Each vanilla wish is remembered so a redraw (owner change, rule change) can re-decide it. */
-typedef struct { Guid g; Obj view; int map, scene, want, shown, used; } EntRec;
+   has their tile. Each vanilla wish is remembered so a redraw (owner change, rule change) can re-decide it. A record keeps
+   no view: a redraw calls the view of the live presenter (eov_of), and only for a unit still on the map. */
+typedef struct { Guid g; int map, epoch, want, shown, used; } EntRec;
 #define NENT 2048
 static EntRec E[NENT];
 
@@ -384,11 +417,27 @@ static EntRec *ent_rec(Guid g, int make) {
     EntRec *r = &E[freei]; memset(r, 0, sizeof *r); r->g = g; r->used = 1;
     return r;
 }
+static void fog_reset(const char *why) {             /* new epoch: forget every cached game object */
+    g_epoch++;
+    memset(E, 0, sizeof E);
+    for (int i = 0; i < NMAP; i++) { gch_drop(&M[i].presenter_h); gch_drop(&M[i].eop_h); gch_drop(&M[i].vh_h); M[i].seeded = 0; }
+    rig_log("fog: view cache cleared (%s, epoch %d)", why, g_epoch);
+}
+static void epoch_sync(void) {                         /* main thread: session, scene, map or load changed -> new epoch */
+    static void *k_sess, *k_cli; static int k_me = -1, k_scene = -1, k_map = -1, k_busy;
+    mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
+    int me = c ? dsnet_player_id(c) : -1, sc = scene(), map = cur_map(), b = busy() || mp_game_load_pending();
+    const char *why = ((void *)s != k_sess || (void *)c != k_cli || me != k_me) ? "session start or end"
+                    : sc != k_scene ? "scene change" : map != k_map ? "map change" : (b && !k_busy) ? "load" : NULL;
+    k_sess = s; k_cli = c; k_me = me; k_scene = sc; k_map = map; k_busy = b;
+    if (why) fog_reset(why);
+}
 static int decide(int map, Guid g, int want) {         /* 1 = show */
     if (!want || !filtering()) return want;
     MapFog *m = mapfog(map); V2I t;
-    if (world_changing() || !m || !m->vh || m->vh_scene != scene()) return want;
-    if (m->built_frame != rig_frames && rebuild(map, m->vh) < 0) return want;
+    Obj vh;
+    if (world_changing() || !m || !(vh = vh_get(m))) return want;
+    if (m->built_frame != rig_frames && rebuild(map, vh) < 0) return want;
     if (!unit_tile(map, g, &t)) return want;
     int i = idx(t);
     if (i < 0) { range_note(t); return want; }
@@ -399,9 +448,9 @@ static void h_eov_set_visible(Obj V, Guid g, bool vis, void *mi) {
     if (!tracking() || (map = cur_map()) < 0) { o_eov_set_visible(V, g, vis, mi); return; }
     Obj u = unit_of(map, g);
     if (!u || always_shown(u)) { o_eov_set_visible(V, g, vis, mi); return; }
+    int show = decide(map, g, vis ? 1 : 0);          /* first: it may start a new epoch (clears E) */
     EntRec *r = ent_rec(g, 1);
-    int show = decide(map, g, vis ? 1 : 0);
-    r->view = V; r->map = map; r->scene = scene(); r->want = vis ? 1 : 0; r->shown = show;
+    r->map = map; r->epoch = g_epoch; r->want = vis ? 1 : 0; r->shown = show;
     o_eov_set_visible(V, g, show ? true : false, mi);
 }
 static void h_eop_refresh_hide(Obj P, Obj d, void *mi) {   /* fresh mask before the presenter re-decides units */
@@ -409,6 +458,8 @@ static void h_eop_refresh_hide(Obj P, Obj d, void *mi) {   /* fresh mask before 
     if (P && tracking()) {
         Obj rt = AT(P, 0x40, Obj);                      /* EntityObjectPresenter._runtimeData (RuntimeMapData) */
         int map = AT(P, 0x20, int32_t);                 /* EntityObjectPresenter._targetMap */
+        epoch_sync();
+        if (is_cls(P, "EntityObjectPresenter")) cache_eop(map, P);
         if (rt && AT(rt, 0x10, int32_t) == map) rebuild(map, vh_of_runtime(rt));   /* RuntimeMapData.MapType must match */
     }
     o_eop_refresh_hide(P, d, mi);
@@ -416,15 +467,21 @@ static void h_eop_refresh_hide(Obj P, Obj d, void *mi) {   /* fresh mask before 
 
 /* ------------------------------------------------------------------ redraw */
 static void redraw_entities(int map) {
-    int sc = scene();
+    int ep = g_epoch;
     for (int k = 0; k < NENT; k++) {
         EntRec *r = &E[k];
-        if (!r->used || r->map != map || r->scene != sc || !r->want) continue;
+        if (!r->used || r->map != map || r->epoch != ep || !r->want) continue;
+        if (!unit_of(map, r->g)) { r->want = 0; continue; }   /* left the map / removed: its object may be destroyed */
         int show = decide(map, r->g, 1);
-        if (show != r->shown) { r->shown = show; o_eov_set_visible(r->view, r->g, show ? true : false, NULL); }
+        if (g_epoch != ep) return;                    /* a load started inside decide: E was cleared */
+        if (show == r->shown) continue;
+        Obj V = eov_of(map);                          /* live view only; none cached this epoch = no redraw */
+        if (!V) return;
+        r->shown = show; o_eov_set_visible(V, r->g, show ? true : false, NULL);
     }
 }
 static void redraw_now(void) {
+    epoch_sync();
     int map = cur_map();
     if (map < 0 || busy() || mp_game_load_pending() || scene() != 2) return;   /* keep pending until the campaign runs */
     g_pending = 0;
@@ -466,8 +523,9 @@ static const char *fog_mode(const MapFog *m) {
 }
 static int blank_count(int map, MapFog **mo) {          /* visible tiles now, -1 = not measurable (no session, loading, vanilla) */
     MapFog *m = map >= 0 ? mapfog(map) : NULL; *mo = m;
-    if (!m || !client(NULL) || g_bad || scene() != 2 || busy() || mp_game_load_pending() || !m->vh || m->vh_scene != scene()) return -1;
-    if (m->built_frame != rig_frames && rebuild(map, m->vh) < 0) return -1;
+    Obj vh = m ? vh_get(m) : NULL;
+    if (!m || !client(NULL) || g_bad || scene() != 2 || busy() || mp_game_load_pending() || !vh) return -1;
+    if (m->built_frame != rig_frames && rebuild(map, vh) < 0) return -1;
     return filtering() ? m->n_vis : m->n_all;
 }
 static void blank_check(void) {                        /* main thread, once a second */
@@ -502,7 +560,7 @@ void mp_fog_set_shared(int on) {
     want_redraw();
 }
 void mp_fog_owner_changed(void) { if (!g_shared && tracking()) want_redraw(); }
-void mp_fog_frame(void) { note_main(); if (g_pending) redraw_now(); blank_check(); }   /* main thread, once per frame (rig_frame) */
+void mp_fog_frame(void) { note_main(); epoch_sync(); if (g_pending) redraw_now(); blank_check(); }   /* main thread, once per frame (rig_frame) */
 char *mp_fog_state(int watch) {                        /* test (mpm_fog): watch 0/1 sets the watcher rule, -1 reads */
     if (watch >= 0 && watch != g_watch_rule) { g_watch_rule = watch; rig_log("fog: watcher rule %s (test)", watch ? "on" : "off"); g_pending = 1; }
     int map = cur_map(); MapFog *m = map >= 0 && map < NMAP ? &M[map] : NULL;
