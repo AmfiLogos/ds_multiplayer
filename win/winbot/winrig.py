@@ -19,7 +19,7 @@ connection. So one command costs a few ms instead of 4-5 vmrun calls, and waits 
 Env: WINBOT_TARGET=vm (default) | wine, WINBOT_STATE (default ~/.ds_winbot), WINBOT_HUB_HOST (vm: the Mac's vmnet
 address, found from ifconfig), WINBOT_PORT (game control port, default 47811).
 """
-import base64, json, os, re, secrets, socket, subprocess, sys, threading, time
+import base64, json, os, re, secrets, select, socket, subprocess, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE = os.environ.get('WINBOT_STATE') or os.path.expanduser('~/.ds_winbot')
@@ -109,6 +109,15 @@ class Hub:
         except Exception as e:
             log('hub: hello failed', a, e); s.close()
 
+    @staticmethod
+    def _dead(c):
+        try:
+            if not select.select([c.s], [], [], 0)[0]:
+                return False
+            return c.s.recv(1, socket.MSG_PEEK) == b''
+        except OSError:
+            return True
+
     def _drop(self, c):
         with self.lock:
             if c in self.all:
@@ -123,16 +132,22 @@ class Hub:
     def request(self, req):
         if req.get('op') == 'hub_status':
             with self.lock:
+                for d in [c for c in self.idle if self._dead(c)]:
+                    self.idle.remove(d); self.all.remove(d); d.s.close()
                 return {'ok': True, 'agents': [{k: v for k, v in c.hello.items() if k != 'token'} for c in self.all], 'idle': len(self.idle)}
         want = req.pop('target', None)
         t_end = time.time() + 20
         with self.lock:
             while True:
+                for d in [c for c in self.idle if self._dead(c)]:     # an agent that quit: its idle sockets read EOF
+                    self.idle.remove(d); self.all.remove(d); d.s.close()
                 c = next((c for c in self.idle if not want or want.lower() in str(c.hello.get('computer', '')).lower()), None)
                 if c:
                     self.idle.remove(c); break
+                if not self.all:
+                    return {'ok': False, 'err': 'no agent connected'}
                 if time.time() > t_end:
-                    return {'ok': False, 'err': 'no agent connected' if not self.all else 'all agent connections busy'}
+                    return {'ok': False, 'err': 'all agent connections busy'}
                 self.lock.wait(0.5)
             req['id'] = self.next_id; self.next_id += 1
         wait_s = max(req.get('timeout_ms', 0), req.get('wait_ms', 0)) / 1000 + 60
@@ -263,7 +278,9 @@ class Win:
         """hub + agent; starts the agent in the guest when none is connected"""
         hub_start()
         if hub_req({'op': 'hub_status'}).get('agents'):
-            return self.a('ping')
+            r = hub_req({'op': 'ping'})
+            if r.get('ok'):
+                return r
         tok, host = _token(), hub_host()
         args = f'{host}:{HUB_PORT} {tok} 4 720'
         if self.target == 'vm':
