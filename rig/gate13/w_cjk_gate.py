@@ -25,10 +25,10 @@ us = json.load(open(f'{H}/ds_launcher/loader/test_env/instances/X/data/UserSetti
 us['GeneralSettingData']['SaveCurrentLanguageType'] = LANG; us['GeneralSettingData']['IsLanguageInitialized'] = True
 json.dump(us, open(os.path.join(data, 'UserSetting.json'), 'w'), indent=1)
 # a local release server (loader/test/update/relserver.py; the real API has an hourly limit): ds_custommodes holds an old
-# bundle release with custom-modes-0.11.0.zip and the mod's own custom-modes-v0.1.6; the updater must offer 0.1.6
+# bundle release with custom-modes-0.11.0.zip and the mod's own custom-modes-v0.1.7; the updater must offer 0.1.7
 import socket, subprocess
 RS = os.path.join(OUT, 'releases')
-for tag, f in (('bundle-v0.1.16', 'custom-modes-0.11.0.zip'), ('custom-modes-v0.1.6', 'custom-modes-0.1.6.zip')):
+for tag, f in (('bundle-v0.1.16', 'custom-modes-0.11.0.zip'), ('custom-modes-v0.1.7', 'custom-modes-0.1.7.zip')):
     d = os.path.join(RS, 'AmfiLogos', 'ds_custommodes', tag); os.makedirs(d, exist_ok=True); open(os.path.join(d, f), 'wb').write(b'test only ' + tag.encode())
 os.makedirs(os.path.join(RS, 'AmfiLogos', 'ds_modloader', 'v0.1.9'), exist_ok=True)
 so = socket.socket(); so.bind(('127.0.0.1', 0)); port = so.getsockname()[1]; so.close()
@@ -66,8 +66,8 @@ try:
     # the updater (local releases): the mod's own newer release is offered, the old bundle zip with a higher number is not
     wait_for(r'update: kit: installed'); time.sleep(5); L = t.dlog()
     up = [l[13:] for l in L.splitlines() if 'update: mod ' in l]
-    t.check('auto-update: custom-modes 0.1.6 offered from custom-modes-v0.1.6, not 0.11.0 from bundle-v0.1.16',
-            any('custom-modes: installed 0.1.5, newer 0.1.6' in l for l in up) and not any('0.11.0' in l for l in up), up or 'no mod update line')
+    t.check('auto-update: custom-modes 0.1.7 offered from custom-modes-v0.1.7, not 0.11.0 from bundle-v0.1.16',
+            any('custom-modes: installed 0.1.6, newer 0.1.7' in l for l in up) and not any('0.11.0' in l for l in up), up or 'no mod update line')
     # the Mods window itself cannot open here: -nographics (the bottle has no graphics) gives the UI kit no sprites
 finally:
     w.stop()
