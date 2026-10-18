@@ -87,12 +87,13 @@ def main():
         rig.wait_for(Y, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title ' + Y, timeout=1500)
         wait(Y + ' loaded the host save', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('loads', 0) >= 1)(st(Y)), timeout=900)
         time.sleep(8)
-        f1 = next(col for col in tm(X)['columns'] if col['player'] == -1)['model'][1]
         t0 = st(X)['tick']
-        tm(X, action='open'); tm(Y, action='open'); time.sleep(2)
-        tm(X, action='click', guid=f1, button=0); time.sleep(1.5); tm(X, action='click', guid=f1, button=1); time.sleep(1.5)
-        settle(X, Y, lambda a, b: col_of(b, f1) == 0, 'X takes', timeout=60)
         for cy in range(1, CYCLES + 1):
+            # a fresh unit each dive: the unit back from dive 1 was not picked for dive 2 ("Choose at least one unit")
+            f1 = next(col for col in tm(X)['columns'] if col['player'] == -1)['model'][1]
+            tm(X, action='open'); tm(Y, action='open'); time.sleep(2)
+            tm(X, action='click', guid=f1, button=0); time.sleep(1.5); tm(X, action='click', guid=f1, button=1); time.sleep(1.5)
+            settle(X, Y, lambda a, b: col_of(b, f1) == 0, f'X takes ({cy})', timeout=60)
             T.propose(X, [f1])
             settle(X, Y, lambda a, b: b['prop']['shown'] and b['prop']['ok'] == 'Approve', f'guest summary {cy}', timeout=90)
             tm(Y, action='approve')
