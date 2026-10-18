@@ -34,8 +34,11 @@ With no multiplayer mod installed, every call below still works: random draws ar
 ### UnityEngine.Random and System.Random in a mod
 - Our determinism layer already routes the game's `UnityEngine.Random` (Range, value) inside the step to its sim
   stream, and `new System.Random()` (no seed) to a counter seed. A mod's call goes through the same hooks.
-- Tested on a hidden Mac pair, both players with BepInEx: see section 5 for the result. Until a rule is listed
-  there as proven, use `Rand` for anything that changes game state.
+- Proven on a hidden Mac pair, both players with BepInEx (section 5): `UnityEngine.Random.Range` / `.value` called
+  from C# inside the step (a bridge handler, a Harmony postfix on `TickFlow.Tick`) went to the sim stream and gave the
+  same values on both players. So the rule is the same as for `Rand`: inside the step it is shared, outside it is not.
+  `Rand` is still the better choice: its own streams per mod, so another mod's extra draw never shifts yours.
+  Windows: same hooks, not yet run with BepInEx on a pair.
 - `new System.Random(seed)` with your own seed is deterministic only if the seed is the same on every player.
 
 ## 2. Chat lines
@@ -90,4 +93,7 @@ With no multiplayer mod installed, every call below still works: random draws ar
 - Hidden Mac pair, chat + local random (`ext/mpapi/chat_pair.py`, 2026-10-18): broadcast shown on both with the
   sender's name and escaped tags; local line only on its own screen; 20 broadcasts at once = 3 sent, 17 rate limited,
   3 lines on the other screen; draws outside the step local; 0 desyncs, full-state checks equal.
-- Hidden Mac pair, both players with BepInEx (`ext/bepinex_bridge/tests/rand_pair.py`): pending.
+- Hidden Mac pair, both players with BepInEx (`ext/bepinex_bridge/tests/rand_pair.py`, 2026-10-18, mpapi 47280ad):
+  12 draw sets (6 in bridge handlers sent from both players, 6 in a `TickFlow.Tick` Harmony postfix), each 6 x
+  Range(int) + 6 x value + 6 x Range(float) + 6 x `Rand`: all 12 equal on both players, `RandShared` 1 inside, 0 in
+  `Update`; det counters draws_view_in_sim 0; full-state checks equal; fingerprints equal on 2283 ticks; 0 desyncs.
