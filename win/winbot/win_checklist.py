@@ -274,6 +274,13 @@ def mac_host_with_extra(mac, a):
 
 
 def item4(w, rep, a, mac):
+    if a.mp_dll:                                                     # lead 2026-10-18: the winbot dll for item 4 only
+        with test_mp_dll(w, a):
+            return item4_run(w, rep, a, mac)
+    return item4_run(w, rep, a, mac)
+
+
+def item4_run(w, rep, a, mac):
     I = '4'
     port = mac_host_with_extra(mac, a)
     w.prepare(lang=0, active=BASE_MODS, settings={})
@@ -427,23 +434,39 @@ def item5(w, rep, a, mac):
     w.stop(); mac.stop()
 
 
-def itemS(w, rep, a):
-    """the winbot port fix on the VM: the test build's multiplayer.dll (mod.json hash updated, version kept), single
-    player Mods window Apply = soft restart, the new process must answer on the port. Files restored after."""
-    I = 'S'
-    if not a.mp_dll:
-        rep.check(I, 'port fix proof', False, 'no --mp-dll given'); return
+import contextlib
+
+
+@contextlib.contextmanager
+def test_mp_dll(w, a):
+    """the winbot multiplayer.dll in the modded test profile's mods folder for one item; the release files are moved
+    aside and moved back after (never deleted). mod.json keeps its version; only the dll's sha256 changes."""
     import hashlib
     md = W.ROOT + r'\mods\multiplayer'
     keep = W.WORK + r'\to_delete\mp_release_' + time.strftime('%Y%m%d-%H%M%S')
     mj = w.json_file(md + r'\mod.json')
-    dll = open(a.mp_dll, 'rb').read()
     w.kill_all()
     for f in ('multiplayer.dll', 'mod.json'):
         w.move(md + '\\' + f, keep + '\\' + f)
     try:
-        mj['platforms']['win-x64'].setdefault('files', {})['multiplayer.dll'] = hashlib.sha256(dll).hexdigest()
+        mj['platforms']['win-x64'].setdefault('files', {})['multiplayer.dll'] = hashlib.sha256(open(a.mp_dll, 'rb').read()).hexdigest()
         w.upload(a.mp_dll, md + r'\multiplayer.dll'); w.write(md + r'\mod.json', json.dumps(mj, indent=1))
+        yield
+    finally:
+        w.stop()
+        for f in ('multiplayer.dll', 'mod.json'):
+            w.move(md + '\\' + f, keep + r'\winbot_' + f)
+            w.move(keep + '\\' + f, md + '\\' + f)
+        log('release multiplayer.dll + mod.json back in place')
+
+
+def itemS(w, rep, a):
+    """the winbot port fix on the VM: Mods window Apply (single player) = soft restart; the new process must answer on
+    the control port. Needs --mp-dll (a multiplayer.dll with the fix)."""
+    I = 'S'
+    if not a.mp_dll:
+        rep.check(I, 'port fix proof', False, 'no --mp-dll given'); return
+    with test_mp_dll(w, a):
         w.prepare(lang=0, active=BASE_MODS, settings={})
         w.start()
         rl = w.text(W.PROF + r'\rig.log') or ''
@@ -458,11 +481,6 @@ def itemS(w, rep, a):
         w.ui({'op': 'open'}); w.ui({'op': 'click', 'target': 'mod:gcd-cdr'}); w.ui({'op': 'click', 'target': 'apply'})   # back on
         w.wait_restart(new, 180)
         fresh_logs(w, rep, 'S')
-    finally:
-        w.stop()
-        for f in ('multiplayer.dll', 'mod.json'):
-            w.move(md + '\\' + f, keep + r'\winbot_' + f)
-            w.move(keep + '\\' + f, md + '\\' + f)
 
 
 def main():
