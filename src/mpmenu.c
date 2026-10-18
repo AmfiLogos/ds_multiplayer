@@ -2031,13 +2031,21 @@ static struct {
 } HM;
 static int (*hm_plan)(const char *, int, char *, size_t), (*hm_get)(const char *, int, const char *, char *, size_t), (*hm_state)(int *, char *, size_t);
 static int hm_test, hm_rejoined;     /* hm_test: DSMP_HOSTMODS_TEST=1 / mpm_hostmods {test:1}; hm_rejoined: this process came from DSMP_REJOIN */
+static void *hm_sym(const char *n) {
+#ifdef _WIN32
+    HMODULE b = GetModuleHandleA("baselib.dll");    /* Windows: the loader is the baselib.dll proxy; the dlfcn shim only sees this DLL */
+    void *p = b ? (void *)GetProcAddress(b, n) : NULL;
+    if (p) return p;
+#endif
+    return dlsym(RTLD_DEFAULT, n);
+}
 static int hostmods_loader(void) {                                   /* 1 = the loader has the hostmods API */
     static int looked;
     if (!looked) {
         looked = 1;
-        hm_plan = (int (*)(const char *, int, char *, size_t))dlsym(RTLD_DEFAULT, "dsl_hostmods_plan");
-        hm_get = (int (*)(const char *, int, const char *, char *, size_t))dlsym(RTLD_DEFAULT, "dsl_hostmods_get");
-        hm_state = (int (*)(int *, char *, size_t))dlsym(RTLD_DEFAULT, "dsl_hostmods_state");
+        hm_plan = (int (*)(const char *, int, char *, size_t))hm_sym("dsl_hostmods_plan");
+        hm_get = (int (*)(const char *, int, const char *, char *, size_t))hm_sym("dsl_hostmods_get");
+        hm_state = (int (*)(int *, char *, size_t))hm_sym("dsl_hostmods_state");
         const char *t = getenv("DSMP_HOSTMODS_TEST"); if (t && !strcmp(t, "1")) hm_test = 1;
         rig_log("mpmenu: hostmods: loader API %s%s", hm_plan && hm_get && hm_state ? "found" : "not found (older loader: text notice)", hm_test ? ", test hook on" : "");
     }
