@@ -4029,9 +4029,12 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         return b.p;
     }
     if (!strcmp(cmd, "mpm_rules")) {                                        /* test: a rule change in play (what the panel cog sends) */
-        mp_session *cs = mp_game_session(); double u = 0;
-        if (!cs || !jnum(line, "units", &u)) return strdup("{\"ok\":false}");
-        dsnet_rules r; dsnet_rules_get(mp_client(cs), &r); r.units_per_player = (int)u;
+        mp_session *cs = mp_game_session(); double u = 0, f = 0;
+        int hu = jnum(line, "units", &u), hf = jnum(line, "fog", &f);   /* units and/or fog (shared fog 0/1) */
+        if (!cs || (!hu && !hf)) return strdup("{\"ok\":false}");
+        dsnet_rules r; dsnet_rules_get(mp_client(cs), &r);
+        if (hu) r.units_per_player = (int)u;
+        if (hf) r.shared_fog = f != 0;
         Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", dsnet_set_rules(mp_client(cs), &r)); return b.p;
     }
     if (!strcmp(cmd, "mpm_claim")) {                                        /* test: claim a unit for this player (mp_claim) */
