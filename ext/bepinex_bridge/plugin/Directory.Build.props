@@ -16,6 +16,7 @@
     <PathMap>$(MSBuildThisFileDirectory)=/src/</PathMap>
     <DebugType>embedded</DebugType>
     <EnableSourceLink>false</EnableSourceLink>
+    <EmbedUntrackedSources>false</EmbedUntrackedSources>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <ItemGroup>
