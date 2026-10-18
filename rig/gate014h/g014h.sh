@@ -97,5 +97,7 @@ fullcheck() { local L=$OUT/g014h_fastjoin_${1:-off}_raw.log; (cd $WT/ext/latejoi
 chk g014h_fullcheck 'FULLCHECK PASS' $WT fullcheck off
 chk g014h_fullcheck_on 'FULLCHECK PASS' $WT fullcheck on   # Fast join On is the default since 2164719
 chk g014h_mixed_set 'RESULT 4/4 pass' $WT python3 $H/mixed_set.py
+fogpair() { local L=$OUT/g014h_fogfix_raw.log; (cd $WT/ext/fogfix && python3 fogfix_pair.py --dylib $D --cycles 3) > $L 2>&1; local rc=$?; command grep -E 'RESULT|FAIL' $L | tail -5; return $rc; }
+chk g014h_fogfix 'RESULT PASS' $WT fogpair   # the crash path: 3 dungeon entries with a watcher, fog redraws, quit to title (v0.1.13 crashed)
 print "g014h_inputs_unchanged $([[ $( { echo "MP $(git -C $WT rev-parse HEAD)  LD $(git -C $LD rev-parse HEAD)  CM $(git -C $CMR rev-parse HEAD)  pins $(head -1 $LD/loader/mp_pin.txt) $(head -1 $LD/loader/cm_pin.txt)  RELEASE $(cat $LD/RELEASE $LD/loader/RELEASE 2>/dev/null | head -1)"; for f in $REL/* $D $WT/build/custom-modes*.dylib; do print -r -- "$(shasum -a 256 "$f" | cut -c1-64)  $f"; done; } | shasum -a 256 | cut -c1-64) == $IN ]] && echo PASS || echo FAIL)" | tee -a $SUM
 print "g014h_prefs $([[ $(prefs) == identical ]] && echo PASS || echo FAIL)" | tee -a $SUM
