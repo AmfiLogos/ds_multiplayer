@@ -193,12 +193,12 @@ def fresh_world(local, label):
     never share a guid with one of his worlds, or its saves would go to his game folder). Returns the local file."""
     import re, uuid
     s = open(local, encoding='utf-8').read()
-    m = re.search(r'"CampaignGuid":"([0-9a-f-]{36})"', s)
+    m = re.search(r'"CampaignGuid"\s*:\s*"([0-9a-f-]{36})"', s)
     if not m:
         raise W.GameError(f'no CampaignGuid in {local}')
     old = m.group(1); g = uuid.uuid4()
     s = s.replace(old, str(g)).replace(old.replace('-', ''), g.hex)
-    s = re.sub(r'"CampaignName":"[^"]*"', f'"CampaignName":"Winbot {label}"', s)
+    s = re.sub(r'"CampaignName"\s*:\s*"[^"]*"', f'"CampaignName":"Winbot {label}"', s)
     d = os.path.join(os.path.expanduser('~/.ds_winbot'), 'worlds'); os.makedirs(d, exist_ok=True)
     out = os.path.join(d, f'Winbot{label}__AutoSave_{g.hex}_0.json')
     open(out, 'w', encoding='utf-8').write(s)
