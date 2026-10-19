@@ -23,6 +23,10 @@ X = 'CTLOFF'
 FAILS = []
 
 
+def _nice5():                                             # a driver already at nice 20 (a zsh background job: +5, gate nice 19): EPERM is harmless
+    try: os.nice(5)
+    except OSError: pass
+
 def log(*a): print(time.strftime('%H:%M:%S'), *a, flush=True)
 def fail(why): FAILS.append(why); log('FAIL', why)
 
@@ -101,7 +105,7 @@ def mac_check(build):
            'DSL_NO_ALERT': '1', 'DSL_NOTCH': '0', 'DSL_SOFT_NOACTIVATE': '1', 'DSL_UPDATE': '0'}   # no DSRIG_CTL / DSRIG_PORT / DSRIG_*_DIRS (player)
     args = [exe(), '-batchmode', '-logFile', os.path.join(I, 'player.log'), '-screen-fullscreen', '0', '-screen-width', '960', '-screen-height', '540']
     p = subprocess.Popen(args, env=env, cwd=I, stdin=subprocess.DEVNULL, stdout=open(os.path.join(I, 'stdout.log'), 'ab'),
-                         stderr=subprocess.STDOUT, preexec_fn=lambda: os.nice(5), start_new_session=True)
+                         stderr=subprocess.STDOUT, preexec_fn=_nice5, start_new_session=True)
     log('started pid', p.pid)
     txt = lambda n: open(os.path.join(I, n), errors='replace').read() if os.path.exists(os.path.join(I, n)) else ''
     try:

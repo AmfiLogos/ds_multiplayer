@@ -14,6 +14,10 @@ ZIP = os.path.abspath(sys.argv[3]) if len(sys.argv) > 3 else None
 ZID = os.path.basename(ZIP).rsplit('-', 1)[0] if ZIP else None
 RIG = f'{H}/ds_multiplayer/rig/rig.py'; os.environ['DSRIG_RELEASE'] = '1'
 res = []
+def _nice5():                                             # a driver already at nice 20 (a zsh background job: +5, gate nice 19): EPERM is harmless
+    try: os.nice(5)
+    except OSError: pass
+
 def log(*a): print(time.strftime('%H:%M:%S'), *a, flush=True)
 def check(n, ok, info=''): res.append(bool(ok)); log('PASS' if ok else 'FAIL', n, f' [{str(info)[:300]}]')
 prefs0 = lrig.check_prefs(restore=False)
@@ -48,7 +52,7 @@ try:
     e.update(lrig.ctl_env() if hasattr(lrig, 'ctl_env') else {'DSRIG_CTL': '1'})   # test copy: control socket on (the app never sets it)
     front0 = lrig.front_pid()
     game = subprocess.Popen(argv + ['-batchmode'], env=e, cwd=cwd, stdin=subprocess.DEVNULL, stdout=open(os.path.join(OUT, 'stdout.log'), 'wb'),
-                            stderr=subprocess.STDOUT, preexec_fn=lambda: os.nice(5))
+                            stderr=subprocess.STDOUT, preexec_fn=_nice5)
     prof = genv['DSRIG_DIR']; lrig.idir = lambda x: prof           # the control socket lives in the profile folder
     t0, title, shown = time.time(), None, []
     while time.time() - t0 < 300 and game.poll() is None:
