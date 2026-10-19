@@ -78,7 +78,8 @@ class Mac:
     def sh(self, *a, timeout=600):
         r = subprocess.run([MACSH, *a], capture_output=True, text=True, env=self.env, timeout=timeout)
         try:
-            return json.loads(r.stdout)
+            o = r.stdout
+            return json.loads(o[o.index('{'):] if '{' in o else o)    # lrig prints "W: started pid ..." before the JSON
         except ValueError:
             return {'raw': (r.stdout + r.stderr)[-600:]}
 
@@ -110,6 +111,8 @@ class Mac:
         self.env.update(DSML_SESSION=os.path.join(m, 'worlds.json'), DSL_SETTINGS_FILE=os.path.join(m, 'settings.json'),
                         DSL_PROFILE=os.path.join(m, 'active.json'))
         r = self.sh('start')
+        if 'started' not in r and 'already_running' not in r:
+            raise W.GameError(f'Mac copy W did not start: {str(r)[-400:]}')
         t = time.time()
         while time.time() - t < 240:
             try:
@@ -531,12 +534,17 @@ def item5(w, rep, a, mac):
         if cy > 1:
             # a fresh unit each dive, as ext/fogfix/fogfix_pair.py: the unit back from the last dive is not offered
             # again at once ("Choose at least one unit"); a free one is taken through Teams (left, then right click)
-            cols = tm('mac').get('columns', [])
-            free = next((col['model'] for col in cols if col.get('player') == -1), [])
-            own = next((col['model'] for col in cols if col.get('player') == 0), [])
-            f1 = next((g for g in free + own if g not in used), None)   # a free unit, else another of the host's own
-            if not f1:
-                raise W.GameError(f'no free unit left for entry {cy}')
+            def pick():
+                cols = tm('mac').get('columns', [])
+                fr = next((col['model'] for col in cols if col.get('player') == -1), [])
+                ow = next((col['model'] for col in cols if col.get('player') == 0), [])
+                g = next((g for g in fr + ow if g not in used), None)   # a free unit, else another of the host's own
+                return (g, ow) if g else None
+            try:                                                       # units back from the portal reappear on the base late
+                f1, own = w.wait(pick, f'a unit for entry {cy} on the host base', 90, 2)
+            except W.GameError:
+                raise W.GameError(f'no free or own unit on the host base for entry {cy} within 90 s; host columns '
+                                  + json.dumps([(col.get('player'), len(col.get('model', []))) for col in tm('mac').get('columns', [])]))
             used.add(f1)
             if f1 not in own:                                          # a click on an own unit would release it
                 tm('mac', action='open'); tm('vm', action='open'); time.sleep(2)

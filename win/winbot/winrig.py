@@ -550,7 +550,8 @@ class Win:
 
     def wait_restart(self, old_pid, timeout=300):
         """soft restart: B takes the control port once A has quit (game fix winbot: bind retry). Returns B's pid."""
-        p = self.wait(lambda: (lambda r: r['pid'] if r and r.get('pid') != old_pid else None)(self.ping()), 'the restarted game on the port', timeout)
+        # a ping can meet B with A's token still read from ctl.token (B writes its token just before it listens): no pid, retry
+        p = self.wait(lambda: (lambda r: r['pid'] if r and r.get('pid') and r['pid'] != old_pid else None)(self.ping()), 'the restarted game on the port', timeout)
         self.pid = p
         return p
 
