@@ -248,7 +248,8 @@ def _secret(*a):
 
 def vmrun(*args, timeout=90):
     """guest operation through vmrun (passwords read from the Keychain, never printed)"""
-    g = ['-T', 'fusion', '-vp', _secret('-s', VMX), '-gu', GUEST_USER, '-gp', _secret('-s', 'vmware-win-tester', '-a', GUEST_USER)]
+    vp = _secret('-s', VMX)                                      # empty: the VM is no longer encrypted
+    g = ['-T', 'fusion', *(['-vp', vp] if vp else []), '-gu', GUEST_USER, '-gp', _secret('-s', 'vmware-win-tester', '-a', GUEST_USER)]
     return subprocess.run([VMRUN, *g, args[0], VMX, *args[1:]], capture_output=True, text=True, timeout=timeout)
 
 
@@ -502,10 +503,11 @@ class Win:
         e = {'SteamAppId': '2798330', 'SteamGameId': '2798330', 'DSRIG_DIR': PROF, 'DSRIG_LIVE': '1', 'DSRIG_FPS': '60',
              'DSRIG_PORT': str(self.port), 'DSRIG_CTL': '1',  # the control channel opens only with these (v0.1.15 fix; the starter sets neither)
              'DSRIG_WRITE_DIRS': WORK, 'DSRIG_READ_DIRS': WORK,  # test-command file paths: the copy folder + the test work folder
+             'DSL_CLOUD': '0', 'DSMODDED_NO_STEAM': '1',     # never the owner's Steam Cloud from a test copy (VM = his account)
              'DSL_MODS_DIR': ROOT + r'\mods', 'DSL_PROFILE': DATA + r'\Mods\active.json',
              'DSL_LOG_DIR': PROF, 'DSML_SESSION': DATA + r'\Mods\worlds.json', 'DSML_BUILD': '25846389', 'DSML_APP': GAME,
              'DSML_DATA': DATA, 'DSML_GAME_SAVES': WORK + r'\fake_gamesaves', 'DSL_UI_TEST': UITEST, 'DSL_STEAM': '0',
-             'DSMODDED_NO_STEAM': '1', 'DSML_ROOT': ROOT, 'DOORSTOP_DISABLE': '1', 'DSL_UPDATE': '0'}
+             'DSML_ROOT': ROOT, 'DOORSTOP_DISABLE': '1', 'DSL_UPDATE': '0'}
         e.update(extra or {})                                # a value None leaves that variable out
         return [f'{k}={self.expand(v)}' for k, v in e.items() if v is not None]
 
