@@ -68,6 +68,7 @@
  "%s lent you this unit. You order it fully (move and skills). Click to give it back.": "%s одолжил вам этот юнит. Вы отдаёте ему приказы полностью (движение и навыки). Нажмите, чтобы вернуть.",
  "%s looks at another part of the map. Click to look there.": "%s смотрит на другую часть карты. Нажмите, чтобы посмотреть там.",
  "%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it.": "%s отметил это место. Метка исчезает, когда юнит до него доберётся или когда игрок нажмёт B над ней.",
+ "%s mod:": "Мод %s:",
  "%s orders this unit now. Click to take back control.": "%s сейчас отдаёт приказы этому юниту. Нажмите, чтобы вернуть управление.",
  "%s orders this unit until you take it back. It stays your unit.": "%s отдаёт приказы этому юниту, пока вы его не заберёте. Он остаётся вашим юнитом.",
  "%s proposes an expedition to %s": "%s предлагает экспедицию в %s",

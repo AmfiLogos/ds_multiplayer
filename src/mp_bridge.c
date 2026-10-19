@@ -3,6 +3,7 @@
  *
  * Wire (args of mp order MP_BRIDGE_TYPE, zero owner Guid): u8 version (1), u8 channel length, channel bytes, data. */
 #include "mp_bridge.h"
+#include "mp_api.h"
 #include "mp.h"
 #include "rig.h"
 #include <stdio.h>
@@ -78,6 +79,13 @@ void dsmp_bridge_set_dispatch(mp_bridge_dispatch_fn fn) {
     rig_log("bridge: managed dispatcher %s", fn ? "set" : "cleared");
 }
 void dsmp_bridge_get_stats(mp_bridge_stats *out) { if (out) *out = st; }
+uint32_t dsmp_bridge_rand_u32(const char *mod_id, uint32_t stream) { return mp_rand_u32(mod_id, stream); }
+int dsmp_bridge_rand_range(const char *mod_id, uint32_t stream, int lo, int hi) { return mp_rand_range(mod_id, stream, lo, hi); }
+float dsmp_bridge_rand_value(const char *mod_id, uint32_t stream) { return mp_rand_value(mod_id, stream); }
+int dsmp_bridge_rand_shared(void) { return mp_rand_shared(); }
+int dsmp_bridge_chat(const char *mod_name, const char *text, int broadcast) {
+    return mpmenu_mod_chat(mod_name, text, broadcast ? MP_CHAT_BROADCAST : MP_CHAT_LOCAL);
+}
 
 /* ---- built-in native actions ("dsmp.*"): the same code on every platform, no plugin needed on any peer ---- */
 static int clan_gold(int32_t **p) {
@@ -129,6 +137,19 @@ char *mp_bridge_exec(const char *cmd, const char *line) {
              MP_BRIDGE_API, dsmp_bridge_active(), dsmp_bridge_role(), dsmp_bridge_player(), dsmp_bridge_step(), dispatch != NULL,
              g ? *g : -1, st.sent, st.received, st.applied_native, st.applied_managed, st.unhandled, st.failed);
         bstr(&b, ms); bput(&b, "}"); return b.p;
+    }
+    if (!strcmp(cmd, "bridge_rand")) {                 /* {mod, stream, n}: n draws now (shared only inside a step) */
+        char mod[64] = "test"; double v = 0; uint32_t stream = 0; int n = 1;
+        jstr(line, "mod", mod, sizeof mod); if (jnum(line, "stream", &v)) stream = (uint32_t)v; if (jnum(line, "n", &v)) n = (int)v;
+        if (n < 1) n = 1; if (n > 64) n = 64;
+        uint64_t sh, lo; bput(&b, "{\"ok\":true,\"shared\":%d,\"v\":[", mp_rand_shared());
+        for (int i = 0; i < n; i++) bput(&b, "%s%u", i ? "," : "", mp_rand_u32(mod, stream));
+        mp_rand_stats(&sh, &lo); bput(&b, "],\"n_shared\":%llu,\"n_local\":%llu}", (unsigned long long)sh, (unsigned long long)lo); return b.p;
+    }
+    if (!strcmp(cmd, "bridge_chat")) {                 /* {mod, text, broadcast}: what a mod's chat_line does */
+        char mod[64] = "", text[400] = ""; double v = 0;
+        jstr(line, "mod", mod, sizeof mod); jstr(line, "text", text, sizeof text);
+        bput(&b, "{\"ok\":true,\"rc\":%d}", mpmenu_mod_chat(mod, text, jnum(line, "broadcast", &v) && v ? MP_CHAT_BROADCAST : MP_CHAT_LOCAL)); return b.p;
     }
     if (!strcmp(cmd, "bridge_send")) {
         char ch[80] = "", hex[1024] = ""; jstr(line, "channel", ch, sizeof ch); jstr(line, "hex", hex, sizeof hex);

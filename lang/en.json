@@ -56,6 +56,7 @@
  "%s lent you this unit. You order it fully (move and skills). Click to give it back.": "%s lent you this unit. You order it fully (move and skills). Click to give it back.",
  "%s looks at another part of the map. Click to look there.": "%s looks at another part of the map. Click to look there.",
  "%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it.": "%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it.",
+ "%s mod:": "%s mod:",
  "%s orders this unit now. Click to take back control.": "%s orders this unit now. Click to take back control.",
  "%s orders this unit until you take it back. It stays your unit.": "%s orders this unit until you take it back. It stays your unit.",
  "%s proposes an expedition to %s": "%s proposes an expedition to %s",

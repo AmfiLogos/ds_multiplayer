@@ -65,6 +65,7 @@
  "%s lent you this unit. You order it fully (move and skills). Click to give it back.": "%s te ha prestado esta unidad. La diriges por completo (movimiento y habilidades). Haz clic para devolverla.",
  "%s looks at another part of the map. Click to look there.": "%s mira otra parte del mapa. Haz clic para mirar ahí.",
  "%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it.": "%s marcó este punto. Desaparece cuando una unidad llega a él, o cuando un jugador pulsa B encima.",
+ "%s mod:": "Mod %s:",
  "%s orders this unit now. Click to take back control.": "%s da órdenes a esta unidad ahora. Haz clic para recuperar el control.",
  "%s orders this unit until you take it back. It stays your unit.": "%s da órdenes a esta unidad hasta que la recuperes. Sigue siendo tu unidad.",
  "%s proposes an expedition to %s": "%s propone una expedición a %s",

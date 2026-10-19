@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- plain console test, no game: tests/absent/run.sh -->
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net6.0</TargetFramework><Nullable>disable</Nullable><RollForward>Major</RollForward><AssemblyName>AbsentTest</AssemblyName><RootNamespace>AbsentTest</RootNamespace></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../plugin/DsmpLite/DsmpLite.cs" />
+    <Reference Include="DsmpBridge"><HintPath>$(BridgeDll)</HintPath><Private>true</Private></Reference>
+  </ItemGroup>
+</Project>

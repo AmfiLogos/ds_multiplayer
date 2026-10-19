@@ -7,7 +7,17 @@
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
-    <Lib>$(MSBuildThisFileDirectory)../lib/</Lib>
+    <!-- reference DLLs (BepInEx + interop, not in git): DSMP_BIE_LIB, else ../lib/ next to this folder, else the main checkout's -->
+    <Lib Condition="'$(Lib)' == '' and '$(DSMP_BIE_LIB)' != ''">$(DSMP_BIE_LIB)/</Lib>
+    <Lib Condition="'$(Lib)' == '' and Exists('$(MSBuildThisFileDirectory)../lib/BepInEx.Core.dll')">$(MSBuildThisFileDirectory)../lib/</Lib>
+    <Lib Condition="'$(Lib)' == ''">$(HOME)/ds_multiplayer/ext/bepinex_bridge/lib/</Lib>
+    <!-- same bytes from any checkout, and no build path (user name) inside what ships -->
+    <Deterministic>true</Deterministic>
+    <PathMap>$(MSBuildThisFileDirectory)=/src/</PathMap>
+    <DebugType>embedded</DebugType>
+    <EnableSourceLink>false</EnableSourceLink>
+    <EmbedUntrackedSources>false</EmbedUntrackedSources>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="BepInEx.Core"><HintPath>$(Lib)BepInEx.Core.dll</HintPath><Private>false</Private></Reference>

@@ -706,6 +706,11 @@ uint64_t rig_det_extra_hash(uint64_t h) {
 int rig_det_mp_ready(void) { return locked && !hold && runnable() && !trn_flow_busy(); }   /* trn: hold mid-step during a flow */
 void rig_det_sim_tick(void) { sim_cycle(); }
 int rig_det_in_sim(void) { return in_sim; }
+/* mp_rand.c (seeded random for mods): the session seed (same on every peer after the join point) and a counter that
+   moves at every load / det state apply (the per-step draw counters restart there on every peer) */
+static uint32_t load_gen;
+uint32_t rig_det_seed(void) { return seed; }
+uint32_t rig_det_load_gen(void) { return load_gen; }
 static int scope_depth;
 void rig_det_sim_scope(int enter) {
     if (enter) {
@@ -721,7 +726,7 @@ typedef struct { RState rs; uint32_t seed; uint64_t guid_sim_n, sr_sim_n; } DetS
 static DetState pending; static int pending_set;
 size_t rig_det_state_size(void) { return sizeof(DetState); }
 void rig_det_state_get(void *out) { DetState d = { sim_state, seed, guid_sim_n, sr_sim_n }; memcpy(out, &d, sizeof d); }
-static void state_apply(const DetState *d) { sim_state = d->rs; seed = d->seed; guid_sim_n = d->guid_sim_n; sr_sim_n = d->sr_sim_n; }
+static void state_apply(const DetState *d) { sim_state = d->rs; seed = d->seed; guid_sim_n = d->guid_sim_n; sr_sim_n = d->sr_sim_n; load_gen++; }
 void rig_det_state_set(const void *in) {             /* always followed by a load: applied at its auto-lock */
     memcpy(&pending, in, sizeof pending); pending_set = 1;
 }
@@ -748,6 +753,7 @@ static void rotate_trace(void) {                      /* trace.bin past 256 MB: 
 void rig_snap_ring_clear(void);
 void rig_det_on_load(void) {
     det_on = 1; hold = 1; locked = 0; load_left = 0;
+    load_gen++;
     rig_snap_ring_clear();                                          /* steps restart: old snapshots would be misread */
     guid_out_n = sr_out_n = 0;
     load_ranges();

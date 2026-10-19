@@ -1,4 +1,5 @@
 // mp_api.h - the Multiplayer API (research/MASTER_PLAN.md 2.2 B; M4 split 2026-10-15).
+// Mod makers (C, and C# through mp_bridge.h): src/MP_API.md.
 // Custom Modes (ds_multiplayer/custom, its own dylib) never gets called by name from multiplayer: it registers callbacks
 // here. It finds the table with module_loaded("multiplayer") and dlsym(<multiplayer image>, "mp_api_get"). Multiplayer
 // works alone: with nothing registered every hook point below behaves as "no custom mode".
@@ -9,7 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define MP_API_VERSION 1
+#define MP_API_VERSION 2                     /* 2 (2026-10-18): rand_*, chat_line */
 
 enum { MP_ROLE_NONE = 0, MP_ROLE_HOST = 1, MP_ROLE_GUEST = 2 };
 /* ui_set_flag: game UI rules a mod sets (ui_game.c). Default off. */
@@ -18,6 +19,16 @@ enum { MPUI_HIDE_GUILD_CONTACT = 1,          /* the HUD's Guild Contact button i
 /* register_frame: where in the frame */
 enum { MP_FRAME_ALWAYS = 0,                  /* every frame, title included (end of the rig command pump) */
        MP_FRAME_SESSION = 1 };               /* every frame while a multiplayer session runs (mp_game poll) */
+
+/* chat_line (v2): flags and results. Text is UTF-8; tags are shown as typed (escaped), control bytes become spaces. */
+enum { MP_CHAT_LOCAL = 0,                    /* a system line on this screen only */
+       MP_CHAT_BROADCAST = 1 };              /* a line every player sees, after the sender's name */
+enum { MP_CHAT_SHOWN = 0, MP_CHAT_NO_SESSION = 1,          /* 1: no multiplayer session = no chat on screen */
+       MP_CHAT_BAD_ARGS = -1, MP_CHAT_SPECTATOR = -2,      /* -2: spectators cannot broadcast mod lines */
+       MP_CHAT_RATE_LIMITED = -5, MP_CHAT_NOT_SENT = -6 }; /* -5: too many lines (see MP_API.md); -6: no connection */
+#define MP_CHAT_MOD_MAX        24            /* bytes of the mod name (cut) */
+#define MP_CHAT_TEXT_LOCAL     200           /* bytes of the text (cut, never inside a character) */
+#define MP_CHAT_TEXT_BROADCAST 160
 
 typedef struct mp_player { int id; char name[32]; uint8_t uid[16]; } mp_player;
 typedef struct mp_menu_hooks mp_menu_hooks;  /* mpmenu_kit.h (the menu's building blocks; windows inside the menu) */
@@ -86,6 +97,15 @@ typedef struct mp_api_table {
     /* ---- appended 2026-10-16 (check size before use) */
     int (*register_host_choice2)(const mp_host_choice *c);   /* 0 ok, -1 refused (5th choice / bad args); same id again = replace. Up to 4, under "Host a game" after "New save", registration order, stock gap + hover card right of the column */
     const char *(*host_choice_now)(void);                    /* id of the choice whose host page shows or whose session runs; "" none */
+    /* ---- v2 (2026-10-18; check version >= 2): seeded random for mods + chat lines (MP_API.md) */
+    /* Shared draw = main thread inside the lockstep step (a register_tick / register_sim_cmd callback, a bridge handler,
+       a hook on game code the world tick runs): the same value on every peer, from (session seed, mod_id, stream, tick,
+       step, nth draw of this (mod_id, stream) in this step). Anywhere else, and in single player: a local draw. */
+    uint32_t (*rand_u32)(const char *mod_id, uint32_t stream);
+    int (*rand_range)(const char *mod_id, uint32_t stream, int lo, int hi);   /* lo..hi-1; hi <= lo: lo (one draw used) */
+    float (*rand_value)(const char *mod_id, uint32_t stream);                 /* [0, 1), 24 bits */
+    int (*rand_shared)(void);                                                 /* 1 = a draw now is the shared one */
+    int (*chat_line)(const char *mod_name, const char *text, int flags);      /* MP_CHAT_LOCAL / _BROADCAST; MP_CHAT_* */
 } mp_api_table;
 
 /* exported by multiplayer: NULL if version > MP_API_VERSION */
@@ -116,3 +136,15 @@ void mp_moddata_init(void);                                       /* registers t
 int  mp_moddata_refused(char *why, size_t n);                     /* guest: the last block was refused (MD_* code), why = English */
 void mp_moddata_clear_refusal(void);
 void mp_moddata_session_over(void);                               /* title, no session: the guest's own files back */
+/* v2 bodies (mp_rand.c, mp_modchat.c, mpmenu.c); also behind the dsmp_bridge_* exports */
+uint32_t mp_rand_u32(const char *mod_id, uint32_t stream);
+int   mp_rand_range(const char *mod_id, uint32_t stream, int lo, int hi);
+float mp_rand_value(const char *mod_id, uint32_t stream);
+int   mp_rand_shared(void);
+void  mp_rand_stats(uint64_t *shared, uint64_t *local);
+int   mpmenu_mod_chat(const char *mod_name, const char *text, int flags);
+typedef struct { double tokens, t; } mpc_bucket;
+size_t mpc_clean(const char *in, char *out, size_t cap);                     /* UTF-8 safe cut, control bytes -> spaces */
+int   mpc_encode(const char *mod, const char *text, char *out, size_t cap);  /* broadcast wire text; -1 empty mod / text */
+int   mpc_decode(const char *wire, char *mod, size_t mn, const char **text); /* 1 = a mod line */
+int   mpc_take(mpc_bucket *b, double now, double burst, double every_s);     /* 1 = allowed */
