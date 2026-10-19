@@ -264,6 +264,7 @@ class Win:
     def __init__(self, target=TARGET, port=None):
         self.target = target
         self.port = port or GAME_PORT
+        self.starter = os.environ.get('WINBOT_STARTER') == '1'
         self.pid = None
         self.marks = {}
         self.t0 = time.time()
@@ -391,7 +392,7 @@ class Win:
         return self.a('ps', name=name)['procs']
 
     def kill_all(self):
-        for n in ('DungeonSettlers.exe', 'UnityCrashHandler64.exe', 'WerFault.exe'):
+        for n in ('DungeonSettlers.exe', 'UnityCrashHandler64.exe', 'WerFault.exe', 'Dungeon Settlers Modded.exe'):
             try:
                 self.a('kill', name=n)
             except GameError:
@@ -511,8 +512,16 @@ class Win:
         e.update(extra or {})                                # a value None leaves that variable out
         return [f'{k}={self.expand(v)}' for k, v in e.items() if v is not None]
 
+    def test_env(self, extra=None):
+        """starter mode: only the test switches; everything else is what the real player starter sets (Steam on)"""
+        e = {'DSRIG_PORT': str(self.port), 'DSRIG_CTL': '1', 'DSRIG_WRITE_DIRS': WORK, 'DSRIG_READ_DIRS': WORK,
+             'DSL_CLOUD': '0', 'DSL_UI_TEST': UITEST, 'DSL_UPDATE': '0'}
+        e.update(extra or {})
+        return [f'{k}={self.expand(v)}' for k, v in e.items() if v is not None]
+
     def start(self, env=None, args='', title=True, timeout=240):
-        """kill leftovers, park the old logs (moved, never deleted), start the game, wait for the title over the port"""
+        """kill leftovers, park the old logs (moved, never deleted), start the game, wait for the title over the port.
+        self.starter (WINBOT_STARTER=1): through the REAL player starter with Steam (only the test switches added)"""
         t0 = time.time()
         self.kill_all()
         park = WORK + r'\to_delete\logs_' + time.strftime('%Y%m%d-%H%M%S')
@@ -527,10 +536,17 @@ class Win:
         a = self.expand(f'-logFile "{PROF}\\player.log" {args}'.strip())
         if self.target == 'wine':
             a += ' -batchmode -nographics'
-        r = self.a('run', exe=self.expand(GAME + r'\DungeonSettlers.exe'), args=a, cwd=self.expand(GAME), env=self.start_env(env), show=True, wait_ms=0)
-        self.pid = r['pid']; self.marks = {}
+        if self.starter:
+            r = self.a('run', exe=self.expand(ROOT + r'\Dungeon Settlers Modded.exe'), args=args, cwd=self.expand(ROOT), env=self.test_env(env), show=True, wait_ms=0)
+            sp = r['pid']; self.marks = {}
+            log(f'starter pid {sp}')
+            self.pid = self.wait(lambda: (lambda q: q['pid'] if q and q.get('pid') and q['pid'] != sp else None)(self.ping()),
+                                 'the game started by the starter, on the control port', timeout)
+        else:
+            r = self.a('run', exe=self.expand(GAME + r'\DungeonSettlers.exe'), args=a, cwd=self.expand(GAME), env=self.start_env(env), show=True, wait_ms=0)
+            self.pid = r['pid']; self.marks = {}
+            self.wait(lambda: (self.ping() or {}).get('pid') == self.pid, 'the control port of the new game', timeout)
         log(f'game pid {self.pid}')
-        self.wait(lambda: (self.ping() or {}).get('pid') == self.pid, 'the control port of the new game', timeout)
         if title:
             self.wait(self.on_title, 'the title screen', timeout - (time.time() - t0))
         log(f'title after {time.time() - t0:.1f} s')

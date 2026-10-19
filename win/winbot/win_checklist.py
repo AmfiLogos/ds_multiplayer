@@ -188,9 +188,28 @@ def load_with_boxes(w, guest_save, timeout=240):
     raise W.GameError(f'save did not load within {timeout} s (seen {seen})')
 
 
-def put_save(w, local, name):
-    w.put(local, W.DATA + '\\Saves\\' + name)
-    return W.DATA + '\\Saves\\' + name
+def fresh_world(local, label):
+    """a throwaway copy of a test save with a NEW world guid and name (VM = the owner's Steam account: a test world must
+    never share a guid with one of his worlds, or its saves would go to his game folder). Returns the local file."""
+    import re, uuid
+    s = open(local, encoding='utf-8').read()
+    m = re.search(r'"CampaignGuid":"([0-9a-f-]{36})"', s)
+    if not m:
+        raise W.GameError(f'no CampaignGuid in {local}')
+    old = m.group(1); g = uuid.uuid4()
+    s = s.replace(old, str(g)).replace(old.replace('-', ''), g.hex)
+    s = re.sub(r'"CampaignName":"[^"]*"', f'"CampaignName":"Winbot {label}"', s)
+    d = os.path.join(os.path.expanduser('~/.ds_winbot'), 'worlds'); os.makedirs(d, exist_ok=True)
+    out = os.path.join(d, f'Winbot{label}__AutoSave_{g.hex}_0.json')
+    open(out, 'w', encoding='utf-8').write(s)
+    return out
+
+
+def put_save(w, local, name=None, label='Test'):
+    """a fresh-guid copy of a test save into the modded profile's own Saves (never the game's folder)"""
+    f = fresh_world(local, label)
+    w.put(f, W.DATA + '\\Saves\\' + os.path.basename(f))
+    return W.DATA + '\\Saves\\' + os.path.basename(f)
 
 
 def mods_state(w):
@@ -232,8 +251,11 @@ def item1(w, rep, a):
         ms = mods_state(w)
         z = ms.get('mod:' + ZETU, {})
         rep.check(I, f'{kind}: Mods window shows {ZETU} OFF', z and not z.get('on'), z)
-        sp = W.WORK + r'\\fake_gamesaves\\' + GAME_SAVE_NAME          # a game-folder save (DSML_GAME_SAVES): the save warning path
-        w.put(a.save_base, sp)
+        if w.starter:                                                # DSML_GAME_SAVES = the owner's real folder: a modded test world only
+            sp = put_save(w, a.save_base, label='Base')
+        else:
+            sp = W.WORK + r'\\fake_gamesaves\\' + GAME_SAVE_NAME      # a game-folder save (DSML_GAME_SAVES): the save warning path
+            w.put(a.save_base, sp)
         s, boxes = load_with_boxes(w, sp)
         rep.check(I, f'{kind}: normal save loads with no ZET-U warning', not any('zet' in b.lower() for b in boxes), boxes or 'no warning')
         scan_logs(w, rep, I)
@@ -403,7 +425,7 @@ def mac_host_with_extra(mac, a):
     # the host's save must have no load popup: the wiki Template save shows the stock "Lock Consecration" Yes/No popup on
     # load, and a host with that popup open never sends the join save (known join deadlock, fixed only in branch popupfix)
     work = os.path.join(os.path.dirname(MAC_CTL), 'save_in_host.json')
-    import shutil; shutil.copy2(a.save_host, work)
+    import shutil; shutil.copy2(fresh_world(a.save_host, 'Host'), work)
     mac.host(work)
     return mac.port()
 
@@ -481,7 +503,7 @@ def item5(w, rep, a, mac):
     I = '5'
     mac.start(BASE_MODS, {})
     work = os.path.join(os.path.dirname(MAC_CTL), 'save_in_dungeon.json')
-    import shutil; shutil.copy2(a.save_dungeon, work)
+    import shutil; shutil.copy2(fresh_world(a.save_dungeon, 'Dungeon'), work)
     mac.host(work)
     w.prepare(lang=0, active=BASE_MODS, settings={})
     w.start()
@@ -696,9 +718,15 @@ def itemP(w, rep, a):
     other = [k for k in genv if k.startswith(('DSL_', 'DSML')) and k not in pe]
     rep.check(I, 'player start: no DSRIG_* variable besides the starter\'s', not leak,
               ' '.join(sorted(pe)) + f' | inherited DSRIG_*: {leak}' + (f' | other test variables in the guest user environment (not gate variables): {other}' if other else ''))
-    r = w.a('run', exe=w.expand(W.GAME + r'\DungeonSettlers.exe'), args=w.expand(f'-logFile "{W.PROF}\\player.log"'),
-            cwd=w.expand(W.GAME), env=env, show=True, wait_ms=0)
-    w.pid = r['pid']; t = time.time()
+    if w.starter:                                                    # the REAL player starter (Steam on), only DSL_CLOUD=0 added
+        rep.check(I, 'player start through the real starter (its own environment + DSL_CLOUD=0)', True)
+        w.a('run', exe=w.expand(W.ROOT + r'\Dungeon Settlers Modded.exe'), args='', cwd=w.expand(W.ROOT), env=['DSL_CLOUD=0'], show=True, wait_ms=0)
+        w.pid = w.wait(lambda: (w.procs() or [{}])[0].get('pid'), 'the game started by the starter', 180, 1)
+    else:
+        r = w.a('run', exe=w.expand(W.GAME + r'\DungeonSettlers.exe'), args=w.expand(f'-logFile "{W.PROF}\\player.log"'),
+                cwd=w.expand(W.GAME), env=env, show=True, wait_ms=0)
+        w.pid = r['pid']
+    t = time.time()
     try:
         line = w.wait_log('dsload.log', ['fades its title in', 'ui: title font'], 180, since=m)   # a rotated (shorter) log is read from 0
         time.sleep(5)
