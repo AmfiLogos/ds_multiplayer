@@ -647,19 +647,26 @@ def itemS(w, rep, a):
         fresh_logs(w, rep, 'S')
 
 
-HTTP_PROBE = r'''$c=New-Object Net.Sockets.TcpClient('127.0.0.1',%d); $s=$c.GetStream(); $s.ReadTimeout=5000
-$b=[Text.Encoding]::ASCII.GetBytes("POST / HTTP/1.1`r`nHost: 127.0.0.1`r`n`r`n{""cmd"":""ping""}`n"); $s.Write($b,0,$b.Length)
+RAW_PROBE = r'''param([string]$f)
+$c=New-Object Net.Sockets.TcpClient('127.0.0.1',%d); $s=$c.GetStream(); $s.ReadTimeout=5000
+$b=[IO.File]::ReadAllBytes($f); $s.Write($b,0,$b.Length)
 $o=New-Object IO.MemoryStream; $buf=New-Object byte[] 4096; $closed='no'
 try { while ($true) { $n=$s.Read($buf,0,4096); if ($n -le 0) { $closed='yes'; break }; $o.Write($buf,0,$n) } } catch { $closed='timeout' }
 "closed=$closed"; [Text.Encoding]::UTF8.GetString($o.ToArray())'''
 
 
+def raw_probe(w, port, payload):
+    """one raw connection inside the guest: send payload bytes, read until the game closes it (or 5 s pass).
+    Output: "closed=yes|timeout" + whatever the game answered."""
+    w.write(W.WORK + r'\winbot\raw_probe.ps1', RAW_PROBE % port)
+    w.write(W.WORK + r'\winbot\raw_probe.bin', payload)
+    return w.a('run', exe=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', wait_ms=20000, capture=True,
+               args='-NoProfile -ExecutionPolicy Bypass -File ' + w.expand(W.WORK + r'\winbot\raw_probe.ps1') + ' -f ' + w.expand(W.WORK + r'\winbot\raw_probe.bin'))['out']
+
+
 def http_probe(w, port):
-    """one connection: an HTTP request line, headers, then a valid ping as the body. Must be refused and closed:
-    a web page's POST to 127.0.0.1 would look like this"""
-    w.write(W.WORK + r'\winbot\http_probe.ps1', HTTP_PROBE % port)
-    return w.a('run', exe=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
-               args='-NoProfile -ExecutionPolicy Bypass -File ' + w.expand(W.WORK + r'\winbot\http_probe.ps1'), wait_ms=20000, capture=True)['out']
+    """an HTTP request line, headers, then a valid ping as the body (what a web page's POST to 127.0.0.1 would send)"""
+    return raw_probe(w, port, b'POST / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n{"cmd":"ping"}\n')
 
 
 def itemP(w, rep, a):
@@ -702,6 +709,11 @@ def itemP(w, rep, a):
     rep.check(I, 'with the test variables: the tool connects', (w.ping() or {}).get('pid') == w.pid, w.pid)
     out = http_probe(w, w.port)
     refused = 'closed=yes' in out and '"pong"' not in out
+    nt = raw_probe(w, w.port, b'{"cmd":"ping"}\n')                  # no token first (v0.1.16 channel guard)
+    if (w.text(W.PROF + r'\ctl.token') or '').strip():
+        rep.check(I, 'test mode, no token: refused and closed, the ping not answered', 'closed=yes' in nt and '"pong"' not in nt, nt.strip()[-300:])
+    else:
+        rep.check(I, 'test mode, no token (build without ctl.token, recorded)', True, nt.strip()[-300:])
     if a.http_record:                                                # v0.1.15 has no HTTP refusal: record what happens
         rep.check(I, f'test mode, HTTP-looking connection (recorded): {"refused + closed" if refused else "NOT refused"}', True, out.strip()[-300:])
     else:
