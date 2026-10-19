@@ -95,6 +95,7 @@ def start(x, loader, plugins):
            'DOORSTOP_ENABLED': '1', 'DOORSTOP_TARGET_ASSEMBLY': os.path.join(bie, 'BepInEx/core/BepInEx.Unity.IL2CPP.dll'),
            'DOORSTOP_CLR_RUNTIME_CORECLR_PATH': os.path.join(bie, 'dotnet/libcoreclr.dylib'), 'DOORSTOP_CLR_CORLIB_DIR': os.path.join(bie, 'dotnet'),
            'DOORSTOP_IGNORE_DISABLED_ENV': '0', 'BEPINEX_PLUGIN_DIRS': plugins}
+    env.update(rig.ctl_env())                                   # test control channel (off without DSRIG_CTL since v0.1.16)
     env.update({k: v for k, v in os.environ.items() if k.startswith('DSRIG_') and k not in env})
     args = [os.path.join(rig.idir(x), rig.EXE_REL), '-logFile', os.path.join(rig.idir(x), 'player.log'),
             '-screen-fullscreen', '0', '-screen-width', '640', '-screen-height', '360', '-batchmode']
