@@ -8,7 +8,7 @@ a player's game (gate check, v0.1.15). One line at the end: "CTL OFF PASS" or "C
     started, its logs say "control socket off (no DSRIG_CTL)" and no ctl.sock exists 15 s later. The copy is killed by
     pid. Lease: one rig pair (rig.py lease ctloff), taken only while fewer than 2 pairs are leased; machine cap and load
     <= 40 respected (lrig caps). Never the owner's game, saves or screen.
-(b) Windows, static: each DLL (default win/build/baselib.dll and win/build/mods/multiplayer/multiplayer.dll when built)
+(b) Windows, static: each DLL (default the release kit's <loader build>/mods_all/win/multiplayer/multiplayer.dll)
     has no "47811" default and has the "no DSRIG_PORT" off line; win/port/rig_sock_tcp.inc returns before listening
     when the port is empty; every rig_sock_start call in win/port and the generated sources passes the DSRIG_PORT value.
 """
@@ -150,12 +150,14 @@ def win_check(dlls):
 
 
 def main():
-    dlls = arg('--win-dll', many=True) or [f for f in (os.path.join(WT, 'win/build/baselib.dll'), os.path.join(WT, 'win/build/mods/multiplayer/multiplayer.dll')) if os.path.exists(f)]
+    lb = os.path.abspath(os.path.expanduser(arg('--loader-build', f'{H}/ds_launcher/loader/build')))
+    # default: the multiplayer.dll the release kit ships (v0.1.15 read a stale rig build in win/build: the check must see the shipped file)
+    dlls = arg('--win-dll', many=True) or [os.path.join(lb, 'mods_all/win/multiplayer/multiplayer.dll')]
     win_check(dlls)
     if '--no-mac' not in sys.argv:
         pair = lease(); log('leased', pair)
         try:
-            mac_check(os.path.abspath(os.path.expanduser(arg('--loader-build', f'{H}/ds_launcher/loader/build'))))
+            mac_check(lb)
         finally:
             realrig.release(pair, 'ctloff')
     print('CTL OFF PASS' if not FAILS else 'CTL OFF FAIL: ' + '; '.join(FAILS), flush=True)
