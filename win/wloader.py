@@ -9,6 +9,8 @@ C:\\SteamLibrary\\steamapps\\common\\Dungeon Settlers, a stock clone).
   wloader.py logs                   tail of dsload.log / rig.log / starter.log
 One wine copy machine-wide: refuses to start while another wine process runs (pgrep -fl wine)."""
 import json, os, socket, subprocess, sys, time, signal
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'rig'))
+import ctl_token                                   # noqa: E402  ../rig/ctl_token.py: token first line
 H = os.path.expanduser("~")
 C = f"{H}/Applications/CrossOver.app/Contents/SharedSupport/CrossOver/bin"
 BOTTLE = "DSMP"
@@ -108,7 +110,7 @@ def start(extra):
 
 def cmd(obj, timeout=90):
     s = socket.create_connection(("127.0.0.1", PORT), timeout=timeout)
-    s.sendall((obj if isinstance(obj, str) else json.dumps(obj)).encode() + b"\n")
+    s.sendall(ctl_token.token_line(PROF) + (obj if isinstance(obj, str) else json.dumps(obj)).encode() + b"\n")
     buf = b""
     while not buf.endswith(b"\n"):
         d = s.recv(1 << 20)

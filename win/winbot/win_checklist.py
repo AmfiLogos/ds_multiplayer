@@ -27,6 +27,8 @@ import argparse, json, os, socket, subprocess, sys, time, traceback
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import winrig as W                                                   # noqa: E402
+sys.path.insert(0, os.path.join(HERE, '..', '..', 'rig'))
+import ctl_token                                                     # noqa: E402  ../../rig/ctl_token.py: token first line
 
 MACSH = os.path.join(HERE, 'mac', 'mac.sh')
 MAC_CTL = os.path.expanduser('~/ds_winlane013/ds_modloader/loader/test_env/instances/W/ctl.sock')
@@ -82,7 +84,7 @@ class Mac:
 
     def cmd(self, obj=None, timeout=60, **k):
         s = socket.socket(socket.AF_UNIX); s.settimeout(timeout); s.connect(MAC_CTL)
-        s.sendall(json.dumps(obj if obj is not None else k).encode() + b'\n')
+        s.sendall(ctl_token.token_line(os.path.dirname(MAC_CTL)) + json.dumps(obj if obj is not None else k).encode() + b'\n')
         buf = b''
         while not buf.endswith(b'\n'):
             d = s.recv(1 << 20)

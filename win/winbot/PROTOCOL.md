@@ -31,7 +31,7 @@ failure `"err"` (short text, with the Windows error code when there is one).
 | op | request fields | response fields |
 |---|---|---|
 | `ping` | | `pid`, `ver`, `time` (Unix seconds, float), `computer`, `user` |
-| `game` | `line` (string: one control command, JSON text), `port` (int) or `port_file` (path; read on every call), `timeout_ms` (default 90000) | `port`, `resp` (string: the game's answer line, without `\n`) |
+| `game` | `line` (string: one control command, JSON text; since v0.1.16 winrig.py puts the token from `<profile>\ctl.token` and a newline before it, see src/rig_sock.c channel guard), `port` (int) or `port_file` (path; read on every call), `timeout_ms` (default 90000) | `port`, `resp` (string: the game's answer line, without `\n`) |
 | `run` | `exe` (path), `args` (string: the rest of the command line, already quoted), `cwd`, `env` (array of `"K=V"`; added to / replacing the agent's own environment; `"K="` sets an empty value), `wait_ms` (0 = do not wait), `capture` (bool: stdout+stderr to `out`, needs `wait_ms`>0), `show` (bool: normal window; default false = CREATE_NO_WINDOW for console programs) | `pid`, and when waited: `exit` (or `"timeout":true`), `out` (string, at most 1 MB, UTF-8; console bytes are taken as the OEM code page and converted) |
 | `ps` | `name` (optional: exe name, case-insensitive, for example `DungeonSettlers.exe`) | `procs`: `[{"pid","ppid","name","windows":[{"title","x","y","w","h","hung"}]}]` (visible top-level windows of that process; `hung` = IsHungAppWindow) |
 | `kill` | `pid` or `name` | `killed`: `[pids]` |

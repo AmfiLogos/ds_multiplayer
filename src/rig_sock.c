@@ -1,6 +1,7 @@
 // Control socket: one Unix socket per instance, one JSON object per line in, one per line out.
 // A thread per connection reads lines and queues them; the game's main thread runs them in
 // rig_drain() (MainFlow.Update hook) and hands the answer back. "ping" and "quit" are answered here.
+// Test-only guard (v0.1.16): token first line + HTTP-looking lines refused (see "channel guard" below).
 #include "rig.h"
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -12,6 +13,10 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <time.h>
+#ifndef _WIN32
+#include <fcntl.h>
+#include <sys/stat.h>
+#endif
 
 static pthread_mutex_t mu = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cv = PTHREAD_COND_INITIALIZER;
@@ -155,6 +160,63 @@ char *rig_path_err(const char *why) {
     Buf b = {0}; bput(&b, "{\"ok\":false,\"error\":"); bstr(&b, why); bput(&b, "}"); return b.p;
 }
 
+/* ---------------------------------------------------------------- channel guard (test mode only)
+   The channel itself opens only for test launchers (Mac DSRIG_CTL=1, Windows DSRIG_PORT). On top of that:
+   1. Token. When the channel opens, the game writes a fresh random token to <rig_dir>/ctl.token (mode 0600 on the Mac,
+      written to ctl.token.tmp first, then renamed): 32 lowercase hex characters (128 random bits) and a newline.
+      The FIRST line of every connection must be exactly that token, bare (no JSON; a trailing \r is ignored). Right
+      token: no answer to that line, the next lines are commands as before (one JSON object per line, one answer
+      line each). Wrong or missing token: one line {"ok":false,"error":"control channel: bad token"}, then closed.
+      Clients read the file after they connect (it is written before the channel listens) and send it first:
+      rig/ctl_token.py (ds_multiplayer), loader/test/ctl_token.py (ds_modloader).
+   2. HTTP. A line that starts like HTTP ("GET ", "POST ", "PUT ", "HEAD ", "OPTIONS ", "DELETE ", "PATCH ",
+      "CONNECT ", "TRACE ", "Host:", "HTTP/"; any letter case), first line or later: closed at once, no answer, one log
+      line. A web page's request to 127.0.0.1 never reaches a command. */
+static char ctl_token[33];
+
+static int http_like(const char *l) {
+    static const char *const pre[] = {"get ", "post ", "put ", "head ", "options ", "delete ", "patch ", "connect ",
+                                      "trace ", "host:", "http/"};
+    for (size_t i = 0; i < sizeof pre / sizeof *pre; i++) {
+        const char *p = pre[i], *q = l;
+        while (*p && *q && (*q >= 'A' && *q <= 'Z' ? *q - 'A' + 'a' : *q) == *p) { p++; q++; }
+        if (!*p) return 1;
+    }
+    return 0;
+}
+
+static int token_ok(const char *l) {
+    size_t n = strlen(l);
+    if (n && l[n - 1] == '\r') n--;
+    if (!ctl_token[0] || n != 32) return 0;
+    unsigned d = 0;
+    for (size_t i = 0; i < 32; i++) d |= (unsigned char)(l[i] ^ ctl_token[i]);
+    return d == 0;
+}
+
+/* a fresh token in memory and in <rig_dir>/ctl.token; 0 = not written (the channel then stays closed) */
+static int ctl_token_write(void) {
+    if (!rig_dir[0]) { rig_log("control channel: no rig folder for ctl.token; channel not opened"); return 0; }
+    unsigned char r[16]; arc4random_buf(r, sizeof r);
+    for (int i = 0; i < 16; i++) snprintf(ctl_token + 2 * i, 3, "%02x", r[i]);
+    char p[1100], tmp[1120]; snprintf(p, sizeof p, "%s/ctl.token", rig_dir); snprintf(tmp, sizeof tmp, "%s.tmp", p);
+    int ok = 0;
+#ifdef _WIN32
+    FILE *f = fopen(tmp, "wb");
+    if (f) { ok = fprintf(f, "%s\n", ctl_token) == 33; ok = !fclose(f) && ok; }
+#else
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW, 0600);
+    if (fd >= 0) {
+        char line[34]; snprintf(line, sizeof line, "%s\n", ctl_token);
+        ok = !fchmod(fd, 0600) && write(fd, line, 33) == 33;
+        ok = !close(fd) && ok;
+    }
+#endif
+    if (ok) ok = !rename(tmp, p);
+    if (!ok) { rig_log("control channel: cannot write %s (%s); channel not opened", p, strerror(errno)); memset(ctl_token, 0, sizeof ctl_token); }
+    return ok;
+}
+
 /* ---------------------------------------------------------------- connections */
 static void send_all(int fd, const char *s, size_t n) {
     while (n) { ssize_t k = write(fd, s, n); if (k <= 0) { if (errno == EINTR) continue; return; } s += k; n -= (size_t)k; }
@@ -177,13 +239,24 @@ static char *run_on_main(const char *line) {
 static void *conn_thread(void *arg) {
     int fd = (int)(intptr_t)arg;
     char *buf = malloc(1 << 16); size_t n = 0;
+    int authed = 0;                                       /* channel guard: the first line must be the token */
     for (;;) {
         ssize_t k = read(fd, buf + n, (1 << 16) - 1 - n);
         if (k <= 0) break;
         n += (size_t)k; buf[n] = 0;
+        if (http_like(buf)) { rig_log("control channel: HTTP-looking line refused, connection closed"); goto out; }
+        if (!authed && !strchr(buf, '\n') && n > 128) goto bad_token;   /* no token line, just bytes */
         char *nl;
         while ((nl = strchr(buf, '\n'))) {
             *nl = 0;
+            if (http_like(buf)) { rig_log("control channel: HTTP-looking line refused, connection closed"); goto out; }
+            if (!authed) {
+                if (!token_ok(buf)) goto bad_token;
+                authed = 1;
+                size_t used = (size_t)(nl - buf) + 1;
+                memmove(buf, nl + 1, n - used + 1); n -= used;
+                continue;
+            }
             char cmd[64] = "";
             jstr(buf, "cmd", cmd, sizeof cmd);
             char *resp;
@@ -202,6 +275,13 @@ static void *conn_thread(void *arg) {
         }
         if (n >= (1 << 16) - 1) n = 0;   /* line too long: drop it */
     }
+    goto out;
+bad_token: {
+        const char *no = "{\"ok\":false,\"error\":\"control channel: bad token\"}\n";
+        send_all(fd, no, strlen(no));
+        rig_log("control channel: first line is not the token (ctl.token), connection closed");
+    }
+out:
     close(fd); free(buf);
     return NULL;
 }
@@ -231,6 +311,7 @@ static void *accept_thread(void *arg) {
     int s = socket(AF_UNIX, SOCK_STREAM, 0);
     struct sockaddr_un a = {0}; a.sun_family = AF_UNIX;
     snprintf(a.sun_path, sizeof a.sun_path, "%s", sock_path);
+    if (!ctl_token_write()) { close(s); return NULL; }         /* before it listens: a client that connects finds the token */
     unlink(sock_path);
     if (bind(s, (struct sockaddr*)&a, sizeof a) || listen(s, 8)) { rig_log("socket %s: bind/listen failed (%s)", sock_path, strerror(errno)); return NULL; }
     rig_log("control socket %s listening", sock_path);

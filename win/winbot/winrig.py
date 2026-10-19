@@ -408,6 +408,11 @@ class Win:
     # -- the game's control port
     def cmd(self, obj=None, timeout=90, **k):
         line = json.dumps(obj if obj is not None else k)
+        # channel guard (src/rig_sock.c): the token in <profile>\ctl.token goes first, bare, on its own line; the game
+        # does not answer it, so the agent's one answer line is the command's. No file: a build before v0.1.16.
+        tok = (self.text(PROF + r'\ctl.token') or '').strip()
+        if tok:
+            line = tok + '\n' + line
         r = hub_req({'op': 'game', 'line': line, 'port_file': PROF + r'\ctl.port', 'timeout_ms': int(timeout * 1000)})
         if not r.get('ok'):
             raise GameError(f'game port: {r.get("err")}')

@@ -1,6 +1,6 @@
 /* Windows tail of rig_sock.c (appended by gen_port.py instead of the AF_UNIX listener):
    TCP listener on 127.0.0.1:<DSRIG_PORT> (test launchers only); the port is also written to <rig_dir>/ctl.port, the owner pid
-   to <rig_dir>/ctl.pid. */
+   to <rig_dir>/ctl.pid, the connection token to <rig_dir>/ctl.token (channel guard in src/rig_sock.c). */
 static char sock_port[16];
 static void *accept_thread(void *arg) {
     (void)arg;
@@ -18,6 +18,7 @@ static void *accept_thread(void *arg) {
         if (!tries) rig_log("control port %s: in use (%d), waiting for it", sock_port, e);
         Sleep(1000);
     }
+    if (!ctl_token_write()) { closesocket(s); return NULL; }   /* after bind (a soft restart's B owns the port now), before listen */
     if (listen(s, 8)) { rig_log("control port %s: listen failed (%d)", sock_port, WSAGetLastError()); return NULL; }
     char pp[1100]; snprintf(pp, sizeof pp, "%s/ctl.pid", rig_dir);   /* which process owns the port (ctl.port stays the bare number) */
     FILE *f = fopen(pp, "w"); if (f) { fprintf(f, "%lu\n", (unsigned long)GetCurrentProcessId()); fclose(f); }
