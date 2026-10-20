@@ -205,7 +205,7 @@ const char *pvpr_ui_tip(int r) {
 void pvpr_ui_value(int r, const pvpr_vals *v, int here, char *out, size_t cap) {
     int x = pvpr_vals_get(v, pvpr_ui_id(r));
     if (r == 0) {
-        if (x == PVP_MAP_HERE) snprintf(out, cap, "%s", here ? TR("This settlement") : TR("Dungeon floor 3"));
+        if (x == PVP_MAP_HERE) { if (here) snprintf(out, cap, "%s", TR("This settlement")); else snprintf(out, cap, TR("Dungeon floor %d"), 3); }
         else if (x == PVP_MAP_RANDOM) snprintf(out, cap, "%s", TR("Random map"));
         else snprintf(out, cap, TR("Dungeon %d: %s"), x == PVP_MAP_DUNGEON1 ? 1 : 2, dungeon_name(x == PVP_MAP_DUNGEON1 ? 0 : 1));
     } else if (r == 1) {

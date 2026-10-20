@@ -954,9 +954,7 @@ static void v1_page_build(Obj panel) {
           KEEP(h_v1_pbtn[k], b); KEEP(h_v1_pbl[k], l);
           if (k >= V1P_SAVE) u_active(b, false);
       }
-      Obj f = mpmenu_field_new(R, TR("Preset name"), "");
-      if (f) { place(f, QX(18 + 130), yc, 260, 34); u_active(f, false); }
-      KEEP(h_v1_field, f); }
+      u_gc_free(h_v1_field); h_v1_field = 0; }                              /* the name field: made when Save as preset... opens (v1_field) */
     KEEP(h_v1_note, mk_txt(tpl_txt, R, 0, 12, 513, 1, 0, QY(V1_PTOP + 36 + 46 + 24), rw, 44, C_SUB));
     v1_labels();
     #undef QX
@@ -992,11 +990,22 @@ static void v1_preset_step(int d) {
     snprintf(v1_pmsg, sizeof v1_pmsg, TR("Preset \"%s\" applied."), s->presets[nx].name); dsi_utf8_fix_end(v1_pmsg);
     rig_log("pvp v1: preset %d \"%s\" applied", nx, s->presets[nx].name);
 }
+/* the preset name field: a clone of a stock TMP_InputField, made on first use (the menu finds one only after the host page
+   opened the load list once for its own fields) */
+static Obj v1_field(void) {
+    Obj f = u_gc_get(h_v1_field); if (u_alive(f)) return f;
+    Obj root = pvt(h_v1_root); if (!root) return NULL;
+    f = mpmenu_field_new(u_tr(root), TR("Preset name"), "");
+    if (!f) return NULL;
+    place(f, 18 + 130 - V1_W / 2.0f, V1_H / 2.0f - (V1_PTOP + 36 + 23), 260, 34);
+    u_gc_free(h_v1_field); h_v1_field = u_gc_new(f);
+    return f;
+}
 static void v1_naming_set(int on) {
     v1_naming = on;
     u_active(pvt(h_v1_pbtn[V1P_SAVEAS]), !on); u_active(pvt(h_v1_pbtn[V1P_DELETE]), !on);
     u_active(pvt(h_v1_pbtn[V1P_SAVE]), on); u_active(pvt(h_v1_pbtn[V1P_CANCEL]), on);
-    Obj f = u_gc_get(h_v1_field); if (u_alive(f)) {
+    Obj f = on ? v1_field() : u_gc_get(h_v1_field); if (u_alive(f)) {
         if (on) { pvpr_store *s = pvp_rules_store(); int cur = pvpr_preset_match(s, &s->last); mpmenu_field_put(f, cur >= 0 ? s->presets[cur].name : ""); }
         u_active(f, on);
     }
@@ -1018,7 +1027,7 @@ static int v1_preset_save(const char *given) {
 }
 /* tests: the name typed into the field (the real field when it exists), then Save */
 static int v1_preset_typed(const char *name) {
-    Obj f = u_gc_get(h_v1_field);
+    Obj f = v1_field();
     if (u_alive(f)) { v1_naming_set(1); mpmenu_field_put(f, name); return v1_preset_save(NULL); }
     return v1_preset_save(name);
 }

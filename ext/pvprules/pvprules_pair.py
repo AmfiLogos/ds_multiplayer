@@ -120,6 +120,8 @@ def phase_rules(H, B):
     set_row(H, 'enemy_vision'); set_row(H, 'enemy_hpbars')
     c(H, cmd='mpm_pvp', action='preset_save_open'); time.sleep(1)
     c(H, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'ui_rules_naming.png'))
+    qn = c(H, cmd='mpm_pvp')
+    check('2a Save as preset... opens the name field (a real text field) with Save / Cancel', qn.get('naming') == 1 and qn.get('field') == 1, f"naming {qn.get('naming')} field {qn.get('field')}")
     c(H, cmd='mpm_pvp', action='preset_save', name='Boss arena')
     # preset C saved then deleted
     set_row(H, 'mode'); c(H, cmd='mpm_pvp', action='preset_save', name='To delete'); c(H, cmd='mpm_pvp', action='preset_delete')
