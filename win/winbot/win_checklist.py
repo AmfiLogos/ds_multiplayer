@@ -633,7 +633,6 @@ def item5(w, rep, a, mac):
             for g_ in claimed:                                         # same owners as before the walk (units per player cap)
                 c('mac', cmd='mp_release', guid=g_)
             w.wait(lambda: all(c('mac', cmd='mp_owner', guid=g_).get('owner') == -1 for g_ in claimed), 'walk claims given back', 30, 1)
-            n_party = len(party)
             c('mac', cmd='ui_interact', unit=pu, building=portal, map=1)
             rs = w.wait(lambda: (lambda x, y: (x, y) if x.get('open') and y.get('open') else None)(c('mac', cmd='ui_result'), c('vm', cmd='ui_result')),
                         'return screen on both', 900, 1)
@@ -642,12 +641,13 @@ def item5(w, rep, a, mac):
             w.wait(lambda: c(P, cmd='ui_result', action='confirm') and not c(P, cmd='ui_result').get('open'), 'return confirmed', 60, 2)
             w.wait(lambda: all((lambda s: s.get('map') == 0 and not s.get('busy'))(st(x)) for x in ('mac', 'vm')), 'both on the base map', 900, 1)
             alive(f'back on the base after entry {cy}')
-            base = lambda: [u for u in c('mac', cmd='list_units', map=0)['units'] if u.get('faction') == 1 and not u.get('dead')]
+            pg = {u['guid'] for u in party}
+            back = lambda: pg & {u['guid'] for u in c('mac', cmd='list_units', map=0)['units'] if u.get('faction') == 1 and not u.get('dead')}
             try:
-                nb = len(w.wait(lambda: (lambda b: b if len(b) >= n_party else None)(base()), f'the party on the base (entry {cy})', 30, 2))
+                nb = len(w.wait(lambda: (lambda b: b if len(b) == len(pg) else None)(back()), f'the party on the base (entry {cy})', 30, 2))
             except W.GameError:
-                nb = len(base())
-            rep.check(I, f'every unit back through the portal is on the base (entry {cy})', nb >= n_party, f'{nb} of {n_party}')
+                nb = len(back())
+            rep.check(I, f'every unit back through the portal is on the base (entry {cy})', nb == len(pg), f'{nb} of {len(pg)}')
             # a story event may open on the base after the return (boss_golem save: popup 22, game paused): answer it
             # like a player (first choice) so the next proposal is not held behind it
             try:
