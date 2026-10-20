@@ -1271,5 +1271,6 @@
  "your version is older": "你的版本较旧",
  "‹ Newer": "‹ 较新",
  "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "你的路由器没有开放端口。家以外的好友需要使用 Steam 邀请，或在路由器上把端口 %s 开放到这台电脑（也叫端口转发）。",
- "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "你的路由器没有开放端口。为了家以外的好友，请在路由器上把端口 %s 开放到这台电脑（也叫端口转发）。"
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "你的路由器没有开放端口。为了家以外的好友，请在路由器上把端口 %s 开放到这台电脑（也叫端口转发）。",
+ "Connection lost, rejoining...": "连接已断开，正在重新加入..."
 }

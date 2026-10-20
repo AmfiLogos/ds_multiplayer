@@ -89,6 +89,7 @@ typedef struct mpm_obs {
     int loading;            /* a campaign / scene load is running (rig busy()) */
     int role;               /* session: 0 none, 1 host, 2 guest (also while a Steam join connects) */
     int guest_loading;      /* guest: waiting for or loading the host's save */
+    int rejoining;          /* guest: mp_game_autorejoin (link lost, rejoining by itself): the session goes on for the menu */
     int host_window;        /* guest waiting for the save: the host has a Yes/No box open (it holds the join) */
     int failed;             /* session start / join failed */
     int esc_open;           /* Esc menu (SystemMenuView) open */

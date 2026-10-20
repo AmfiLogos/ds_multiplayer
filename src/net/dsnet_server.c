@@ -807,7 +807,7 @@ static void *server_main(void *arg) {
             while (dsnet_link_next(&c->link, &body, &n)) { on_frame(s, c, body, n); c->last_rx = t; }
             /* silent guest (keep-alive every 100 ms): drop it so it leaves instead of holding the timer */
             int tmo = dsnet_rx_timeout_ms();
-            if (c->id >= 0 && tmo && t - c->last_rx > tmo && !c->link.dead) {
+            if (c->id >= 0 && !c->local && tmo && t - c->last_rx > tmo && !c->link.dead) {   /* never the host's own link (a stalled host) */
                 dsnet_logf("server: player %d silent for %d ms, dropped", c->id, (int)(t - c->last_rx));
                 c->link.dead = 1;
             }

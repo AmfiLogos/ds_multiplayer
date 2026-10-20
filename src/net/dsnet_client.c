@@ -59,6 +59,7 @@ struct dsnet_client {
     pthread_cond_t cv;
 
     int welcomed, player, is_host, needs_state, disconnected, rejected, host_left, bye_reason;
+    int local;                                   /* the host's own client (socket pair): no silence limit */
     int save_fail; double save_wait;            /* waiting for a save: why it ended (DSNET_SAVE_FAIL_*), last progress */
     int role, spectator;                                        /* asked for / granted (WELCOME): watch only */
     int sp_allow, sp_max, sp_seen;                              /* spectator list from the server (outside the sim) */
@@ -361,7 +362,9 @@ static void *client_main(void *arg) {
         while (dsnet_link_next(&c->link, &body, &n)) { on_frame(c, body, n); c->last_rx = now; }
         /* silent cut (no FIN/RST): the server sends every ~33 ms, so a long silence means the link is gone */
         int tmo = dsnet_rx_timeout_ms();
-        if (c->welcomed && tmo && now - c->last_rx > tmo && !c->link.dead) {
+        /* not the host's own link: a stalled host process (VM freeze, 17 s seen 2026-10-20) is silent to itself too, and
+           ended its own session at the resume ("join point wanted but no host" for every rejoin) */
+        if (c->welcomed && !c->local && tmo && now - c->last_rx > tmo && !c->link.dead) {
             dsnet_logf("client %d: nothing received for %d ms, link gone", c->player, (int)(now - c->last_rx));
             c->link.dead = 1;
         }
@@ -407,7 +410,7 @@ static dsnet_client *client_new(int fd, const char *name, int want_host, int rol
     dsnet_link_init(&c->link, dsnet_fd_transport(fd));
     pthread_mutex_init(&c->mu, NULL);
     pthread_cond_init(&c->cv, NULL);
-    c->player = -1; c->exec_player = -1; c->fp_interval = 30; c->tpt_ms = 1000.0f / 60; c->role = role;
+    c->player = -1; c->exec_player = -1; c->fp_interval = 30; c->tpt_ms = 1000.0f / 60; c->role = role; c->local = want_host != 0;
     /* fixed part 28 + build (u8 len) + rule + modset (u8 len) + lines (u16 len) + role + name: every field bounded */
     uint8_t b[28 + 1 + sizeof dsnet_build_id + 2 + sizeof dsnet_modset + 2 + DSNET_MODLINES_MAX + 1 + 32], *p = b;
     size_t nl = name ? utf8_len31(name) : 0;                        /* at most 31 bytes, whole characters */
@@ -932,6 +935,11 @@ static void sim_apply(simstate *s, const dsnet_cmd *cmd) {
         int k = 0;
         while (k < s->nhold && !(s->hold[k].reason == cmd->payload[1] && !memcmp(s->hold[k].uid, cmd->payload + 2, 16))) k++;
         if (cmd->payload[0]) {
+            /* autorejoin (2026-10-20): the leaver may be back before the host's HOLD runs (an auto rejoin right after a
+               host stall: PLAYER_LEAVE and PLAYER_JOIN in one step, the HOLD a step later). Back = no hold, else the
+               world stood still behind "<name> disconnected" with him playing. */
+            int back = cmd->payload[1] == DSNET_HOLD_PLAYER_LEFT ? reg_of_uid(s, cmd->payload + 2, 0) : -1;
+            if (back >= 0 && s->known[back].slot != SLOT_ABSENT) break;
             if (k == s->nhold && s->nhold < DSNET_MAX_HOLDS) { s->hold[k].reason = cmd->payload[1]; memcpy(s->hold[k].uid, cmd->payload + 2, 16); s->nhold++; }
         } else if (k < s->nhold) s->hold[k] = s->hold[--s->nhold];
         break;

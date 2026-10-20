@@ -585,8 +585,8 @@ void mp_get_stats(mp_session *s, mp_stats *o) {
 }
 
 /* ---------------------------------------------------------------- session */
-mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) {
-    if (reject) *reject = 0;
+/* mp_start in two halves: begin connects and sends the HELLO (no wait); the WELCOME part runs in start_welcomed. */
+mp_session *mp_start_begin(const mp_config *cfg, const mp_game_api *api) {
     mp_session *s = calloc(1, sizeof *s);
     s->cfg = *cfg; s->api = *api;
     s->handlers[MP_ORDER_MOVE] = order_move_default;
@@ -622,13 +622,11 @@ mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) 
     dsnet_set_patch_cb(s->c, on_patch, s);
     dsnet_set_partial_resync(s->c, cfg->partial_resync && cfg->auto_resync && api->patch && !cfg->spectator);   /* a spectator
                                                          resyncs from the server's cached save: no work for the host */
-    int w = dsnet_wait_welcome(s->c, cfg->connect_timeout_ms > 0 ? cfg->connect_timeout_ms : 5000);
-    if (w) {
-        int why = dsnet_reject_reason(s->c);
-        if (reject) *reject = why;
-        mlog("join %s (reject reason %d)", w == -2 ? "refused" : "timed out", why);
-        mp_stop(s); return NULL;
-    }
+    return s;
+}
+
+static mp_session *start_welcomed(mp_session *s, int *reject) {
+    const mp_config *cfg = &s->cfg;
     if (!cfg->host && cfg->expect_world[0]) {          /* F17: a Recent worlds row must not land in another world */
         uint8_t id[16]; char nm[32];
         if (dsnet_host_world(s->c, id, nm) == 0) {
@@ -656,6 +654,36 @@ mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) 
     mlog("%s: player %d, allow_speedup %d, allow_pause %d, %s", cfg->host ? "host" : dsnet_is_spectator(s->c) ? "spectator" : "client", dsnet_player_id(s->c),
          dsnet_allow_speedup(s->c), dsnet_allow_pause(s->c), dsnet_needs_state(s->c) ? "waiting for the host's save" : "starting at step 0");
     return s;
+}
+
+mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) {
+    if (reject) *reject = 0;
+    mp_session *s = mp_start_begin(cfg, api);
+    if (!s) return NULL;
+    int w = dsnet_wait_welcome(s->c, cfg->connect_timeout_ms > 0 ? cfg->connect_timeout_ms : 5000);
+    if (w) {
+        int why = dsnet_reject_reason(s->c);
+        if (reject) *reject = why;
+        mlog("join %s (reject reason %d)", w == -2 ? "refused" : "timed out", why);
+        mp_stop(s); return NULL;
+    }
+    return start_welcomed(s, reject);
+}
+
+/* the WELCOME of mp_start_begin's session, without waiting: 0 not yet, 1 started, -1 failed (*ps freed + NULL, *reject = why) */
+int mp_start_poll(mp_session **ps, int *reject) {
+    if (reject) *reject = 0;
+    mp_session *s = *ps;
+    int w = dsnet_wait_welcome(s->c, 0);
+    if (w == -1 && !dsnet_is_disconnected(s->c)) return 0;
+    if (w) {
+        int why = dsnet_reject_reason(s->c);
+        if (reject) *reject = why;
+        mlog("join %s (reject reason %d)", w == -2 ? "refused" : "closed", why);
+        mp_stop(s); *ps = NULL; return -1;
+    }
+    *ps = start_welcomed(s, reject);
+    return *ps ? 1 : -1;
 }
 
 void mp_stop(mp_session *s) {

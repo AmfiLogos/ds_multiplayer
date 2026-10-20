@@ -115,6 +115,10 @@ const char *mp_full_diff(mp_session *s);   /* the newest full-state difference (
 /* Session: host = dsnet_server_start + local client; client = TCP. NULL on failure (reason logged;
  * *reject gets enum dsnet_reject when the host refused the join). */
 mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject);
+/* the same in two halves (the game thread never waits): begin connects (an adopted socket: no wait) and sends the HELLO;
+ * mp_start_poll each frame: 0 waiting for the WELCOME, 1 started, -1 failed (*ps freed + NULL, *reject = enum dsnet_reject or 0) */
+mp_session *mp_start_begin(const mp_config *cfg, const mp_game_api *api);
+int mp_start_poll(mp_session **ps, int *reject);
 void        mp_stop(mp_session *s);
 dsnet_client *mp_client(mp_session *s);
 uint16_t      mp_server_port(mp_session *s);   /* host: the port it listens on; 0 on a client */
