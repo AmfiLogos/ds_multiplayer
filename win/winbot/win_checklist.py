@@ -565,7 +565,7 @@ def item5(w, rep, a, mac):
                 ow = next((col['model'] for col in cols if col.get('player') == 0), [])
                 g = next((g for g in fr + ow if g not in used), None)   # a free unit, else another of the host's own
                 return (g, ow) if g else None
-            try:                                                       # units back from the portal reappear on the base late
+            try:
                 f1, own = w.wait(pick, f'a unit for entry {cy} on the host base', 90, 2)
             except W.GameError:
                 raise W.GameError(f'no free or own unit on the host base for entry {cy} within 90 s; host columns '
@@ -610,8 +610,27 @@ def item5(w, rep, a, mac):
             rep.check(I, 'the take-back message names the unit', name and name in said, f'{name}: {said[:200]}')
             alive('lend / take back')
         if cy < 3:
-            portal = c('mac', cmd='ui_buildings', map=1, subtype=2)['buildings'][0]['guid']
+            pb = c('mac', cmd='ui_buildings', map=1, subtype=2)['buildings'][0]; portal = pb['guid']
             pu = host_unit(1); used.add(pu)                            # the unit back through the portal is not picked next
+            # the party walks to the portal first: the stock return screen takes only the units at the portal; the
+            # others are "missing" (2nd confirm, ConfirmationStage.MissingUnits) and are left in the dungeon for good.
+            # ui_interact uses the portal from afar, so without this walk the return order had 0 units (46 bytes)
+            # and the base was empty for entry 2 (10-19 / 10-20 failures: host columns [[0, 0], [1, 0], [-1, 0]])
+            party = [u for u in c('mac', cmd='list_units', map=1)['units'] if u.get('faction') == 1 and not u.get('dead') and 'cell' in u]
+            for u in party:
+                if c('mac', cmd='mp_owner', guid=u['guid']).get('owner') == -1:
+                    c('mac', cmd='mp_claim', guid=u['guid'])
+            time.sleep(2)
+            for u in party:
+                c('mac', cmd='mp_move', guid=u['guid'], x=int(pb['x']), y=int(pb['y']))
+            def at_portal():
+                us = [u for u in c('mac', cmd='list_units', map=1)['units'] if u.get('faction') == 1 and not u.get('dead') and 'cell' in u]
+                return us and max(abs(u['x'] - pb['x']) + abs(u['y'] - pb['y']) for u in us) < 8
+            try:
+                w.wait(at_portal, f'the party at the portal (entry {cy})', 120, 3)
+            except W.GameError as e:
+                log('party not all at the portal, going on:', e)
+            n_party = len(party)
             c('mac', cmd='ui_interact', unit=pu, building=portal, map=1)
             rs = w.wait(lambda: (lambda x, y: (x, y) if x.get('open') and y.get('open') else None)(c('mac', cmd='ui_result'), c('vm', cmd='ui_result')),
                         'return screen on both', 900, 1)
@@ -620,6 +639,25 @@ def item5(w, rep, a, mac):
             w.wait(lambda: c(P, cmd='ui_result', action='confirm') and not c(P, cmd='ui_result').get('open'), 'return confirmed', 60, 2)
             w.wait(lambda: all((lambda s: s.get('map') == 0 and not s.get('busy'))(st(x)) for x in ('mac', 'vm')), 'both on the base map', 900, 1)
             alive(f'back on the base after entry {cy}')
+            base = lambda: [u for u in c('mac', cmd='list_units', map=0)['units'] if u.get('faction') == 1 and not u.get('dead')]
+            try:
+                nb = len(w.wait(lambda: (lambda b: b if len(b) >= n_party else None)(base()), f'the party on the base (entry {cy})', 30, 2))
+            except W.GameError:
+                nb = len(base())
+            rep.check(I, f'every unit back through the portal is on the base (entry {cy})', nb >= n_party, f'{nb} of {n_party}')
+            # a story event may open on the base after the return (boss_golem save: popup 22, game paused): answer it
+            # like a player (first choice) so the next proposal is not held behind it
+            try:
+                w.wait(lambda: c('mac', cmd='ui_story').get('active') or c('vm', cmd='ui_story').get('active'), 'a story event on the base', 10, 1)
+                for k in range(10):
+                    for side in ('mac', 'vm'):
+                        if c(side, cmd='ui_story').get('active'):
+                            c(side, cmd='ui_story', action='click', idx=0)
+                    time.sleep(2)
+                    if not (c('mac', cmd='ui_story').get('active') or c('vm', cmd='ui_story').get('active')):
+                        break
+            except W.GameError:
+                pass
     for side in ('mac', 'vm'):
         m = st(side).get('mp', {})
         rep.check(I, f'{side}: 0 desyncs', not m.get('desynced') and not m.get('desyncs'), m.get('desyncs'))
