@@ -391,6 +391,13 @@ static jv *key_totals(const jv *save) {
             }
         }
     }
+    /* items lying on the settlement ground: units back from a dungeon drop their dungeon loot on the base and a store task
+       hauls it later (dive 2026-10-20: the mana stone sat in OnMapItems at fe_end, counted nowhere -> never came home) */
+    jv *om = jpath(save, "EntityContainerSaveData.ItemContainerSaveData.Base.OnMapItems");
+    for (size_t i = 0; om && om->t == JN_OBJ && i < om->cnt; i++) {
+        jv *ky = jget(om->v[i], "Key"); if (!ky || ky->t != JN_STR || zero(jget(om->v[i], "Guid"))) continue;
+        jv *t = jget(kt, ky->s); jset(kt, ky->s, jnum_i((t ? (long long)jnumv(t) : 0) + (long long)jnumv(jget(om->v[i], "Amount"))));
+    }
     return kt;
 }
 jv *fe_build_hub(const jv *host, const jv *entries, const char *run_id, const jv *maps, jv **run_out, char *err, size_t errn) {
@@ -492,6 +499,8 @@ jv *fe_extract_results(const jv *hub_end, const jv *run, fe_rules r, const char 
             for (size_t k = 0; jis(sl, JN_ARR) && k < sl->cnt; k++) { jv *g = jget(sl->v[k], "Guid"); if (!zero(g)) jset(amount, g->s, jcopy(jget(sl->v[k], "Amount"))); }
         }
     }
+    { jv *om = jpath(hub_end, "EntityContainerSaveData.ItemContainerSaveData.Base.OnMapItems");   /* loot dropped on the base ground */
+      for (size_t i = 0; om && om->t == JN_OBJ && i < om->cnt; i++) if (!jget(amount, om->k[i])) jset(amount, om->k[i], jcopy(jget(om->v[i], "Amount"))); }
     jv *items = jobj();
     jv *icd = jpath(hub_end, "EntityContainerSaveData.ItemContainerSaveData");
     for (size_t i = 0; r.items_back && loot && i < loot->cnt; i++) {

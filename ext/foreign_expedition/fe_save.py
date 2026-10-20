@@ -381,6 +381,10 @@ def key_totals(save):
             for s in (c.get('Data') or {}).get('ItemSlots') or []:
                 if s and s.get('Guid') and s['Guid'] != ZERO and s.get('Key'):
                     kt[s['Key']] = kt.get(s['Key'], 0) + s.get('Amount', 1)
+    # loot dropped on the settlement ground (units back from a dungeon unload there; a store task hauls it later)
+    for s in ((save.get('EntityContainerSaveData') or {}).get('ItemContainerSaveData') or {}).get('Base', {}).get('OnMapItems', {}).values():
+        if s and s.get('Guid') and s['Guid'] != ZERO and s.get('Key'):
+            kt[s['Key']] = kt.get(s['Key'], 0) + s.get('Amount', 1)
     return kt
 
 
@@ -459,6 +463,8 @@ def extract_results(hub_end, run, rules, player_uid, loot=None, snapshots=()):
             for s in list(d.get('ItemSlots') or []) + ([d['TempSlot']] if isinstance(d.get('TempSlot'), dict) else []):
                 if s and s.get('Guid') and s['Guid'] != ZERO:
                     amount[s['Guid']] = s.get('Amount', 1)
+    for g, s in ((hub_end['EntityContainerSaveData'].get('ItemContainerSaveData') or {}).get('Base', {}).get('OnMapItems') or {}).items():
+        amount.setdefault(g, (s or {}).get('Amount', 1))
     items = {}
     for ig, tag in (loot or {}).items():
         if ig in sent or ig not in ec or not (tag or {}).get('found_in_dungeon'):

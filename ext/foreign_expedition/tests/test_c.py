@@ -25,6 +25,8 @@ def check(name, cond, detail=''):
 
 
 def fe_dir(repo):                                     # same lookup as test_custom_guard.py
+    if os.path.exists(os.path.join(repo, 'src', 'fe_save.c')):     # FE is in multiplayer src/ since the Units Laboratory split
+        return os.path.join(repo, 'src')
     if os.path.isdir(os.path.join(repo, 'custom', 'fe')):
         return os.path.join(repo, 'custom', 'fe')
     cm = os.environ.get('CM_REPO') or os.path.expanduser('~/ds_custommodes')
@@ -34,7 +36,7 @@ def fe_dir(repo):                                     # same lookup as test_cust
 def build(src_dir, out):
     os.makedirs(os.path.dirname(out), exist_ok=True)
     cmd = ['clang', '-fsanitize=address,undefined', '-g', '-O1', '-Wall', '-D_DARWIN_C_SOURCE',
-           os.path.join(src_dir, 'test', 'fe_cli.c'), os.path.join(src_dir, 'fe_save.c'), os.path.join(src_dir, 'fe_json.c'), '-o', out]
+           os.path.join(src_dir, 'fe_test' if os.path.isdir(os.path.join(src_dir, 'fe_test')) else 'test', 'fe_cli.c'), os.path.join(src_dir, 'fe_save.c'), os.path.join(src_dir, 'fe_json.c'), '-o', out]
     r = subprocess.run(cmd, capture_output=True, text=True)
     check('build ' + os.path.basename(out), r.returncode == 0, (r.stderr or '')[-600:])
 
@@ -117,6 +119,15 @@ check('C extract: stacked loot the hub did not gain (lost with dead units / used
 res2 = json.load(open(o('res2.json'))); it2 = res2['items'].get(gone) or {}
 check('C extract: merged stack loot comes back by key and amount; a key the hub no longer holds does not',
       list(res2['items']) == [gone] and it2.get('amount') == 2 and it2['registry']['Key'] == crafted[1], json.dumps({k: v.get('amount') for k, v in res2['items'].items()}))
+# loot the units dropped on the settlement ground at the return (Base OnMapItems, a store task hauls it later; guid new):
+# back by key and amount (dive 2026-10-20: a mana stone on the base ground at fe_end never came home)
+end4 = copy.deepcopy(end); g4 = '000002c0-0000-0000-3930-00000053494d'; ic4 = end4['EntityContainerSaveData']['ItemContainerSaveData']['Base']
+ic4.setdefault('OnMapItems', {})[g4] = {'Guid': g4, 'Key': crafted[1], 'Amount': 3, 'AutoFixed': False}
+ic4['ItemSaveData'][g4] = {'Guid': g4, 'Key': crafted[1]}; fe.ec_of(end4)[g4] = copy.deepcopy(fe.ec_of(end4)[crafted[0]])
+end_p4 = o('end_nm4.json'); json.dump(end4, open(end_p4, 'w'))
+cli('extract', end_p4, o('run_nm.json'), 'uid7', '1,1,1', dump({gone: {'found_in_dungeon': True, 'key': crafted[1], 'amount': 3}}, 'loot4.json'), '-', o('res4.json'))
+it4 = json.load(open(o('res4.json')))['items'].get(gone) or {}
+check('C extract: loot dropped on the base ground at the return comes back by key and amount', it4.get('amount') == 3, json.dumps(it4.get('amount')))
 mans = {e['manifest']['export_id']: e['manifest'] for e in entries}
 mp = dump(mans, 'manifests.json'); led = o('claims.json'); hd = o('home_saves')
 r = cli('apply', HOME_P, o('res.json'), mp, led, hd)
