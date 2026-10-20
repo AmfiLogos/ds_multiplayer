@@ -400,3 +400,16 @@ int mu_save_files(const char *dir, char (*out)[1024], int max) {
     free(mt);
     return n;
 }
+
+/* E3: a builder unit (Units Laboratory My Units / Unit Builder, pb_entry) carries its folded conditional passives in its
+   permanent stats; pvp_game.c then skips that skill's live grant (no double bonus). Same rule as ds_custommodes
+   units/pvp_build.c pb_folded_skill (tables: pvp_unit_tables.h WU_PG). 1 = folded (stat = its stat name). */
+int mu_folded_skill(const char *key, char *stat, size_t n) {
+    for (int sk = 0; sk < WK_SKILL_N; sk++) if (!strcmp(WK_SKILL[sk], key)) {
+        const wu_pgrant *g = &WU_PG[sk];
+        if (!g->known || !g->cond || g->nthr || !g->adj) return 0;
+        const char *eq = strchr(g->adj, '='); if (!eq) return 0;
+        snprintf(stat, n, "%.*s", (int)(eq - g->adj), g->adj); return 1;
+    }
+    return 0;
+}

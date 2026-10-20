@@ -165,9 +165,18 @@ static char *cmd_bring(const char *line) {
 /* Bring Units card window (mu_bring.h): the picks of one Bring = one send. Each pick is exported from its save (read only),
    the way cmd_bring does it. files[i] = the save of entry i. NULL + err on failure. */
 #include "mu_bring.h"
+char *mu_ul_entry_json(const char *id, const char *player_uid, char *err, size_t errn);   /* mu_bring.c (E3) */
+void  mu_ul_free(char *s);
 static jv *picks_entries(const mu_pick *picks, int n, const char *me, const char **files, char *err, size_t errn) {
     jv *entries = jarr(); size_t nf = 0;
     for (int i = 0; i < n && nf < 64; i++) {
+        if (picks[i].lib_id[0]) {                                        /* E3: a Units Laboratory unit: its full entry from Units Laboratory */
+            char e1[300] = ""; char *js = mu_ul_entry_json(picks[i].lib_id, me, e1, sizeof e1);
+            jv *e = js ? jparse(js, strlen(js), e1, sizeof e1) : NULL; mu_ul_free(js);
+            if (!e || !jget(e, "manifest") || !jget(e, "closure")) { jfree(e); jfree(entries); snprintf(err, errn, TR("Could not bring %s: %s"), picks[i].name, e1[0] ? e1 : "Units Laboratory"); dsi_utf8_fix_end(err); return NULL; }
+            jpush(entries, e); if (files) files[nf] = NULL; nf++;
+            continue;
+        }
         char e1[300]; jv *save = jload(picks[i].save_file, e1, sizeof e1);
         jv *e = save ? fe_export_entry(save, picks[i].unit_guid, me, e1, sizeof e1) : NULL;
         jfree(save);

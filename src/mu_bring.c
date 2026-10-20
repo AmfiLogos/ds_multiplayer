@@ -14,6 +14,44 @@
 #include <math.h>
 #include <sys/stat.h>
 #include <time.h>
+#include "fe_json.h"
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#include "mp_dlsym.h"
+#endif
+
+/* ------------------------------------------------------------------ E3: Units Laboratory (ds_custommodes units/ul_bring_api.c) */
+typedef struct ul_bring_api {
+    int version;
+    int   (*count)(void);
+    int   (*info)(int i, char id[17], char name[64], char race[64], char portrait[96], int *level);
+    char *(*entry_json)(const char *id, const char *player_uid, char *err, size_t errn);
+    void  (*free_str)(char *s);
+    int   (*open_builder)(void (*saved)(const char *unit_id, void *ud), void *ud);
+    char *(*build_json)(const char *id);
+} ul_bring_api;
+static const ul_bring_api *ul_api(void) {
+    static const ul_bring_api *a; static unsigned tries;
+    if (a || (tries++ % 120)) return a;                                    /* looked up again every 120 calls until found */
+    const ul_bring_api *(*get)(int) = NULL;
+#ifdef _WIN32
+    HMODULE h = GetModuleHandleA("custom-modes.dll"); if (h) get = (const ul_bring_api *(*)(int))(void *)GetProcAddress(h, "ul_bring_api_get");
+#else
+    get = (const ul_bring_api *(*)(int))dlsym(RTLD_DEFAULT, "ul_bring_api_get");
+#endif
+    a = get ? get(1) : NULL;
+    if (a) mu_log("bring units: Units Laboratory found (My Units source, Build a unit)");
+    return a;
+}
+int mu_ul_present(void) { return ul_api() != NULL; }
+char *mu_ul_entry_json(const char *id, const char *player_uid, char *err, size_t errn) {
+    const ul_bring_api *a = ul_api();
+    if (!a) { snprintf(err, errn, "%s", TR("Units Laboratory is not installed.")); return NULL; }
+    return a->entry_json(id, player_uid, err, errn);
+}
+void mu_ul_free(char *s) { const ul_bring_api *a = ul_api(); if (s && a) a->free_str(s); }
 
 static const DSLUi *U;
 #define NMAX 400          /* units listed on the right (one save) */
@@ -34,6 +72,9 @@ static struct {
     char msg[400]; uint32_t msg_col;
     int esc_prev;
     float lw, lh;                              /* the screen layer size the window was built for */
+    int src;                                   /* E3: 0 = a save, 1 = My Units (Units Laboratory) */
+    mu_save_unit lu[NMAX]; int nlu;            /* My Units (guid = the library id) */
+    DSLObj b_src[2];
 } B = { .su_for = -1 };
 
 /* the done call, between frames, after the window closed */
@@ -115,7 +156,20 @@ static void refuse_msg(void) {
     set_msg(m, MU_C_BAD);
 }
 /* item k of the right list: is it picked? */
-static int item_pick(int k) { return k < B.nsu && B.sel_save >= 0 ? pick_find(B.saves[B.sel_save].path, B.su[k].guid) : -1; }
+static int item_pick(int k) {
+    if (B.src == 1) return k < B.nlu ? pick_find("", B.lu[k].guid) : -1;
+    return k < B.nsu && B.sel_save >= 0 ? pick_find(B.saves[B.sel_save].path, B.su[k].guid) : -1;
+}
+static void load_lib(void) {                                         /* E3: My Units from Units Laboratory */
+    const ul_bring_api *a = ul_api(); B.nlu = 0;
+    int n = a ? a->count() : 0;
+    for (int i = 0; i < n && B.nlu < NMAX; i++) {
+        mu_save_unit *u = &B.lu[B.nlu]; memset(u, 0, sizeof *u); char id[17] = "", nm[64] = "", rc[64] = "", po[96] = ""; int lv = 1;
+        if (a->info(i, id, nm, rc, po, &lv)) continue;
+        snprintf(u->guid, sizeof u->guid, "%s", id); snprintf(u->name, sizeof u->name, "%s", nm[0] ? nm : TR("Unit"));
+        snprintf(u->race, sizeof u->race, "%s", rc); snprintf(u->portrait, sizeof u->portrait, "%s", po); u->level = lv; B.nlu++;
+    }
+}
 
 /* ------------------------------------------------------------------ closing and done */
 static void close_win(void) {
@@ -172,6 +226,13 @@ static void on_tick(void *ud, DSLObj w) {
     if (!on) { pick_remove(pi); set_msg("", MU_C_SUB); bar_update(); return; }
     if (pi >= 0) return;
     if (B.npicks >= B.max) { U->toggle_set(w, 0); refuse_msg(); return; }
+    if (B.src == 1) {                                                  /* E3: a My Units unit */
+        if (k >= B.nlu) { U->toggle_set(w, 0); return; }
+        mu_pick *p = &B.picks[B.npicks]; memset(p, 0, sizeof *p);
+        snprintf(p->lib_id, sizeof p->lib_id, "%s", B.lu[k].guid); snprintf(p->unit_guid, sizeof p->unit_guid, "%s", B.lu[k].guid);
+        snprintf(p->name, sizeof p->name, "%s", B.lu[k].name); p->level = B.lu[k].level;
+        B.npicks++; set_msg("", MU_C_SUB); bar_update(); return;
+    }
     if (B.sel_save < 0 || k >= B.nsu) { U->toggle_set(w, 0); return; }
     mu_pick *p = &B.picks[B.npicks]; memset(p, 0, sizeof *p);
     snprintf(p->save_file, sizeof p->save_file, "%s", B.saves[B.sel_save].path);
@@ -181,6 +242,30 @@ static void on_tick(void *ud, DSLObj w) {
     B.npicks++;
     set_msg("", MU_C_SUB);
     bar_update();
+}
+static void on_src(void *ud, DSLObj w) {                              /* E3: Saves / My Units */
+    (void)w; int v = (int)(intptr_t)ud; if (v == B.src) return;
+    B.src = v; B.page = 0; if (v == 1) load_lib(); set_msg("", MU_C_SUB); refresh();
+}
+static void on_built(const char *unit_id, void *ud) {                 /* E3: the Unit Builder saved a unit: list it, tick it */
+    (void)ud; if (!B.open) return;
+    B.src = 1; load_lib(); B.page = 0;
+    for (int k = 0; k < B.nlu; k++) if (unit_id && !strcmp(B.lu[k].guid, unit_id)) {
+        if (pick_find("", unit_id) < 0 && B.npicks < B.max) {
+            mu_pick *p = &B.picks[B.npicks++]; memset(p, 0, sizeof *p);
+            snprintf(p->lib_id, sizeof p->lib_id, "%s", unit_id); snprintf(p->unit_guid, sizeof p->unit_guid, "%s", unit_id);
+            snprintf(p->name, sizeof p->name, "%s", B.lu[k].name); p->level = B.lu[k].level;
+        }
+        B.page = k / (B.per_page > 0 ? B.per_page : 1);
+    }
+    mu_log("bring units: unit %s built in the Unit Builder", unit_id ? unit_id : "?");
+    refresh();
+}
+static void on_build(void *ud, DSLObj w) {
+    (void)ud; (void)w; const ul_bring_api *a = ul_api();
+    int rc = a ? a->open_builder(on_built, NULL) : -1;
+    mu_log("bring units: Build a unit: rc %d", rc);
+    if (rc) set_msg(TR("The Unit Builder could not open."), MU_C_BAD);
 }
 static void on_page(void *ud, DSLObj w) {
     (void)w; B.page += (int)(intptr_t)ud;
@@ -202,6 +287,12 @@ static void draw_left(void) {
     B.nleft = 0;
     if (!B.left) return;
     float y = 0;
+    if (B.src == 1) {                                                 /* E3: My Units: the Unit Builder door */
+        DSLObj b = mu_button(B.left, 0, 0, 192, 40, TR("Build a unit"), on_build, NULL);
+        if (b) { U->tooltip(b, TR("Build a unit"), TR("Opens the Unit Builder. The unit you save goes to My Units and is ticked here.")); if (B.nleft < SMAX) B.left_btn[B.nleft++] = b; }
+        U->scroll_height(B.left, 44);
+        return;
+    }
     for (int i = 0; i < B.nsaves; i++, y += 44) {
         char body[160] = ""; if (B.saves[i].when[0]) snprintf(body, sizeof body, TR("Saved %s"), B.saves[i].when);
         left_row(y, B.saves[i].name, i == B.sel_save, i, B.saves[i].name, body[0] ? body : " ");
@@ -217,8 +308,10 @@ static void draw_cards(void) {
     if (!B.right) return;
     cm_raycast(B.right, false);
     load_save_units();
-    int n = B.nsu; const char *empty = NULL; uint32_t ecol = MU_C_SUB;
-    if (!B.nsaves) empty = TR("No saves to bring units from.");
+    int lib = B.src == 1;
+    int n = lib ? B.nlu : B.nsu; const char *empty = NULL; uint32_t ecol = MU_C_SUB;
+    if (lib) { if (!n) empty = TR("My Units is empty. Build a unit, or save units in Units Laboratory."); }
+    else if (!B.nsaves) empty = TR("No saves to bring units from.");
     else if (B.su_err[0]) { empty = B.su_err; ecol = MU_C_BAD; }
     else if (!n) empty = TR("This save has no units.");
     B.per_page = (int)((B.rh - 8) / (MU_CARD_H + 8)); if (B.per_page < 1) B.per_page = 1; if (B.per_page > 16) B.per_page = 16;
@@ -233,7 +326,12 @@ static void draw_cards(void) {
         char e[300] = ""; DSLObj card = NULL;
         B.card_item[B.ncard] = k;
         B.tick[B.ncard] = U->toggle(B.right, 8, y + (MU_CARD_H - 36) / 2, 36, "", item_pick(k) >= 0, on_tick, (void *)(intptr_t)B.ncard);
-        if (!mu_save_build_ex(B.saves[B.sel_save].path, B.su[k].guid, &b, &x, e, sizeof e) && !mu_card_of(&b, &c)) {
+        if (lib) {                                                    /* E3: the card from the unit's builder JSON */
+            const ul_bring_api *a = ul_api(); char *js = a ? a->build_json(B.lu[k].guid) : NULL;
+            jv *bj = js ? jparse(js, strlen(js), e, sizeof e) : NULL; if (a && js) a->free_str(js);
+            if (bj && !wk_from_json(bj, &b, e, sizeof e) && !mu_card_of(&b, &c)) card = mu_card_draw(B.right, 52, y, B.rw - 60, &c, B.lu[k].name, B.lu[k].level, B.lu[k].portrait, c.bar, c.nbar);
+            jfree(bj);
+        } else if (!mu_save_build_ex(B.saves[B.sel_save].path, B.su[k].guid, &b, &x, e, sizeof e) && !mu_card_of(&b, &c)) {
             const char *bar[8]; for (int i = 0; i < x.nbar && i < 8; i++) bar[i] = x.bar[i];
             card = mu_card_draw(B.right, 52, y, B.rw - 60, &c, B.su[k].name, B.su[k].level, B.su[k].portrait, bar, x.nbar);
         }
@@ -251,8 +349,15 @@ static void bar_update(void) {
     U->set_enabled(B.b_prev, B.page > 0); U->set_enabled(B.b_next, B.page + 1 < B.pages);
     U->set_enabled(B.b_bring, B.npicks > 0);
 }
+static void src_labels(void) {                                         /* E3: the chosen source in gold */
+    for (int k = 0; k < 2; k++) if (B.b_src[k]) {
+        char t[96]; snprintf(t, sizeof t, "%s%s%s", B.src == k ? "<color=#D9BE8F>" : "", k ? TR("My Units") : TR("Saves"), B.src == k ? "</color>" : "");
+        U->set_text(B.b_src[k], t);
+    }
+}
 static void refresh(void) {
     if (!B.open) return;
+    src_labels();
     draw_left();
     draw_cards();
     bar_update();
@@ -271,7 +376,7 @@ int mu_bring_open(const mu_bring_req *req) {
     B.npicks = 0;
     for (int i = 0; req->ticked && i < req->nticked && B.npicks < B.max; i++) B.picks[B.npicks++] = req->ticked[i];
     B.req.ticked = NULL; B.req.nticked = 0;
-    B.page = 0; B.pages = 1; B.sel_save = 0; B.su_for = -1; B.msg[0] = 0; B.msg_col = MU_C_SUB;
+    B.page = 0; B.pages = 1; B.sel_save = 0; B.su_for = -1; B.msg[0] = 0; B.msg_col = MU_C_SUB; B.src = 0; B.nlu = 0;
     if (build_ui()) { mu_log("bring units: kit not ready"); return -1; }
     load_saves();
     B.esc_prev = 1;                                                   /* a key already down does not count */
@@ -293,7 +398,14 @@ static int build_ui(void) {
     B.left = B.right = NULL; B.nleft = B.ncard = 0;
     B.t_sub = mu_text(B.win, 20, 46, w - 40, 24, B.sub, 15, DSL_TXT_CENTER, MU_C_SUB);
     float x = 20, y = 76;                                             /* top row: the source's name, then the message */
-    B.hdr = mu_text(B.win, x, y, 200, 40, TR("From a save"), 19, DSL_TXT_LEFT, MU_C_GOLD); x += 210;
+    B.b_src[0] = B.b_src[1] = NULL; B.hdr = NULL;
+    if (ul_api()) {                                                   /* E3: source switch where the title was (same row, same width) */
+        char t0[96], t1[96]; snprintf(t0, sizeof t0, "%s%s%s", B.src == 0 ? "<color=#D9BE8F>" : "", TR("Saves"), B.src == 0 ? "</color>" : "");
+        snprintf(t1, sizeof t1, "%s%s%s", B.src == 1 ? "<color=#D9BE8F>" : "", TR("My Units"), B.src == 1 ? "</color>" : "");
+        B.b_src[0] = mu_button(B.win, x, y + 2, 96, 36, t0, on_src, (void *)(intptr_t)0);
+        B.b_src[1] = mu_button(B.win, x + 104, y + 2, 96, 36, t1, on_src, (void *)(intptr_t)1);
+    } else B.hdr = mu_text(B.win, x, y, 200, 40, TR("From a save"), 19, DSL_TXT_LEFT, MU_C_GOLD);
+    x += 210;
     B.status = mu_text(B.win, x, y, w - 20 - x, 40, "", 14, DSL_TXT_LEFT, MU_C_SUB);
     B.ry = y + 50; B.rh = h - B.ry - 64; B.rx = 232; B.rw = w - B.rx - 20;
     float by = h - 54;                                                /* bottom: Picked n / max, pages, Cancel, Bring */
@@ -320,7 +432,7 @@ void *mu_bring_test_find(const char *n) {
     if (!B.open || !n) return NULL;
     static const struct { const char *n; DSLObj *o; } map[] = {
         { "bring", &B.b_bring }, { "cancel", &B.b_cancel }, { "next", &B.b_next }, { "prev", &B.b_prev }, { "win", &B.win },
-        { "right", &B.right }, { "status", &B.status }, { "picked", &B.t_picked } };
+        { "right", &B.right }, { "status", &B.status }, { "picked", &B.t_picked }, { "src_saves", &B.b_src[0] }, { "src_lib", &B.b_src[1] } };
     for (size_t i = 0; i < sizeof map / sizeof *map; i++) if (!strcmp(n, map[i].n)) return *map[i].o;
     int k;
     if (sscanf(n, "left%d", &k) == 1 && k >= 0 && k < B.nleft) return B.left_btn[k];
@@ -339,8 +451,8 @@ size_t mu_bring_test_state(char *out, size_t cap) {
         { const char *b = strrchr(f, '\\'); if (b) f = b + 1; }
         char e[260]; jesc(e, sizeof e, f); fo += (size_t)snprintf(files + fo, sizeof files - fo, "%s\"%.120s\"", i ? "," : "", e);
     }
-    return (size_t)snprintf(out, cap, "{\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
+    return (size_t)snprintf(out, cap, "{\"ul\":%d,\"src\":%d,\"lib_units\":%d,\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
                             "\"page\":%d,\"pages\":%d,\"msg\":\"%s\",\"saves\":%d,\"sel_save\":%d,\"units\":%d,\"w\":%.0f,\"h\":%.0f}",
-                            files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
+                            ul_api() != NULL, B.src, B.nlu, files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
                             B.page, B.pages, m, B.nsaves, B.sel_save, B.nsu, B.w, B.h);
 }

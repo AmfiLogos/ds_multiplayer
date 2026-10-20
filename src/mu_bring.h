@@ -17,6 +17,7 @@ typedef struct mu_pick {
     char unit_guid[40];          /* the unit's guid in that save (36 chars + 0) */
     char name[96];               /* display name */
     int level;
+    char lib_id[17];             /* E3: a Units Laboratory My Units unit (its id; save_file empty), "" = a save unit */
 } mu_pick;
 
 /* the saves to offer. NULL list_saves = the game's own Saves folder of this player (read only), newest first. A save the
@@ -40,6 +41,11 @@ int  mu_bring_open(const mu_bring_req *req);
 void mu_bring_close(void);       /* closes it like Cancel (done(NULL, -1)) */
 int  mu_bring_is_open(void);
 int  mu_bring_available(void);   /* 1 = the loader's widget kit is there (the card window can open) */
+/* E3 (owner 2026-10-20): Units Laboratory, when this player has it (found at run time, no link): the window gets a source
+   switch Saves / My Units and a "Build a unit" button; a My Units pick travels as its full entry (others need nothing). */
+int   mu_ul_present(void);
+char *mu_ul_entry_json(const char *id, const char *player_uid, char *err, size_t errn);   /* malloc'd (mu_ul_free) */
+void  mu_ul_free(char *s);
 
 /* tests (rig commands mpm_bring_state / mpm_bring_close; the test driver's "bring:<name>" targets) */
 void *mu_bring_test_find(const char *name);
