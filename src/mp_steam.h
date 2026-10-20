@@ -10,7 +10,7 @@
 enum { MP_STEAM_IDLE = 0, MP_STEAM_HOSTING, MP_STEAM_JOINING, MP_STEAM_IN_GAME, MP_STEAM_ENDED };
 /* finer phase for the menu panels */
 enum { MP_PH_IDLE = 0, MP_PH_CREATING_LOBBY, MP_PH_LOBBY_READY, MP_PH_CONNECTING, MP_PH_WAITING_SAVE,
-       MP_PH_LOADING, MP_PH_IN_GAME, MP_PH_FAILED = -1 };
+       MP_PH_LOADING, MP_PH_IN_GAME, MP_PH_HOST_WINDOW, MP_PH_FAILED = -1 };   /* HOST_WINDOW: waiting for the save, the host has a Yes/No box open */
 
 typedef struct mp_steam_info {
     int state;                  /* MP_STEAM_* */

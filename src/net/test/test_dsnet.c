@@ -66,7 +66,8 @@ typedef struct peer {
     int watch_player; uint32_t net_seen;
     int split_owner;                          /* test: this peer alone tags a unit when order F2 runs (owner split) */      /* states of watch_player seen through dsnet_player_net */
     double t_at60, t_at300;
-    uint32_t busy_at; int busy_ms, busy_done; double busy_since;
+    uint32_t busy_at; int busy_ms, busy_done, busy_val; double busy_since;
+    uint32_t window_seen;
     int want_run, vote_while_desynced, sent_desync_vote;   /* auto-pause policy of the toy game */
     size_t save_pad; int save_bad, upload_rc, oversize_rc;
     int fe_on_jp, fe_sent; uint32_t jp_ticks[4]; int njp;   /* host: FE_START from inside the 1st join point (review #4) */
@@ -177,10 +178,10 @@ static void *game_loop(void *arg) {
             p->fake_until = p->timer + 100;
         }
         dsnet_report_frame_time(p->c, p->fake_until > p->timer ? (float)p->fake_frame_ms : fms);
-        p->busy_seen |= dsnet_busy_mask(p->c);
+        p->busy_seen |= dsnet_busy_mask(p->c); p->window_seen |= dsnet_window_mask(p->c);
         if (p->watch_player) { int st; dsnet_player_net(p->c, p->watch_player, NULL, NULL, &st); p->net_seen |= 1u << st; }
         if (p->busy_at && !p->busy_done && p->timer >= p->busy_at) {   /* barrier: hold here, keep the frame loop */
-            if (!p->busy_since) { p->busy_since = now_ms(); dsnet_set_busy(p->c, 1); }
+            if (!p->busy_since) { p->busy_since = now_ms(); dsnet_set_busy(p->c, p->busy_val ? p->busy_val : 1); }
             if (now_ms() - p->busy_since < p->busy_ms) { dsnet_can_run_tick(p->c, p->timer); sleep_ms(FRAME_MS); continue; }
             dsnet_set_busy(p->c, 0); p->busy_done = 1;
         }
@@ -1875,6 +1876,39 @@ static void test_save_fail(int mode) {
            ok ? "PASS" : "FAIL", mode == 1 ? "notice" : "timeout", t_out, why, (now_ms() - t0) / 1000);
 }
 
+/* ---- the host holds a stock Yes/No box (busy 2) when a guest joins (live Steam test 2026-10-20: the guest left
+   after the 90 s save wait with "the host's world did not arrive"). The guest must wait while the host is held,
+   see the host as held by a window, and get in with equal state after the host closes it. ---- */
+static void test_join_host_window(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_set_save_wait_ms(1000);
+    dsnet_cfg cfg = test_cfg(2);
+    dsnet_server *srv; peer *ps[3];
+    if (setup_cfg(&srv, ps, 2, 600, NULL, NULL, &cfg)) { printf("  FAIL setup\n"); failures++; return; }
+    ps[0]->busy_at = 150; ps[0]->busy_ms = 3500; ps[0]->busy_val = 2;     /* the box stays open 3.5 s > 1 s save wait */
+    for (int i = 0; i < 2; i++) { ps[i]->orders_every = 5; peer_go(ps[i]); }
+    while (!ps[0]->busy_since) sleep_ms(2);
+    sleep_ms(200);
+    double tj = now_ms();
+    ps[2] = peer_new("late", dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "late"), 600);
+    CHECK(dsnet_wait_welcome(ps[2]->c, 2000) == 0, "no welcome");
+    ps[2]->orders_every = 5; peer_go(ps[2]);
+    while (!ps[2]->loads && !dsnet_is_disconnected(ps[2]->c) && now_ms() - tj < 15000) sleep_ms(5);
+    double tl = now_ms() - tj;
+    CHECK(!dsnet_is_disconnected(ps[2]->c) && dsnet_save_failed(ps[2]->c) == 0, "late joiner left after %.0f ms (reason %d)", tl, dsnet_save_failed(ps[2]->c));
+    CHECK(ps[2]->loads == 1 && tl > 2500, "late joiner loads %d after %.0f ms", ps[2]->loads, tl);
+    CHECK(ps[2]->window_seen & 1u, "late joiner never saw the host held by a window (%x)", ps[2]->window_seen);
+    CHECK(wait_done(ps, 3, 25000) == 0, "timeout");
+    for (int i = 0; i < 3; i++) CHECK(!dsnet_is_desynced(ps[i]->c, NULL, NULL), "%s desynced", ps[i]->name);
+    int common;
+    CHECK(compare(ps[0], ps[2], &common) && common > 200, "late joiner diverged (%d common)", common);
+    for (int i = 0; i < 3; i++) CHECK(dsnet_window_mask(ps[i]->c) == 0, "%s: window mask not cleared", ps[i]->name);
+    stop_all(ps, 3, srv);
+    dsnet_set_save_wait_ms(90000);
+    printf("%s join_host_window: host held by a box 3.5 s (save wait 1 s), late joiner waited, loaded %.0f ms after connect, equal (%.1fs)\n",
+           ok ? "PASS" : "FAIL", tl, (now_ms() - t0) / 1000);
+}
+
 /* ---- F4: a guest that keeps sending but stops reading is cut by the send stall limit; the others play on ---- */
 static void test_tx_stall(void) {
     int ok = 1; double t0 = now_ms();
@@ -2495,6 +2529,7 @@ int main(int argc, char **argv) {
     RUN("utf8_names", test_utf8_names());
     RUN("fe_stale", test_fe_stale());
     RUN("save_fail", (test_save_fail(1), test_save_fail(2)));
+    RUN("join_window", test_join_host_window());
     RUN("identity", test_identity());
     RUN("hold", test_hold());
     RUN("ownersplit", test_owner_split());

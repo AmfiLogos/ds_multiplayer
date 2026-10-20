@@ -173,6 +173,13 @@ int trn_flow_busy(void) {
     Obj eq = mf ? AT(mf, 0x48, Obj) : NULL;
     return eq && AT(eq, 0x40, uint8_t);                                 /* EventQueue._isProcessiningAsync */
 }
+/* held by a window: the EventQueue waits (a stock Yes/No box such as "Lock Consecration Results" after a load)
+   and no transition / load runs. Only the player can end it by closing the box (we never answer it for him). */
+int trn_flow_window(void) {
+    if (busy()) return 0;
+    Obj eq = mf ? AT(mf, 0x48, Obj) : NULL;
+    return eq && AT(eq, 0x40, uint8_t);
+}
 
 typedef int (*MoveNextFn)(Obj, void *);
 static MoveNextFn o_scope[NSCOPE];

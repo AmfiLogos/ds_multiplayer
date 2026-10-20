@@ -132,6 +132,7 @@
 "<size=86%%><smallcaps><color=#a69085>Watching (%d)</color></smallcaps></size>"	ui_game.c:2588
 "<size=86%><color=#a69085>Friends outside your network need your public IP and the port opened on the router.</color></size>"	ui_game.c:2485
 "<size=86%><color=#a69085>Right-click and drag to move the multiplayer windows</color></size>"	ui_game.c:2635
+"A friend is joining: close this window to let them in."	trn_mp.c:42
 "A map change vote (counted as yes)"	ui_game.c:1088
 "A player"	mp_core.c:278 mpmenu.c:2323 mpmenu.c:3007
 "A player disconnected and you chose Keep playing. You order their units until they come back; they stay theirs."	ui_game.c:5385
@@ -719,6 +720,7 @@
 "Waiting for %s (loading)"	ui_model.c:160
 "Waiting for %s to start"	mpmenu.c:1683 ui_game.c:919
 "Waiting for %s · %d:%02d · press Play to keep playing with their units"	ui_game.c:913
+"Waiting for the host to close a window..."	mpmenu.c:2595 mpmenu_model.c:488
 "Waiting for the host's game..."	ui_model.c:146
 "Waiting for the world"	mpmenu.c:2502
 "Waiting for: %s"	ui_teams.c:1252

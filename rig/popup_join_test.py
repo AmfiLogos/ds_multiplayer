@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A guest joins a host whose save opened the stock Lock Consecration notice on load (v0.1.16 fix, ord_game.c h_b8_0).
 
-  popup_join_test.py [--answer yes|no] [--play 120] [--save PATH]
+  popup_join_test.py [--answer yes|no] [--play 120] [--save PATH] [--hold 100]
 
 The game's load (CampaignLoadingEventHandler.LoadCampaign) waits while NeedsLockConsecrationNotice(): an older save
 without CampaignSettingSaveData.CampaignStartSettingSaveData.LockConsecrationNoticeAcknowledged opens a Yes/No box.
@@ -12,7 +12,13 @@ X hosts and loads the save (default: the wiki's Template save, ~/dungeonsettlers
 show; X answers (ui_notice confirm / cancel); Y joins by address. Checks: Y gets the world within 180 s, no notice on Y,
 then --play seconds of orders from both sides with 0 desyncs (mp counters, DESYNC / FULL-STATE / deep lines, det
 tick_errors, fp.log equal). Hidden copies (window hidden, guard on). POPUP_DYLIB = a dsrig.dylib to test (default the
-rig's). Output: POPUP_OUT, else build/core_test/popupjoin_<time>/results.json."""
+rig's). Output: POPUP_OUT, else build/core_test/popupjoin_<time>/results.json.
+
+--hold S (joinpopup, live Steam test 2026-10-20): X leaves the box OPEN, Y joins, X answers only after S seconds (default
+100 s > the guest's 90 s save wait). Until then the box holds X's EventQueue, X runs no step and cannot send the join
+save; before the fix Y left after 90 s ("The host's world did not arrive"). Checks: Y stays connected during the hold
+and shows "Waiting for the host to close a window...", X shows "A friend is joining: close this window to let them
+in.", then the normal checks after X answers."""
 import json, os, random, shutil, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rig
@@ -27,6 +33,7 @@ def arg(name, default):
 
 ANSWER = arg('--answer', 'yes')
 PLAY = arg('--play', 120)
+HOLD = arg('--hold', 0)
 OUT = os.environ.get('POPUP_OUT') or os.path.join(rig.ROOT, 'build', 'core_test', 'popupjoin_' + time.strftime('%Y%m%d-%H%M%S'))
 checks, info = [], {}
 
@@ -196,13 +203,34 @@ def run(X, Y, port, yj):
     txt = wait('the Lock Consecration notice on X', lambda: notice_text(X), timeout=300, every=2)
     if not check('X: the save opens the Lock Consecration notice on load', txt, txt):
         return
-    r = c(X, cmd='ui_notice', button='confirm' if ANSWER == 'yes' else 'cancel')
-    gone = wait('notice closed', lambda: not notice_text(X), timeout=30, every=1)
-    check(f'X answers {ANSWER}: the notice closes', r.get('ok') and gone, r)
+    if not HOLD:
+        r = c(X, cmd='ui_notice', button='confirm' if ANSWER == 'yes' else 'cancel')
+        gone = wait('notice closed', lambda: not notice_text(X), timeout=30, every=1)
+        check(f'X answers {ANSWER}: the notice closes', r.get('ok') and gone, r)
     rig.start(Y, window=True)
     rig.wait_for(Y, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title Y', timeout=1500)
     tj = time.time()
+    xp, yp = fsize(X, 'rig.log'), fsize(Y, 'rig.log')    # rig.log keeps earlier runs: read only this run's part
     c(Y, cmd='mpm_join_tcp', host='127.0.0.1', port=port, name='Guest')
+    if HOLD:
+        seen_y = None
+        while time.time() - tj < HOLD:
+            if not seen_y:
+                t = c(Y, cmd='ui_texts', min=5).get('texts', [])
+                seen_y = next((e['text'] for e in t if 'close a window' in e.get('text', '')), None)
+            time.sleep(2)
+        sy0 = st(Y).get('mp', {})
+        info['hold'] = {'hold_s': HOLD, 'y_mp': {k: sy0.get(k) for k in ('needs_state', 'loads', 'player', 'connected', 'state')}}
+        check(f'X box still open after {HOLD} s', notice_text(X))
+        check(f'Y still in the session after {HOLD} s (no "world did not arrive")', sy0 and sy0.get('player', -1) >= 0
+              and 'did not arrive' not in flog(Y, 'rig.log', yp), json.dumps(sy0)[:300])
+        check('Y shows "Waiting for the host to close a window..."', seen_y, seen_y)
+        xl = flog(X, 'rig.log', xp)
+        check('X shows "A friend is joining: close this window to let them in."', 'A friend is joining' in xl,
+              next((l for l in xl.splitlines() if 'busy' in l and 'trn:' in l), ''))
+        r = c(X, cmd='ui_notice', button='confirm' if ANSWER == 'yes' else 'cancel')
+        gone = wait('notice closed', lambda: not notice_text(X), timeout=30, every=1)
+        check(f'X answers {ANSWER} after the hold: the notice closes', r.get('ok') and gone, r)
     sy = wait('Y has the world', lambda: (lambda s: s if s.get('det', {}).get('locked') and s.get('mp', {}).get('loads', 0) >= 1
                                                         and not s.get('mp', {}).get('needs_state') else None)(st(Y)), timeout=180, every=1)
     info['join_s'] = round(time.time() - tj, 1)

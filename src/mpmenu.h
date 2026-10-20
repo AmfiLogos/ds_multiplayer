@@ -81,6 +81,7 @@ typedef struct mpm_obs {
     int loading;            /* a campaign / scene load is running (rig busy()) */
     int role;               /* session: 0 none, 1 host, 2 guest (also while a Steam join connects) */
     int guest_loading;      /* guest: waiting for or loading the host's save */
+    int host_window;        /* guest waiting for the save: the host has a Yes/No box open (it holds the join) */
     int failed;             /* session start / join failed */
     int esc_open;           /* Esc menu (SystemMenuView) open */
     int host_lobby;         /* guest: the host is still in the lobby (dsnet LOBBY hold on) */
@@ -149,6 +150,7 @@ typedef struct mpm_model {
     int confirm_leave;      /* host: the "End the game for everyone?" box is up */
     int watch;              /* the join asked from the title (Connect / Watch, a Recent worlds row) is a spectator join */
     int spect;              /* last obs.spectator (labels) */
+    int host_window;        /* last obs.host_window (labels) */
     int fe_results;         /* Foreign Expedition results kept on this computer (game side): the Multiplayer page lists them */
     int host_new;           /* host page opened from "New save": its button is Host a new campaign (else Host from a save) */
     int host_choice;        /* a mod registered the third choice under "Host a game" (mpmenu_register_host_choice); 0 = not shown */

@@ -47,6 +47,7 @@ struct dsnet_server {
     sconn *conn[MAX_CONNS];
     uint32_t timer, sent_snapshot, held;
     int started, jp_pending, max_behind_seen, patch_pending;
+    uint32_t held_last[2]; int held_n;          /* last P_HELD masks sent to loading players, frames since */
     int has_world; uint8_t world[48];          /* host's world: id[16] + name[32] (P_WORLD), in every WELCOME */
     float tpt;
     double last_list, last_ping;
@@ -560,7 +561,7 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         if (n >= 5) c->ping_ms = (int)(ms32() - get32(p + 1));
         break;
     case P_BUSY:
-        if (n >= 2 && !c->spectator) c->busy = p[1] != 0;
+        if (n >= 2 && !c->spectator) c->busy = p[1] == 2 ? 2 : p[1] != 0;   /* 2 = held by a window */
         break;
     case P_READY:
         if (c->status == ST_CATCHUP) {
@@ -720,16 +721,27 @@ static void send_players(dsnet_server *s, int ping) {
 }
 
 static void net_tick(dsnet_server *s) {
-    uint32_t busy = 0;
+    uint32_t busy = 0, window = 0;
     for (int i = 0; i < MAX_CONNS; i++) {
         sconn *c = s->conn[i];
         if (c && c->id >= 0 && !c->spectator && (c->busy || c->status == ST_LOADING || c->status == ST_CATCHUP || c->status == ST_DESYNCED))
             busy |= 1u << c->id;
+        if (c && c->id >= 0 && c->id < 32 && !c->spectator && c->busy == 2) window |= 1u << c->id;
     }
-    uint8_t b[20], *p = b;
+    uint8_t b[24], *p = b;
     p = put8(p, P_TIMECTL); p = put32(p, s->timer); p = put32(p, s->sent_snapshot); p = put32(p, (uint32_t)(s->tpt * 1000));
-    p = put32(p, busy);
+    p = put32(p, busy); p = put32(p, window);
     send_all_live(s, b, p - b, -1);
+    /* players still loading get no TIMECTL: tell them who holds the game (a guest waiting for the join save must
+       not time out while the host has a Yes/No box open) */
+    if (busy != s->held_last[0] || window != s->held_last[1] || ++s->held_n >= 15) {
+        uint8_t h[9], *q = h; q = put8(q, P_HELD); q = put32(q, busy); q = put32(q, window);
+        for (int i = 0; i < MAX_CONNS; i++) {
+            sconn *c = s->conn[i];
+            if (c && c->id >= 0 && c->status == ST_LOADING && !c->closing) dsnet_link_send(&c->link, h, q - h);
+        }
+        s->held_last[0] = busy; s->held_last[1] = window; s->held_n = 0;
+    }
     float m = 0;
     for (int i = 0; s->cfg.slow_to_frame_time && i < MAX_CONNS; i++)
         if (s->conn[i] && s->conn[i]->status == ST_PLAYING && !s->conn[i]->spectator && s->conn[i]->frame_ms > m) m = s->conn[i]->frame_ms;
