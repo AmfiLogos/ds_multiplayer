@@ -126,11 +126,11 @@ chk g019_screen '6/6 checks, violations 0' $LD/loader python3 $LR l1_screen_test
 # ---- i18n in the game (Mac, hidden copies; test builds = this release + the local test commands: ~/ds_ld_ship024t,
 #      ~/ds_mp_ship024t (build/lang = mp + cm tables), ~/ds_cm_ship024t; never shipped)
 IG=${0:A:h:h}/gate016/i18n
-i18ncycle() { local O=$HOME/ds_rel019/i18n_out/cycle_ja; [[ -d $O ]] && { mkdir -p $O:h/old; mv $O $O:h/old/cycle_ja.$(date +%H%M%S); }
+i18ncycle() { local O=$HOME/ds_int017/i18n_out/cycle_ja; [[ -d $O ]] && { mkdir -p $O:h/old; mv $O $O:h/old/cycle_ja.$(date +%H%M%S); }
   (cd $IG && python3 leased.py python3 cycle.py 7 0,1,2,3,4,5,6,8,9) > $OUT/g019_i18n_cycle_raw.log 2>&1; tail -5 $OUT/g019_i18n_cycle_raw.log
   python3 $IG/i18n_eval.py $O; }
 chk g019_i18n_cycle 'RESULT 4/4 pass' $WT i18ncycle
-i18npair() { local O=$HOME/ds_rel019/i18n_out/pair2_ja_ru; [[ -d $O ]] && { mkdir -p $O:h/old; mv $O $O:h/old/pair2_ja_ru.$(date +%H%M%S); }
+i18npair() { local O=$HOME/ds_int017/i18n_out/pair2_ja_ru; [[ -d $O ]] && { mkdir -p $O:h/old; mv $O $O:h/old/pair2_ja_ru.$(date +%H%M%S); }
   (cd $IG && python3 pairtest2.py 7 4) > $OUT/g019_i18n_pair_raw.log 2>&1; tail -3 $OUT/g019_i18n_pair_raw.log
   python3 $IG/i18n_eval.py $O --pair ja ru; }
 chk g019_i18n_pair 'RESULT 4/4 pass' $WT i18npair

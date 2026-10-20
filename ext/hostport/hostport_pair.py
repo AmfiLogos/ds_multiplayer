@@ -204,7 +204,7 @@ def one_run(name, host_set, want_port, join_text):
     log(H, 'stock list pick', c(H, cmd='load_save', file=src, det=0))
     m = wait('host listening', lambda: (lambda r: r if r.get('port') else None)(ms(H)), timeout=900, every=2)
     check(f'{name}: host listens on {want_port}', m.get('port') == want_port, f"port {m.get('port')} direct {m.get('direct')}")
-    note = wait('lobby invite note', lambda: (lambda r: r.get('lw', {}).get('inv_note') or None)(ms(H)), timeout=120, every=1)
+    note = wait('lobby invite note', lambda: (lambda r: (lambda n: n if n and 'Looking for your internet address' not in n else None)(r.get('lw', {}).get('inv_note')))(ms(H)), timeout=120, every=1)   # extaddr: the port line comes after the internet lookup
     lw = ms(H).get('lw', {})
     check(f'{name}: lobby line names port {want_port}', f'port {want_port} ' in note and lw.get('addr', '').endswith(f':{want_port}'),
           f"inv_note {note!r} addr {lw.get('addr')!r}")
