@@ -819,8 +819,6 @@
  "Your own display settings for multiplayer. The host also sets Units per Player and Admin Mode here.": "你在多人遊戲中自己的顯示設定。房主也會在此設定每位玩家單位數與管理員模式。",
  "Your progress here is saved first, then this world closes.": "你在此的進度會先保存，然後此世界關閉。",
  "Your proposal waits for the other players.": "你的提議正在等待其他玩家。",
- "Your router did not open a port. Friends outside your home need Steam invite, or forward port %s on your router.": "你的路由器沒有開放連接埠。家以外的好友需要使用 Steam 邀請，或在路由器上轉送連接埠 %s。",
- "Your router did not open a port. Friends outside your home need you to forward port %s on your router.": "你的路由器沒有開放連接埠。為了家以外的好友，請在路由器上轉送連接埠 %s。",
  "Your router opened port %s, but your internet address is unknown.": "你的路由器開放了連接埠 %s，但你的網際網路位址不明。",
  "Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.": "你的路由器開放了連接埠 %s，但你的網際網路位址不明。家以外的好友：請使用 Steam 邀請。",
  "Your save": "你的存檔",
@@ -924,5 +922,7 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "你的遊戲玩法模組與房主不同：請從啟動器以房主的模組啟動遊戲",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "你的模組版本與房主不同：兩位玩家都需要相同的 Dungeon Settlers Modded 版本",
  "your version is older": "你的版本較舊",
- "‹ Newer": "‹ 較新"
+ "‹ Newer": "‹ 較新",
+ "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "你的路由器沒有開放連接埠。家以外的好友需要使用 Steam 邀請，或在路由器上把連接埠 %s 開放到這台電腦（也稱為連接埠轉送）。",
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "你的路由器沒有開放連接埠。為了家以外的好友，請在路由器上把連接埠 %s 開放到這台電腦（也稱為連接埠轉送）。"
 }

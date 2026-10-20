@@ -833,8 +833,6 @@
  "Your own display settings for multiplayer. The host also sets Units per Player and Admin Mode here.": "Ваши личные настройки отображения мультиплеера. Хост также задаёт здесь «Юнитов на игрока» и режим администратора.",
  "Your progress here is saved first, then this world closes.": "Сначала сохраняется ваш прогресс, затем мир закрывается.",
  "Your proposal waits for the other players.": "Ваше предложение ждёт других игроков.",
- "Your router did not open a port. Friends outside your home need Steam invite, or forward port %s on your router.": "Роутер не открыл порт. Друзьям вне вашего дома нужно приглашение Steam, или перенаправьте порт %s на роутере.",
- "Your router did not open a port. Friends outside your home need you to forward port %s on your router.": "Роутер не открыл порт. Для друзей вне вашего дома перенаправьте порт %s на роутере.",
  "Your router opened port %s, but your internet address is unknown.": "Роутер открыл порт %s, но ваш интернет-адрес неизвестен.",
  "Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.": "Роутер открыл порт %s, но ваш интернет-адрес неизвестен. Друзья вне вашего дома: используйте приглашение Steam.",
  "Your save": "Ваше сохранение",
@@ -942,5 +940,7 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "ваши игровые моды отличаются от модов хоста: запустите игру из лаунчера с модами хоста",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "версия ваших модов отличается от версии хоста: обоим игрокам нужна одна и та же версия Dungeon Settlers Modded",
  "your version is older": "ваша версия старее",
- "‹ Newer": "‹ Новые"
+ "‹ Newer": "‹ Новые",
+ "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "Роутер не открыл порт. Друзьям вне вашего дома нужно приглашение Steam, или откройте на роутере порт %s (это также называют перенаправлением портов) на этот компьютер.",
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "Роутер не открыл порт. Для друзей вне вашего дома откройте на роутере порт %s (это также называют перенаправлением портов) на этот компьютер."
 }

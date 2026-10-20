@@ -819,8 +819,6 @@
  "Your own display settings for multiplayer. The host also sets Units per Player and Admin Mode here.": "멀티플레이용 내 화면 설정입니다. 호스트는 여기서 플레이어당 유닛과 관리자 모드도 설정합니다.",
  "Your progress here is saved first, then this world closes.": "여기서의 진행을 먼저 저장한 뒤, 이 월드를 닫습니다.",
  "Your proposal waits for the other players.": "내 제안이 다른 플레이어의 응답을 기다립니다.",
- "Your router did not open a port. Friends outside your home need Steam invite, or forward port %s on your router.": "공유기가 포트를 열지 않았습니다. 집 밖의 친구는 Steam 초대를 사용하거나, 공유기에서 포트 %s을(를) 포워딩하십시오.",
- "Your router did not open a port. Friends outside your home need you to forward port %s on your router.": "공유기가 포트를 열지 않았습니다. 집 밖의 친구를 위해 공유기에서 포트 %s을(를) 포워딩하십시오.",
  "Your router opened port %s, but your internet address is unknown.": "공유기가 포트 %s을(를) 열었지만 인터넷 주소를 알 수 없습니다.",
  "Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.": "공유기가 포트 %s을(를) 열었지만 인터넷 주소를 알 수 없습니다. 집 밖의 친구: Steam 초대를 사용하십시오.",
  "Your save": "내 세이브",
@@ -924,5 +922,7 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "게임플레이 모드가 호스트와 다릅니다: 런처에서 호스트의 모드로 게임을 시작하십시오",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "모드 버전이 호스트와 다릅니다: 두 플레이어 모두 같은 Dungeon Settlers Modded 버전이 필요합니다",
  "your version is older": "내 버전이 더 오래됨",
- "‹ Newer": "‹ 더 최근"
+ "‹ Newer": "‹ 더 최근",
+ "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "공유기가 포트를 열지 않았습니다. 집 밖의 친구는 Steam 초대를 사용하거나, 공유기에서 포트 %s을(를) 이 컴퓨터로 여십시오(포트 포워딩이라고도 합니다).",
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "공유기가 포트를 열지 않았습니다. 집 밖의 친구를 위해 공유기에서 포트 %s을(를) 이 컴퓨터로 여십시오(포트 포워딩이라고도 합니다)."
 }

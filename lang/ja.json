@@ -819,8 +819,6 @@
  "Your own display settings for multiplayer. The host also sets Units per Player and Admin Mode here.": "あなた専用のマルチプレイ表示設定です。ホストはここでプレイヤーごとのユニット数と管理者モードも設定します。",
  "Your progress here is saved first, then this world closes.": "ここでの進行状況を先に保存してから、このワールドを閉じます。",
  "Your proposal waits for the other players.": "あなたの提案は他のプレイヤーを待っています。",
- "Your router did not open a port. Friends outside your home need Steam invite, or forward port %s on your router.": "ルーターはポートを開放しませんでした。自宅の外のフレンドはSteam招待を使うか、ルーターでポート%sを転送してください。",
- "Your router did not open a port. Friends outside your home need you to forward port %s on your router.": "ルーターはポートを開放しませんでした。自宅の外のフレンドのために、ルーターでポート%sを転送してください。",
  "Your router opened port %s, but your internet address is unknown.": "ルーターはポート%sを開放しましたが、インターネットアドレスが不明です。",
  "Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.": "ルーターはポート%sを開放しましたが、インターネットアドレスが不明です。自宅の外のフレンド：Steam招待を使ってください。",
  "Your save": "あなたのセーブ",
@@ -924,5 +922,7 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "あなたのゲームプレイMODはホストと異なります：ホストのMODを使ってランチャーからゲームを起動してください",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "あなたのMODはホストと異なるバージョンです：両プレイヤーが同じDungeon Settlers Moddedのバージョンを使う必要があります",
  "your version is older": "あなたのバージョンが古い",
- "‹ Newer": "‹ 新しい順"
+ "‹ Newer": "‹ 新しい順",
+ "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "ルーターはポートを開放しませんでした。自宅の外のフレンドはSteam招待を使うか、ルーターでポート%sをこのコンピューターに開放してください（ポート転送とも呼ばれます）。",
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "ルーターはポートを開放しませんでした。自宅の外のフレンドのために、ルーターでポート%sをこのコンピューターに開放してください（ポート転送とも呼ばれます）。"
 }

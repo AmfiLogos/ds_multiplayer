@@ -184,8 +184,8 @@ def one(X, case, base):
         check('already: the listed mapping is untouched after Leave', {key(m) for m in hit} <= {key(m) for m in mappings()}, 'kept')
     else:
         check('off: state OFF', us == 5, us)
-        want = tr(lang, 'Your router did not open a port. Friends outside your home need Steam invite, or forward port %s on your router.') % port
-        want2 = tr(lang, 'Your router did not open a port. Friends outside your home need you to forward port %s on your router.') % port
+        want = tr(lang, 'Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.') % port
+        want2 = tr(lang, 'Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.') % port
         check('off: the note says the router did not open a port (forward N / Steam invite)', want in note or want2 in note, note)
         check('off: the router list did not change', {key(m) for m in now} == {key(m) for m in base}, 'same')
     rig.stop(X)

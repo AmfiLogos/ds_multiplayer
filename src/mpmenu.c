@@ -1846,8 +1846,8 @@ static void lw_texts(void) {
           else if (inet && up_state == UPNPP_ALREADY) snprintf(l1, sizeof l1, TR("Friends outside your home: %s (your router already forwards this port)."), M.internet);
           else if (up_ok) snprintf(l1, sizeof l1, in.steam ? TR("Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.")
                                                            : TR("Your router opened port %s, but your internet address is unknown."), M.internet[0] ? strrchr(M.internet, ':') + 1 : pn);
-          else snprintf(l1, sizeof l1, in.steam ? TR("Your router did not open a port. Friends outside your home need Steam invite, or forward port %s on your router.")
-                                                : TR("Your router did not open a port. Friends outside your home need you to forward port %s on your router."), pn);
+          else snprintf(l1, sizeof l1, in.steam ? TR("Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.")
+                                                : TR("Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer."), pn);
           size_t bl = (size_t)snprintf(b, sizeof b, "%s\n", l1);
           if (bl < sizeof b) bl += (size_t)snprintf(b + bl, sizeof b - bl, TR("Same home: %s"), M.direct[0] ? M.direct : "...");
 #ifdef _WIN32

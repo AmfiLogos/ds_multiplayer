@@ -826,8 +826,6 @@
  "Your own display settings for multiplayer. The host also sets Units per Player and Admin Mode here.": "Suas próprias configurações de exibição do multijogador. O anfitrião também define Unidades por jogador e Modo administrador aqui.",
  "Your progress here is saved first, then this world closes.": "Seu progresso aqui é salvo primeiro, depois este mundo fecha.",
  "Your proposal waits for the other players.": "Sua proposta espera pelos outros jogadores.",
- "Your router did not open a port. Friends outside your home need Steam invite, or forward port %s on your router.": "Seu roteador não abriu nenhuma porta. Amigos fora da sua casa precisam do convite da Steam, ou redirecione a porta %s no seu roteador.",
- "Your router did not open a port. Friends outside your home need you to forward port %s on your router.": "Seu roteador não abriu nenhuma porta. Para amigos fora da sua casa, redirecione a porta %s no seu roteador.",
  "Your router opened port %s, but your internet address is unknown.": "Seu roteador abriu a porta %s, mas seu endereço de internet é desconhecido.",
  "Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.": "Seu roteador abriu a porta %s, mas seu endereço de internet é desconhecido. Amigos fora da sua casa: use o convite da Steam.",
  "Your save": "Seu salvamento",
@@ -933,5 +931,7 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "seus mods de jogabilidade são diferentes dos do anfitrião: inicie o jogo pelo launcher com os mods do anfitrião",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "seus mods são uma versão diferente da do anfitrião: os dois jogadores precisam da mesma versão do Dungeon Settlers Modded",
  "your version is older": "sua versão é mais antiga",
- "‹ Newer": "‹ Mais novos"
+ "‹ Newer": "‹ Mais novos",
+ "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "Seu roteador não abriu nenhuma porta. Amigos fora da sua casa precisam do convite da Steam, ou abra a porta %s no seu roteador (também chamado de redirecionamento de porta) para este computador.",
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "Seu roteador não abriu nenhuma porta. Para amigos fora da sua casa, abra a porta %s no seu roteador (também chamado de redirecionamento de porta) para este computador."
 }
