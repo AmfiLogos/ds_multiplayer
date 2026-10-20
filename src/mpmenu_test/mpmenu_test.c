@@ -108,6 +108,11 @@ int main(void) {
     for (int i = 0; i < 20; i++) mpm_step(&m, &o, MPB_NONE);
     o.loading = 1; mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_HOST_LOADING); o.loading = 0;
     m.state = MPM_TITLE_HOST;
+    /* a new campaign with the tutorial on: no session (Foctopus 2026-10-20); the world stays single player */
+    { mpm_model t = m; mpm_obs q = o;
+      mpm_step(&t, &q, MPB_NEW_CAMPAIGN); q.scene = 0; mpm_step(&t, &q, MPB_NONE); q.scene = 2; q.campaign_ready = 1; q.tutorial = 1;
+      int ta = mpm_step(&t, &q, MPB_NONE);
+      CHECK(t.state == MPM_FAILED && !(ta & MPA_HOST_START) && strstr(t.notice, "tutorial")); }
     /* new campaign -> scene changes -> loading -> ready -> lobby with host start */
     CHECK(mpm_step(&m, &o, MPB_NEW_CAMPAIGN) & MPA_OPEN_NEW);
     o.title_visible = 0; mpm_step(&m, &o, MPB_NONE);

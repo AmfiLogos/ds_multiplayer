@@ -154,7 +154,6 @@ Refactor.InMapDataInterface$$GetWorldPosition	0xcd0160	0xfc4da0	mac_callers=0	wi
 Refactor.CampaignSaveHelper.<ProcessPendingAutoSave>d__50$$MoveNext	0xce4560	0xfcce18	mac_callers=0	win_callers=0
 Refactor.CampaignSaveHelper.<StartAutoSave>d__53$$MoveNext	0xce4e30	0xfcd068	mac_callers=0	win_callers=0
 AstarPath$$StartPath	0xcf24a0	0xfe19c0	mac_callers=9	win_callers=9
-Steamworks.NativeMethods$$SteamAPI_ManualDispatch_GetNextCallback	0xe5f7a0	0x1141aac	mac_callers=0	win_callers=0
 System.Numerics.Hashing.HashHelpers$$.cctor	0xfa3a00	0x12b11bc	mac_callers=0	win_callers=0
 Edgar.GraphBasedGenerator.Grid2D.GraphBasedGeneratorGrid2D.<>c__DisplayClass16_0<object>$$<GetEarlyStoppingHandler>b__0	0x14daed0	0x1d0f1f0	mac_callers=0	win_callers=0
 Edgar.GraphBasedGenerator.Grid2D.GraphBasedGeneratorGrid2D<object>$$.ctor	0x15b5e50	0x1e71d84	mac_callers=2	win_callers=2

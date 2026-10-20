@@ -18,6 +18,7 @@
 #define DSMC_TR(s) TR(s)                                 /* ds_modcheck.h: the hostmods box in the player's language */
 #include "net/ds_modcheck.h"                             /* "Get the host's mods": plan JSON -> box text, DSMP_REJOIN line */
 #include "mp_api.h"                                      /* mod chat lines (chat_line, mp_modchat.c) */
+#include "extaddr.h"                                     /* the host's internet address for the lobby (background lookup) */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -847,7 +848,10 @@ static void observe(mpm_obs *o) {
     o->campaign_ready = o->scene == 2 && c && AT(c, 0x10, int32_t) != -1 && !busy() && tick() > 0;
     Obj tv = o->scene == 1 ? title_view() : NULL;
     o->title_visible = tv && u_on(tv);
-    o->picker_open = o->scene == 1 && popup_open(5);                         /* SaveLoadUI */
+    /* SaveLoadUI or CreateCampaign: the title view stays active under the new-campaign screen, so without popup 7 a
+       Cancel there left the menu in PICK_NEW and the next single-player load was hosted (Foctopus 2026-10-20) */
+    o->picker_open = o->scene == 1 && (popup_open(5) || popup_open(7));
+    { Obj dd = o->scene == 2 && c ? AT(c, 0x40, Obj) : NULL; o->tutorial = dd && AT(dd, 0x10, int32_t) == 7; }   /* CampaignDataContainer dungeon data: region 7 = Tutorial */
     o->loading = busy();
     static int (*load_pending)(void); static int lp_looked;                /* mpglue: an mp load / reload / retry runs */
     if (!lp_looked) { lp_looked = 1; load_pending = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_load_pending"); }
@@ -1652,7 +1656,11 @@ static uintptr_t h_lw_lines[6], h_lw_addrbox[2], h_lw_rrow[MPM_RULE_ROWS], h_lw_
 static char lw_rowname[LW_ROWS][32];                    /* row names (tooltip titles) */
 static int lw_host_built = -1, lw_level[LW_ROWS];   /* connection level shown per row (-1 none), for the read-back */
 static int64_t copied_until;
+static int inet_state;                                   /* extaddr_get state for the lobby (direct_refresh) */
+static char lobby_addr[96];                              /* the address in the lobby box = what Copy copies */
 static float lw_h = 740;
+static float lw_note_h;                                 /* steaminv: height of the note under Steam invite (ui_friends.c) */
+int ui_friends_invite_click(void); float ui_friends_lobby_note(float x, float y, float w, int steam);
 static Obj lwt(int k) { Obj t = u_gc_get(h_lwt[k]); return u_alive(t) ? t : NULL; }
 #define LX(x) ((x) - 440.0f)
 #define LY(y) (lw_h / 2 - (y))
@@ -1810,16 +1818,27 @@ static void lw_texts(void) {
         lw_header_lines(4, lwt(T_INV), 32, 396, LY(hy), 0);
         float y1 = hy + 13 + 10 + 20;                                       /* Steam invite 40 high */
         Obj ib = u_gc_get(h_lwb[LW_INVITE]); if (ib) place(ib, LX(32 + 198), LY(y1), 396, 40);
-        float y2 = y1 + 20 + 10 + 20;
+        lw_note_h = ui_friends_lobby_note(LX(32 + 198), LY(y1 + 20 + 4 + 10), 396, in.steam);   /* steaminv: "Your friend must open ... first." */
+        float y2 = y1 + 20 + 10 + 20 + lw_note_h;
         place(u_gc_get(h_lw_addrbox[0]), LX(32 + 146), LY(y2), 292, 40); place(u_gc_get(h_lw_addrbox[1]), LX(32 + 146), LY(y2), 290, 38);
         place(lwt(T_INV_ADDR), LX(32 + 12 + 134), LY(y2), 268, 30);
         Obj cb = u_gc_get(h_lwb[LW_COPY]); if (cb) place(cb, LX(428 - 48), LY(y2), 96, 40);
-        place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + 17), 396, 34);
-        tmp_set(lwt(T_INV_ADDR), M.direct[0] ? M.direct : "...");
-        { const char *port = strrchr(M.direct, ':');
-          snprintf(b, sizeof b, in.steam ? TR("Friends outside your home: open port %s on your router, or use Steam invite.") : TR("Friends outside your home: open port %s on your router."),
-                   port ? port + 1 : "47777");
-          if (M.internet[0]) { size_t bl = strlen(b); snprintf(b + bl, sizeof b - bl, " "); bl = strlen(b); snprintf(b + bl, sizeof b - bl, TR("Internet: %s"), M.internet); }
+        place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + 26), 396, 52);
+        /* owner 2026-10-20: the box shows the INTERNET address (friends outside the home), the note the local one */
+        { const char *port = strrchr(M.direct, ':'); const char *pn = port ? port + 1 : "47777";
+          int inet = inet_state == EXTADDR_OK && M.internet[0];
+          snprintf(lobby_addr, sizeof lobby_addr, "%s", inet ? M.internet : M.direct);
+          tmp_set(lwt(T_INV_ADDR), lobby_addr[0] ? lobby_addr : "...");
+          char l1[400];
+          if (inet) snprintf(l1, sizeof l1, in.steam ? TR("Friends outside your home join with this address (your router must forward port %s to this computer), or use Steam invite.")
+                                                     : TR("Friends outside your home join with this address (your router must forward port %s to this computer)."), pn);
+          else if (inet_state == EXTADDR_PRIVATE) snprintf(l1, sizeof l1, "%s", in.steam ? TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes. Use Steam invite.")
+                                                                                         : TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes."));
+          else if (inet_state == EXTADDR_PENDING || inet_state == EXTADDR_IDLE) snprintf(l1, sizeof l1, "%s", TR("Looking for your internet address..."));
+          else snprintf(l1, sizeof l1, in.steam ? TR("Internet address unknown. Friends outside your home: open port %s on your router, or use Steam invite.")
+                                                : TR("Internet address unknown. Friends outside your home: open port %s on your router."), pn);
+          size_t bl = (size_t)snprintf(b, sizeof b, "%s\n", l1);
+          if (bl < sizeof b) snprintf(b + bl, sizeof b - bl, TR("Same home: %s"), M.direct[0] ? M.direct : "...");
           tmp_set(lwt(T_INV_NOTE), b); }
         if (cb) tmp_set(AT(cb, 0x28, Obj), frames < copied_until ? TR("Copied") : TR("Copy"));
         Obj ib2 = u_gc_get(h_lwb[LW_INVITE]);                               /* both ways in one app: Steam invite + the address */
@@ -1838,7 +1857,7 @@ static void lw_texts(void) {
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
     /* height from the content: no empty band under the columns; the window stays centred */
-    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + 40 + 10 + 34 : rows_end, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
+    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + 40 + 10 + 52 + lw_note_h : rows_end, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
     float H = (left > right ? left : right) + 24 + 76;
     place(u_gc_get(h_lw_frame), 0, LY(H / 2), 880, H);
     { float top = host ? 123 : 127, bot = H - 77; place(u_gc_get(h_lw_body), 0, LY((top + bot) / 2), 876, bot - top); }
@@ -2065,11 +2084,18 @@ static int steam_public_ip(char *out, size_t cap) {
 }
 static void direct_refresh(void) {
     mp_session *s = mp_game_session(); uint16_t p = s ? mp_server_port(s) : 0;
-    if (!p) { M.direct[0] = M.internet[0] = 0; return; }
-    char ip[64], pub[64]; lan_ip(ip, sizeof ip);
+    static mp_session *last_s; static uint16_t last_p;                     /* one internet lookup per host session */
+    if (s != last_s || p != last_p) { extaddr_reset(); last_s = s; last_p = p; }
+    if (!p) { M.direct[0] = M.internet[0] = 0; inet_state = EXTADDR_IDLE; return; }
+    char ip[64], pub[64]; const char *via = ""; lan_ip(ip, sizeof ip);
     snprintf(M.direct, sizeof M.direct, "%s:%u", ip, p);
-    if (steam_public_ip(pub, sizeof pub)) snprintf(M.internet, sizeof M.internet, "%s:%u", pub, p);
+    extaddr_start();                                                        /* no-op once started (own thread, never this frame) */
+    int was = inet_state; inet_state = extaddr_get(pub, sizeof pub, &via);
+    if (inet_state == EXTADDR_UNKNOWN && steam_public_ip(pub, sizeof pub)) { inet_state = EXTADDR_OK; via = "steam"; }
+    if (inet_state == EXTADDR_OK) snprintf(M.internet, sizeof M.internet, "%s:%u", pub, p);
     else M.internet[0] = 0;
+    if (inet_state != was && inet_state >= EXTADDR_OK)
+        rig_log("mpmenu: internet address %s (via %s)", inet_state == EXTADDR_OK ? "found" : inet_state == EXTADDR_PRIVATE ? "private (provider NAT)" : "unknown", via);
 }
 static char hist_host[48];                               /* reconnecting from a Recent worlds row: that host's name */
 static char hist_world[64];                              /* ... and that row's world name (F17 refusal text) */
@@ -2286,6 +2312,8 @@ static void notice_frame(const mpm_obs *o) {
     static int calm_scene;
     if (o->scene != calm_scene) { calm_scene = o->scene; title_calm = 0; }
     title_calm = (o->scene == 1 && o->title_visible && !o->loading) || (o->scene == 2 && M.state == MPM_FAILED && o->campaign_ready && !o->loading) ? title_calm + 1 : 0;
+    if (M.notice[0] && title_calm && o->scene == 2)                         /* a world pop-up (tutorial, story event) draws over the box: */
+        for (int i = 2; i < 30; i++) if (popup_open(i)) { title_calm = 0; break; }   /* show it once they stay closed */
     if (HM.pending) M.notice[0] = 0;                                        /* the hostmods box says it (hostmods_frame) */
     if (!M.notice[0] || title_calm < 90) return;                            /* the loading curtain is gone (~3 s of title, or of the world) */
     if (M.confirm_leave) return;                                            /* never over the Leave box */
@@ -3389,7 +3417,7 @@ static void run_actions(int a, const mpm_obs *o) {
         char p[1200]; snprintf(p, sizeof p, "%s/mp.json", rig_dir);
         mp_config f; if (mp_config_load(p, &f) == 0) { snprintf(c.name, sizeof c.name, "%s", f.name); c.port = f.port; }
         c.host = 1; c.allow_speedup = M.set.speedup; c.allow_pause = M.set.pause_mode != MPM_PAUSE_NONE;
-        c.pause_mode = M.set.pause_mode; c.gear_mode = M.set.gear; c.port = MPM_DEFAULT_PORT;
+        c.pause_mode = M.set.pause_mode; c.gear_mode = M.set.gear; c.port = mpm_host_port();
         c.allow_spectators = M.set.spectators;
         if (my_name[0]) snprintf(c.name, sizeof c.name, "%s", my_name);
         else if (!in.steam) default_name(c.name, sizeof c.name);
@@ -3439,9 +3467,9 @@ static void run_actions(int a, const mpm_obs *o) {
         char gid[64] = ""; prefs_save(); if (campaign_guid(gid, sizeof gid)) world_put(gid, &M.set);
         rig_log("mpmenu: admin mode -> %d (rc %d)", b, rc);
     }
-    if (a & MPA_COPY_ADDR) { copied_until = frames + 60; F(0x518AFE0, void (*)(Obj, void *))(u_str(M.direct), NULL); rig_log("mpmenu: copied %s", M.direct); }
+    if (a & MPA_COPY_ADDR) { copied_until = frames + 60; const char *ca = lobby_addr[0] ? lobby_addr : M.direct; F(0x518AFE0, void (*)(Obj, void *))(u_str(ca), NULL); rig_log("mpmenu: copied the lobby address"); }
     if (a & MPA_INVITE) {                                                   /* F18: a failed overlay is said, not only logged */
-        int rc = mp_steam_invite(); rig_log("mpmenu: invite rc %d", rc);
+        int rc = ui_friends_invite_click() ? 0 : mp_steam_invite(); rig_log("mpmenu: invite rc %d", rc);   /* steaminv: overlay off = friends picker (ui_friends.c) */
         if (rc) say("%s", TR("The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead."));
     }
     if (a & MPA_CONFIRM_LEAVE) leave_box_show();
@@ -4330,10 +4358,20 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     }
     if (!strcmp(cmd, "mpm_testchoice")) return testchoice_exec(line);    /* test: dummy register_host_choice2 choices */
     if (!strcmp(cmd, "mpm_newcampaign")) {                                  /* test: what the new-campaign screen's Start sends */
+        double cn = 0;
+        if (jnum(line, "cancel", &cn) && cn != 0) {                         /* {cancel:1}: the screen's own Cancel button (CreateCampaignView.OnClickedCancelButton) */
+            static uintptr_t h_ccv; static void *k_ccv; Obj v = find_view_x(&h_ccv, &k_ccv, "Refactor.UI", "CreateCampaignView", false);
+            static void *mpress; if (!mpress) mpress = mth("UnityEngine.UI", "Button", "Press", 0);   /* _cancelButton +0x68: what a click runs */
+            Obj cb = v ? AT(v, 0x68, Obj) : NULL; if (u_alive(cb) && mpress) MCALL(mpress, void, Obj, const void *)(cb, mpress);
+            char o[64]; snprintf(o, sizeof o, "{\"ok\":%s,\"open\":%d}", v ? "true" : "false", popup_open(7)); return strdup(o);
+        }
+        if (jnum(line, "popups", &cn) && cn != 0) { char o[256] = "{\"ok\":true,\"open\":["; for (int i = 1; i < 32; i++) if (popup_open(i)) snprintf(o + strlen(o), sizeof o - strlen(o), "%d,", i); strcat(o, "0]}"); return strdup(o); }   /* {popups:1}: open stock pop-ups */
+        if (jnum(line, "close", &cn) && cn != 0) { Obj p = popups(); if (p && popup_open((int)cn)) F(0xF62A88, void (*)(Obj, int, void *))(p, (int)cn, NULL); return strdup("{\"ok\":true}"); }   /* {close:N}: DeactivateView(N), as the pop-up's own close */
+        if (jnum(line, "probe", &cn) && cn != 0) { char o[64]; snprintf(o, sizeof o, "{\"ok\":true,\"open\":%d}", popup_open(7)); return strdup(o); }
         char nm[64] = "MP Test", sd[32] = "12345"; double sc = 1, cd = 1, md = 1; jstr(line, "name", nm, sizeof nm); jstr(line, "seed", sd, sizeof sd); jnum(line, "scenario", &sc);
-        jnum(line, "combat", &cd); jnum(line, "mgmt", &md);                 /* difficulties (default 1); Hell = 5 */
+        double tut = 0; jnum(line, "combat", &cd); jnum(line, "mgmt", &md); jnum(line, "tutorial", &tut);   /* difficulties (default 1); Hell = 5; tutorial 1 = PlayTutorial */
         Obj ev = obj_new(0x664BC18);                                        /* CreateCampaignRequested */
-        F(0xD61EDC, void (*)(Obj, Obj, int, int, int, Obj, bool, bool, bool, Obj, bool, void *))(ev, u_str(nm), (int)sc, (int)cd, (int)md, u_str(sd), false, false, false, u_str(""), false, NULL);
+        F(0xD61EDC, void (*)(Obj, Obj, int, int, int, Obj, bool, bool, bool, Obj, bool, void *))(ev, u_str(nm), (int)sc, (int)cd, (int)md, u_str(sd), false, false, tut != 0, u_str(""), false, NULL);
         F(0xCCFAD4, void (*)(Obj, Obj, void *))(AT(mf, 0x48, Obj), ev, NULL);
         return strdup("{\"ok\":true}");
     }
@@ -4559,7 +4597,8 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         bput(&b, ",\"obs\":{\"scene\":%d,\"ready\":%d,\"title\":%d,\"picker\":%d,\"role\":%d,\"guest_loading\":%d,\"failed\":%d,\"esc\":%d},\"visible\":%llu",
              o.scene, o.campaign_ready, o.title_visible, o.picker_open, o.role, o.guest_loading, o.failed, o.esc_open, (unsigned long long)mpm_visible(&M, &o));
         mp_session *ss = mp_game_session();
-        bput(&b, ",\"port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0); bstr(&b, M.direct);
+        bput(&b, ",\"port\":%u,\"host_port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0, (unsigned)mpm_host_port()); bstr(&b, M.direct);
+        bput(&b, ",\"inet_state\":%d,\"internet\":", inet_state); bstr(&b, M.internet);
         Obj fl = u_gc_get(h_field); char ft[256] = "";
         if (u_alive(fl)) str_utf8((mm_is(fl, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(fl, NULL) : NULL), ft, sizeof ft);
         bput(&b, ",\"field\":{\"exists\":%s,\"active\":%s,\"text\":", u_alive(fl) ? "true" : "false", u_on(fl) ? "true" : "false"); bstr(&b, ft); bput(&b, "}");
@@ -4593,6 +4632,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           bput(&b, ",\"note\":"); t[0] = 0; if (lwt(T_NOTE)) str_utf8(tmp_get(lwt(T_NOTE)), t, sizeof t); bstr(&b, t);
           { Obj ib3 = u_gc_get(h_lwb[LW_INVITE]); char it[160] = ""; if (u_on(ib3)) str_utf8(tmp_get(AT(ib3, 0x28, Obj)), it, sizeof it); bput(&b, ",\"invite\":"); bstr(&b, it); }
           bput(&b, ",\"addr\":"); t[0] = 0; if (lwt(T_INV_ADDR) && u_on(lwt(T_INV_ADDR))) str_utf8(tmp_get(lwt(T_INV_ADDR)), t, sizeof t); bstr(&b, t);
+          bput(&b, ",\"inv_note\":"); t[0] = 0; if (lwt(T_INV_NOTE) && u_on(lwt(T_INV_NOTE))) str_utf8(tmp_get(lwt(T_INV_NOTE)), t, sizeof t); bstr(&b, t);
           bput(&b, ",\"rows\":[");
           for (int i = 0; i < LW_ROWS; i++) {
               char n[128] = "", st[64] = ""; int lit = 0;

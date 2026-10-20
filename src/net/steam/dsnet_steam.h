@@ -58,6 +58,9 @@ uint64_t dsnet_steam_host_lobby(dsnet_steam_host *h);   /* 0 while pending, ~0 i
 uint32_t dsnet_steam_host_listen_socket(dsnet_steam_host *h);
 int      dsnet_steam_host_peers(dsnet_steam_host *h);   /* bridged peers alive */
 int      dsnet_steam_host_invite(dsnet_steam_host *h);  /* Steam overlay invite dialog (needs the overlay) */
+/* ISteamUtils::IsOverlayEnabled: 1 = the Steam overlay is hooked into this process (the invite dialog can open),
+ * 0 = not (a game not started by Steam: no gameoverlayrenderer), -1 = unknown (no Steam / symbol missing). */
+int      dsnet_steam_overlay_enabled(void);
 /* Invite without the overlay: Steam sends the friend a lobby invite in Steam chat. 0 ok. */
 int      dsnet_steam_host_invite_friend(dsnet_steam_host *h, uint64_t friend_id);
 void     dsnet_steam_host_stop(dsnet_steam_host *h);    /* leaves the lobby, closes peers + socket */
@@ -78,7 +81,9 @@ void        dsnet_steam_join_close(dsnet_steam_join *j);
 uint64_t dsnet_steam_take_join_request(void);
 
 /* Friends now in this game with a lobby (friend list "Join game"). Returns count written. */
-typedef struct dsnet_steam_friend { uint64_t steamid, lobby; char name[64]; } dsnet_steam_friend;
+/* state: Steam persona state (0 offline, 1 online, 2 busy, 3 away, 4 snooze, 5 looking to trade, 6 looking to play;
+ * -1 unknown); in_game: 1 = playing this game now (same app id). */
+typedef struct dsnet_steam_friend { uint64_t steamid, lobby; char name[64]; int state, in_game; } dsnet_steam_friend;
 int dsnet_steam_friends_in_game(dsnet_steam_friend *out, int max);
 /* All friends (for an invite list without the overlay); lobby != 0 if they are in one. */
 int dsnet_steam_friends(dsnet_steam_friend *out, int max);

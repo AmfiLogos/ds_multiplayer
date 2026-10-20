@@ -75,7 +75,12 @@ Proof: `build_ux/fix_menu.py` on pair AB, hidden windows 1512x982, results `buil
   <Host> hosts it and invites you." The Multiplayer button stays plain. No box found within 120 frames: text goes to the button line.
 - #14 Lobby: "Share your address, then press Start when everyone is in." and "Friends outside your home: open port N on your
   router, or use Steam invite" (replaces "Internet: needs router port ... open"; "Internet: <ip:port>" still shown when Steam
-  knows it). The world waits in the lobby: dsnet hold reason DSNET_HOLD_LOBBY on at host start, off at Start (every pause mode).
+  knows it). Since extaddr (owner 2026-10-20): the address box shows the INTERNET address (src/extaddr.c: router UPnP
+  GetExternalIPAddress, else https://api.ipify.org, own thread, once per host session; Steam GetPublicIP only when both
+  fail) and Copy copies it; the note says "your router must forward port N to this computer" + "Same home: <local>".
+  Provider NAT (router address in 10/8, 172.16/12, 192.168/16, 100.64/10): no internet address shown, the note says why.
+  Unknown: box = local address, "Internet address unknown ...". Test switches DSRIG_EXTADDR_UPNP=0 / _WEB=0 / _WEB_URL;
+  pair test ext/extaddr/extaddr_lobby.py, host test src/extaddr_test. The world waits in the lobby: dsnet hold reason DSNET_HOLD_LOBBY on at host start, off at Start (every pause mode).
   Guest: new state MPM_GUEST_LOBBY while that hold is on: the Esc-menu panel in lobby mode with "In <Host>'s lobby / The game
   starts when <Host> presses Start. / Players: ..." and Leave multiplayer.
 - #16 Join / Host pages: text-only lines (title button clones with every Image under them disabled): MPB_LABEL_ADDR "Host
