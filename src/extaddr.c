@@ -103,12 +103,14 @@ static int split_url(const char *url, char *host, size_t hcap, int *port, const 
     const char *pa = strchr(h, '/'); *path = pa ? pa : "/";
     return *port > 0 && *port < 65536;
 }
-/* one HTTP/1.0 exchange; body (after the headers) into out. 1 = 2xx answer */
-static int http_ex(const char *url, const char *extra_hdr, const char *body, char *out, size_t cap, int ms) {
+/* one HTTP/1.0 exchange; the body (after the headers) into out, also for a non-2xx answer (a SOAP fault comes as 500).
+   Returns the HTTP status code, 0 = no answer. */
+int extaddr_http(const char *url, const char *extra_hdr, const char *body, char *out, size_t cap, int ms) {
     char host[64]; int port; const char *path; uint32_t ip;
+    if (cap) out[0] = 0;
     if (!split_url(url, host, sizeof host, &port, &path) || !ipv4(host, &ip)) return 0;   /* routers give IPs */
     int s = (int)socket(AF_INET, SOCK_STREAM, 0); if (s < 0) return 0;
-    double dl = now_ms() + ms; int ok = 0, got = 0;
+    double dl = now_ms() + ms; int code = 0, got = 0;
     fcntl(s, F_SETFL, fcntl(s, F_GETFL, 0) | O_NONBLOCK);
     struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons((uint16_t)port), .sin_addr.s_addr = htonl(ip) };
     if (connect(s, (struct sockaddr *)&a, sizeof a) && errno != EINPROGRESS) goto done;
@@ -131,14 +133,28 @@ static int http_ex(const char *url, const char *extra_hdr, const char *body, cha
         int k = (int)recv(s, out + got, (int)(cap - 1 - got), 0); if (k <= 0) break; got += k;
     }
     out[got] = 0;
-    { const char *sp = strchr(out, ' '); int code = sp ? atoi(sp + 1) : 0;
-      char *b = strstr(out, "\r\n\r\n");
-      if (b && code >= 200 && code < 300) { memmove(out, b + 4, strlen(b + 4) + 1); ok = 1; } }
+    { const char *sp = strchr(out, ' '); char *b = strstr(out, "\r\n\r\n");
+      if (b && sp) { code = atoi(sp + 1); memmove(out, b + 4, strlen(b + 4) + 1); } }
 done:
-    sk_close(s); if (!ok && cap) out[0] = 0;
-    return ok;
+    sk_close(s); if (!code && cap) out[0] = 0;
+    return code;
 }
-static int upnp_lookup(char *ip, size_t cap) {
+static int http_ex(const char *url, const char *extra_hdr, const char *body, char *out, size_t cap, int ms) {   /* 1 = 2xx */
+    int code = extaddr_http(url, extra_hdr, body, out, cap, ms);
+    if (code < 200 || code >= 300) { if (cap) out[0] = 0; return 0; }
+    return 1;
+}
+int extaddr_soap(const char *ctl, const char *svc, const char *action, const char *args, char *out, size_t cap, int ms) {
+    char hdr[400], body[1600];
+    int bl = snprintf(body, sizeof body, "<?xml version=\"1.0\"?>\r\n<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
+                      "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:%s xmlns:u=\"%s\">%s"
+                      "</u:%s></s:Body></s:Envelope>\r\n", action, svc, args ? args : "", action);
+    if (bl <= 0 || (size_t)bl >= sizeof body) return 0;
+    snprintf(hdr, sizeof hdr, "Content-Type: text/xml; charset=\"utf-8\"\r\nSOAPAction: \"%s#%s\"\r\nContent-Length: %d\r\n", svc, action, bl);
+    return extaddr_http(ctl, hdr, body, out, cap, ms);
+}
+/* SSDP search for the router, then its device XML: the WAN connection's control URL + service type. 1 = found */
+int extaddr_igd_find(char *ctl, size_t ctl_cap, char *svc, size_t svc_cap) {
     int s = (int)socket(AF_INET, SOCK_DGRAM, 0); if (s < 0) return 0;
     unsigned char ttl = 2; setsockopt(s, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof ttl);
     struct sockaddr_in g = { .sin_family = AF_INET, .sin_port = htons(1900) }; inet_pton(AF_INET, "239.255.255.250", &g.sin_addr);
@@ -159,18 +175,16 @@ static int upnp_lookup(char *ip, size_t cap) {
     sk_close(s);
     char *buf = malloc(65536); if (!buf) return 0;
     int found = 0;
-    for (int i = 0; i < nl && !found; i++) {
-        char cu[512], svc[160];
-        if (!http_ex(locs[i], NULL, NULL, buf, 65536, 2000) || !extaddr_control_url(buf, locs[i], cu, sizeof cu, svc, sizeof svc)) continue;
-        char hdr[400], body[600];
-        snprintf(hdr, sizeof hdr, "Content-Type: text/xml; charset=\"utf-8\"\r\nSOAPAction: \"%s#GetExternalIPAddress\"\r\nContent-Length: %d\r\n", svc,
-                 snprintf(body, sizeof body, "<?xml version=\"1.0\"?>\r\n<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
-                          "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\"><s:Body><u:GetExternalIPAddress xmlns:u=\"%s\">"
-                          "</u:GetExternalIPAddress></s:Body></s:Envelope>\r\n", svc));
-        if (http_ex(cu, hdr, body, buf, 65536, 2000) && extaddr_soap_ip(buf, ip, cap)) found = 1;
-    }
+    for (int i = 0; i < nl && !found; i++)
+        found = http_ex(locs[i], NULL, NULL, buf, 65536, 2000) && extaddr_control_url(buf, locs[i], ctl, ctl_cap, svc, svc_cap);
     free(buf);
     return found;
+}
+static int upnp_lookup(char *ip, size_t cap) {
+    char cu[512], svc[160], buf[4096];
+    if (!extaddr_igd_find(cu, sizeof cu, svc, sizeof svc)) return 0;
+    int code = extaddr_soap(cu, svc, "GetExternalIPAddress", NULL, buf, sizeof buf, 2000);
+    return code >= 200 && code < 300 && extaddr_soap_ip(buf, ip, cap);
 }
 
 /* ---------------------------------------------------------------- HTTPS fallback (3 s) */

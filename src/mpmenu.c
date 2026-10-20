@@ -19,6 +19,7 @@
 #include "net/ds_modcheck.h"                             /* "Get the host's mods": plan JSON -> box text, DSMP_REJOIN line */
 #include "mp_api.h"                                      /* mod chat lines (chat_line, mp_modchat.c) */
 #include "extaddr.h"                                     /* the host's internet address for the lobby (background lookup) */
+#include "upnpport.h"                                    /* the router port for friends outside the home (UPnP, background) */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -1657,6 +1658,7 @@ static char lw_rowname[LW_ROWS][32];                    /* row names (tooltip ti
 static int lw_host_built = -1, lw_level[LW_ROWS];   /* connection level shown per row (-1 none), for the read-back */
 static int64_t copied_until;
 static int inet_state;                                   /* extaddr_get state for the lobby (direct_refresh) */
+static int up_state;                                     /* upnpport_get state for the lobby (direct_refresh) */
 static char lobby_addr[96];                              /* the address in the lobby box = what Copy copies */
 static float lw_h = 740;
 static float lw_note_h;                                 /* steaminv: height of the note under Steam invite (ui_friends.c) */
@@ -1854,21 +1856,28 @@ static void lw_texts(void) {
         place(lwt(T_INV_ADDR), LX(32 + 12 + 134), LY(y2), 268, 30);
         Obj cb = u_gc_get(h_lwb[LW_COPY]); if (cb) place(cb, LX(428 - 48), LY(y2), 96, 40);
         place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + 26), 396, 52);
-        /* owner 2026-10-20: the box shows the INTERNET address (friends outside the home), the note the local one */
+        /* owner 2026-10-20: the box shows the INTERNET address (friends outside the home) with the router's external port
+           (upnpport: opened automatically / already forwarded), the note says how friends outside reach it + the local one */
         { const char *port = strrchr(M.direct, ':'); const char *pn = port ? port + 1 : "47777";
           int inet = inet_state == EXTADDR_OK && M.internet[0];
+          int up_ok = up_state == UPNPP_OPENED || up_state == UPNPP_ALREADY;
           snprintf(lobby_addr, sizeof lobby_addr, "%s", inet ? M.internet : M.direct);
           tmp_set(lwt(T_INV_ADDR), lobby_addr[0] ? lobby_addr : "...");
           char l1[400];
-          if (inet) snprintf(l1, sizeof l1, in.steam ? TR("Friends outside your home join with this address (your router must forward port %s to this computer), or use Steam invite.")
-                                                     : TR("Friends outside your home join with this address (your router must forward port %s to this computer)."), pn);
-          else if (inet_state == EXTADDR_PRIVATE) snprintf(l1, sizeof l1, "%s", in.steam ? TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes. Use Steam invite.")
-                                                                                         : TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes."));
-          else if (inet_state == EXTADDR_PENDING || inet_state == EXTADDR_IDLE) snprintf(l1, sizeof l1, "%s", TR("Looking for your internet address..."));
-          else snprintf(l1, sizeof l1, in.steam ? TR("Internet address unknown. Friends outside your home: open port %s on your router, or use Steam invite.")
-                                                : TR("Internet address unknown. Friends outside your home: open port %s on your router."), pn);
+          if (inet_state == EXTADDR_PRIVATE) snprintf(l1, sizeof l1, "%s", in.steam ? TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes. Use Steam invite.")
+                                                                              : TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes."));
+          else if (inet_state == EXTADDR_PENDING || inet_state == EXTADDR_IDLE || up_state == UPNPP_PENDING) snprintf(l1, sizeof l1, "%s", TR("Looking for your internet address..."));
+          else if (inet && up_state == UPNPP_OPENED) snprintf(l1, sizeof l1, TR("Friends outside your home: %s (opened automatically on your router)."), M.internet);
+          else if (inet && up_state == UPNPP_ALREADY) snprintf(l1, sizeof l1, TR("Friends outside your home: %s (your router already forwards this port)."), M.internet);
+          else if (up_ok) snprintf(l1, sizeof l1, in.steam ? TR("Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.")
+                                                           : TR("Your router opened port %s, but your internet address is unknown."), M.internet[0] ? strrchr(M.internet, ':') + 1 : pn);
+          else snprintf(l1, sizeof l1, in.steam ? TR("Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.")
+                                                : TR("Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer."), pn);
           size_t bl = (size_t)snprintf(b, sizeof b, "%s\n", l1);
-          if (bl < sizeof b) snprintf(b + bl, sizeof b - bl, TR("Same home: %s"), M.direct[0] ? M.direct : "...");
+          if (bl < sizeof b) bl += (size_t)snprintf(b + bl, sizeof b - bl, TR("Same home: %s"), M.direct[0] ? M.direct : "...");
+#ifdef _WIN32
+          if (bl < sizeof b) snprintf(b + bl, sizeof b - bl, "\n%s", TR("If Windows asks to allow Dungeon Settlers on networks, click Allow."));
+#endif
           tmp_set(lwt(T_INV_NOTE), b); }
         if (cb) tmp_set(AT(cb, 0x28, Obj), frames < copied_until ? TR("Copied") : TR("Copy"));
         Obj ib2 = u_gc_get(h_lwb[LW_INVITE]);                               /* both ways in one app: Steam invite + the address */
@@ -2116,16 +2125,20 @@ static void direct_refresh(void) {
     mp_session *s = mp_game_session(); uint16_t p = s ? mp_server_port(s) : 0;
     static mp_session *last_s; static uint16_t last_p;                     /* one internet lookup per host session */
     if (s != last_s || p != last_p) { extaddr_reset(); last_s = s; last_p = p; }
-    if (!p) { M.direct[0] = M.internet[0] = 0; inet_state = EXTADDR_IDLE; return; }
+    if (!p) { M.direct[0] = M.internet[0] = 0; inet_state = EXTADDR_IDLE; up_state = UPNPP_IDLE; return; }
     char ip[64], pub[64]; const char *via = ""; lan_ip(ip, sizeof ip);
     snprintf(M.direct, sizeof M.direct, "%s:%u", ip, p);
     extaddr_start();                                                        /* no-op once started (own thread, never this frame) */
     int was = inet_state; inet_state = extaddr_get(pub, sizeof pub, &via);
     if (inet_state == EXTADDR_UNKNOWN && steam_public_ip(pub, sizeof pub)) { inet_state = EXTADDR_OK; via = "steam"; }
-    if (inet_state == EXTADDR_OK) snprintf(M.internet, sizeof M.internet, "%s:%u", pub, p);
+    uint16_t ext = 0; int was_up = up_state; up_state = upnpport_get(&ext);
+    if (inet_state == EXTADDR_OK) snprintf(M.internet, sizeof M.internet, "%s:%u", pub, (up_state == UPNPP_OPENED || up_state == UPNPP_ALREADY) && ext ? ext : p);
     else M.internet[0] = 0;
     if (inet_state != was && inet_state >= EXTADDR_OK)
         rig_log("mpmenu: internet address %s (via %s)", inet_state == EXTADDR_OK ? "found" : inet_state == EXTADDR_PRIVATE ? "private (provider NAT)" : "unknown", via);
+    if (up_state != was_up && up_state >= UPNPP_OPENED)
+        rig_log("mpmenu: router port %s (listen %u, external %u)", up_state == UPNPP_OPENED ? "opened automatically" : up_state == UPNPP_ALREADY ? "already forwarded"
+                                                                     : up_state == UPNPP_OFF ? "UPnP off" : "not opened", p, ext);
 }
 static char hist_host[48];                               /* reconnecting from a Recent worlds row: that host's name */
 static char hist_world[64];                              /* ... and that row's world name (F17 refusal text) */
@@ -4041,6 +4054,7 @@ void mpmenu_frame(void) {
         Obj ev = esc_view();
         if (ui_modal2 && ui_modal2() && ev) { (mm_is(ev, K_SMV) ? F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL) : (void)0); rig_log("mpmenu: lobby closed for a ui box; it comes back after"); }
     }
+    if (frames % 30 == 0) { mp_session *hs = mp_game_session(); upnpport_host(hs ? mp_server_port(hs) : 0); }   /* map / renew / delete (own thread) */
     if (M.state == MPM_LOBBY && frames % 30 == 0) direct_refresh();
     M.set.watching = o.role == 1 ? spect_watching() : 0;                    /* "Allowed · 2 watching" (Rules value) */
     rules_sync(&o);
@@ -4642,6 +4656,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         mp_session *ss = mp_game_session();
         bput(&b, ",\"port\":%u,\"host_port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0, (unsigned)mpm_host_port()); bstr(&b, M.direct);
         bput(&b, ",\"inet_state\":%d,\"internet\":", inet_state); bstr(&b, M.internet);
+        { uint16_t ue = 0; int us = upnpport_get(&ue); bput(&b, ",\"up_state\":%d,\"up_ext\":%u", us, (unsigned)ue); }   /* router port (upnpport.h) */
         Obj fl = u_gc_get(h_field); char ft[256] = "";
         if (u_alive(fl)) str_utf8((mm_is(fl, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(fl, NULL) : NULL), ft, sizeof ft);
         bput(&b, ",\"field\":{\"exists\":%s,\"active\":%s,\"text\":", u_alive(fl) ? "true" : "false", u_on(fl) ? "true" : "false"); bstr(&b, ft); bput(&b, "}");
@@ -4678,7 +4693,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
             bput(&b, ",\"addr_rects\":[[%.0f,%.0f,%.0f,%.0f],[%.0f,%.0f,%.0f,%.0f]]", r1[0], r1[1], r1[2], r1[3], r2[0], r2[1], r2[2], r2[3]); }   /* test frames mask this Mac's addresses */
           { Obj ib3 = u_gc_get(h_lwb[LW_INVITE]); char it[160] = ""; if (u_on(ib3)) str_utf8(tmp_get(AT(ib3, 0x28, Obj)), it, sizeof it); bput(&b, ",\"invite\":"); bstr(&b, it); }
           bput(&b, ",\"addr\":"); t[0] = 0; if (lwt(T_INV_ADDR) && u_on(lwt(T_INV_ADDR))) str_utf8(tmp_get(lwt(T_INV_ADDR)), t, sizeof t); bstr(&b, t);
-          bput(&b, ",\"inv_note\":"); t[0] = 0; if (lwt(T_INV_NOTE) && u_on(lwt(T_INV_NOTE))) str_utf8(tmp_get(lwt(T_INV_NOTE)), t, sizeof t); bstr(&b, t);
+          bput(&b, ",\"inv_note\":"); t[0] = 0; if (lwt(T_INV_NOTE) && u_on(lwt(T_INV_NOTE))) str_utf8(tmp_get(lwt(T_INV_NOTE)), t, sizeof t); bstr(&b, t);   /* test: "open port N" line */
           bput(&b, ",\"rows\":[");
           for (int i = 0; i < LW_ROWS; i++) {
               char n[400] = "", st[64] = ""; int lit = 0;
