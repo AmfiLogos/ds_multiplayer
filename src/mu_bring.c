@@ -19,13 +19,14 @@ static const DSLUi *U;
 #define NMAX 400          /* units listed on the right (one save) */
 #define SMAX 64           /* saves in the left column */
 #define PMAX 64           /* picks */
+#define CARD_GAP 6.f      /* between two compact cards: 8 fit the 1100 x 720 window */
 
 static struct {
     int open;
     mu_bring_req req; char title[128], sub[300];
     DSLObj win, t_sub, hdr, status, t_picked, left, right, b_prev, b_next, t_page, b_cancel, b_bring;
     DSLObj left_btn[SMAX]; int nleft;
-    DSLObj tick[16], card[16]; int card_item[16], ncard;
+    DSLObj tick[16], card[16], row[16]; int card_item[16], ncard;
     float w, h, rx, ry, rw, rh;
     mu_save_ref saves[SMAX]; int nsaves, sel_save;
     mu_save_unit su[NMAX]; int nsu; char su_err[400]; int su_for;   /* units of saves[su_for] (-1 none loaded) */
@@ -182,6 +183,12 @@ static void on_tick(void *ud, DSLObj w) {
     set_msg("", MU_C_SUB);
     bar_update();
 }
+/* a click anywhere on a card (owner 2026-10-20: not only the small tick): the row button under the card flips the tick */
+static void on_card(void *ud, DSLObj w) {
+    (void)w; int c = (int)(intptr_t)ud; if (c < 0 || c >= B.ncard || !B.tick[c]) return;
+    U->toggle_set(B.tick[c], !U->toggle_get(B.tick[c]));
+    on_tick(ud, B.tick[c]);
+}
 static void on_page(void *ud, DSLObj w) {
     (void)w; B.page += (int)(intptr_t)ud;
     if (B.page >= B.pages) B.page = B.pages - 1;
@@ -221,7 +228,7 @@ static void draw_cards(void) {
     if (!B.nsaves) empty = TR("No saves to bring units from.");
     else if (B.su_err[0]) { empty = B.su_err; ecol = MU_C_BAD; }
     else if (!n) empty = TR("This save has no units.");
-    B.per_page = (int)((B.rh - 8) / (MU_CARD_H + 8)); if (B.per_page < 1) B.per_page = 1; if (B.per_page > 16) B.per_page = 16;
+    B.per_page = (int)((B.rh - 8 + CARD_GAP) / (MU_CARD_CH + CARD_GAP)); if (B.per_page < 1) B.per_page = 1; if (B.per_page > 16) B.per_page = 16;
     B.pages = (n + B.per_page - 1) / B.per_page; if (B.pages < 1) B.pages = 1;
     if (B.page >= B.pages) B.page = B.pages - 1;
     if (B.page < 0) B.page = 0;
@@ -229,17 +236,20 @@ static void draw_cards(void) {
     static wk_build b; static mu_card c; static mu_save_extra x;
     for (int s = 0; s < B.per_page; s++) {
         int k = B.page * B.per_page + s; if (k >= n) break;
-        float y = 8 + s * (MU_CARD_H + 8);
+        float y = 8 + s * (MU_CARD_CH + CARD_GAP);
         char e[300] = ""; DSLObj card = NULL;
         B.card_item[B.ncard] = k;
-        B.tick[B.ncard] = U->toggle(B.right, 8, y + (MU_CARD_H - 36) / 2, 36, "", item_pick(k) >= 0, on_tick, (void *)(intptr_t)B.ncard);
+        /* the whole row is a button under the tick and the card (they let clicks through; the tick keeps its own) */
+        B.row[B.ncard] = U->button(B.right, 4, y, B.rw - 8, MU_CARD_CH, "", on_card, (void *)(intptr_t)B.ncard);
+        B.tick[B.ncard] = U->toggle(B.right, 8, y + (MU_CARD_CH - 36) / 2, 36, "", item_pick(k) >= 0, on_tick, (void *)(intptr_t)B.ncard);
         if (!mu_save_build_ex(B.saves[B.sel_save].path, B.su[k].guid, &b, &x, e, sizeof e) && !mu_card_of(&b, &c)) {
             const char *bar[8]; for (int i = 0; i < x.nbar && i < 8; i++) bar[i] = x.bar[i];
-            card = mu_card_draw(B.right, 52, y, B.rw - 60, &c, B.su[k].name, B.su[k].level, B.su[k].portrait, bar, x.nbar);
+            card = mu_card_draw_compact(B.right, 52, y, B.rw - 60, &c, B.su[k].name, B.su[k].level, B.su[k].portrait, bar, x.nbar);
         }
         if (!card) {
-            card = U->panel(B.right, 52, y, B.rw - 60, MU_CARD_H, MU_C_ROW);
-            if (card) mu_text(card, 12, 10, B.rw - 84, MU_CARD_H - 20, e[0] ? e : TR("This unit cannot be shown."), 14, DSL_TXT_WRAP, MU_C_BAD);
+            card = U->panel(B.right, 52, y, B.rw - 60, MU_CARD_CH, MU_C_ROW);
+            if (card) cm_raycast(card, false);
+            if (card) mu_text(card, 12, 6, B.rw - 84, MU_CARD_CH - 12, e[0] ? e : TR("This unit cannot be shown."), 14, DSL_TXT_WRAP, MU_C_BAD);
         }
         B.card[B.ncard++] = card;
     }
@@ -326,6 +336,7 @@ void *mu_bring_test_find(const char *n) {
     if (sscanf(n, "left%d", &k) == 1 && k >= 0 && k < B.nleft) return B.left_btn[k];
     if (sscanf(n, "tick%d", &k) == 1 && k >= 0 && k < B.ncard) return B.tick[k];
     if (sscanf(n, "card%d", &k) == 1 && k >= 0 && k < B.ncard) return B.card[k];
+    if (sscanf(n, "row%d", &k) == 1 && k >= 0 && k < B.ncard) return B.row[k];
     return NULL;
 }
 static void jesc(char *o, size_t cap, const char *s) { size_t n = 0; for (; *s && n + 3 < cap; s++) { if (*s == '"' || *s == '\\') o[n++] = '\\'; if ((unsigned char)*s < 0x20) continue; o[n++] = *s; } o[n] = 0; }

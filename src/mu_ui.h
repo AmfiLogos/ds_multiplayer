@@ -48,6 +48,12 @@ void mu_name_of(const char *key, char *out, size_t cap);
 #define MU_CARD_H 128.f                        /* 4 cards fit the My Units list at UI scale 1 (owner 2026-10-17) */
 DSLObj mu_card_draw(DSLObj parent, float x, float y, float w, const mu_card *c, const char *name, int level,
                     const char *portrait_key, const char *const *bar, int nbar);
+/* compact card for the Bring Units window (owner 2026-10-20: "about 8 units at once instead of 3"): one row of
+   MU_CARD_CH: face, name, "Lv n  race / background / weapon", then two icon rows (worn items | skill bar; branches |
+   milestones | passives | inscriptions | soul stones | traits), "+N" when a row is full. No in-game character picture. */
+#define MU_CARD_CH 58.f
+DSLObj mu_card_draw_compact(DSLObj parent, float x, float y, float w, const mu_card *c, const char *name, int level,
+                            const char *portrait_key, const char *const *bar, int nbar);
 
 /* frame tick: fn runs on the game's main thread between frames every ~ms while registered (mu_clip.c, OS timer) */
 int  mu_tick_add(void (*fn)(void));
