@@ -937,7 +937,7 @@ static void status_frame(void) {
    with "TEXTKEY". Our prompt passes null actions; the confirm/cancel hooks turn the click into a vote. */
 static uintptr_t h_notice;
 static uint32_t prompt_id, map_counter;
-static int map_submit, scroll_submit, prompt_close, map_report = -1;
+static int map_submit, scroll_submit, prompt_close, map_report = -1; static double scroll_wait_t;
 static double map_open_t; static uint32_t map_cancel_sent;  /* proposer: when its vote opened (60 s timeout, review #5) */
 static double now_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
 /* floor index (DungeonData +0x14 of EntityDataContainer +0x40; 0 = 1F, seen in a run), -1 outside a dungeon */
@@ -1268,8 +1268,12 @@ static void map_frame(void) {
         notice("%s", r);
         map_report = -1;
     }
-    if (scroll_submit) {                                     /* B5: agreed: the scroll order goes out now, as the user's order */
-        scroll_submit = 0;
+    mp_stats sst; if (scroll_submit && sess()) mp_get_stats(sess(), &sst);
+    if (scroll_submit && !scroll_wait_t) scroll_wait_t = now_s();
+    if (scroll_submit && sess() && sst.paused && now_s() - scroll_wait_t < 30) {}   /* at most 30 s (another pause holds) */
+    else if (scroll_submit) {                                /* B5: agreed: the scroll order goes out once the game runs again (the
+                                                                vote's pause released): its map change never starts in a 0-tick step */
+        scroll_submit = 0; scroll_wait_t = 0;
         int rc = sess() ? mp_order(sess(), ORD_MP_TYPE, map_order, map_order + 16, (uint16_t)(map_order_len - 16)) : -1;
         rig_log("ui: Return scroll order sent (rc %d)", rc);
         if (rc) { notice("%s", TR("The Return scroll could not be used")); map_changing = 0; }

@@ -22,9 +22,10 @@ def body(X, Y):
     t0 = st(X)['tick']; T0 = time.time()
     rounds = 0; ok_all = True
     while time.time() - T0 < 120 or rounds < 3:
-        u = mine[Y][rounds % 2]
+        u = mine[Y][0]                                        # back and forth between two cells it reached before
         start = cell_of(X, u['guid'])
-        tgt = (start[0] + (3 if rounds % 2 == 0 else -3), start[1])
+        if rounds == 0: home = start
+        tgt = (home[0] + 3, home[1]) if rounds % 2 == 0 else home
         log('round', rounds, 'host pauses', c(X, cmd='mp_pause', on=1))
         wait('paused on both', lambda: mp(X).get('paused') and mp(Y).get('paused'), timeout=60, every=1)
         time.sleep(2)
