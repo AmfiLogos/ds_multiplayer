@@ -604,6 +604,8 @@ static const char *game_saves_dir(char *b, size_t n) {
     const char *e = getenv("DSRIG_FE_GAME_SAVES");                /* tests: a folder of copies; never the real one */
     if (e) { snprintf(b, n, "%s", e); return b; }
     if (getenv("DSRIG_BATCH") || getenv("DSRIG_HIDEWIN") || getenv("DSMP_TEST")) return NULL;
+    const char *g = getenv("DSML_GAME_SAVES");                    /* the normal game's Saves folder, set by both starters (Mac + Windows) */
+    if (g && *g) { snprintf(b, n, "%s", g); return b; }
     const char *home = getenv("HOME"); if (!home) return NULL;
     snprintf(b, n, "%s/Library/Application Support/CanOpener/Dungeon Settlers/Saves", home); return b;
 }

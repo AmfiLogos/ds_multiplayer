@@ -351,6 +351,7 @@ static void pv_click_do(int k) {
    team), Bring = they are copied from that save and sent to the host (pvp_units.c). Same frame as the PvP window. */
 #include <dirent.h>
 #include <sys/stat.h>
+int mu_save_files(const char *dir, char (*out)[1024], int max);   /* mu_save.c */
 static uintptr_t h_br_root, h_br_title, h_br_hint, h_br_status, h_br_por[12], h_br_lv[12];
 static int br_open, br_nsaves, br_save = -1, br_nunits, br_pick[12];
 static char br_files[8][300], br_stems[8][96], br_unit_guid[12][40], br_unit_name[12][48], br_unit_port[12][64], br_sent[600];
@@ -359,23 +360,47 @@ static int br_share(void) {                                              /* 4 un
     int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8); if (n < 1) n = 1;
     int sh = 4 / n; return sh < 1 ? 1 : sh;
 }
-static void br_list_saves(void) {
+/* E1 (owner 2026-10-20, v0.1.20 PvP session: "Bring World does not list units from the regular saves"): the player's saves
+   are in TWO folders in the modded game (loader dsl_saves.c): the modded worlds in <persistentDataPath>/Saves (= DSML_DATA/Saves)
+   and the normal game's own worlds in DSML_GAME_SAVES (set by both starters; the Load list shows both). The PvP lists read
+   only the first one, so a player's regular worlds were never offered. Both folders now, newest first; a modded file with
+   the name of a game save (an old first-start copy) is left out: the game's one is listed, as in the Load list. */
+static const char *pv_game_saves(void) { const char *g = getenv("DSML_GAME_SAVES"); return g && *g ? g : NULL; }
+int pvp_bring_save_paths(char (*out)[1024], int max) {
+    static char f[2][64][1024]; int nf[2] = { 0, 0 };
     Obj ps = F(0x507B74C, Obj (*)(void *))(NULL);                         /* Application.persistentDataPath (the copy's own data) */
     char base[600] = ""; str_utf8(ps, base, sizeof base);
     char dir[700]; snprintf(dir, sizeof dir, "%s/Saves", base);
-    struct { char f[300], st[96]; time_t t; } all[64]; int n = 0;
-    DIR *d = opendir(dir);
-    for (struct dirent *e; d && (e = readdir(d)) && n < 64; ) {
-        size_t l = strlen(e->d_name); if (l < 6 || strcmp(e->d_name + l - 5, ".json")) continue;
-        if (mp_world_save_name(e->d_name)) continue;                     /* the mod's own worlds (hub, PvP): mp_worldsave.h */
-        snprintf(all[n].f, sizeof all[n].f, "%s/%s", dir, e->d_name);
-        snprintf(all[n].st, sizeof all[n].st, "%.*s", (int)(l - 5), e->d_name);
-        struct stat sb; all[n].t = stat(all[n].f, &sb) == 0 ? sb.st_mtime : 0; n++;
+    const char *gd = pv_game_saves();
+    if (gd) nf[0] = mu_save_files(gd, f[0], 64);
+    if (base[0]) nf[1] = mu_save_files(dir, f[1], 64);
+    struct { int d, i; time_t t; } all[128]; int n = 0;
+    for (int d = 0; d < 2; d++) for (int i = 0; i < nf[d]; i++) {
+        const char *nm = strrchr(f[d][i], '/'), *b2 = strrchr(f[d][i], '\\'); if (b2 > nm) nm = b2; nm = nm ? nm + 1 : f[d][i];
+        int dup = 0;
+        for (int k = 0; d == 1 && k < nf[0] && !dup; k++) {
+            const char *on = strrchr(f[0][k], '/'), *o2 = strrchr(f[0][k], '\\'); if (o2 > on) on = o2; on = on ? on + 1 : f[0][k];
+            dup = !strcmp(on, nm);
+        }
+        if (dup) continue;
+        struct stat sb; all[n].d = d; all[n].i = i; all[n].t = stat(f[d][i], &sb) == 0 ? sb.st_mtime : 0; n++;
     }
-    if (d) closedir(d);
     for (int i = 1; i < n; i++) for (int j = i; j > 0 && all[j].t > all[j - 1].t; j--) { __typeof__(all[0]) t = all[j]; all[j] = all[j - 1]; all[j - 1] = t; }
-    br_nsaves = n < 8 ? n : 8;
-    for (int i = 0; i < br_nsaves; i++) { snprintf(br_files[i], sizeof br_files[i], "%s", all[i].f); snprintf(br_stems[i], sizeof br_stems[i], "%s", all[i].st); }
+    int k = 0;
+    for (int i = 0; i < n && k < max; i++) snprintf(out[k++], 1024, "%s", f[all[i].d][all[i].i]);
+    static int logged = -1;
+    if (logged != n) { logged = n; rig_log("pvp ui: Bring saves: %d game (%s), %d modded, %d listed", nf[0], gd ? "DSML_GAME_SAVES" : "no game folder", nf[1], k); }
+    return k;
+}
+static void br_list_saves(void) {
+    static char p[8][1024];
+    int n = pvp_bring_save_paths(p, 8);
+    br_nsaves = n;
+    for (int i = 0; i < n; i++) {
+        snprintf(br_files[i], sizeof br_files[i], "%s", p[i]);
+        const char *nm = strrchr(p[i], '/'), *b2 = strrchr(p[i], '\\'); if (b2 > nm) nm = b2; nm = nm ? nm + 1 : p[i];
+        size_t l = strlen(nm); snprintf(br_stems[i], sizeof br_stems[i], "%.*s", (int)(l > 5 ? l - 5 : l), nm);
+    }
 }
 static void br_read_units(int k) {
     br_nunits = 0; memset(br_pick, 0, sizeof br_pick);
@@ -760,11 +785,20 @@ static void pv_bring_done(const mu_pick *picks, int n, void *ud) {
     rig_log("pvp ui: Bring Units: %d unit(s) sent", n);
     if (pv_open) pv_refresh();
 }
+static int pv_bring_saves(mu_save_ref *out, int max, void *ud) {   /* E1: game + modded saves (pvp_bring_save_paths) */
+    (void)ud; static char p[64][1024]; int n = pvp_bring_save_paths(p, max < 64 ? max : 64);
+    for (int i = 0; i < n; i++) {
+        snprintf(out[i].path, sizeof out[i].path, "%s", p[i]); out[i].name[0] = 0;   /* empty name: the window's own pretty name */
+        struct stat st; out[i].when[0] = 0;
+        if (!stat(p[i], &st)) { time_t t = st.st_mtime; struct tm *tm = localtime(&t); if (tm) strftime(out[i].when, sizeof out[i].when, "%Y-%m-%d %H:%M", tm); }
+    }
+    return n;
+}
 static int pv_bring_open(void) {
     char sub[400]; snprintf(sub, sizeof sub, TRN("Up to %d unit for the match. Copies only: your saves do not change.",
                                                  "Up to %d units for the match. Copies only: your saves do not change.", br_share()), br_share());
     dsi_utf8_fix_end(sub);
-    mu_bring_req r = { .title = TR("Bring Units"), .subtitle = sub, .max_units = br_share(), .ticked = pv_last_picks, .nticked = pv_nlast, .done = pv_bring_done };
+    mu_bring_req r = { .title = TR("Bring Units"), .subtitle = sub, .max_units = br_share(), .ticked = pv_last_picks, .nticked = pv_nlast, .list_saves = pv_bring_saves, .done = pv_bring_done };
     return mu_bring_open(&r);
 }
 
