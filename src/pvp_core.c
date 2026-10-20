@@ -59,14 +59,14 @@ static int start(pvp_state *s, const pvp_owned *owned, int nowned) {
     s->placing = s->arena != 0; s->fight_start = s->arena ? 0 : 1;
     s->round = 1; memset(s->score, 0, sizeof s->score); s->draws = 0; s->resetting = 0; s->last_winner = 0; s->match_winner = 0;
     s->planning = 0; s->ready_mask = 0; s->plans = 0;
-    memset(s->home, 0, sizeof s->home); flags_home(s); s->captures = 0; s->countdown_at = 0;
+    memset(s->home, 0, sizeof s->home); flags_home(s); s->captures = 0; s->countdown_at = 0; s->vote_open = 0; s->agree_mask = 0; s->cd_ticks = 0; s->ending = 0;
     memset(s->end_cell, 0, sizeof s->end_cell);
     return PVP_OK;
 }
 
 int pvp_apply(pvp_state *s, int issuer, const uint8_t *p, size_t n, const pvp_owned *owned, int nowned) {
     if (!p || n < HEAD || p[0] != PVP_VERSION) return PVP_ERR_BAD;
-    if (issuer != 0 && p[1] != PVP_OP_READY) return PVP_ERR_NOT_HOST;
+    if (issuer != 0 && p[1] != PVP_OP_READY && p[1] != PVP_OP_PROPOSE && p[1] != PVP_OP_AGREE && p[1] != PVP_OP_NOTYET && p[1] != PVP_OP_CANCEL) return PVP_ERR_NOT_HOST;
     switch (p[1]) {
     case PVP_OP_SETUP:
         if (n != SETUP_LEN || (p[2] != PVP_MODE_FIGHT && p[2] != PVP_MODE_CTF)) return PVP_ERR_BAD;
@@ -105,6 +105,34 @@ int pvp_apply(pvp_state *s, int issuer, const uint8_t *p, size_t n, const pvp_ow
         if (!pvp_active(s) || !s->planning) return PVP_ERR_PHASE;
         s->planning = 0; s->ready_mask = 0;
         return PVP_OK;
+    case PVP_OP_PROPOSE: case PVP_OP_AGREE: case PVP_OP_NOTYET: case PVP_OP_CANCEL: {   /* E4: the fight vote (any team player) */
+        if (n != HEAD) return PVP_ERR_BAD;
+        if (issuer < 0 || issuer >= PVP_MAX_PLAYERS || !s->team_of[issuer]) return PVP_ERR_PHASE;
+        if (!pvp_active(s) || !s->placing || s->round > 1 || s->resetting || s->ending) return PVP_ERR_PHASE;
+        uint32_t need = 0; for (int i = 0; i < PVP_MAX_PLAYERS; i++) if (s->team_of[i]) need |= 1u << i;
+        if (p[1] == PVP_OP_PROPOSE) {
+            if (s->vote_open || s->countdown_at) return PVP_ERR_PHASE;
+            s->vote_open = 1; s->vote_by = (uint8_t)issuer; s->agree_mask = 1u << issuer;
+        } else if (p[1] == PVP_OP_AGREE) {
+            if (!s->vote_open) return PVP_ERR_PHASE;
+            s->agree_mask |= 1u << issuer;
+        } else if (p[1] == PVP_OP_NOTYET) {
+            if (!s->vote_open) return PVP_ERR_PHASE;
+            s->vote_open = 0; s->agree_mask = 0;
+            return PVP_OK;
+        } else {                                                   /* CANCEL: the agreed countdown stops */
+            if (!s->countdown_at || s->vote_open) return PVP_ERR_PHASE;
+            s->countdown_at = 0; s->cd_ticks = 0; s->agree_mask = 0;
+            return PVP_OK;
+        }
+        if ((s->agree_mask & need) == need) { s->vote_open = 0; s->countdown_at = s->ticks + 1; s->cd_ticks = PVP_AGREE_COUNTDOWN_TICKS; }
+        return PVP_OK;
+    }
+    case PVP_OP_NEXT:                            /* E9: the round result screen is over: reset now */
+        if (n != HEAD) return PVP_ERR_BAD;
+        if (!pvp_active(s) || !s->ending || s->resetting) return PVP_ERR_PHASE;
+        s->resetting = s->ending; s->ending = 0;
+        return PVP_OK;
     case PVP_OP_END:
         if (n != HEAD) return PVP_ERR_BAD;
         if (s->phase == PVP_OFF) return PVP_ERR_PHASE;
@@ -136,11 +164,11 @@ static int end_round(pvp_state *s, int winner) {
         decided = s->score[1] >= need || s->score[2] >= need || played >= s->rules.best_of;
     }
     if (decided) {
-        s->resetting = PVP_RESET_MATCH;
+        s->ending = PVP_RESET_MATCH;
         s->match_winner = s->score[1] > s->score[2] ? PVP_TEAM_BLUE : s->score[2] > s->score[1] ? PVP_TEAM_RED : 0;
-    } else s->resetting = PVP_RESET_ROUND;
+    } else s->ending = PVP_RESET_ROUND;
     s->planning = 0; s->ready_mask = 0;
-    return s->resetting;
+    return s->ending;
 }
 int pvp_round_check(pvp_state *s, const uint32_t hp_permille[3]) {
     if (!pvp_fighting(s)) return PVP_RESET_NONE;
@@ -169,7 +197,7 @@ static int near1(const int32_t a[2], const int32_t b[2]) { int dx = a[0] - b[0],
 int pvp_ctf_step(pvp_state *s, const int32_t (*cell)[2], const uint8_t *known, int *flag_team) {
     if (s->mode != PVP_MODE_CTF || !pvp_fighting(s)) return 0;
     int ev = 0; if (flag_team) *flag_team = 0;
-    for (int t = 1; t <= 2 && !s->resetting; t++) {
+    for (int t = 1; t <= 2 && !s->resetting && !s->ending; t++) {
         __typeof__(s->flag[0]) *f = &s->flag[t];
         if (f->state == PVP_FLAG_CARRIED) {
             int c = f->carrier;
@@ -213,7 +241,7 @@ int pvp_ctf_step(pvp_state *s, const int32_t (*cell)[2], const uint8_t *known, i
 }
 void pvp_next_round(const pvp_state *s, pvp_state *o) {
     *o = *s;
-    o->round++; o->resetting = 0; o->ticks = 0; o->placing = o->arena != 0; o->fight_start = o->arena ? 0 : 1; o->countdown_at = 0;
+    o->round++; o->resetting = 0; o->ending = 0; o->vote_open = 0; o->agree_mask = 0; o->cd_ticks = 0; o->ticks = 0; o->placing = o->arena != 0; o->fight_start = o->arena ? 0 : 1; o->countdown_at = 0;
     o->planning = 0; o->ready_mask = 0;
     for (int i = 0; i < o->nunits; i++) o->units[i].out = 0;
     flags_home(o);
@@ -226,14 +254,16 @@ void pvp_after_match(const pvp_state *s, pvp_state *o) {
 
 int pvp_active(const pvp_state *s) { return s->phase == PVP_MATCH && s->nunits > 0; }
 int pvp_arena(const pvp_state *s) { return s->phase != PVP_OFF && s->arena; }
-int pvp_fighting(const pvp_state *s) { return pvp_active(s) && !s->placing && !s->resetting; }
+int pvp_fighting(const pvp_state *s) { return pvp_active(s) && !s->placing && !s->resetting && !s->ending; }
+int pvp_ending(const pvp_state *s) { return pvp_active(s) && s->ending && !s->resetting; }
+int pvp_vote_open(const pvp_state *s) { return pvp_active(s) && s->vote_open; }
 void pvp_set_ends(pvp_state *s, const int32_t blue[2], const int32_t red[2]) {
     memcpy(s->end_cell[PVP_TEAM_BLUE], blue, 8); memcpy(s->end_cell[PVP_TEAM_RED], red, 8);
 }
 int pvp_place_done(pvp_state *s) {
     if (!pvp_active(s) || !s->placing) return 0;
     if (!s->countdown_at) s->countdown_at = s->ticks + 1;
-    if (s->ticks - (s->countdown_at - 1) < PVP_COUNTDOWN_TICKS) return 0;
+    if (s->ticks - (s->countdown_at - 1) < (s->cd_ticks ? s->cd_ticks : PVP_COUNTDOWN_TICKS)) return 0;
     return pvp_begin_fight(s);
 }
 int pvp_begin_fight(pvp_state *s) {
@@ -276,11 +306,11 @@ int pvp_hostile(const pvp_state *s, const uint8_t a[16], const uint8_t b[16]) {
     return ua->team != ub->team;
 }
 
-/* ---- save block: "PVP5", u8 phase, u8 mode, team_of[32], u32 ticks, u32 matches, u16 n, n x (guid16, team, player, u32 out) */
+/* ---- save block: "PVP6", u8 phase, u8 mode, team_of[32], u32 ticks, u32 matches, u16 n, n x (guid16, team, player, u32 out) */
 #define FIXED (4 + 2 + PVP_MAX_PLAYERS + 4 + 4 + 2 + ARENA_BYTES + ROUND_BYTES + CTF_BYTES)
 #define ARENA_BYTES (2 + 12 + 24 + 4)
 #define ROUND_BYTES (7 + 1 + 3 + 1 + 1 + 1 + 1 + 1 + 4 + 4)
-#define CTF_BYTES (24 + 3 * 13 + 4 + 4 + 1)
+#define CTF_BYTES (24 + 3 * 13 + 4 + 4 + 1 + 1 + 2 + 4 + 2)   /* + ending (E9), vote_open vote_by agree_mask cd_ticks (E4) */
 #define UNIT_BYTES 22
 size_t pvp_save_size(const pvp_state *s) { return FIXED + (size_t)s->nunits * UNIT_BYTES; }
 static void put32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24); }
@@ -289,7 +319,7 @@ size_t pvp_save(const pvp_state *s, uint8_t *out, size_t cap) {
     size_t need = pvp_save_size(s);
     if (cap < need) return 0;
     uint8_t *p = out;
-    memcpy(p, "PVP5", 4); p += 4;
+    memcpy(p, "PVP6", 4); p += 4;
     *p++ = s->phase; *p++ = s->mode;
     memcpy(p, s->team_of, PVP_MAX_PLAYERS); p += PVP_MAX_PLAYERS;
     put32(p, s->ticks); p += 4; put32(p, s->matches); p += 4;
@@ -305,14 +335,15 @@ size_t pvp_save(const pvp_state *s, uint8_t *out, size_t cap) {
     for (int t = 0; t < 3; t++) { p[0] = s->flag[t].state; p[1] = s->flag[t].carrier; p[2] = s->flag[t].taker; p[3] = (uint8_t)s->flag[t].hold; p[4] = (uint8_t)(s->flag[t].hold >> 8);
                                   put32(p + 5, (uint32_t)s->flag[t].cell[0]); put32(p + 9, (uint32_t)s->flag[t].cell[1]); p += 13; }
     put32(p, s->captures); put32(p + 4, s->countdown_at); p += 8;
-    *p++ = s->hold;
+    *p++ = s->hold; *p++ = s->ending;
+    *p++ = s->vote_open; *p++ = s->vote_by; put32(p, s->agree_mask); p += 4; *p++ = (uint8_t)s->cd_ticks; *p++ = (uint8_t)(s->cd_ticks >> 8);
     *p++ = (uint8_t)s->nunits; *p++ = (uint8_t)(s->nunits >> 8);
     for (int i = 0; i < s->nunits; i++) { memcpy(p, s->units[i].guid, 16); p[16] = s->units[i].team; p[17] = s->units[i].player; put32(p + 18, s->units[i].out); p += UNIT_BYTES; }
     return need;
 }
 int pvp_load(pvp_state *s, const uint8_t *p, size_t n) {
     pvp_state t; pvp_init(&t);
-    if (n < FIXED || memcmp(p, "PVP5", 4)) { pvp_init(s); return -1; }
+    if (n < FIXED || memcmp(p, "PVP6", 4)) { pvp_init(s); return -1; }
     t.phase = p[4]; t.mode = p[5];
     memcpy(t.team_of, p + 6, PVP_MAX_PLAYERS);
     const uint8_t *q = p + 6 + PVP_MAX_PLAYERS;
@@ -328,9 +359,10 @@ int pvp_load(pvp_state *s, const uint8_t *p, size_t n) {
     for (int k = 0; k < 3; k++) { t.flag[k].state = q[0]; t.flag[k].carrier = q[1]; t.flag[k].taker = q[2]; t.flag[k].hold = (uint16_t)(q[3] | q[4] << 8);
                                   t.flag[k].cell[0] = (int32_t)get32(q + 5); t.flag[k].cell[1] = (int32_t)get32(q + 9); q += 13; }
     t.captures = get32(q); t.countdown_at = get32(q + 4); q += 8;
-    t.hold = *q++;
+    t.hold = *q++; t.ending = *q++;
+    t.vote_open = *q++; t.vote_by = *q++; t.agree_mask = get32(q); q += 4; t.cd_ticks = (uint16_t)(q[0] | q[1] << 8); q += 2;
     t.nunits = (uint16_t)(q[0] | q[1] << 8); q += 2;
-    if (t.phase > PVP_MATCH || t.arena > PVP_WHERE_BASE || t.placing > 1 || t.nunits > PVP_MAX_UNITS || n != FIXED + (size_t)t.nunits * UNIT_BYTES) { pvp_init(s); return -1; }
+    if (t.phase > PVP_MATCH || t.arena > PVP_WHERE_BASE || t.placing > 1 || t.ending > PVP_RESET_MATCH || t.vote_open > 1 || t.vote_by >= PVP_MAX_PLAYERS || t.nunits > PVP_MAX_UNITS || n != FIXED + (size_t)t.nunits * UNIT_BYTES) { pvp_init(s); return -1; }
     for (int i = 0; i < t.nunits; i++) {
         memcpy(t.units[i].guid, q, 16); t.units[i].team = q[16]; t.units[i].player = q[17]; t.units[i].out = get32(q + 18); q += UNIT_BYTES;
         if (t.units[i].team < PVP_TEAM_BLUE || t.units[i].team > PVP_TEAM_RED) { pvp_init(s); return -1; }

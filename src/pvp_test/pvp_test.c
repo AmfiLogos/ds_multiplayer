@@ -175,6 +175,12 @@ int main(void) {
         for (int i = 0; i < 6; i++) if (own[i].player == 1) pvp_mark_out(&m, own[i].guid);
         CHECK(pvp_round_check(&m, hp) == PVP_RESET_ROUND && m.score[1] == 1 && m.last_winner == 1 && !pvp_fighting(&m));
         CHECK(pvp_round_check(&m, hp) == PVP_RESET_NONE);          /* once */
+        /* E9: the ended round waits on its result screen (world still, no reset yet); only the host's NEXT resets it */
+        CHECK(pvp_ending(&m) && !m.resetting && m.ending == PVP_RESET_ROUND);
+        CHECK(simple(&m, 1, PVP_OP_NEXT, NULL, 0) == PVP_ERR_NOT_HOST && !m.resetting);
+        { pvp_state sv2 = m; uint8_t bb[2048]; size_t bn = pvp_save(&m, bb, sizeof bb); pvp_state lm2; CHECK(pvp_load(&lm2, bb, bn) == 0 && lm2.ending == PVP_RESET_ROUND && !memcmp(&lm2, &sv2, sizeof lm2)); }
+        CHECK(simple(&m, 0, PVP_OP_NEXT, NULL, 0) == PVP_OK && m.resetting == PVP_RESET_ROUND && !m.ending && !pvp_ending(&m));
+        CHECK(simple(&m, 0, PVP_OP_NEXT, NULL, 0) == PVP_ERR_PHASE);
         pvp_state m2; pvp_next_round(&m, &m2);
         CHECK(m2.round == 2 && !m2.resetting && pvp_fighting(&m2) && m2.ticks == 0 && pvp_out_tick(&m2, own[1].guid) == -1 && m2.score[1] == 1);
         /* round 2: time out, equal HP = draw */
@@ -271,7 +277,7 @@ int main(void) {
         cell[bl2][0] = 11; cell[bl2][1] = 11;
         uint8_t sv[2048]; size_t sn = pvp_save(&c, sv, sizeof sv); pvp_state lc; CHECK(pvp_load(&lc, sv, sn) == 0 && !memcmp(&lc, &c, sizeof lc));
         ev = pvp_ctf_step(&c, (const int32_t (*)[2])cell, kn, &ft);
-        CHECK((ev & PVP_EV_CAPTURED) && c.score[1] == 1 && c.captures == 1 && c.resetting == PVP_RESET_MATCH && c.match_winner == 1);
+        CHECK((ev & PVP_EV_CAPTURED) && c.score[1] == 1 && c.captures == 1 && c.ending == PVP_RESET_MATCH && c.match_winner == 1);
         CHECK(pvp_ctf_step(&c, (const int32_t (*)[2])cell, kn, &ft) == 0);
         /* next round (best of 3 = 3 captures): flags home, units back in */
         pvp_state n2; c.rules.best_of = 3; c.resetting = PVP_RESET_ROUND; pvp_next_round(&c, &n2);
@@ -362,6 +368,24 @@ int main(void) {
         uint8_t blk[2048]; size_t bl = pvp_save(&b, blk, sizeof blk); pvp_state b2;
         CHECK(bl && pvp_load(&b2, blk, bl) == 0 && b2.arena == PVP_WHERE_BASE && pvp_hash(&b2) == pvp_hash(&b) && b2.end_cell[2][0] == 170);
         blk[6 + 32 + 8] = 3; CHECK(pvp_load(&b2, blk, bl) == -1);                     /* arena byte 3: refused */
+        /* E4: nobody starts the fight alone: a proposal (any team player) pauses (vote open); the countdown starts only when
+           every team player agreed (players 0, 1, 2 have teams; 3 has none and has no say); Not yet closes it; Cancel stops
+           an agreed countdown */
+        CHECK(simple(&b, 3, PVP_OP_PROPOSE, NULL, 0) == PVP_ERR_PHASE && !b.vote_open);
+        CHECK(simple(&b, 1, PVP_OP_PROPOSE, NULL, 0) == PVP_OK && pvp_vote_open(&b) && b.vote_by == 1 && !b.countdown_at);
+        CHECK(simple(&b, 0, PVP_OP_AGREE, NULL, 0) == PVP_OK && pvp_vote_open(&b) && !b.countdown_at);   /* player 2 not yet */
+        CHECK(simple(&b, 2, PVP_OP_NOTYET, NULL, 0) == PVP_OK && !pvp_vote_open(&b) && !b.countdown_at);
+        CHECK(simple(&b, 0, PVP_OP_AGREE, NULL, 0) == PVP_ERR_PHASE);
+        CHECK(simple(&b, 0, PVP_OP_PROPOSE, NULL, 0) == PVP_OK && simple(&b, 1, PVP_OP_AGREE, NULL, 0) == PVP_OK && !b.countdown_at);
+        CHECK(simple(&b, 2, PVP_OP_AGREE, NULL, 0) == PVP_OK && !pvp_vote_open(&b) && b.countdown_at == b.ticks + 1 && b.cd_ticks == PVP_AGREE_COUNTDOWN_TICKS);
+        { uint8_t vb[2048]; size_t vn = pvp_save(&b, vb, sizeof vb); pvp_state vl; CHECK(pvp_load(&vl, vb, vn) == 0 && !memcmp(&vl, &b, sizeof vl)); }
+        for (int t = 0; t < 100; t++) { pvp_on_tick(&b); CHECK(pvp_place_done(&b) == 0); }
+        CHECK(simple(&b, 2, PVP_OP_CANCEL, NULL, 0) == PVP_OK && !b.countdown_at);
+        for (int t = 0; t < PVP_AGREE_COUNTDOWN_TICKS + 5; t++) pvp_on_tick(&b);
+        CHECK(!b.countdown_at && !pvp_fighting(&b));                                   /* no countdown without agreement (the glue calls place_done only with one) */
+        CHECK(simple(&b, 2, PVP_OP_PROPOSE, NULL, 0) == PVP_OK && simple(&b, 0, PVP_OP_AGREE, NULL, 0) == PVP_OK && simple(&b, 1, PVP_OP_AGREE, NULL, 0) == PVP_OK && b.countdown_at);
+        { int t = 0; for (; t < PVP_AGREE_COUNTDOWN_TICKS + 2 && !pvp_fighting(&b); t++) { pvp_on_tick(&b); pvp_place_done(&b); } CHECK(pvp_fighting(&b) && t == PVP_AGREE_COUNTDOWN_TICKS); }
+        CHECK(simple(&b, 0, PVP_OP_PROPOSE, NULL, 0) == PVP_ERR_PHASE);
         for (int t = 0; t < PVP_COUNTDOWN_TICKS + 2 && !pvp_fighting(&b); t++) { pvp_on_tick(&b); pvp_place_done(&b); }
         CHECK(pvp_fighting(&b) && b.fight_start);
         for (int i = 0; i < b.nunits; i++) if (b.units[i].team == PVP_TEAM_BLUE) pvp_mark_out(&b, b.units[i].guid);
