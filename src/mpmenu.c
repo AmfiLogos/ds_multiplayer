@@ -874,7 +874,7 @@ static void observe(mpm_obs *o) {
         static bool (*keydown)(int); static int looked;
         if (!looked) { looked = 1; keydown = (bool (*)(int))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::GetKeyDownInt(UnityEngine.KeyCode)");
                        rig_log("mpmenu: Escape key check %s", keydown ? "ready (Input.GetKeyDownInt)" : "NOT available"); }
-        o->escape = (keydown && keydown(27)) || test_escape ? 1 : 0;        /* KeyCode.Escape */
+        o->escape = ((keydown && keydown(27)) || test_escape) && !chat_typing && !chat_close_frames ? 1 : 0;   /* KeyCode.Escape (the open chat takes it: chatfix A6) */
         test_escape = 0;
     }
     if (host_failed) o->failed = 1;
@@ -3041,7 +3041,11 @@ static void hist_del(int k) {
 #define CH_HIST 100
 #define CH_IDLE 5
 #define CH_BOX_LINES 9
-static struct { char text[300]; double t; int link; } chist[CH_HIST]; static int nch;   /* link: ui_game's id (pings), 0 = plain */
+#define CH_TEXT 640
+static struct { char text[CH_TEXT]; double t; int link, id, font, missing; unsigned gen; float hi, hb; } chist[CH_HIST]; static int nch, ch_serial;
+/* link: ui_game's id (pings), 0 = plain. id: serial (slots keep what they show). font: index in the chat fonts (-1 not
+   chosen yet, gen = the fonts' generation); missing: characters no game font has, shown as '?'. hi / hb: measured text
+   height in the idle lines (410 wide) / the open box (446 wide), 0 = not measured */
 static char chat_buf[DSNET_CHAT_MAX + 1];
 static uintptr_t h_ch_view, h_ch_root, h_ch_box, h_ch_idle[CH_IDLE], h_ch_idlebg[CH_IDLE], h_ch_lines[CH_BOX_LINES], h_ch_input, h_ch_hint, h_ch_field, h_ch_typing, h_ch_typingbg;
 static char typing_shown[200];                           /* test status: the "is typing" line now shown */
@@ -3060,7 +3064,7 @@ void utf16_to_utf8(Obj s, char *out, size_t cap) {             /* typed text: ke
     }
     out[n] = 0;
 }
-static char test_chat_in[256]; static int test_chat_enter, test_chat_escape, test_chat_open;
+static char test_chat_in[1024]; static int test_chat_enter, test_chat_escape, test_chat_open;
 static bool (*o_textfocus)(void *);
 /* hotkeys off while typing, and while the lobby Rules panel is open (its Escape must not open the game's Esc menu) */
 static int teams_modal(void) {                                             /* teams lane: Teams window / proposal summary / stock step open */
@@ -3100,7 +3104,8 @@ __attribute__((visibility("default"))) void mpmenu_chat_config_get(int *fade_s, 
 static double mono_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
 static void chat_add(const char *rich) {
     if (nch == CH_HIST) { memmove(&chist[0], &chist[1], sizeof chist[0] * (CH_HIST - 1)); nch--; }
-    snprintf(chist[nch].text, sizeof chist[nch].text, "%s", rich); chist[nch].t = mono_s(); chist[nch].link = 0; nch++;
+    snprintf(chist[nch].text, sizeof chist[nch].text, "%s", rich); dsi_utf8_fix_end(chist[nch].text);
+    chist[nch].t = mono_s(); chist[nch].link = 0; chist[nch].id = ++ch_serial; chist[nch].font = -1; chist[nch].gen = 0; chist[nch].hi = chist[nch].hb = 0; chist[nch].missing = 0; nch++;
     chat_scroll = 0;
 }
 /* ui lane (pings, lan_v10, dlsym): a system line in the chat, faded like any line. link != 0: a left click on the shown
@@ -3137,7 +3142,7 @@ static mpc_bucket modch_rx[32]; static double modch_rx_logged;   /* per sender: 
 static void chat_pull(dsnet_client *c) {
     dsnet_chat_msg m;
     while (dsnet_chat_poll(c, &m)) {
-        char t[300], body[260]; chat_esc(m.text, body, sizeof body);
+        char t[CH_TEXT], body[CH_TEXT - 140]; chat_esc(m.text, body, sizeof body);
         const char *col = ui_player_color(m.player);
         char mod[MP_CHAT_MOD_MAX + 1]; const char *mtext;
         if (m.kind == DSNET_CHAT_TEXT && !m.watching && mpc_decode(m.text, mod, sizeof mod, &mtext)) {   /* a mod's broadcast line */
@@ -3183,12 +3188,155 @@ int mpmenu_mod_chat(const char *mod_name, const char *text, int flags) {
     if (mpc_encode(m, x, w, sizeof w) < 0) return MP_CHAT_BAD_ARGS;
     return dsnet_chat_send(c, w) ? MP_CHAT_NOT_SENT : MP_CHAT_SHOWN;      /* shown here when the server's copy comes back */
 }
-static Obj chat_parent(void) {                            /* the HUD's root canvas (CampaignInfoView's root) */
-    static uintptr_t hv; static void *kv;
-    Obj v = find_view_x(&hv, &kv, "Refactor.UI", "CampaignInfoView", false);
-    static void *mr; if (!mr) mr = mth("UnityEngine", "Transform", "get_root", 0);
-    return v && mr ? MCALL(mr, Obj, Obj, const void *)(u_tr(v), mr) : NULL;
+/* chatfix (owner 2026-10-20, v0.1.21 A6 + A7): the chat lives on its OWN screen canvas, kept across scenes
+ * (DontDestroyOnLoad), so it works everywhere a session runs (lobby, connecting, guest waiting, preparation, PvP prep,
+ * the world) and draws ABOVE the game's windows (Teams 32000, our panel's top layer 32020) but under the tooltip /
+ * notice boxes (32040+, ui_tip.c and the loader kit). Scaler as the game's UI: 1920 x 1080 reference, by height, so
+ * the canvas is 1080 high (the places below are the same canvas units as before). */
+#define CH_SORT 32030
+static uintptr_t h_ch_cv;
+static int ch_cv_order = -1;
+static Obj chat_parent(void) {
+    Obj cv = u_gc_get(h_ch_cv);
+    if (u_alive(cv)) return u_tr(cv);
+    static int64_t tried = -1000; if (frames - tried < 60) return NULL;   /* a failed build: again in 2 s */
+    tried = frames;
+    void *kg = class_by_name("UnityEngine", "GameObject"); Obj tcv = type_obj("UnityEngine", "Canvas"), tsc = type_obj("UnityEngine.UI", "CanvasScaler"),
+         tgr = type_obj("UnityEngine.UI", "GraphicRaycaster");
+    static void *mmode, *morder, *msm, *mref, *mmatch, *mddol;
+    if (!mmode) { mmode = mth("UnityEngine", "Canvas", "set_renderMode", 1); morder = mth("UnityEngine", "Canvas", "set_sortingOrder", 1);
+                  msm = mth("UnityEngine.UI", "CanvasScaler", "set_uiScaleMode", 1); mref = mth("UnityEngine.UI", "CanvasScaler", "set_referenceResolution", 1);
+                  mmatch = mth("UnityEngine.UI", "CanvasScaler", "set_matchWidthOrHeight", 1); mddol = mth("UnityEngine", "Object", "DontDestroyOnLoad", 1); }
+    if (!kg || !tcv || !tsc || !tgr || !mmode || !morder) { rig_log("mpmenu: chat canvas: Unity types missing"); return NULL; }
+    Obj go = F(0x6F96CC, Obj (*)(void *))(kg);                                  /* il2cpp_object_new */
+    if (!go) return NULL;
+    F(0x50F4674, void (*)(Obj, Obj, void *))(go, u_str("DSMP_Chat"), NULL);     /* GameObject..ctor(string) */
+    if (!u_alive(go)) return NULL;
+    F(0x50F3204, void (*)(Obj, int, void *))(go, 5, NULL);                      /* layer UI */
+    cv = F(0x50F2B90, Obj (*)(Obj, Obj, void *))(go, tcv, NULL);                /* AddComponent(Canvas): RectTransform too */
+    if (!u_alive(cv)) { rig_log("mpmenu: chat canvas: AddComponent(Canvas) failed"); return NULL; }
+    MCALL(mmode, void, Obj, int, const void *)(cv, 0, mmode);                  /* ScreenSpaceOverlay */
+    MCALL(morder, void, Obj, int, const void *)(cv, CH_SORT, morder); ch_cv_order = CH_SORT;
+    Obj sc = F(0x50F2B90, Obj (*)(Obj, Obj, void *))(go, tsc, NULL);
+    if (u_alive(sc) && msm && mref && mmatch) { MCALL(msm, void, Obj, int, const void *)(sc, 1, msm);   /* ScaleWithScreenSize */
+        MCALL(mref, void, Obj, V2, const void *)(sc, (V2){ 1920, 1080 }, mref); MCALL(mmatch, void, Obj, float, const void *)(sc, 1.0f, mmatch); }
+    F(0x50F2B90, Obj (*)(Obj, Obj, void *))(go, tgr, NULL);                     /* clicks on the plates are UI clicks */
+    if (mddol) MCALL(mddol, void, Obj, const void *)(go, mddol);
+    u_gc_free(h_ch_cv); h_ch_cv = u_gc_new(cv);
+    rig_log("mpmenu: chat canvas %p (sorting order %d, kept across scenes)", cv, CH_SORT);
+    return u_tr(cv);
 }
+/* chat fonts (A5): the language's body font first, then the game's own body fonts of the other scripts
+ * (LanguageSetting.GetFont(EasyRead, Japanese / Chinese / Korean / Russian)). A line takes the first font that has all its
+ * characters (TMP_FontAsset.HasCharacter with its fallbacks); a character no game font has (emoji) is shown as '?'
+ * (TMP would draw an empty box). */
+#define CH_FONTS 6
+static uintptr_t h_chf[CH_FONTS]; static int nchf; static unsigned chf_gen;   /* 0 = not built */
+static char chf_names[CH_FONTS][48];
+static void chat_fonts(void) {
+    if (chf_gen && chf_gen == dsi_generation() + 1 && nchf) return;
+    body_material(); Obj b = u_gc_get(h_body_font);
+    if (!u_alive(b)) return;
+    for (int i = 0; i < nchf; i++) u_gc_free(h_chf[i]);
+    nchf = 0; h_chf[nchf] = u_gc_new(b); str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(b, NULL), chf_names[nchf], sizeof chf_names[0]); nchf++;
+    static void *mi2; if (!mi2 && ls_ready()) mi2 = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetFont", 2);
+    static const int langs[] = { 7, 5, 6, 1, 4 };                              /* LanguageType Japanese, ChineseSimplified, ChineseTraditional, Korean, Russian */
+    for (int l = 0; l < 5 && mi2 && ls_ready() && *(void **)*(void **)((char *)ls_klass + 0xB8); l++) {
+        Obj f = MCALL(mi2, Obj, int32_t, int32_t, const void *)(0, langs[l], mi2);
+        if (!u_alive(f) || nchf >= CH_FONTS) continue;
+        int dup = 0; for (int i = 0; i < nchf; i++) dup |= u_gc_get(h_chf[i]) == f;
+        if (dup) continue;
+        h_chf[nchf] = u_gc_new(f); str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(f, NULL), chf_names[nchf], sizeof chf_names[0]); nchf++;
+    }
+    chf_gen = dsi_generation() + 1;
+    rig_log("mpmenu: chat fonts: %d (%s, %s, %s, %s, %s, %s)", nchf, chf_names[0], nchf > 1 ? chf_names[1] : "-", nchf > 2 ? chf_names[2] : "-",
+            nchf > 3 ? chf_names[3] : "-", nchf > 4 ? chf_names[4] : "-", nchf > 5 ? chf_names[5] : "-");
+}
+/* TMP_FontAsset.HasCharacter(char, fallbacks, add to a dynamic atlas). Never HasCharacter_Internal: it records the fonts
+   it searched in a static set that only the public calls reset (a null set threw at the title; a stale one skipped the
+   fallbacks: Japanese came out as '?'). A character above U+FFFF (emoji): the font's own table only. */
+static bool ch_has(Obj font, uint32_t cp) {
+    if (!u_alive(font)) return false;
+    if (cp > 0xFFFF) return F(0x4EEE500, bool (*)(Obj, int32_t, void *))(font, (int32_t)cp, NULL);
+    return F(0x4EEE580, bool (*)(Obj, uint16_t, bool, bool, void *))(font, (uint16_t)cp, true, true, NULL);
+}
+static uint32_t ch_utf8(const unsigned char *s, int *len) {                   /* one UTF-8 character (a bad byte = itself, 1 byte) */
+    uint32_t c = s[0];
+    int n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+    for (int i = 1; i < n; i++) if ((s[i] & 0xC0) != 0x80) { n = 1; break; }
+    if (n == 2) c = (c & 0x1F) << 6 | (s[1] & 63);
+    else if (n == 3) c = (c & 0x0F) << 12 | (s[1] & 63) << 6 | (s[2] & 63);
+    else if (n == 4) c = (c & 0x07) << 18 | (s[1] & 63) << 12 | (s[2] & 63) << 6 | (s[3] & 63);
+    *len = n; return c;
+}
+/* characters of rich text t that font lacks (tags skipped; "<" + U+200B is a player's literal '<'). fix: write them as
+   '?' (joiners and variation selectors of emoji are dropped). Returns the count. */
+static int ch_missing(char *t, Obj font, int fix) {
+    char out[CH_TEXT]; size_t o = 0; int miss = 0;
+    const unsigned char *s = (const unsigned char *)t;
+    while (*s && o + 5 < sizeof out) {
+        if (*s == '<' && !(s[1] == 0xE2 && s[2] == 0x80 && s[3] == 0x8B)) {     /* a tag: copied, never checked */
+            const unsigned char *e = (const unsigned char *)strchr((const char *)s, '>');
+            if (e) { size_t n = (size_t)(e - s + 1); if (o + n + 1 >= sizeof out) break; memcpy(out + o, s, n); o += n; s = e + 1; continue; }
+        }
+        int n; uint32_t cp = ch_utf8(s, &n);
+        int skip = cp < 0x20 || cp == 0x200B;
+        int joiner = cp == 0x200D || (cp >= 0xFE00 && cp <= 0xFE0F);
+        if (!skip && !ch_has(font, cp)) { miss += !joiner; if (fix) { if (!joiner) out[o++] = '?'; s += n; continue; } }
+        memcpy(out + o, s, (size_t)n); o += (size_t)n; s += n;
+    }
+    out[o] = 0;
+    if (fix) snprintf(t, CH_TEXT, "%s", out);
+    return miss;
+}
+static int ch_pick(char *t, int fix, int *missing) {                         /* the font for this text (index), '?' for the rest */
+    chat_fonts(); if (!nchf) { if (missing) *missing = 0; return -1; }
+    int best = 0, bm = 1 << 30;
+    for (int i = 0; i < nchf; i++) { int m = ch_missing(t, u_gc_get(h_chf[i]), 0); if (m < bm) { bm = m; best = i; } if (!m) break; }
+    if (bm > 0 && fix) ch_missing(t, u_gc_get(h_chf[best]), 1);
+    if (missing) *missing = bm;
+    return best;
+}
+static void ch_prepare(int k) {
+    chat_fonts();
+    if (!nchf || (chist[k].font >= 0 && chist[k].gen == chf_gen)) return;
+    chist[k].font = ch_pick(chist[k].text, 1, &chist[k].missing); chist[k].gen = chf_gen; chist[k].hi = chist[k].hb = 0;
+    if (chist[k].missing) rig_log("mpmenu: chat line %d: %d character(s) no game font has, shown as '?'", chist[k].id, chist[k].missing);
+}
+static void ch_font_set(Obj t, int fi) {                                      /* font + its own plain material */
+    if (!mm_is(t, K_TMP) || fi < 0 || fi >= nchf) return;
+    if (fi == 0) { txt_body(t); return; }
+    Obj f = u_gc_get(h_chf[fi]); if (!u_alive(f)) return;
+    F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);
+    Obj m = font_material(f);
+    static void *ms; if (!ms) ms = mth("TMPro", "TMP_Text", "set_fontSharedMaterial", 1);
+    if (m && ms) MCALL(ms, void, Obj, Obj, const void *)(t, m, ms);
+}
+/* a chat text: wraps at its width, keeps its size (no text fit: the line grows instead, A1 / A2), no margins (A3) */
+typedef struct { float x, y, z, w; } ch_v4;
+static void ch_text_style(Obj t, float size) {
+    if (!mm_is(t, K_TMP)) return;
+    fit_e *e = fit_find(t, 0); if (e) fit_drop(e);
+    fit_set(t, 0, size, 1);
+    static void *mmg; if (!mmg) mmg = mth("TMPro", "TMP_Text", "set_margin", 1);
+    if (mmg) MCALL(mmg, void, Obj, ch_v4, const void *)(t, (ch_v4){ 0, 0, 0, 0 }, mmg);
+}
+static float ch_measure(Obj t, float w) {                                     /* height of t's text wrapped at w */
+    if (!fit_methods()) return 20;
+    fit_v2 v = fit_pref(t, w);
+    return v.y > 1 && v.y < 2000 ? v.y : 20;
+}
+/* a slot (idle line / box line) shows line k: text and font only when they changed */
+static void ch_slot_show(Obj t, int *slot_id, int *slot_font, int k) {
+    if (*slot_font != chist[k].font) { ch_font_set(t, chist[k].font); *slot_font = chist[k].font; *slot_id = 0; }
+    if (*slot_id != chist[k].id) { tmp_set(t, chist[k].text); *slot_id = chist[k].id; }
+}
+static int ch_idle_id[CH_IDLE], ch_idle_font[CH_IDLE], ch_box_id[CH_BOX_LINES], ch_box_font[CH_BOX_LINES], ch_typing_font = -1, ch_field_font = -1;
+static int ch_box_oldest;                                                     /* the open box shows the oldest line: no more scrolling up */
+static int ch_over_now, ch_wheel_blocked;                                     /* the pointer is over the chat (this frame); wheel reads blocked */
+#ifdef TEAMS_MOUSE_TEST
+static V2 ch_fake_wheel; static int ch_fake_wheel_n;                         /* test: a fake mouse wheel for n frames */
+#endif
 static void chat_build(Obj parent) {
     static uintptr_t hc; static void *kc;
     Obj cn = find_view_x(&hc, &kc, "Refactor.UI", "CommonNoticeView", true);
@@ -3201,13 +3349,13 @@ static void chat_build(Obj parent) {
     Obj R = u_tr(root);
     for (int i = 0; i < CH_IDLE; i++) {                                    /* idle lines: a soft plate + the text */
         Obj bg = mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 0.7f }, 0, 0, 430, 26);
-        Obj t = mk_txt(tpl_txt, R, 0, 16, 513, 0, 0, 0, 410, 26, C_MAIN);
+        Obj t = mk_txt(tpl_txt, R, 0, 16, 513, 1, 0, 0, 410, 26, C_MAIN); ch_text_style(t, 16); ch_idle_id[i] = 0; ch_idle_font[i] = -1;
         u_gc_free(h_ch_idlebg[i]); h_ch_idlebg[i] = bg ? u_gc_new(bg) : 0; u_gc_free(h_ch_idle[i]); h_ch_idle[i] = t ? u_gc_new(t) : 0;
         if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);   /* lead lan_v10: a click on a shown chat line is a UI click
                                                                                                    (IsPointerOverUI sees it), never a world click; the plate is off when the line has faded */
     }
     { Obj bg = mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 0.7f }, 0, 0, 430, 22);      /* "<Name> is typing..." */
-      Obj t = mk_txt(tpl_txt, R, 0, 14, 513, 0, 0, 0, 410, 22, C_SUB);
+      Obj t = mk_txt(tpl_txt, R, 0, 14, 513, 1, 0, 0, 410, 22, C_SUB); ch_text_style(t, 14); ch_typing_font = -1;
       u_gc_free(h_ch_typingbg); h_ch_typingbg = bg ? u_gc_new(bg) : 0; u_gc_free(h_ch_typing); h_ch_typing = t ? u_gc_new(t) : 0;
       if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);   /* a UI click too */
       u_active(bg, false); u_active(t, false); }
@@ -3222,7 +3370,7 @@ static void chat_build(Obj parent) {
         if (hi) tmp_set(hi, TR("Right-click and drag to move"));
         u_gc_free(h_ch_hint); h_ch_hint = hi ? u_gc_new(hi) : 0;
         for (int i = 0; i < CH_BOX_LINES; i++) {
-            Obj l = mk_txt(tpl_txt, B, 0, 15, 513, 0, 0, 135 - 40 - 10 - 20 * i, 446, 20, C_MAIN);
+            Obj l = mk_txt(tpl_txt, B, 0, 15, 513, 1, 0, 135 - 40 - 10 - 20 * i, 446, 20, C_MAIN); ch_text_style(l, 15); ch_box_id[i] = 0; ch_box_font[i] = -1;
             u_gc_free(h_ch_lines[i]); h_ch_lines[i] = l ? u_gc_new(l) : 0;
         }
         mk_img(tpl_img, B, -1, C_LINE, 0, -135 + 46, 466, 1);
@@ -3242,6 +3390,7 @@ static void chat_build(Obj parent) {
             static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
             Obj tc = mtc ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
             if (u_alive(tc)) { txt_body(tc); txt_style(tc, 0, 15, 513, 0); txt_color(tc, C_MAIN); }
+            ch_field_font = -1;
             Obj ph = F(0x4EFB9CC, Obj (*)(Obj, void *))(f, NULL); if (u_alive(ph) && strstr(cls_name(ph), "Text")) tmp_set(ph, "");
             F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL);
             u_active(in, false);                                            /* the field draws the text and the caret */
@@ -3269,21 +3418,51 @@ static void chat_focus(void) {
     if (u_alive(es) && mset) MCALL(mset, void, Obj, Obj, const void *)(es, u_go(f), mset);
     if (ma) MCALL(ma, void, Obj, const void *)(f, ma);
 }
+static float ch_wheel_y(void (*wheel)(V2 *)) {                               /* this frame's wheel (the injected icall: not blocked) */
+    V2 d = { 0, 0 }; if (wheel) wheel(&d);
+#ifdef TEAMS_MOUSE_TEST
+    if (ch_fake_wheel_n > 0) d = ch_fake_wheel;
+#endif
+    return d.y;
+}
+/* A4 (owner 2026-10-20: the wheel scrolled the chat AND zoomed the map): while the pointer is over the chat, the game's
+   managed Input.mouseScrollDelta reads 0. Its callers: MouseIdleState.DetectWheelInput (the camera zoom; on Windows inlined
+   into MouseIdleState.HandleInput, which calls this getter too), EventSystem / UI scroll, Unity's debug UI. The chat reads
+   the wheel through the icall directly, so it still scrolls. */
+static V2 (*o_scroll_delta)(void *);
+static V2 h_scroll_delta(void *mi) {
+    V2 d = o_scroll_delta(mi);
+#ifdef TEAMS_MOUSE_TEST
+    if (ch_fake_wheel_n > 0) d = ch_fake_wheel;
+#endif
+    if ((d.x != 0 || d.y != 0) && ch_over_now && chat_on) { ch_wheel_blocked++; return (V2){ 0, 0 }; }
+    return d;
+}
 static void chat_frame(const mpm_obs *o) {
     mp_session *ss = mp_game_session(); dsnet_client *c = ss ? mp_client(ss) : NULL;
+#ifdef TEAMS_MOUSE_TEST
+    if (ch_fake_wheel_n > 0) ch_fake_wheel_n--;
+#endif
+    ch_over_now = 0;
     if (chat_close_frames > 0) chat_close_frames--;
     if (!c) { chat_typing = 0; Obj r = u_gc_get(h_ch_root); if (u_alive(r)) u_active(r, false); return; }
     chat_pull(c);
-    if (o->scene != 2 || !o->campaign_ready) return;
+    /* A6: every scene of a session (title: connecting / waiting for the host; lobby; loading; the world; PvP prep), on our
+       own canvas. The templates (CommonNoticeView, the Rename popup) exist from the title on. */
     Obj parent = chat_parent(); if (!parent) return;
     if (u_gc_get(h_ch_view) != parent || !u_alive(u_gc_get(h_ch_root))) {
+        static int64_t tried = -1000; if (frames - tried < 60) return;     /* templates not loaded yet: again in 2 s */
+        tried = frames;
         chat_build(parent);
-        Obj f = u_gc_get(h_ch_field), bx = u_gc_get(h_ch_box);              /* rebuilt while typing (resync, reload): keep the draft open */
+        if (!u_alive(u_gc_get(h_ch_root))) return;
+        Obj f = u_gc_get(h_ch_field), bx = u_gc_get(h_ch_box);              /* rebuilt while typing: keep the draft open */
         if (chat_typing && u_alive(f) && bx) { u_active(bx, true); F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(chat_buf), NULL); chat_focus(); }
     }
     Obj root = u_gc_get(h_ch_root); if (!u_alive(root)) return;
     u_active(root, chat_on != 0);
-    if (!chat_on) return;
+    if (!chat_on) { chat_typing = 0; return; }
+    { Obj cv = u_gc_get(h_ch_cv); if (u_alive(cv) && ch_cv_order != CH_SORT) { static void *mo; if (!mo) mo = mth("UnityEngine", "Canvas", "set_sortingOrder", 1);
+                                                                          if (mo) { MCALL(mo, void, Obj, int, const void *)(cv, CH_SORT, mo); ch_cv_order = CH_SORT; } } }
     /* keys (icalls: Input.GetKeyDownInt / get_inputString; tests feed the same paths) */
     static bool (*kd)(int); static Obj (*istr)(void); static bool (*mb)(int); static void (*mpos)(V3 *); static void (*wheel)(V2 *); static int looked;
     if (!looked) { looked = 1; void *(*ri)(const char *) = F(0x6F8B90, void *(*)(const char *));
@@ -3295,8 +3474,16 @@ static void chat_frame(const mpm_obs *o) {
     int enter = (kd && (kd(13) || kd(271))) || test_chat_enter, esc = (kd && kd(27)) || test_chat_escape;
     test_chat_enter = test_chat_escape = 0;
     if (!chat_typing) {
-        int other_text = o_textfocus && o_textfocus(NULL);                /* the game's own text field has the keys */
-        if ((enter || test_chat_open) && !o->esc_open && !other_text) {
+        /* A6: Enter opens the chat in the Esc menu too: the host's lobby IS that menu (popup_activate). Not while another
+           text field has the keys (the game's, or one of ours: name / address on the title pages) */
+        int other_text = o_textfocus && o_textfocus(NULL);
+        if (!other_text) { static void *mcur, *msel; if (!mcur) { mcur = mth("UnityEngine.EventSystems", "EventSystem", "get_current", 0); msel = mth("UnityEngine.EventSystems", "EventSystem", "get_currentSelectedGameObject", 0); }
+            Obj es = mcur ? MCALL(mcur, Obj, const void *)(mcur) : NULL, sel = u_alive(es) && msel ? MCALL(msel, Obj, Obj, const void *)(es, msel) : NULL;
+            Obj tin = type_obj("TMPro", "TMP_InputField");
+            Obj fi = u_alive(sel) && tin && mm_is(sel, K_GO) ? F(0x50EDAA8, Obj (*)(Obj, Obj, void *))(sel, tin, NULL) : NULL;   /* GameObject.GetComponent(Type) */
+            static void *mfoc; if (!mfoc) mfoc = mth("TMPro", "TMP_InputField", "get_isFocused", 0);
+            if (u_alive(fi) && fi != u_gc_get(h_ch_field) && mfoc && MCALL(mfoc, bool, Obj, const void *)(fi, mfoc)) other_text = 1; }
+        if ((enter || test_chat_open) && !other_text) {
             chat_typing = 1; chat_buf[0] = 0; chat_scroll = 0; enter = 0;
             Obj f = u_gc_get(h_ch_field);
             if (u_alive(f)) { F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL); chat_focus(); }
@@ -3307,10 +3494,23 @@ static void chat_frame(const mpm_obs *o) {
         if (!enter && !esc) chat_focus();                                   /* keeps the keyboard while typing (a click on the world took it) */
         if (u_alive(f)) {                                                  /* the field holds the text; tests write into it */
             if (test_chat_in[0]) { char cur[DSNET_CHAT_MAX + 1]; utf16_to_utf8(F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL), cur, sizeof cur);
-                                   char nw[512]; snprintf(nw, sizeof nw, "%s%s", cur, test_chat_in); F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(nw), NULL); test_chat_in[0] = 0; }
-            utf16_to_utf8(F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL), chat_buf, sizeof chat_buf);
+                                   char nw[1024]; snprintf(nw, sizeof nw, "%s%s", cur, test_chat_in); F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(nw), NULL); test_chat_in[0] = 0; }
+            /* A5: the line is sent as UTF-8, at most DSNET_CHAT_MAX bytes (accented / Cyrillic letters are 2 bytes, CJK 3):
+               a longer text is cut back in the field at a whole character, so what the player sees is what is sent */
+            char all[1024]; utf16_to_utf8(F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL), all, sizeof all);
+            snprintf(chat_buf, sizeof chat_buf, "%s", all); dsi_utf8_fix_end(chat_buf);
+            if (strlen(all) > strlen(chat_buf)) {
+                F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(chat_buf), NULL);
+                static void *mcp; if (!mcp) mcp = mth("TMPro", "TMP_InputField", "MoveTextEnd", 1);
+                if (mcp) MCALL(mcp, void, Obj, bool, const void *)(f, false, mcp);
+            }
         }
-        { static char last[DSNET_CHAT_MAX + 1]; if (strcmp(last, chat_buf)) { snprintf(last, sizeof last, "%s", chat_buf); if (chat_buf[0]) dsnet_chat_typing(c, 1); } }   /* a key changed the line: "is typing" (dsnet sends at most 1/s) */
+        { static char last[DSNET_CHAT_MAX + 1]; if (strcmp(last, chat_buf)) { snprintf(last, sizeof last, "%s", chat_buf); if (chat_buf[0]) dsnet_chat_typing(c, 1);
+              /* the typed text in a font that has its characters (Japanese typed into a Latin font showed boxes) */
+              char tmp[CH_TEXT]; snprintf(tmp, sizeof tmp, "%s", chat_buf); int fi = ch_pick(tmp, 0, NULL);
+              static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
+              Obj tc = u_alive(f) && mtc ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
+              if (fi >= 0 && fi != ch_field_font && u_alive(tc)) { ch_font_set(tc, fi); ch_field_font = fi; } } }   /* a key changed the line: "is typing" (dsnet sends at most 1/s) */
         char in[256] = ""; if (istr && !u_alive(f)) str_utf8(istr(), in, sizeof in);
         size_t L = strlen(in), T = strlen(test_chat_in); if (T && L + T < sizeof in) { memcpy(in + L, test_chat_in, T + 1); } test_chat_in[0] = 0;
         for (char *q = in; *q; q++) {
@@ -3328,9 +3528,9 @@ static void chat_frame(const mpm_obs *o) {
                               static void *md; if (!md) { md = mth("TMPro", "TMP_InputField", "DeactivateInputField", 1); if (!md) md = mth("TMPro", "TMP_InputField", "DeactivateInputField", 0); }
                               if (md) MCALL(md, void, Obj, bool, const void *)(f, false, md); }
         }
-        if (wheel) { V2 d = { 0, 0 }; wheel(&d); if (d.y > 0) chat_scroll++; else if (d.y < 0 && chat_scroll > 0) chat_scroll--; }
-        if (kd && kd(280)) chat_scroll += 3; if (kd && kd(281)) chat_scroll = chat_scroll > 3 ? chat_scroll - 3 : 0;   /* PageUp / PageDown */
-        int maxs = nch > CH_BOX_LINES ? nch - CH_BOX_LINES : 0; if (chat_scroll > maxs) chat_scroll = maxs;
+        { float wy = ch_wheel_y(wheel); if (wy > 0 && !ch_box_oldest) chat_scroll++; else if (wy < 0 && chat_scroll > 0) chat_scroll--; }
+        if (kd && kd(280) && !ch_box_oldest) chat_scroll += 3; if (kd && kd(281)) chat_scroll = chat_scroll > 3 ? chat_scroll - 3 : 0;   /* PageUp / PageDown */
+        int maxs = nch > 1 ? nch - 1 : 0; if (chat_scroll > maxs) chat_scroll = maxs;
     }
     /* place: bottom-left above the build bar, right of the resource list (canvas x 0..~105), plus the dragged offset.
      * The canvas is 1080 high; its width follows the screen (1663 at 1512x982, 1920 at 16:9). */
@@ -3344,11 +3544,21 @@ static void chat_frame(const mpm_obs *o) {
         u_active(box, chat_typing);
         place(box, bx, by, 470, 270);
         if (chat_typing) {
-            for (int i = 0; i < CH_BOX_LINES; i++) {                      /* newest at the bottom */
-                int k = nch - CH_BOX_LINES - chat_scroll + i; Obj l = u_gc_get(h_ch_lines[i]);
-                if (l) tmp_set(l, k >= 0 && k < nch ? chist[k].text : "");
-                if (l && k >= 0 && k < nch && nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_lines[i]; }
+            /* A1 / A2: the history from the bottom up, each line as high as its wrapped text (newest at the bottom), between
+               the title band (top 95) and the input line (bottom -85); only whole lines */
+            float y = -85, top = 95; int j = 0, k = nch - 1 - chat_scroll; ch_box_oldest = 0;
+            for (; j < CH_BOX_LINES && k >= 0; j++, k--) {
+                Obj l = u_gc_get(h_ch_lines[j]); if (!l) break;
+                ch_prepare(k);
+                ch_slot_show(l, &ch_box_id[j], &ch_box_font[j], k);
+                if (chist[k].hb <= 0) { place(l, 0, 0, 446, 20); chist[k].hb = ch_measure(l, 446); }
+                float h = chist[k].hb;
+                if (y + h > top && j > 0) break;                              /* the next older line does not fit whole */
+                u_active(l, true); place(l, 0, y + h / 2, 446, h); y += h + 2;
+                if (nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_lines[j]; }
             }
+            if (k < 0) ch_box_oldest = 1;
+            for (; j < CH_BOX_LINES; j++) { Obj l = u_gc_get(h_ch_lines[j]); if (l) u_active(l, false); }
             if (!u_alive(u_gc_get(h_ch_field))) {                           /* no field: draw the text + a caret ourselves */
                 char t[DSNET_CHAT_MAX + 64], e[DSNET_CHAT_MAX * 2 + 8]; chat_esc(chat_buf, e, sizeof e);
                 snprintf(t, sizeof t, "%s%s", e, (frames / 15) % 2 ? "|" : " ");
@@ -3358,7 +3568,7 @@ static void chat_frame(const mpm_obs *o) {
     }
     /* "<Name> is typing..." for the others (owner 2026-10-14): one line in their colours; it takes the lowest idle slot
      * (the idle lines move up one) or sits above the open box */
-    int me = dsnet_player_id(c), lift = 0;
+    int me = dsnet_player_id(c); float lift = 0;
     { char line[200] = ""; int k = 0, more = 0; size_t o = 0;
       for (int p = 0; p < DSNET_MAX_PLAYERS; p++) {
           if (p == me || !dsnet_chat_typing_of(c, p)) continue;
@@ -3374,27 +3584,37 @@ static void chat_frame(const mpm_obs *o) {
       u_active(t, k > 0); u_active(bg, k > 0);
       snprintf(typing_shown, sizeof typing_shown, "%s", k ? line : "");
       if (k) {
-          float y = chat_typing ? by + 135 + 14 : by - 135 + 11;
-          place(t, bx - 235 + 10 + 205, y, 410, 22); place(bg, bx, y, 430, 22); tmp_set(t, line);
-          if (!chat_typing) lift = 24;
+          static char shown[200]; static float th = 18;
+          if (strcmp(shown, line) || ch_typing_font < 0) { snprintf(shown, sizeof shown, "%s", line); char tmp[CH_TEXT]; snprintf(tmp, sizeof tmp, "%s", line);
+              int fi = ch_pick(tmp, 1, NULL); if (fi >= 0 && fi != ch_typing_font) { ch_font_set(t, fi); ch_typing_font = fi; }
+              tmp_set(t, tmp); place(t, bx, 0, 410, 22); th = ch_measure(t, 410); }
+          float ph = th + 6 > 22 ? th + 6 : 22;
+          float y = chat_typing ? by + 135 + 4 + ph / 2 : by - 135 + ph / 2;
+          place(t, bx, y, 410, th); place(bg, bx, y, 430, ph);
+          if (!chat_typing) lift = ph + 4;
       }
     }
-    /* idle lines: the newest at the bottom, fading after chat_fade_s (1 s fade) */
+    /* idle lines: the newest at the bottom, each plate as high as its wrapped text (A1 / A2), fading after chat_fade_s */
     double now = mono_s();
-    for (int i = 0; i < CH_IDLE; i++) {
+    { float y = by - 135 + lift;                                            /* bottom of the next plate */
+      for (int i = CH_IDLE - 1; i >= 0; i--) {
         int k = nch - CH_IDLE + i; Obj t = u_gc_get(h_ch_idle[i]), bg = u_gc_get(h_ch_idlebg[i]);
         float a = 0;
         if (!chat_typing && k >= 0 && k < nch) { double age = now - chist[k].t; a = age < chat_fade_s ? 1 : age < chat_fade_s + 1 ? (float)(chat_fade_s + 1 - age) : 0; }
         u_active(t, a > 0); u_active(bg, a > 0);
         if (a > 0) {
-            float y = by - 135 + 13 + lift + 30 * (CH_IDLE - 1 - i);
-            place(t, bx - 235 + 10 + 205, y, 410, 26); place(bg, bx, y, 430, 26);
-            tmp_set(t, chist[k].text);
+            ch_prepare(k);
+            ch_slot_show(t, &ch_idle_id[i], &ch_idle_font[i], k);
+            if (chist[k].hi <= 0) { place(t, bx, 0, 410, 26); chist[k].hi = ch_measure(t, 410); }
+            float th = chist[k].hi, ph = th + 6 > 26 ? th + 6 : 26;
+            place(t, bx, y + ph / 2, 410, th); place(bg, bx, y + ph / 2, 430, ph);
+            y += ph + 4;
             if (nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_idle[i]; }
             if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(t, (Col){ C_MAIN.r, C_MAIN.g, C_MAIN.b, a }, NULL);
             if (mm_is(bg, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(bg, (Col){ 0.133f, 0.125f, 0.145f, 0.7f * a }, NULL);
         }
-    }
+      } }
+    ch_over_now = mpmenu_chat_over();                                       /* A4: Input.mouseScrollDelta reads 0 for the game while set */
     /* linked lines (pings): hover = tooltip, left click = ui_chat_link_click */
     { V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL);                            /* Input.mousePosition */
       int down = F(0x51ACDD0, bool (*)(int, void *))(0, NULL);              /* Input.GetMouseButtonDown(0) */
@@ -4108,6 +4328,7 @@ void mpmenu_install(void) {
     bad |= rig_hook(0x85E50C, (void *)h_case_init, (void **)&o_case_init, "mpmenu SubUI_SettlerNameCase.Init (MP world tag)");
     bad |= rig_hook(0x85ED7C, (void *)h_refresh_load, (void **)&o_refresh_load, "mpmenu SaveLoadView.RefreshLoadPanel (single / multiplayer list)");
     bad |= rig_hook(0xD42BBC, (void *)h_textfocus, (void **)&o_textfocus, "mpmenu KeyInputDispatcher.IsTextInputFocused (chat typing: no hotkeys)");
+    bad |= rig_hook(0x51AD584, (void *)h_scroll_delta, (void **)&o_scroll_delta, "mpmenu Input.get_mouseScrollDelta (0 over the chat: no camera zoom)");
     if (test_mode()) {
         bad |= rig_hook(0x518AEA0, (void *)h_clip_get, (void **)&o_clip_get, "mpmenu GUIUtility.get_systemCopyBuffer (test: file)");
         bad |= rig_hook(0x518AFE0, (void *)h_clip_set, (void **)&o_clip_set, "mpmenu GUIUtility.set_systemCopyBuffer (test: file)");
@@ -4180,8 +4401,10 @@ static int tmp_keys(const char *chars, const char *special) {
     static void *mke, *mpe; if (!mke) { mke = mth("UnityEngine", "Event", "KeyboardEvent", 1); mpe = mth("TMPro", "TMP_InputField", "ProcessEvent", 1); }
     if (!mke || !mpe) { rig_log("mpmenu: test keys: Event.KeyboardEvent %p / ProcessEvent %p missing", mke, mpe); return 0; }
     int n = 0, len = chars ? (int)strlen(chars) : 1;
-    for (int i = 0; i < len; i++) {
-        char one[16]; if (chars) { one[0] = chars[i]; one[1] = 0; if (chars[i] == ' ') snprintf(one, sizeof one, "space"); } else snprintf(one, sizeof one, "%s", special);
+    for (int i = 0; i < len; ) {                                             /* one UTF-8 character per event (accents, Cyrillic, CJK) */
+        char one[16]; int cl = 1;
+        if (chars) { ch_utf8((const unsigned char *)chars + i, &cl); memcpy(one, chars + i, (size_t)cl); one[cl] = 0; if (chars[i] == ' ') snprintf(one, sizeof one, "space"); } else snprintf(one, sizeof one, "%s", special);
+        i += cl;
         Obj ev = MCALL(mke, Obj, Obj, const void *)(u_str(one), mke);
         if (!ev) continue;
         MCALL(mpe, void, Obj, Obj, const void *)(f, ev, mpe); n++;
@@ -4195,10 +4418,10 @@ static int key_inject(const char *chars, int code, const char *via) {
     id pi = ((id (*)(Class, SEL))objc_msgSend)(objc_getClass("NSProcessInfo"), sel_registerName("processInfo"));
     double ts = ((double (*)(id, SEL))objc_msgSend)(pi, sel_registerName("systemUptime"));
     int n = 0, len = chars ? (int)strlen(chars) : 1;
-    for (int i = 0; i < len; i++) {
-        char one[8]; int kc;
-        if (chars) { one[0] = chars[i]; one[1] = 0; kc = mac_keycode(chars[i]); }
-        else { kc = code; if (kc < 0) return 0; one[0] = kc == 36 ? '\r' : kc == 53 ? 0x1b : kc == 51 ? 0x7f : 0; one[1] = 0; }
+    for (int i = 0; i < len; ) {
+        char one[8]; int kc, cl = 1;
+        if (chars) { ch_utf8((const unsigned char *)chars + i, &cl); memcpy(one, chars + i, (size_t)cl); one[cl] = 0; kc = cl == 1 ? mac_keycode(chars[i]) : 49; i += cl; }
+        else { kc = code; if (kc < 0) return 0; one[0] = kc == 36 ? '\r' : kc == 53 ? 0x1b : kc == 51 ? 0x7f : 0; one[1] = 0; i++; }
         for (int up = 0; up < 2; up++) {
             id ev = ((id (*)(Class, SEL, unsigned long, CGPoint, unsigned long, double, long, id, id, id, BOOL, unsigned short))objc_msgSend)(
                 objc_getClass("NSEvent"), sel_registerName("keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:characters:charactersIgnoringModifiers:isARepeat:keyCode:"),
@@ -4504,11 +4727,21 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         (mm_is(v, K_SMV) ? F(0xF2EEA8, void (*)(Obj, void *))(v, NULL) : (void)0); return strdup("{\"ok\":true}");
     }
     if (!strcmp(cmd, "mpm_chat")) {                                         /* test: {open:1} {text:"..."} {enter:1} {escape:1} (no keyboard here) */
-        double v; char t[256];
+        double v; char t[1024];
         if (jnum(line, "open", &v)) test_chat_open = 1;
         if (jstr(line, "text", t, sizeof t)) snprintf(test_chat_in, sizeof test_chat_in, "%s", t);
         if (jnum(line, "enter", &v)) test_chat_enter = 1;
         if (jnum(line, "escape", &v)) test_chat_escape = 1;
+        if (jstr(line, "probe", t, sizeof t)) {                             /* test: per chat font, characters it lacks (add: 0 / 1) */
+            chat_fonts(); Buf b = {0}; bput(&b, "{\"ok\":true,\"fonts\":[");
+            for (int i = 0; i < nchf; i++) { Obj f = u_gc_get(h_chf[i]); int m = 0, n = 0;
+                for (const unsigned char *q = (const unsigned char *)t; *q; ) { int cl; uint32_t cp = ch_utf8(q, &cl); q += cl; n++; m += !ch_has(f, cp); }
+                bput(&b, "%s{\"name\":", i ? "," : ""); bstr(&b, chf_names[i]); bput(&b, ",\"chars\":%d,\"missing\":%d}", n, m); }
+            bput(&b, "]}"); return b.p;
+        }
+#ifdef TEAMS_MOUSE_TEST
+        if (jnum(line, "wheel", &v)) { double n = 30; jnum(line, "frames", &n); ch_fake_wheel = (V2){ 0, (float)v }; ch_fake_wheel_n = (int)n; }   /* fake wheel (test build) */
+#endif
         if (jnum(line, "defocus", &v)) {                                    /* as if the player clicked the world: the field loses the focus */
             static void *mcur, *mset; if (!mcur) { mcur = mth("UnityEngine.EventSystems", "EventSystem", "get_current", 0); mset = mth("UnityEngine.EventSystems", "EventSystem", "SetSelectedGameObject", 1); }
             Obj es = mcur ? MCALL(mcur, Obj, const void *)(mcur) : NULL; if (u_alive(es) && mset) MCALL(mset, void, Obj, Obj, const void *)(es, NULL, mset);
@@ -4516,7 +4749,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         return strdup("{\"ok\":true}");
     }
     if (!strcmp(cmd, "mpm_key")) {                                         /* test: REAL key / mouse events through AppKit -> Unity's own input */
-        char t[256] = "", k[32] = "", via[16] = "window"; double v;
+        char t[1024] = "", k[32] = "", via[16] = "window"; double v;
         jstr(line, "via", via, sizeof via);
         int n = 0;
         if (jstr(line, "chars", t, sizeof t)) n += key_inject(t, 0, via) + tmp_keys(t, NULL);   /* key codes to Unity + the text to the field */
@@ -4756,6 +4989,21 @@ char *mpmenu_exec(const char *cmd, const char *line) {
                  u_alive(f) && u_alive(sel) && sel == u_go(f), u_alive(f) && mfoc ? (int)MCALL(mfoc, bool, Obj, const void *)(f, mfoc) : -1,
                  u_alive(f) ? AT(f, 0x260, bool) : -1, u_alive(f) ? AT(f, 0x261, bool) : -1, u_alive(f) && mint ? (int)MCALL(mint, bool, Obj, const void *)(f, mint) : -1, u_alive(f) ? AT(f, 0x220, bool) : -1);
             bstr(&b, ft); bput(&b, ",\"input_chars\":%d,\"input_enters\":%d,\"input_a\":%d}", dbg_istr_n, dbg_enter_n, dbg_a_n); }
+          bput(&b, ",\"rows\":[");
+          for (int i = 0; i < nchat_shown; i++) { int k = chat_shown_k[i]; float r[4] = { 0 }, pr[4] = { 0 }; Obj t = u_gc_get(*chat_shown_h[i]); rect_of(t, r);
+              int idle = chat_shown_h[i] >= &h_ch_idle[0] && chat_shown_h[i] < &h_ch_idle[CH_IDLE];
+              if (idle) rect_of(u_gc_get(h_ch_idlebg[chat_shown_h[i] - &h_ch_idle[0]]), pr);
+              float pv = 0; if (fit_methods() && u_on(t)) pv = fit_pref(t, idle ? 410 : 446).y;
+              char tx[CH_TEXT] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
+              bput(&b, "%s{\"k\":%d,\"idle\":%d,\"rect\":[%.0f,%.0f,%.0f,%.0f],\"plate\":[%.0f,%.0f,%.0f,%.0f],\"h\":%.1f,\"pref_h\":%.1f,\"font\":%d,\"missing\":%d,\"text\":",
+                   i ? "," : "", k, idle, r[0], r[1], r[2], r[3], pr[0], pr[1], pr[2], pr[3], idle ? chist[k].hi : chist[k].hb, pv, chist[k].font, chist[k].missing); bstr(&b, tx); bput(&b, "}"); }
+          bput(&b, "],\"fonts\":[");
+          for (int i = 0; i < nchf; i++) { bput(&b, "%s", i ? "," : ""); bstr(&b, chf_names[i]); }
+          { Obj cv = u_gc_get(h_ch_cv); static void *mgo; if (!mgo) mgo = mth("UnityEngine", "Canvas", "get_sortingOrder", 0);
+            bput(&b, "],\"canvas\":{\"alive\":%d,\"order\":%d},\"wheel_blocked\":%d,\"over_now\":%d,\"scroll\":%d,\"oldest\":%d", u_alive(cv),
+                 u_alive(cv) && mgo ? MCALL(mgo, int, Obj, const void *)(cv, mgo) : -1, ch_wheel_blocked, ch_over_now, chat_scroll, ch_box_oldest);
+            Obj cam = F(0x5083208, Obj (*)(void *))(NULL);                  /* Camera.main: the zoom (A4 test) */
+            bput(&b, ",\"cam_ortho\":%.3f", u_alive(cam) ? F(0x50804FC, float (*)(Obj, void *))(cam, NULL) : -1.0f); }
           bput(&b, ",\"fade\":%d,\"pos\":[%.0f,%.0f],\"rect\":[%.0f,%.0f,%.0f,%.0f],\"screen\":[%d,%d]}", chat_fade_s, chat_x, chat_y, cr[0], cr[1], cr[2], cr[3],
                msw ? MCALL(msw, int, const void *)(msw) : 0, msh ? MCALL(msh, int, const void *)(msh) : 0); }
         { rpanel *rp = u_on(u_gc_get(rp_lobby.root)) ? &rp_lobby : &rp_title;

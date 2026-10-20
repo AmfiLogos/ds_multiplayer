@@ -9112,3 +9112,6 @@ field	YamlDotNet.Core.Tokens.Token.<Start>k__BackingField	0x10	0x10	ok
 field	YamlDotNet.Core.Version.<Major>k__BackingField	0x10	0x10	ok		
 field	YamlDotNet.Core.Version.<Minor>k__BackingField	0x14	0x14	ok		
 field	YamlDotNet.Serialization.Nothing.static:Instance	0x0	0x0	ok		
+method	UnityEngine.Input$$get_mouseScrollDelta	0x51ad584	0x3a0ea20	ok		src/mpmenu.c:4326
+method	UnityEngine.Camera$$get_orthographicSize	0x50804fc	0x38f1170	ok		src/mpmenu.c:4994
+method	TMPro.TMP_FontAsset$$HasCharacter	0x4eee500	0x3767cb0	ok		src/mpmenu.c
