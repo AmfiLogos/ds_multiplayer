@@ -15,8 +15,9 @@ Lockstep multiplayer mod for **Dungeon Settlers** (Steam). All players run the s
 - [ds_modloader](https://github.com/AmfiLogos/ds_modloader): the mod loader that starts the game with mods,
   the Mac app and the Windows installer. Its releases page has the installers. Read its README for install steps,
   save folders and bug reports.
-- [ds_custommodes](https://github.com/AmfiLogos/ds_custommodes): the Custom Modes mod. Foreign Expedition and
-  PvP in it need this Multiplayer mod.
+- [ds_custommodes](https://github.com/AmfiLogos/ds_custommodes): the Units Laboratory mod (My Units, Unit Builder,
+  Wiki Build Gallery, Test Fights). It is not needed to play together: Foreign Expedition and PvP are part of this
+  Multiplayer mod, and every player brings units from his own saves.
 
 ## Download
 

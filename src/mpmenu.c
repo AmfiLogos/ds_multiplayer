@@ -780,14 +780,6 @@ static uintptr_t h_title_cog, h_title_more, h_title_sum, h_title_box, h_title_pc
 /* host choice buttons: the small second line (mpm_choice_note) and the label's own place, to move it up over the line */
 static uintptr_t h_cnote[MPM_CHOICES]; static V2 cnote_ap0[MPM_CHOICES]; static float cnote_x[MPM_CHOICES];
 static mpm_choices hcl;                                                     /* (defined with the host choice code below) */
-/* owner 2026-10-17: the Multiplayer page always shows a PvP entry. Without a "pvp" choice (Custom Modes not installed, off
-   or refused) the first free choice slot shows it greyed, with "Needs Units Laboratory" under it; the model gives an
-   unregistered slot no action, so a click does nothing. -1: PvP is registered (its own button) or no slot is free. */
-static int pvp_stub_slot(void) {
-    if (M.state != MPM_TITLE_MENU) return -1;
-    for (int k = 0; k < hcl.n; k++) if (!strcmp(hcl.c[k].id, "pvp")) return -1;
-    return hcl.n < MPM_CHOICES ? hcl.n : -1;
-}
 /* Recent worlds panel (mockup "Multiplayer page: recent worlds"): beside the column on the Multiplayer page */
 static uintptr_t h_rw_root, h_rw_l1[6], h_rw_l2[6], h_rw_ul[6], h_rw_u[6], h_rw_note, h_rw_band, h_rw_line, h_rw_title;
 static uintptr_t h_rw_pf[6][6], h_rw_pi[6][6], h_rw_pp[6][6], h_rw_pn[6][6];   /* + the unit's name beside its box */   /* "Your units": 30x30 frames (copper edge), initial, portrait image */
@@ -1327,19 +1319,16 @@ static void title_sync(const mpm_obs *o) {
     uint64_t vis = mpm_visible(&M, o);
     int sub = vis & ~(1ull << MPB_MULTIPLAYER) ? 1 : 0;                        /* our own menu page: hide the stock buttons */
     if (sub != stock_hidden) stock_set(v, sub);
-    int ps = pvp_stub_slot(), psb = ps >= 0 ? mpm_choice_btn(ps) : MPB_NONE;   /* greyed PvP entry (no Custom Modes) */
     for (int i = 0; i < NT; i++) {
         Obj b = tb(title_ids[i]); if (!b) continue;
         int on = title_ids[i] < 64 ? (int)((vis >> title_ids[i]) & 1) : mpm_is_visible(&M, o, title_ids[i]);   /* Watch: id 68 */
-        if (title_ids[i] == psb) on = 1;
         u_active(b, on);
-        if (on && title_ids[i] == psb) { char l[160]; snprintf(l, sizeof l, "<color=#A69085>%s</color>", TR("PvP")); tmp_set(AT(b, 0x130, Obj), l); }   /* greyed like Join a friend without Steam */
-        else if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
+        if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
     }
     float cnh[MPM_CHOICES] = { 0 };                                         /* host choices: second line on, its height (0 = none) */
     for (int k = 0; k < MPM_CHOICES; k++) {
         Obj b = tb(mpm_choice_btn(k)), nt = u_gc_get(h_cnote[k]);
-        const char *n = !b || !u_on(b) ? NULL : k == ps ? TR("Needs Units Laboratory") : k < hcl.n ? mpm_choice_note(hcl.c[k].id) : NULL;
+        const char *n = !b || !u_on(b) ? NULL : k < hcl.n ? mpm_choice_note(hcl.c[k].id) : NULL;
         if (!u_alive(nt)) continue;
         u_active(nt, n != NULL);
         if (!n) continue;
@@ -3576,7 +3565,6 @@ static void tips_frame(const mpm_obs *o) {
     TIP(tb(MPB_HOST_SAVE), TR("Your Save"), TR("Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer."));
     TIP(tb(MPB_HOST_NEW), TR("New Save"), TR("Start a new campaign and open it to other players as soon as it is created."));
     for (int k = 0; k < hcl.n; k++) TIP(tb(mpm_choice_btn(k)), hcl.c[k].label, hcl.c[k].tip);
-    { int ps = pvp_stub_slot(); if (ps >= 0) TIP(tb(mpm_choice_btn(ps)), TR("PvP"), TR("Teams of players fight each other. Install and turn on the Units Laboratory mod to play it.")); }
     TIP(tb(MPB_HOST_START), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Prepares the world for this mode and opens the lobby. Friends join you there."));
     TIP(tb(MPB_JOIN_ADDR), TR("Join by Address"), TR("Join a friend's world with their address. Use it without Steam, or on the same home network."));
     TIP(tb(MPB_JOIN_FRIEND), TR("Join a Friend on Steam"), TR("Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."));
@@ -3979,17 +3967,11 @@ static void title_teardown(void) {
     for (int i = 0; i < TAG_ROWS; i++) if (tcase[i].rm) { destroy_go(u_gc_get(tcase[i].rm)); u_gc_free(tcase[i].rm); tcase[i].rm = 0; }   /* "Remove tag" (rows redo it) */
     cp_drawn = 0;
 }
-/* our own placeholder host choice (Custom Modes registers the same id with its start: then it is theirs); again on a language change */
-static void own_choice_register(void) {
-    for (int k = 0; k < hcl.n; k++) if (!strcmp(hcl.c[k].id, "foreign-expedition") && (hcl.c[k].v2 || hcl.c[k].on_start)) return;   /* the mod's own */
-    mpmenu_register_host_choice("foreign-expedition", TR("Foreign Expedition"), TR("Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home."), NULL, NULL);
-}
 static void lang_poll(void) {
     if (!ls_ready() || !ls_lang_mi) return;                                 /* before il2cpp / the class: English */
     int v = MCALL(ls_lang_mi, int32_t, const void *)(ls_lang_mi);
     if (!dsi_set_lang(v)) return;
     rig_log("mpmenu: i18n: game language %d = %s (%d texts, %d dropped as unsafe)", v, dsi_code(), dsi_loaded(), dsi_dropped());
-    own_choice_register();
     if (scene() == 1 && h_title_built) title_teardown();
 }
 
@@ -4064,6 +4046,7 @@ int mpmenu_gear_mode(void) { return mp_game_session() ? M.set.gear : -1; }
 /* ui lane (ux #30): the player panel hides while the host's lobby or the guest's waiting panel is up */
 __attribute__((visibility("default"))) int mpmenu_lobby_open(void) { return M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY; }
 
+void mp_modes_start(void);
 void mpmenu_install(void) {
     mp_fog_install();                   /* per-player fog hooks (core next 2026-10-15) */
     mpm_init(&M);
@@ -4081,8 +4064,7 @@ void mpmenu_install(void) {
         bad |= rig_hook(0x518AEA0, (void *)h_clip_get, (void **)&o_clip_get, "mpmenu GUIUtility.get_systemCopyBuffer (test: file)");
         bad |= rig_hook(0x518AFE0, (void *)h_clip_set, (void **)&o_clip_set, "mpmenu GUIUtility.set_systemCopyBuffer (test: file)");
     }
-    /* until the split (M4) the Foreign Expedition code is in this dylib: it takes the third host choice itself */
-    own_choice_register();
+    mp_modes_start();                   /* Foreign Expedition + PvP (mp_modes.c): host choices, hooks, sim commands */
     rig_log("mpmenu: installed (%s)%s", bad ? "HOOK FAILED" : "ok", test_mode() ? ", clipboard -> clipboard.txt" : "");
 }
 

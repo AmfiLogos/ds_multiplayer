@@ -59,9 +59,9 @@ Run each command from the repo root.
 1. Deterministic math library (Mac arm64, Mac x86_64, Windows x64; run once):
    `zsh win/math/build_math.sh`
    Output: `win/math/build/libdsmath_<arch>.a` and `win/math/build/dsmath_test_<arch>`.
-2. Mac mod and Custom Modes:
+2. Mac mod (Foreign Expedition and PvP included) and Units Laboratory:
    `CM_REPO=<your ds_custommodes clone> zsh src/build.sh`
-   Output: `build/dsrig.dylib`, `build/custom-modes.dylib`, `build/custom-modes-mp.dylib`. `OUT=<dir>` builds into another folder.
+   Output: `build/dsrig.dylib`, `build/custom-modes.dylib`. `OUT=<dir>` builds into another folder.
 3. Mac range table (after the Mac dump exists):
    `python3 ext/core_next/tools/gen_ranges.py`
    Output: `det_ranges.tsv` and `methods.tsv` in the output folder of that script. Copy `det_ranges.tsv` to `build/`.

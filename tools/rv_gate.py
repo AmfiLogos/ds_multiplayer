@@ -99,8 +99,8 @@ def files(cm):
                 out.append(os.path.join(d, f))
     port = os.path.join(ROOT, "win", "port")                # absent in the loader's pin export of an older tree
     out += [os.path.join(port, f) for f in sorted(os.listdir(port)) if f.endswith(".c")] if os.path.isdir(port) else []
-    if cm and os.path.isdir(cm):                       # Custom Modes: cm_mp.c + every sources_mp.txt (the mp part)
-        out.append(os.path.join(cm, "cm_mp.c"))
+    if cm and os.path.isfile(os.path.join(cm, "cm_mp.c")):   # an older Units Laboratory tree with an mp part (cm_mp.c + sources_mp.txt);
+        out.append(os.path.join(cm, "cm_mp.c"))                # since the split Foreign Expedition / PvP are in src/ (above)
         for d in sorted(os.listdir(cm)):
             lst = os.path.join(cm, d, "sources_mp.txt")
             if os.path.isfile(lst):
