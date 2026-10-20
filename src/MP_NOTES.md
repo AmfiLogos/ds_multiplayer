@@ -123,8 +123,13 @@ Not tested: anything in the real game (mp_game.c is only syntax checked; the gam
   `steam_ready()` retries every 2 s until libsteam_api is loaded, SteamAPI is up and the user is logged on.
 - Host: dsnet server (port 0) + friends-only lobby (dsmp_proto / dsmp_build / dsmp_mod / dsmp_host); each Steam peer is bridged to the
   server's loopback port. Guest: lobby -> owner SteamID -> ConnectP2P; `mp_start` runs only once SNS reports Connected (30 s limit).
-- Accepted invites: hook on Steamworks.NET `NativeMethods.SteamAPI_ManualDispatch_GetNextCallback` (RVA 0x1141AAC); the game registers
-  no lobby callbacks, so GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) go to `dsnet_steam_feed_callback`.
+- Accepted invites (steamaccept 2026-10-20): the game's `CallbackDispatcher.RunFrame` has the P/Invoke wrapper
+  `NativeMethods.SteamAPI_ManualDispatch_GetNextCallback` inlined and calls the wrapper's static slot itself, so the old hook on the
+  wrapper (RVA 0x1141AAC, until v0.1.19) never ran. Now the mod writes its own function into that slot (`steamcb_frame`, a data write,
+  no code hook; found by name -> the wrapper's first slot load; the rv() wrapper address only as fallback; Mac slot +0x696EB38,
+  Windows +0x51F3A78). Every callback goes on to the game unchanged; the game registers no lobby callbacks, so
+  GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) also go to `dsnet_steam_feed_callback`. Test without Steam:
+  `rig/steamaccept_test.py` (synthetic queue through the real slot; title join + in-world "Join <host>?").
   Launch argument `+connect_lobby <id>` is read too, BUT Steam launches the normal game (same app id), not the MP app, when the friend
   accepts while the game is closed. So the friend opens Dungeon Settlers MP first, then accepts (or uses the friends list / join).
 - Host leaves (or the Steam link drops): guest session ends, state ended "The host left the game", then quit to title
