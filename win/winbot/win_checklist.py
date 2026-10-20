@@ -617,9 +617,9 @@ def item5(w, rep, a, mac):
             # ui_interact uses the portal from afar, so without this walk the return order had 0 units (46 bytes)
             # and the base was empty for entry 2 (10-19 / 10-20 failures: host columns [[0, 0], [1, 0], [-1, 0]])
             party = [u for u in c('mac', cmd='list_units', map=1)['units'] if u.get('faction') == 1 and not u.get('dead') and 'cell' in u]
-            for u in party:
-                if c('mac', cmd='mp_owner', guid=u['guid']).get('owner') == -1:
-                    c('mac', cmd='mp_claim', guid=u['guid'])
+            claimed = [u['guid'] for u in party if c('mac', cmd='mp_owner', guid=u['guid']).get('owner') == -1]
+            for g_ in claimed:                                         # only to move them; given back at the portal
+                c('mac', cmd='mp_claim', guid=g_)
             time.sleep(2)
             for u in party:
                 c('mac', cmd='mp_move', guid=u['guid'], x=int(pb['x']), y=int(pb['y']))
@@ -630,6 +630,9 @@ def item5(w, rep, a, mac):
                 w.wait(at_portal, f'the party at the portal (entry {cy})', 120, 3)
             except W.GameError as e:
                 log('party not all at the portal, going on:', e)
+            for g_ in claimed:                                         # same owners as before the walk (units per player cap)
+                c('mac', cmd='mp_release', guid=g_)
+            w.wait(lambda: all(c('mac', cmd='mp_owner', guid=g_).get('owner') == -1 for g_ in claimed), 'walk claims given back', 30, 1)
             n_party = len(party)
             c('mac', cmd='ui_interact', unit=pu, building=portal, map=1)
             rs = w.wait(lambda: (lambda x, y: (x, y) if x.get('open') and y.get('open') else None)(c('mac', cmd='ui_result'), c('vm', cmd='ui_result')),
