@@ -15,6 +15,7 @@
 #define MU_MTIME_NS(st) ((long long)(st).st_mtimespec.tv_sec * 1000000000LL + (st).st_mtimespec.tv_nsec)
 #endif
 #include "mu_save.h"
+#include "mp_worldsave.h"
 #include "pvp_wiki_tables.h"
 #include "pvp_unit_tables.h"
 #include "mu_card_tables.h"
@@ -386,8 +387,7 @@ int mu_save_files(const char *dir, char (*out)[1024], int max) {
     int n = 0; double *mt = malloc(sizeof(double) * (size_t)(max > 0 ? max : 1));
     for (struct dirent *e; (e = readdir(dp)) && n < max; ) {
         size_t l = strlen(e->d_name);
-        if (l < 6 || strcmp(e->d_name + l - 5, ".json") || !strncmp(e->d_name, "mp_sync", 7) || !strncmp(e->d_name, "MPFE_", 5)
-            || !strncmp(e->d_name, "MPPvP_", 6) || !strncmp(e->d_name, "MPHub_", 6) || strstr(e->d_name, "SaveHeaderCache")) continue;   /* custom-mode worlds (PvP match, hub) are no regular saves: as pvp_ui.c's list */
+        if (l < 6 || strcmp(e->d_name + l - 5, ".json") || mp_world_save_name(e->d_name) || strstr(e->d_name, "SaveHeaderCache")) continue;   /* the mod's own worlds (hub, PvP) are no real worlds: mp_worldsave.h */
         char p[1024]; if ((size_t)snprintf(p, sizeof p, "%s/%s", dir, e->d_name) >= sizeof p) continue;
         struct stat st; if (stat(p, &st) || !S_ISREG(st.st_mode)) continue;
         memcpy(out[n], p, sizeof p); mt[n] = MU_MTIME_NS(st) / 1e9; n++;
