@@ -31,6 +31,11 @@ int  mp_steam_host(const char *save, const mp_config *cfg);   /* cfg: lobby flag
 int  mp_steam_invite(void);                         /* Steam overlay invite dialog; -1 no lobby */
 int  mp_steam_invite_friend(uint64_t steamid);      /* invite in Steam chat (works without the overlay) */
 int  mp_steam_friends(dsnet_steam_friend *out, int max);   /* for an in-game invite list */
+int  mp_steam_overlay_enabled(void);                /* 1 overlay hooked (invite dialog works), 0 no, -1 unknown / no Steam */
+/* Test path (rig copies have no Steam; a test must never invite a real friend): DSRIG_TEST_STEAMFRIENDS=1 in a test copy
+ * (DSRIG_BATCH, DSRIG_HIDEWIN or DSMP_TEST set) = mp_steam_friends gives a fixed fake list, mp_steam_invite_friend never calls Steam
+ * (fake id 1007 fails), the overlay counts as off and mp_steam_state says steam = 1 once a (TCP) host session runs. */
+int  mp_steam_test_friends(void);
 int  mp_steam_join(uint64_t lobby);                 /* join a lobby (friend list); 0 ok, -3 no Steam */
 /* Leave: host = closes the lobby, every guest gets "The host left"; guest = the host continues and
  * this player's units become unclaimed. The local game keeps the campaign (the menu decides). */

@@ -127,6 +127,13 @@ Not tested: anything in the real game (mp_game.c is only syntax checked; the gam
   no lobby callbacks, so GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) go to `dsnet_steam_feed_callback`.
   Launch argument `+connect_lobby <id>` is read too, BUT Steam launches the normal game (same app id), not the MP app, when the friend
   accepts while the game is closed. So the friend opens Dungeon Settlers MP first, then accepts (or uses the friends list / join).
+- Invite (steaminv, 2026-10-20): the modded game is not started by Steam, so the overlay is not loaded and
+  `ActivateGameOverlayInviteDialog` shows nothing. "Steam invite" (lobby + Esc menu) keeps the overlay dialog only when
+  `ISteamUtils::IsOverlayEnabled` is true; else it opens the in-game friends picker (`src/ui_friends.c`): Steam friends (plays DS,
+  online, away/busy, offline; A-Z), 8 a page, click = `InviteUserToLobby` (friend gets a Steam chat invite). The lobby line under the
+  button says the friend must open Dungeon Settlers Modded first. dsnet lines ("dsnet: steam: lobby N created", invite results) go
+  to rig.log (`dsnet_set_log`, max 40/s). Windows: Steam stubbed, the picker never opens. Test path without Steam:
+  `DSRIG_TEST_STEAMFRIENDS=1` (fake list, fake invite, Steam never called), `ext/steaminv/picker_test.py`.
 - Host leaves (or the Steam link drops): guest session ends, state ended "The host left the game", then quit to title
   (`SystemMenuView.QuitToTitleSceneCallback` 0xF2F234 on FindObjectOfType(SystemMenuView), once `rig_det_mp_ready`). Not tested in the game.
 - Guest leaves: the host's server sees the TCP side close -> PLAYER_LEAVE -> host continues. Units released by dsnet on PLAYER_LEAVE

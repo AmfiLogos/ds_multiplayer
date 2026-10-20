@@ -22,7 +22,7 @@ nice -n 19 clang -arch arm64 -mmacosx-version-min=12.0 -O2 -Wall -Wno-unused-fun
   mp_core.c mp_config.c mp_game.c mp_fog.c mp_api.c mp_bridge.c mp_moddata.c mp_rand.c mp_modchat.c \
   net/dsnet_link.c net/dsnet_server.c net/dsnet_client.c net/steam/dsnet_steam.c \
   ord_core.c ord_game.c ord_mp.c ord_test/ord_smoke.c \
-  ui_game.c ui_model.c ui_tip.c ui_teams.c ui_teams_model.c mpmenu.c mpmenu_model.c \
+  ui_game.c ui_model.c ui_tip.c ui_teams.c ui_teams_model.c ui_friends.c mpmenu.c mpmenu_model.c \
   trn_logic.c trn_game.c trn_mp.c ds_i18n.c \
   ../win/math/math_mac.c -I../win/math -DDSMATH_DEFAULT_ON=1 ../win/math/build/libdsmath_arm64.a -lz
 codesign -f -s - $OUT/dsrig.dylib.tmp 2>/dev/null

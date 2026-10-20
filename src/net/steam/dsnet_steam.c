@@ -101,6 +101,9 @@ static struct {
     const char *(*GetPersonaName)(I);
     int32_t (*GetHSteamPipe)(void);
     void (*MsgRelease)(void *);
+    /* optional (looked up after SYMS; NULL = not in this libsteam_api) */
+    bool (*IsOverlayEnabled)(I);
+    int  (*GetFriendPersonaState)(I, uint64_t);
 } S;
 
 static const struct { const char *name; size_t off; } SYMS[] = {
@@ -176,6 +179,8 @@ int dsnet_steam_load(const char *path) {
         if (!f) { snprintf(g_err, sizeof g_err, "missing symbol %s", SYMS[i].name); dlclose(lib); memset(&S, 0, sizeof S); return -1; }
         memcpy((char *)&S + SYMS[i].off, &f, sizeof f);
     }
+    S.IsOverlayEnabled = (bool (*)(I))dlsym(lib, "SteamAPI_ISteamUtils_IsOverlayEnabled");
+    S.GetFriendPersonaState = (int (*)(I, uint64_t))dlsym(lib, "SteamAPI_ISteamFriends_GetFriendPersonaState");
     S.lib = lib;
     return 0;
 }
@@ -702,22 +707,33 @@ int dsnet_steam_host_invite(dsnet_steam_host *h) {
     LOCK(); uint64_t l = h->lobby; UNLOCK();
     if (!l || l == ~0ull) return -1;
     S.ActivateGameOverlayInviteDialog(S.SteamFriends(), l);
+    dsnet_logf("steam: overlay invite dialog asked for lobby %llu (overlay %d)", (unsigned long long)l, dsnet_steam_overlay_enabled());
     return 0;
 }
 int dsnet_steam_host_invite_friend(dsnet_steam_host *h, uint64_t friend_id) {
     LOCK(); uint64_t l = h->lobby; UNLOCK();
-    if (!l || l == ~0ull) return -1;
-    return S.InviteUserToLobby(S.SteamMatchmaking(), l, friend_id) ? 0 : -1;
+    if (!l || l == ~0ull) { dsnet_logf("steam: invite to a friend: no lobby yet"); return -1; }
+    bool ok = S.InviteUserToLobby(S.SteamMatchmaking(), l, friend_id);
+    dsnet_logf("steam: InviteUserToLobby lobby %llu: %s", (unsigned long long)l, ok ? "sent" : "refused by Steam");
+    return ok ? 0 : -1;
+}
+int dsnet_steam_overlay_enabled(void) {
+    if (!S.lib || !S.IsOverlayEnabled || !S.SteamUtils || !S.SteamUtils()) return -1;
+    return S.IsOverlayEnabled(S.SteamUtils()) ? 1 : 0;
 }
 int dsnet_steam_friends(dsnet_steam_friend *out, int max) {
     if (!S.lib || !S.SteamFriends()) return 0;
     I f = S.SteamFriends();
+    uint32_t app = S.SteamUtils() ? S.GetAppID(S.SteamUtils()) : 0;
     int n = 0, cnt = S.GetFriendCount(f, k_EFriendFlagImmediate);
     for (int i = 0; i < cnt && n < max; i++) {
         uint64_t id = S.GetFriendByIndex(f, i, k_EFriendFlagImmediate);
         friend_game_info gi; memset(&gi, 0, sizeof gi);
         out[n].steamid = id;
-        out[n].lobby = S.GetFriendGamePlayed(f, id, &gi) ? gi.lobby : 0;
+        int playing = S.GetFriendGamePlayed(f, id, &gi);
+        out[n].lobby = playing ? gi.lobby : 0;
+        out[n].in_game = playing && app && (uint32_t)(gi.game_id & 0xFFFFFF) == app;
+        out[n].state = S.GetFriendPersonaState ? S.GetFriendPersonaState(f, id) : -1;
         snprintf(out[n].name, sizeof out[n].name, "%s", S.GetFriendPersonaName(f, id));
         n++;
     }
@@ -840,7 +856,8 @@ int dsnet_steam_friends_in_game(dsnet_steam_friend *out, int max) {
         uint64_t id = S.GetFriendByIndex(f, i, k_EFriendFlagImmediate);
         friend_game_info gi; memset(&gi, 0, sizeof gi);
         if (!S.GetFriendGamePlayed(f, id, &gi) || (uint32_t)(gi.game_id & 0xFFFFFF) != app || !gi.lobby) continue;
-        out[n].steamid = id; out[n].lobby = gi.lobby;
+        out[n].steamid = id; out[n].lobby = gi.lobby; out[n].in_game = 1;
+        out[n].state = S.GetFriendPersonaState ? S.GetFriendPersonaState(f, id) : -1;
         snprintf(out[n].name, sizeof out[n].name, "%s", S.GetFriendPersonaName(f, id));
         n++;
     }
