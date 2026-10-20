@@ -10,7 +10,7 @@ import hashlib, importlib.util, json, os, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WL = os.path.expanduser('~/ds_winlane013')
-LOADER = os.path.join(WL, 'ds_modloader', 'loader')
+LOADER = os.environ.get('MAC_LOADER') or os.path.join(WL, 'ds_modloader', 'loader')   # MAC_LOADER: another loader checkout's loader/ (its test_env holds the copy)
 BUILD = os.environ.get('MAC_BUILD') or os.path.join(LOADER, 'build')   # MAC_BUILD: another build folder (dsload.dylib + mods_all/mac)
 sys.path.insert(0, os.path.join(LOADER, 'test'))
 import lrig                                                        # noqa: E402
@@ -19,7 +19,7 @@ lrig.LROOT = LOADER
 lrig.INST = os.path.join(LOADER, 'test_env', 'instances')
 lrig.__file__ = os.path.abspath(__file__)                          # lrig.start spawns "<this> _guard W" (same INST)
 X = os.environ.get('MAC_COPY', 'W')
-LANE = 'vmwin-mac'
+LANE = os.environ.get('MAC_LANE', 'vmwin-mac')                  # rig pair lease name (two drivers at once: give each its own)
 RIG = os.path.expanduser('~/ds_multiplayer/rig/rig.py')
 STATE = os.path.join(os.environ.get('WINBOT_STATE') or os.path.expanduser('~/.ds_winbot'), 'mac_state.json')   # outside the repo
 SEED = os.path.join(lrig.SEED_DATA, 'Saves')

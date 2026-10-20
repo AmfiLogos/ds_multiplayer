@@ -1,16 +1,21 @@
 /* Steam P2P transport + lobby for dsnet. See dsnet_steam.h. Flat API of Steamworks SDK 1.62
- * (Steamworks.NET 2025.162.1 in the game), resolved with dlsym from the game's libsteam_api. */
+ * (Steamworks.NET 2025.162.1 in the game), resolved with dlsym from the game's libsteam_api (Mac) or with GetProcAddress
+ * from its steam_api64.dll (Windows; same 1.62 export names, checked against the build 25846389 DLL). */
 #include "dsnet_steam.h"
 #include "../../ds_i18n.h"                              /* TR_NOOP keys; the text is translated on the main thread (join_error_text) */
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#ifndef _WIN32
 #include <crt_externs.h>
 #include <mach-o/dyld.h>
+#endif
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
@@ -43,6 +48,8 @@ enum {
 typedef struct { int32_t user; int32_t id; uint8_t *param; int32_t cub; } callback_msg;   /* CallbackMsg_t */
 typedef struct { int32_t value, type; union { int32_t i32; int64_t i64; void *ptr; } v; } cfg_value;
 typedef struct { uint64_t game_id; uint32_t ip; uint16_t port, qport; uint64_t lobby; } __attribute__((packed, aligned(4))) friend_game_info;
+_Static_assert(offsetof(friend_game_info, lobby) == 16 && sizeof(friend_game_info) == 24, "FriendGameInfo_t layout");
+_Static_assert(offsetof(callback_msg, param) == 8 && offsetof(callback_msg, cub) == 16, "CallbackMsg_t layout");
 
 typedef void *I;
 static struct {
@@ -163,6 +170,25 @@ static const struct { const char *name; size_t off; } SYMS[] = {
 static char g_err[256];
 const char *dsnet_steam_error(void) { return g_err; }
 
+#ifdef _WIN32
+/* Windows: the game loads steam_api64.dll at SteamAPI_Init (Steamworks.NET P/Invoke "steam_api64"); until then -1 and
+   steam_ready() retries. No LoadLibrary for the game's case: we never pull Steam into a process that did not. The dlfcn
+   shim (win/port/posix/dlfcn.h) cannot be used here: its dlsym ignores the handle. */
+int dsnet_steam_load(const char *path) {
+    if (S.lib) return 0;
+    HMODULE lib = path ? LoadLibraryA(path) : GetModuleHandleA("steam_api64.dll");
+    if (!lib) { snprintf(g_err, sizeof g_err, "steam_api64.dll not %s (error %lu)", path ? "loadable" : "loaded in this process", (unsigned long)GetLastError()); return -1; }
+    for (size_t i = 0; i < sizeof SYMS / sizeof *SYMS; i++) {
+        FARPROC f = GetProcAddress(lib, SYMS[i].name);
+        if (!f) { snprintf(g_err, sizeof g_err, "missing symbol %s", SYMS[i].name); if (path) FreeLibrary(lib); memset(&S, 0, sizeof S); return -1; }
+        memcpy((char *)&S + SYMS[i].off, &f, sizeof f);
+    }
+    S.IsOverlayEnabled = (bool (*)(I))(void *)GetProcAddress(lib, "SteamAPI_ISteamUtils_IsOverlayEnabled");
+    S.GetFriendPersonaState = (int (*)(I, uint64_t))(void *)GetProcAddress(lib, "SteamAPI_ISteamFriends_GetFriendPersonaState");
+    S.lib = (void *)lib;
+    return 0;
+}
+#else
 int dsnet_steam_load(const char *path) {
     if (S.lib) return 0;
     void *lib = NULL;
@@ -184,13 +210,18 @@ int dsnet_steam_load(const char *path) {
     S.lib = lib;
     return 0;
 }
+#endif
 
 int dsnet_steam_is_running(void) { return S.lib && S.IsSteamRunning(); }
 
 int dsnet_steam_init_standalone(uint32_t appid) {
     if (!S.lib) { snprintf(g_err, sizeof g_err, "not loaded"); return -1; }
     char id[16]; snprintf(id, sizeof id, "%u", appid);
+#ifdef _WIN32
+    _putenv_s("SteamAppId", id); _putenv_s("SteamGameId", id);
+#else
     setenv("SteamAppId", id, 1); setenv("SteamGameId", id, 1);
+#endif
     char err[1024] = "";
     int r = S.InitFlat(err);
     if (r != 0) { snprintf(g_err, sizeof g_err, "SteamAPI_InitFlat = %d: %s", r, err); return -1; }
@@ -506,7 +537,9 @@ static void on_conn_status(void *cb) {
 static void parse_connect(const char *s) {
     const char *p = s ? strstr(s, "+connect_lobby") : NULL;
     if (!p) return;
-    uint64_t id = strtoull(p + 14, NULL, 10);
+    p += 14;
+    while (*p == ' ' || *p == '\t' || *p == '"') p++;     /* Windows command line: the id may be quoted */
+    uint64_t id = strtoull(p, NULL, 10);
     if (id) G_join_req = id;
 }
 
@@ -836,9 +869,13 @@ uint64_t dsnet_steam_take_join_request(void) {
     LOCK();
     if (!G_args_checked && S.lib) {
         G_args_checked = 1;
+#ifdef _WIN32
+        parse_connect(GetCommandLineA());                 /* "... +connect_lobby <id>": the id is plain digits */
+#else
         int argc = *_NSGetArgc(); char **argv = *_NSGetArgv();
         for (int i = 0; i + 1 < argc; i++)
             if (!strcmp(argv[i], "+connect_lobby")) G_join_req = strtoull(argv[i + 1], NULL, 10);
+#endif
         char cl[512] = "";
         if (!G_join_req && S.SteamApps() && S.GetLaunchCommandLine(S.SteamApps(), cl, sizeof cl) > 0) parse_connect(cl);
     }
