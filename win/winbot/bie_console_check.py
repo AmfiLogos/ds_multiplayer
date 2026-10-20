@@ -4,8 +4,9 @@ console window; the starter sets BepInEx.cfg [Logging.Console] Enabled = false a
 log (BepInEx\\LogOutput.log) is still written. Real install, REAL starter (Steam on, owner's choice), winrig starter mode.
 
   WINBOT_TARGET=vm WINBOT_STARTER=1 bie_console_check.py <out> <bepinex test mod dir> <pinned BepInEx zip>
-Start 1: BepInEx's first start (it writes BepInEx.cfg). Start 2: the cfg is edited first (console on + a marker line in
-another section): the starter must turn the console off again and keep the marker. The test mod and the zip are moved out
+Start 1: BepInEx's first start (it writes BepInEx.cfg). Start 2: the cfg is edited first (console on + a real setting
+changed in another section, [Caching] EnableAssemblyCache = false): the starter must turn the console off again and keep
+every other setting. Compared per key (BepInEx re-saves the cfg a few seconds after the start and drops unknown lines). The test mod and the zip are moved out
 after (never deleted)."""
 import json, os, re, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
@@ -14,7 +15,7 @@ import winrig as W                                                   # noqa: E40
 OUT, MOD, ZIP = sys.argv[1], sys.argv[2], sys.argv[3]
 CFG = W.GAME + r'\BepInEx\config\BepInEx.cfg'; BLOG = W.GAME + r'\BepInEx\LogOutput.log'
 CONSOLE_HOSTS = ('conhost.exe', 'openconsole.exe', 'windowsterminal.exe')
-MARK = '# winbot marker: kept by the starter'
+MARK = ('Caching', 'EnableAssemblyCache')                           # a real setting: BepInEx keeps values, drops comments
 checks = []
 
 
@@ -26,6 +27,18 @@ def check(n, ok, d=''):
 def console_sec(t):
     i = t.find('[Logging.Console]'); j = t.find('\n[', i + 1)
     return re.findall(r'(?m)^Enabled = (\w+)', t[i:j if j > 0 else len(t)]) if i >= 0 else []
+
+
+def settings(t):
+    """{(section, key): value} of a BepInEx cfg (comments and blank lines left out)"""
+    d, sec = {}, ''
+    for l in t.replace('\r', '').splitlines():
+        l = l.strip()
+        if l.startswith('[') and l.endswith(']'):
+            sec = l[1:-1]
+        elif l and not l.startswith('#') and '=' in l:
+            k, _, v = l.partition('='); d[(sec, k.strip())] = v.strip()
+    return d
 
 
 def watch_consoles(w, base, until_title):
@@ -80,16 +93,18 @@ def main():
         i = cfg.find('[Logging.Console]'); j = cfg.find('\n[', i + 1)
         sec = cfg[i:j].replace('Enabled = false', 'Enabled = true')
         edited = cfg[:i] + sec + cfg[j:]
-        k = edited.find('[Logging.Disk]'); k = edited.find('\n', k) + 1
-        edited = edited[:k] + MARK + '\n' + edited[k:]
+        assert settings(edited).get(MARK) == 'true', settings(edited).get(MARK)
+        edited = re.sub(r'(?m)^EnableAssemblyCache = true', 'EnableAssemblyCache = false', edited, count=1)
         w.write(CFG, edited.encode('utf-8'))
         seen, t = start_and_watch(w, 2)
         cfg2 = w.text(CFG) or ''
         check('start 2: no BepInEx console window (the cfg had it on)', not seen, seen)
         check('start 2: the starter turned the console off again', console_sec(cfg2) == ['false'], console_sec(cfg2))
-        check('start 2: the rest of BepInEx.cfg kept (marker line, every other line)', MARK in cfg2 and
-              cfg2.replace('\r', '') == edited.replace('\r', '').replace(sec, sec.replace('Enabled = true', 'Enabled = false')),
-              'marker kept' if MARK in cfg2 else 'marker LOST')
+        want = dict(settings(edited)); want[('Logging.Console', 'Enabled')] = 'false'
+        got = settings(cfg2)
+        diff = {f'{k[0]}.{k[1]}': (want.get(k), got.get(k)) for k in set(want) | set(got) if want.get(k) != got.get(k)}
+        check('start 2: the rest of BepInEx.cfg kept (EnableAssemblyCache = false, every other setting)', got.get(MARK) == 'false' and not diff,
+              diff or 'all settings kept')
         check('start 2: LogOutput.log written again', w.a('stat', path=BLOG).get('size', 0) > 0)
         w.logs(os.path.join(OUT, 'logs'))
         open(os.path.join(OUT, 'BepInEx.cfg.after'), 'w').write(cfg2)
