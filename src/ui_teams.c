@@ -136,9 +136,11 @@ static Obj type_object(const char *ns, const char *name) {
     if (!k) return NULL;
     return F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k));   /* il2cpp_type_get_object(class_get_type) */
 }
+Obj mpmenu_find_any(uintptr_t *h, const char *ns, const char *name) __attribute__((weak_import));   /* mpmenu.c: absent views retried after 2 s (immediate after input / a popup) */
 static Obj find_view(uintptr_t *h, const char *ns, const char *name) {   /* Object.FindObjectOfType(Type, inactive) */
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
+    if (mpmenu_find_any) return mpmenu_find_any(h, ns, name);
     Obj t = type_object(ns, name);
     if (!t) return NULL;
     v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(t, false, NULL);

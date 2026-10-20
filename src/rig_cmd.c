@@ -15,6 +15,7 @@ char *ord_smoke_exec(const char *cmd, const char *line);
 #include <unistd.h>
 #include <sys/stat.h>
 #include <math.h>
+#include <time.h>
 
 typedef struct { float x, y, w, h; } RectF;
 typedef struct { void *begin; int32_t length; } SpanW;
@@ -130,8 +131,17 @@ RState rstate(void) { RState st; F(0x50E77B0, void (*)(RState *, void *))(&st, N
 
 /* ---------------------------------------------------------------- per-frame */
 static int fps = 30;
+/* frame-cost probe (test command "perf"): time of each part of rig_frame, and the time between two frames */
+static double pf_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
+enum { PF_REQ, PF_POLL, PF_UI, PF_MENU, PF_MPX, PF_ALL, PF_N };
+static double pf_sum[PF_N], pf_max[PF_N], pf_last_t, dt_max; static long pf_n, dt_hist[7];
+static const double dt_edge[6] = { 20, 34, 50, 100, 250, 1000 };
 void rig_frame(void *mainflow) {
     mf = mainflow;
+    double t_in = pf_now(), t_part = t_in;
+    if (pf_last_t > 0) { double dt = t_in - pf_last_t; int k = 0; while (k < 6 && dt >= dt_edge[k]) k++; dt_hist[k]++; if (dt > dt_max) dt_max = dt; }
+    pf_last_t = t_in;
+#define PF(i) do { double t_ = pf_now(), d_ = t_ - t_part; pf_sum[i] += d_; if (d_ > pf_max[i]) pf_max[i] = d_; t_part = t_; } while (0)
     static int live = -1;               /* DSRIG_LIVE=1: the owner's MP app, a normal game: no mute, no fps/vSync cap, */
     if (live < 0) live = getenv("DSRIG_LIVE") != NULL;   /* no window hiding / placement */
     int64_t f = rig_frames++;
@@ -165,11 +175,28 @@ void rig_frame(void *mainflow) {
         rig_finish(r, rig_exec(r->line));
         r = nx;
     }
+    PF(PF_REQ); pf_n++;
     if (getenv("DSRIG_MINIMAL")) return;
     mp_game_poll();                     /* Steam joiner bridge / invites (title screen too) */
+    PF(PF_POLL);
     ui_frame();                         /* multiplayer UI: status line, owner tags (title screen too) */
+    PF(PF_UI);
     mpmenu_frame();                     /* Multiplayer menu (title screen too) */
+    PF(PF_MENU);
     mpx_frame(MP_FRAME_ALWAYS);         /* Custom Modes (mp_api register_frame): PvP order handler, FE UI flags */
+    PF(PF_MPX);
+    { double d = pf_now() - t_in; pf_sum[PF_ALL] += d; if (d > pf_max[PF_ALL]) pf_max[PF_ALL] = d; }
+#undef PF
+}
+static char *c_perf(const char *line) {
+    static const char *nm[PF_N] = { "requests", "mp_poll", "ui", "mpmenu", "custom_modes", "all" };
+    Buf b = {0}; bput(&b, "{\"ok\":true,\"frames\":%ld,\"parts\":{", pf_n);
+    for (int i = 0; i < PF_N; i++) bput(&b, "%s\"%s\":{\"avg_ms\":%.4f,\"max_ms\":%.3f}", i ? "," : "", nm[i], pf_n ? pf_sum[i] / pf_n : 0, pf_max[i]);
+    bput(&b, "},\"dt_hist\":[%ld,%ld,%ld,%ld,%ld,%ld,%ld],\"dt_edges\":[20,34,50,100,250,1000],\"dt_max_ms\":%.1f,\"mpm_scans\":%s,\"view_lookups\":[%s]}",
+         dt_hist[0], dt_hist[1], dt_hist[2], dt_hist[3], dt_hist[4], dt_hist[5], dt_hist[6], dt_max, mpmenu_scan_stats(), mpmenu_fv_counts());
+    double r = 0; jnum(line, "reset", &r);
+    if (r) { memset(pf_sum, 0, sizeof pf_sum); memset(pf_max, 0, sizeof pf_max); memset(dt_hist, 0, sizeof dt_hist); pf_n = 0; dt_max = 0; }
+    return b.p;
 }
 
 /* ---------------------------------------------------------------- commands */
@@ -475,6 +502,7 @@ char *rig_exec(const char *line) {
     if (!strcmp(cmd, "ui_map_vote")) { double a = 1; jnum(line, "accept", &a); Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", ui_debug_map_vote(a != 0)); return b.p; }
     if (!strncmp(cmd, "ord_", 4)) { char *orr = ord_smoke_exec(cmd, line); if (orr) return orr; }
     if (!strcmp(cmd, "status")) return c_status();
+    if (!strcmp(cmd, "perf")) return c_perf(line);
     if (!strcmp(cmd, "list_units")) return c_list_units(line);
     if (!strcmp(cmd, "unit_stats")) return c_unit_stats(line);
     if (!strcmp(cmd, "order_move")) return c_order_move(line);
