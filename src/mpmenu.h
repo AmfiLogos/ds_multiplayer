@@ -251,6 +251,8 @@ const char *mpm_word(const char *textkey, const char *english);
 #ifndef MPM_NO_GAME
 void  mpmenu_install(void);                        /* add-image callback, after ui_install() */
 void  mpmenu_frame(void);                          /* once per MainFlow.Update, title screen too */
+const char *mpmenu_fv_counts(void);                     /* test "perf": view lookups per class [name, count, ms] */
+const char *mpmenu_scan_stats(void);                    /* test "perf": count / total / max ms of the sprite scans */
 char *mpmenu_exec(const char *cmd, const char *line);   /* "mpm_*" socket commands (tests); NULL = not ours */
 void  mpmenu_fv_kick(void);                       /* rig_exec: view lookups immediate for 10 frames (find_view_x) */
 void  mpmenu_title_init(void *title_menu_view);   /* optional: rebuild the title clones on the next frame */

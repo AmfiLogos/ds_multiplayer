@@ -274,9 +274,11 @@ __attribute__((noinline)) static int ui_is(Obj o, int k) {
     }
     return 0;
 }
+Obj mpmenu_find_any(uintptr_t *h, const char *ns, const char *name) __attribute__((weak_import));   /* mpmenu.c: absent views retried after 2 s (immediate after input / a popup) */
 static Obj find_view(uintptr_t *h, const char *ns, const char *name) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
+    if (mpmenu_find_any) return mpmenu_find_any(h, ns, name);
     /* GameAssembly exports by address (dlsym does not see them: the image is not loaded RTLD_GLOBAL) */
     void *k = ord_debug_class ? ord_debug_class(ns, name) : NULL;
     if (!k) { rig_log("ui: class %s.%s not found", ns, name); return NULL; }
@@ -1302,7 +1304,9 @@ static void guild_button_apply(void) {
 static void hk_faction_init(Obj v, void *mi) { o_faction_init(v, mi); u_gc_free(h_faction_view); h_faction_view = u_gc_new(v); guild_button_apply(); }
 static void hk_faction_refresh(Obj v, int map, void *mi) { o_faction_refresh(v, map, mi); if (u_gc_get(h_faction_view) != v) { u_gc_free(h_faction_view); h_faction_view = u_gc_new(v); } guild_button_apply(); }
 static void hk_faction_activate(Obj v, int t, bool on_, void *mi) { o_faction_activate(v, t, on_, mi); if (t == 0) guild_button_apply(); }
+void mpmenu_fv_kick(void) __attribute__((weak_import));
 static void hk_activate_view(Obj cont, int type, void *mi) {
+    if (mpmenu_fv_kick) mpmenu_fv_kick();                    /* fpsfix: a stock popup opens: view lookups immediate (mpmenu.c) */
     if (u_gc_get(h_popups) != cont) { u_gc_free(h_popups); h_popups = u_gc_new(cont); }
     if (type == 8 && mpx_ui_flag(MPUI_NO_RECRUIT_POPUP)) { rig_log("ui: recruitment window not offered (Foreign Expedition hub, Recruiting Off)"); return; }   /* owner: keep it simple */
     if (on()) {
@@ -3258,10 +3262,12 @@ static void banner_frame(void) {
             if (pu && !may_order(o)) foreign = o;
         }
     }
-    Obj views[2] = { find_view(&h_status_ui, "Refactor.UI", "EntityStatusUI"), find_view(&h_skill_ui, "Refactor.UI", "EntitySkillUI") };
+    /* fpsfix: no session = no banner (show needs foreign != -2): no view lookups at all (FindObjectOfType, 2x per second) */
+    Obj views[2] = { NULL, NULL };
+    if (on()) { views[0] = find_view(&h_status_ui, "Refactor.UI", "EntityStatusUI"); views[1] = find_view(&h_skill_ui, "Refactor.UI", "EntitySkillUI"); }
     /* the cached view can be an inactive copy (other screens clone UI prefabs): look for an active one, at most every 1 s */
     static double relook;
-    if (now_s() > relook) {
+    if (on() && now_s() > relook) {
         relook = now_s() + 1;
         uintptr_t *hs[2] = { &h_status_ui, &h_skill_ui }; const char *nm[2] = { "EntityStatusUI", "EntitySkillUI" };
         for (int k = 0; k < 2; k++)

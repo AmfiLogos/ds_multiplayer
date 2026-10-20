@@ -122,37 +122,96 @@ void *class_by_name(const char *ns, const char *name) {
     }
     return NULL;
 }
-/* fastboot_mp (2026-10-17): an ABSENT view is looked up again at most every FV_RETRY frames per call site (handle +
-   names). FindObjectOfType walks the scene's objects and ran every frame for views the scene does not have (the title
+/* fastboot_mp (2026-10-17): an ABSENT view is looked up again at most every FV_RETRY_MS (was 15 frames) per class
+   name + mode (was per call site). FindObjectOfType walks the scene's objects and ran every frame for views the scene does not have (the title
    view in the world, the Esc menu before it was first opened, the HUD on the title): a big part of this module's main-
    thread time during a world load. A found view keeps its cached handle (unchanged). Lookups stay immediate during a rig
    command (mpmenu_fv_kick from rig_exec), for 10 frames after a key / mouse press (Input.anyKeyDown, read in
    mpmenu_frame; without that icall: always immediate, as before) and inside find_view_now (actions that open a view).
    UI only: no sim state. */
-#define FV_RETRY 15
-#define FV_SITES 48
-static struct { const uintptr_t *h; const char *ns, *name; int64_t next; } fv_miss[FV_SITES];
+#define FV_RETRY_MS 2000.0    /* fpsfix 2026-10-20: was 15 frames (14 lookups/s per absent view at 210 fps, 2.5-4 ms each) */
+#define FV_SITES 64
 static int64_t fv_free_until = INT64_MAX;                         /* immediate lookups while rig_frames < this */
 static int fv_now_depth;
-void mpmenu_fv_kick(void) { if (fv_free_until != INT64_MAX && fv_free_until < rig_frames + 10) fv_free_until = rig_frames + 10; }
+static long fv_kicks[2];
+static void fv_kick_n(int n) { fv_kicks[n == 10]++; if (fv_free_until != INT64_MAX && fv_free_until < rig_frames + n) fv_free_until = rig_frames + n; }
+void mpmenu_fv_kick(void) { fv_kick_n(10); }
+/* fpsfix: an absent view is looked up again after FV_RETRY_MS (wall clock, not frames), and at most one throttled
+   lookup runs per frame (the others wait a frame): no frame pays for several FindObjectOfType walks. Immediate lookups
+   (a kick): 10 frames after a rig command or a stock popup opening (ui_game hk_activate_view), 3 frames after a key /
+   mouse press. A new scene or the end of a load only makes every absent view due again (still one per frame). */
+static int64_t fv_budget_frame = -1;
+static double fv_clock(void);
+static int fv_kicked(void) { return rig_frames < fv_free_until || fv_now_depth; }
+static int fv_may_retry(double next) {                             /* 1 = look it up now */
+    if (fv_kicked()) return 1;
+    if (fv_clock() < next || fv_budget_frame == rig_frames) return 0;
+    fv_budget_frame = rig_frames; return 1;
+}
+/* absent views by class name + mode ('a' active only, 'i' with inactive, '*' active then inactive): an absent class is
+   absent for every caller (some callers pass a handle on the stack, several handles look for one class) */
+static struct { char key[96]; double next; } fv_miss[FV_SITES];
+static int fv_rr;
+static int fv_slot(const char *ns, const char *name, char mode, char *key, size_t cap) {   /* index or -1 */
+    snprintf(key, cap, "%s.%s/%c", ns, name, mode);
+    for (int i = 0; i < FV_SITES; i++) if (fv_miss[i].key[0] && !strcmp(fv_miss[i].key, key)) return i;
+    return -1;
+}
+static void fv_missed(int i, const char *key) {
+    if (i < 0) {                                                       /* a free slot, else round robin */
+        for (i = 0; i < FV_SITES && fv_miss[i].key[0]; i++) {}
+        if (i == FV_SITES) { i = fv_rr; fv_rr = (fv_rr + 1) % FV_SITES; }
+        snprintf(fv_miss[i].key, sizeof fv_miss[i].key, "%s", key);
+    }
+    fv_miss[i].next = fv_clock() + FV_RETRY_MS;
+}
 static Obj find_view_lookup(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive);
+static double fv_clock(void);
+static double fv_ms_sum, fv_ms_max; static long fv_lookups;
+static struct { char key[80]; long n; double ms; } fv_cnt[96]; static int fv_ncnt;
+static void fv_count(const char *ns, const char *name, double ms) {
+    char key[80]; snprintf(key, sizeof key, "%s.%s", ns, name);
+    int i; for (i = 0; i < fv_ncnt && strcmp(fv_cnt[i].key, key); i++) {}
+    if (i == fv_ncnt) { if (fv_ncnt == 96) return; snprintf(fv_cnt[fv_ncnt++].key, 80, "%s", key); }
+    fv_cnt[i].n++; fv_cnt[i].ms += ms;
+}
+const char *mpmenu_fv_counts(void) {
+    static char o[4096]; size_t k = 0; o[0] = 0;
+    for (int i = 0; i < fv_ncnt && k < sizeof o - 120; i++) k += (size_t)snprintf(o + k, sizeof o - k, "%s[\"%s\",%ld,%.1f]", i ? "," : "", fv_cnt[i].key, fv_cnt[i].n, fv_cnt[i].ms);
+    return o;
+}
 Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
-    int i, slot = -1;
-    for (i = 0; i < FV_SITES; i++) {
-        if (fv_miss[i].h == h && fv_miss[i].ns == ns && fv_miss[i].name == name) break;
-        if (!fv_miss[i].h && slot < 0) slot = i;
-    }
-    if (i < FV_SITES && rig_frames < fv_miss[i].next && rig_frames >= fv_free_until && !fv_now_depth) return NULL;   /* retried later */
+    char key[96]; int i = fv_slot(ns, name, inactive ? 'i' : 'a', key, sizeof key);
+    if (i >= 0 && !fv_may_retry(fv_miss[i].next)) return NULL;       /* retried later */
     v = find_view_lookup(h, kcache, ns, name, inactive);
-    if (v) { if (i < FV_SITES) fv_miss[i].h = NULL; }
-    else if (i < FV_SITES || slot >= 0) {                             /* table full: no throttle for that site */
-        if (i == FV_SITES) { i = slot; fv_miss[i].h = h; fv_miss[i].ns = ns; fv_miss[i].name = name; }
-        fv_miss[i].next = rig_frames + FV_RETRY;
-    }
+    if (v) { if (i >= 0) fv_miss[i].key[0] = 0; }
+    else fv_missed(i, key);
     return v;
 }
+/* fpsfix (2026-10-20, player report "the mod lowers FPS even in single player"): the ui lanes' find_view (ui_game.c,
+   ui_teams.c: active object first, then an inactive one) ran FindObjectOfType twice per call for every view the scene
+   does not have, 10 to 60 times a second (pause view, quick slots, banner, Esc menu on the title): half of the main
+   thread on the title, 18% in a world (macOS sample, rig 2026-10-20). Same throttle as find_view_x, keyed by class
+   name (an absent class is absent for every caller; some callers pass a handle on the stack). */
+Obj mpmenu_find_any(uintptr_t *h, const char *ns, const char *name) {
+    Obj v = u_gc_get(*h);
+    if (u_alive(v)) return v;
+    char key[96]; int i = fv_slot(ns, name, '*', key, sizeof key);
+    if (i >= 0 && !fv_may_retry(fv_miss[i].next)) return NULL;       /* retried later */
+    double t0 = fv_clock();
+    void *k = class_by_name(ns, name);
+    Obj tobj = k ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k)) : NULL;
+    v = tobj ? F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, false, NULL) : NULL;   /* an active one first (scene copies) */
+    if (tobj && !u_alive(v)) v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, true, NULL);
+    double d = fv_clock() - t0; fv_ms_sum += d; fv_lookups++; if (d > fv_ms_max) fv_ms_max = d; fv_count(ns, name, d);
+    u_gc_free(*h); *h = u_alive(v) ? u_gc_new(v) : 0;
+    if (u_alive(v)) { if (i >= 0) fv_miss[i].key[0] = 0; return v; }
+    fv_missed(i, key);
+    return NULL;
+}
+static double fv_clock(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
 static Obj find_view_now(uintptr_t *h, void **k, const char *ns, const char *name, bool inactive) {
     fv_now_depth++; Obj v = find_view_x(h, k, ns, name, inactive); fv_now_depth--; return v;
 }
@@ -160,16 +219,22 @@ static void fv_input_frame(void) {                                    /* once pe
     static bool (*anykey)(void); static int looked;
     if (!looked) {
         looked = 1; anykey = (bool (*)(void))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::get_anyKeyDown()");
-        rig_log("mpmenu: view lookups %s", anykey ? "throttled while absent (every 15 frames; immediate after input)" : "immediate (Input.anyKeyDown not available)");
+        rig_log("mpmenu: view lookups %s", anykey ? "throttled while absent (every 2 s, one per frame; immediate after input / a popup)" : "immediate (Input.anyKeyDown not available)");
         if (anykey) fv_free_until = 0;
     }
-    if (anykey && anykey()) mpmenu_fv_kick();
+    if (anykey && anykey()) fv_kick_n(3);
+    static int was_scene = -2, was_busy = -1;                         /* a new scene / the end of a load: its views are due */
+    int sc = mf ? scene() : -1, bz = mf ? busy() : 1;
+    if (sc != was_scene || (was_busy == 1 && !bz)) for (int i = 0; i < FV_SITES; i++) fv_miss[i].next = 0;
+    was_scene = sc; was_busy = bz;
 }
 static Obj find_view_lookup(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
     if (!*kcache) *kcache = class_by_name(ns, name);
     if (!*kcache) return NULL;
     Obj tobj = F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(*kcache));   /* class -> Type object */
+    double t0 = fv_clock();
     Obj v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, inactive, NULL);
+    { double d = fv_clock() - t0; fv_ms_sum += d; fv_lookups++; if (d > fv_ms_max) fv_ms_max = d; fv_count(ns, name, d); }
     u_gc_free(*h); *h = u_alive(v) ? u_gc_new(v) : 0;
     return u_alive(v) ? v : NULL;
 }
@@ -216,7 +281,7 @@ static Obj comp_of(Obj any, const char *ns, const char *cls) {             /* Ge
     Obj ty = type_obj(ns, cls);
     return ty && u_alive(any) ? (mm_is(any, K_COMP) ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(any, ty, NULL) : NULL) : NULL;
 }
-/* stock assets by name: sprites of the v2 spec, the Cinzel font. Scanned once, again every 300 frames while one is missing */
+/* stock assets by name: sprites of the v2 spec, the Cinzel font. Scanned once, again (assets_scan) while a needed one is missing */
 static const char *spr_name[S_N] = { "topLineButton_Frame1", "ITEM_CogWheel", "ListToggle_On", "ListToggle_Off", "ArrrowIcon_Previous",
     "ArrrowIcon_Next", "ToggleButton_Normal", "ToggleButton_Selected", "RecruitButton", "BottomButton", "Box", "Devider_Detail2",
     "Icon_Devider", "Slot1", "Slot2", "Button_Normal", "CheckBox_Normal", "CheckBox_Checked" };
@@ -228,8 +293,32 @@ static int cog_built(void);
 void assets_scan_now(void);
 static int64_t scan_last = -100000;
 int scan_done; static int scans;
-static void assets_scan(void) { if (!scan_done && frames - scan_last >= 300 && scans < 30) assets_scan_now(); }   /* at most 30 scans */
+/* fpsfix (2026-10-20): one scan walks every loaded sprite (16 000+ in a world; ~5 ms on the title, longer in a world)
+   and ran every 300 frames up to 30 times, in the world too (ITEM_CogWheel is often not loaded: it kept the scans
+   going). Now: the cog is optional (a pixel cog stands in; title_build / lw_build still look for it), and the timer
+   scans at most 3 times per scene, the first 60 frames after the scene settles, then every 600 frames while a needed
+   sprite is missing; never during a load. */
+static void assets_scan(void) {
+    static int at_scene = -1, n_here; static int64_t since;
+    int sc = scene();
+    if (sc != at_scene) { at_scene = sc; n_here = 0; since = frames; }
+    if (busy()) { since = frames; return; }
+    if (scan_done || n_here >= 3 || frames - (n_here ? scan_last : since) < (n_here ? 600 : 60)) return;
+    n_here++; assets_scan_now();
+}
+static double scan_ms_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
+static double scan_ms_sum, scan_ms_max, pscan_ms_sum, pscan_ms_max; static int pscans;
+const char *mpmenu_scan_stats(void) {
+    static char o[300];
+    snprintf(o, sizeof o, "{\"assets\":[%d,%.1f,%.1f],\"portrait\":[%d,%.1f,%.1f],\"done\":%d,\"view_lookups\":[%ld,%.1f,%.1f],\"kicks\":[%ld,%ld]}", scans, scan_ms_sum, scan_ms_max, pscans, pscan_ms_sum, pscan_ms_max, scan_done, fv_lookups, fv_ms_sum, fv_ms_max, fv_kicks[0], fv_kicks[1]);
+    return o;
+}
+static void assets_scan_body(void);
 void assets_scan_now(void) {
+    double t0 = scan_ms_now(); assets_scan_body(); double d = scan_ms_now() - t0;
+    scan_ms_sum += d; if (d > scan_ms_max) scan_ms_max = d;
+}
+static void assets_scan_body(void) {
     scan_last = frames; scans++;
     popup_prefab(8); popup_prefab(2); popup_prefab(13);                     /* load the Recruit / Expedition / Task Planner prefabs: their sprites too */
     static void *mi; if (!mi) mi = mth("UnityEngine", "Resources", "FindObjectsOfTypeAll", 1);
@@ -253,7 +342,7 @@ void assets_scan_now(void) {
     }
     if (!h_spr[S_COG]) cog_from_bundles();
     char missing[256] = ""; size_t o = 0;
-    for (int k = 0; k < S_N; k++) if (!h_spr[k]) { miss++; o += (size_t)snprintf(missing + o, sizeof missing - (o < sizeof missing ? o : sizeof missing), " %s", spr_name[k]); }
+    for (int k = 0; k < S_N; k++) if (!h_spr[k]) { miss += k != S_COG; o += (size_t)snprintf(missing + o, sizeof missing - (o < sizeof missing ? o : sizeof missing), " %s", spr_name[k]); }   /* the cog: optional (pixel cog) */
     if (!h_cinzel) miss++;
     rig_log("mpmenu: assets scan (%d sprites loaded): %d new, missing%s%s", n, found, missing[0] ? missing : " none", h_cinzel ? "" : " Cinzel");
     if (!miss) scan_done = 1;
@@ -714,15 +803,17 @@ Obj portrait_sprite(const char *name) {
     if (got && ncache < 48) { snprintf(cache[ncache].n, 64, "%s", name); cache[ncache++].h = u_gc_new(got); return got; }
     if (scanned >= 0 && frames - scanned < 600) return NULL;               /* not loaded: look again in ~20 s */
     scanned = frames;
+    double t0 = scan_ms_now(); pscans++; Obj hit = NULL;
     static void *mi; if (!mi) mi = mth("UnityEngine", "Resources", "FindObjectsOfTypeAll", 1);
     Obj arr = mi ? MCALL(mi, Obj, Obj, const void *)(type_obj("UnityEngine", "Sprite"), mi) : NULL;
     int n = arr ? (int)AT(arr, 0x18, uintptr_t) : 0;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n && !hit; i++) {
         Obj sp = AT((char *)arr + 0x20, i * 8, Obj); char nm[64] = "";
         str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(sp, NULL), nm, sizeof nm);
-        if (!strcmp(nm, name) && ncache < 48) { snprintf(cache[ncache].n, 64, "%s", nm); cache[ncache++].h = u_gc_new(sp); return sp; }
+        if (!strcmp(nm, name) && ncache < 48) { snprintf(cache[ncache].n, 64, "%s", nm); cache[ncache++].h = u_gc_new(sp); hit = sp; }
     }
-    return NULL;
+    double d = scan_ms_now() - t0; pscan_ms_sum += d; if (d > pscan_ms_max) pscan_ms_max = d;
+    return hit;
 }
 static float rw_h;
 static const int hist_ids[] = { MPB_HIST0, MPB_HIST1, MPB_HIST2, MPB_HIST3, MPB_HIST4, MPB_HIST5, MPB_HISTX0, MPB_HISTX1, MPB_HISTX2,
@@ -1081,7 +1172,7 @@ static void title_build(Obj v) {
     if (!u_alive(src) || !u_alive(after)) { rig_log("mpmenu: title buttons not found"); return; }
     Obj parent = u_tr_parent(u_tr(src));
     int at = u_sibling(u_tr(after)) + 1;
-    if (!scan_done) assets_scan_now();
+    if (!scan_done || !h_spr[S_COG]) assets_scan_now();
     Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x130, Obj);
     for (int i = 0; i < NT; i++) {
         int id = title_ids[i];
@@ -1577,7 +1668,7 @@ static Obj lwt(int k) { Obj t = u_gc_get(h_lwt[k]); return u_alive(t) ? t : NULL
 #define LX(x) ((x) - 440.0f)
 #define LY(y) (lw_h / 2 - (y))
 static void lw_build(Obj v, int host) {
-    if (!scan_done) assets_scan_now();
+    if (!scan_done || !h_spr[S_COG]) assets_scan_now();
     Obj src = AT(v, 0x70, Obj);                                             /* Report bug: button template */
     if (!u_alive(src)) return;
     Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x28, Obj);
