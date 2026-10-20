@@ -125,11 +125,9 @@ def must_resub(text, pat, new, name):
 # rig_sock is handled below); dsnet_steam.c is Mac-only for now (dyld/dlopen) -> port/steam_stub_win.c
 SKIP_SRC = {"rig_main.c", "rig_hook.c", "rig_win.c", "rig_sock.c"}
 FILES = sorted(f for f in os.listdir(SRC) if f.endswith(".c") and f not in SKIP_SRC) + ["ord_test/ord_smoke.c"]
-# Custom Modes (custom/), generated flat into build/gen_cm/ ("../x.h" -> "x.h"); build_win.sh builds them as their own
-# module (custom-modes.dll = the solo part, custom-modes-mp.dll = the part that needs multiplayer, linked to multiplayer.dll)
-# or, for the rig's baselib.dll, into the same DLL (-DCM_SAME_IMAGE). Lists = the ones custom/build_module.sh builds:
-# custom/<folder>/sources.txt (solo) and sources_mp.txt (mp), one .c per line (relative to that folder or to custom/),
-# plus cm_module.c (solo) and cm_mp.c (mp). No lists yet (before lane units' skeleton): the M4 split's fixed mp list.
+# Units Laboratory (custom/, mod id custom-modes), generated flat into build/gen_cm/ ("../x.h" -> "x.h"); build_win.sh
+# builds it as its own module, custom-modes.dll. Lists = the ones custom/build_module.sh builds: custom/<folder>/sources.txt,
+# one .c per line (relative to that folder or to custom/), plus cm_module.c.
 # DSMP_CUSTOM: a frozen snapshot's custom/ (release). build/gen_cm/lists.txt: "solo|mp <generated file>" for build_win.sh.
 CUSTOM = os.environ.get("DSMP_CUSTOM", os.path.join(os.path.dirname(SRC.rstrip("/")), "custom"))
 OUT_CM = os.path.join(os.path.dirname(OUT), "gen_cm")
@@ -148,11 +146,12 @@ def custom_list(kind):
             if not os.path.exists(q): problems.append(f"custom: {os.path.relpath(lp, CUSTOM)} lists {s}, not found"); continue
             r = os.path.relpath(q, CUSTOM)
             if r not in out: out.append(r)
-    if kind == "mp" and not lists:
-        out += ["fe/fe_json.c", "fe/fe_save.c", "fe/fe_game.c", "fe/fe_menu.c", "pvp/pvp_core.c", "pvp/pvp_modcheck.c",
-                "pvp/pvp_mods.c", "pvp/pvp_game.c", "pvp/pvp_ui.c", "units/pvp_units.c", "units/pvp_wiki.c", "units/pvp_build.c"]
     return out
-CUSTOM_SOLO, CUSTOM_MP = custom_list("solo"), custom_list("mp")
+# Units Laboratory split (owner 2026-10-20): Foreign Expedition / PvP moved into src/ (multiplayer itself); Units Laboratory
+# is one solo DLL. A tree that still has an mp part (cm_mp.c + sources_mp.txt) is an older one: refused.
+CUSTOM_SOLO, CUSTOM_MP = custom_list("solo"), []
+if os.path.exists(os.path.join(CUSTOM, "cm_mp.c")):
+    problems.append(f"custom: {CUSTOM} still has cm_mp.c (Foreign Expedition / PvP are in multiplayer's src/ now): use a Units Laboratory tree from after the split")
 VENDORED = {"quickjs", "tinf", "third_party"}
 seen = {}
 for f in CUSTOM_SOLO + CUSTOM_MP:
@@ -179,6 +178,7 @@ for fn in FILES:
         continue
     if fn.startswith("custom/"):
         t = t.replace('#include "../', '#include "')
+    if True:                    # every file (Foreign Expedition / PvP came from custom/ into src/ with the Units Laboratory split)
         # Darwin stat / time: st_mtimespec -> st_mtime (seconds; no nanoseconds on msvcrt), localtime_r -> localtime_s
         t = t.replace("st.st_mtimespec.tv_sec + st.st_mtimespec.tv_nsec / 1e9", "(double)st.st_mtime")
         t = t.replace("localtime_r(&st.st_mtimespec.tv_sec, &tm)", "localtime_s(&tm, &st.st_mtime)")

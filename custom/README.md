@@ -1,5 +1,9 @@
 # Custom Modes moved
 
+Since the Units Laboratory split (2026-10-20), Foreign Expedition and PvP are back in this repo, in `src/` (`mp_modes.c`,
+`fe_*.c`, `pvp_*.c`; moved from ds_custommodes ac78178). ds_custommodes keeps Units Laboratory only (My Units, Unit
+Builder, Wiki Build Gallery, Test Fights), a launcher mod that no multiplayer session needs.
+
 Custom Modes (My Units, Unit Builder, Gallery, Test Fights, Foreign Expedition hub, PvP) now lives in its own repo:
 [github.com/AmfiLogos/ds_custommodes](https://github.com/AmfiLogos/ds_custommodes).
 

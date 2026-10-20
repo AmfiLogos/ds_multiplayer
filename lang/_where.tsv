@@ -1,490 +1,613 @@
-" (You)"	ui_teams.c:2139
-" (host)"	mpmenu.c:1302
-" (you)"	ui_model.c:480 ui_teams.c:1285
-" and "	ui_game.c:4575 ui_game.c:5367
+" (You)"	ui_teams.c:2141
+" (host)"	mpmenu.c:1382
+" (you)"	ui_model.c:480 ui_teams.c:1287
+" and "	ui_game.c:4581 ui_game.c:5373
 " · %d s, then %s decides"	ui_model.c:279
 " · %d s, then the votes decide"	ui_model.c:277
 " · %d s, then you decide"	ui_model.c:278
-"\"%s\" is not an address. It looks like 192.168.1.20:47777"	mpmenu.c:2110
+"\"%s\" is not an address. It looks like 192.168.1.20:47777"	mpmenu.c:2190
 "\"Get the host's mods\" downloads what is missing from our official releases, sets your gameplay mods like the host's, then joins the host again."	net/ds_modcheck.h:433
-"%d / %d members"	ui_teams.c:1300
-"%d at home"	ui_teams.c:1289
+"%d / %d members"	ui_teams.c:1302
+"%d / %d picked"	fe_menu.c:179
+"%d at home"	ui_teams.c:1291
+"%d capture to win||%d captures to win"	pvp_ui.c:105
+"%d dungeon item: storage first, then backpacks.||%d dungeon items: storage first, then backpacks."	fe_menu.c:255
 "%d ms"	ui_model.c:477
-"%d s left"	ui_teams.c:1265 ui_teams.c:1814
-"%d unit · max %d||%d units · max %d"	ui_teams.c:1020
+"%d of %d picked."	pvp_ui.c:464
+"%d s left"	ui_teams.c:1267 ui_teams.c:1816
+"%d unit brought||%d units brought"	fe_menu.c:415 pvp_ui.c:764
+"%d unit each||%d units each"	fe_menu.c:43
+"%d unit · max %d||%d units · max %d"	ui_teams.c:1022
+"%d unit||%d units"	fe_menu.c:201 pvp_ui.c:258
+"%d:%02d per round"	pvp_ui.c:107
+"%s\n\nA save on this computer, newest first. Click it to see its units."	pvp_ui.c:660
 "%s (host %s, you %s)"	net/ds_modcheck.h:121 net/ds_modcheck.h:416
 "%s (host)"	mpmenu_model.c:541
-"%s (watching):"	mpmenu.c:2997
+"%s (watching):"	mpmenu.c:3077
+"%s (you)"	pvp_ui.c:206
 "%s and %s"	mpmenu_model.c:637
-"%s and others are typing..."	mpmenu.c:3217
-"%s answered, but the game did not start. Try again."	mpmenu.c:2097
-"%s asks you to lend a unit (right-click your portrait)"	ui_game.c:3672
-"%s belongs to %s"	ui_game.c:566 ui_teams.c:1418
-"%s belongs to %s (Admin mode lets the host take it)"	ui_game.c:565
-"%s cancelled the expedition"	ui_teams.c:335
+"%s and others are typing..."	mpmenu.c:3297
+"%s answered, but the game did not start. Try again."	mpmenu.c:2177
+"%s asks you to lend a unit (right-click your portrait)"	ui_game.c:3678
+"%s belongs to %s"	ui_game.c:568 ui_teams.c:1420
+"%s belongs to %s (Admin mode lets the host take it)"	ui_game.c:567
+"%s cancelled the expedition"	ui_teams.c:337
 "%s cancelled the vote"	ui_model.c:403
 "%s chooses%s"	ui_model.c:283
-"%s closed the Portal screen: nobody returns"	ui_game.c:1410
+"%s closed the Portal screen: nobody returns"	ui_game.c:1414
 "%s decides (no answer in 60 s)"	ui_model.c:273
-"%s declined the expedition"	ui_teams.c:334
-"%s disconnected"	ui_game.c:1055 ui_game.c:1057
-"%s gave back %s"	ui_game.c:3547
-"%s goes back to the title.||%s go back to the title."	mpmenu.c:2327
-"%s goes to %s"	ui_game.c:561 ui_teams.c:1407
-"%s invited you to their world."	mpmenu.c:2487
-"%s is back"	ui_game.c:1042
-"%s is back with you (%s left)"	ui_game.c:3549
-"%s is choosing"	ui_game.c:1398 ui_game.c:1950
-"%s is choosing who returns"	ui_game.c:1392
-"%s is free"	ui_game.c:561 ui_teams.c:1407
-"%s is kept for a player who is away"	ui_teams.c:1417
-"%s is not hosting this world right now."	mpmenu.c:2149 mpmenu.c:2154 mpmenu.c:2695 mpmenu.c:2840
-"%s is playing another world now (%s), not %s."	mpmenu.c:2006
-"%s is playing another world now, not %s."	mpmenu.c:2007
-"%s is reserved for %s"	ui_game.c:564
-"%s is still loading"	mpmenu.c:1756
-"%s is trading with %s"	ui_game.c:1318
-"%s is typing...||%s are typing..."	mpmenu.c:3217
+"%s declined the expedition"	ui_teams.c:336
+"%s did not start the game from the launcher, so %s cannot have the host's gameplay mods: %s."	pvp_modcheck.c:126
+"%s disconnected"	ui_game.c:1057 ui_game.c:1059
+"%s ended the expedition. Here is what your units bring home."	fe_menu.c:213
+"%s gave back %s"	ui_game.c:3553
+"%s goes back to the title.||%s go back to the title."	mpmenu.c:2407
+"%s goes to %s"	ui_game.c:563 ui_teams.c:1409
+"%s invited you to their world."	mpmenu.c:2567
+"%s is back"	ui_game.c:1044
+"%s is back with you (%s left)"	ui_game.c:3555
+"%s is choosing"	ui_game.c:1402 ui_game.c:1954
+"%s is choosing who returns"	ui_game.c:1396
+"%s is free"	ui_game.c:563 ui_teams.c:1409
+"%s is kept for a player who is away"	ui_teams.c:1419
+"%s is not hosting this world right now."	mpmenu.c:2229 mpmenu.c:2234 mpmenu.c:2775 mpmenu.c:2920
+"%s is playing another world now (%s), not %s."	mpmenu.c:2086
+"%s is playing another world now, not %s."	mpmenu.c:2087
+"%s is reserved for %s"	ui_game.c:566
+"%s is still loading"	mpmenu.c:1836
+"%s is trading with %s"	ui_game.c:1322
+"%s is typing...||%s are typing..."	mpmenu.c:3297
 "%s is waiting for you: rejoin from Recent worlds."	mpmenu_model.c:236
-"%s is watching"	mpmenu.c:3002
-"%s is watching: a spectator sees everything and can chat and ping, but owns no units and cannot pause or vote."	ui_game.c:5345
-"%s joined the game"	mpmenu.c:3006
-"%s left the game"	mpmenu.c:3006 mpmenu_model.c:227
-"%s left: the expedition proposal is cancelled"	ui_teams.c:336
-"%s lent you %s"	ui_game.c:3541
-"%s lent you this unit. You order it fully (move and skills). Click to give it back."	ui_teams.c:2110
-"%s looks at another part of the map. Click to look there."	ui_game.c:5361
-"%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it."	ui_game.c:5353
-"%s mod:"	mpmenu.c:2977
-"%s orders this unit now. Click to take back control."	ui_teams.c:2108
-"%s orders this unit until you take it back. It stays your unit."	ui_game.c:5307 ui_teams.c:2116
-"%s proposes an expedition to %s"	ui_teams.c:368
-"%s reconnected"	mpmenu.c:3006
+"%s is watching"	mpmenu.c:3082
+"%s is watching: a spectator sees everything and can chat and ping, but owns no units and cannot pause or vote."	ui_game.c:5351
+"%s joined the game"	mpmenu.c:3086
+"%s left the game"	mpmenu.c:3086 mpmenu_model.c:227
+"%s left: the expedition proposal is cancelled"	ui_teams.c:338
+"%s lent you %s"	ui_game.c:3547
+"%s lent you this unit. You order it fully (move and skills). Click to give it back."	ui_teams.c:2112
+"%s looks at another part of the map. Click to look there."	ui_game.c:5367
+"%s marked this spot. It goes away when a unit reaches it, or when a player presses B over it."	ui_game.c:5359
+"%s mod:"	mpmenu.c:3057
+"%s must join from the launcher, which gets the host's mods."	pvp_modcheck.c:132
+"%s orders this unit now. Click to take back control."	ui_teams.c:2110
+"%s orders this unit until you take it back. It stays your unit."	ui_game.c:5313 ui_teams.c:2118
+"%s proposes an expedition to %s"	ui_teams.c:370
+"%s reconnected"	mpmenu.c:3086
 "%s said no: staying here"	ui_model.c:419
 "%s said no: staying on floor %d"	ui_model.c:417
-"%s stopped watching"	mpmenu.c:3002
-"%s took back %s"	ui_game.c:3544
-"%s turned Admin mode off: the host controls only their own units."	mpmenu.c:2529
-"%s turned Admin mode on: the host can control every unit."	mpmenu.c:2529
+"%s stopped watching"	mpmenu.c:3082
+"%s took back %s"	ui_game.c:3550
+"%s took the Blue flag"	pvp_game.c:921
+"%s took the Red flag"	pvp_game.c:921
+"%s turned Admin mode off: the host controls only their own units."	mpmenu.c:2609
+"%s turned Admin mode on: the host can control every unit."	mpmenu.c:2609
 "%s turned spectators off"	mpmenu_model.c:233
 "%s wants %s · press >> to agree||%s want %s · press >> to agree"	ui_model.c:176
-"%s wants to %s"	ui_game.c:1181
-"%s was played with %s."	mpmenu.c:3625
-"%s's Colour"	ui_game.c:5336
-"%s's Lobby"	mpmenu.c:1681
-"%s's Ping"	ui_game.c:5353
-"%s's Units"	ui_teams.c:2101
-"%s's View"	ui_game.c:5359
+"%s wants to %s"	ui_game.c:1183
+"%s was played with %s."	mpmenu.c:3704
+"%s · %d unit||%s · %d units"	fe_menu.c:157
+"%s's Colour"	ui_game.c:5342
+"%s's Lobby"	mpmenu.c:1761
+"%s's Ping"	ui_game.c:5359
+"%s's Units"	ui_teams.c:2103
+"%s's View"	ui_game.c:5365
+"%s's copy of %s is not the same as the host's (other files). %s must start the game from the launcher again."	pvp_modcheck.c:123
 "%s's game went out of sync. Everyone reloads %s's save"	ui_model.c:460
-"%s's pings are hidden on your screen"	ui_game.c:4866
-"%s's pings show again"	ui_game.c:4867
-"%s's proposal is open: approve or decline it first"	ui_teams.c:409
-"%s's units"	ui_teams.c:1095
-"%s's view is not known yet"	ui_game.c:2922
-"%s's view is not known yet: it shows as soon as %s moves the camera"	ui_game.c:4367
-"%s, away"	ui_game.c:214 ui_game.c:683
-"%s. You can look at its details, but only its controller gives it orders. Ask them to lend it to you."	ui_game.c:5389
-"%s: %d ms, %s"	ui_game.c:2843
-"%s: %d ms, %s (%d steps behind)"	ui_game.c:2842
+"%s's gameplay mods are not the host's."	pvp_modcheck.c:129
+"%s's hub"	fe_menu.c:200
+"%s's hub rules:"	fe_menu.c:42
+"%s's pings are hidden on your screen"	ui_game.c:4872
+"%s's pings show again"	ui_game.c:4873
+"%s's proposal is open: approve or decline it first"	ui_teams.c:411
+"%s's units"	ui_teams.c:1097
+"%s's view is not known yet"	ui_game.c:2926
+"%s's view is not known yet: it shows as soon as %s moves the camera"	ui_game.c:4373
+"%s, away"	ui_game.c:214 ui_game.c:685
+"%s. You can look at its details, but only its controller gives it orders. Ask them to lend it to you."	ui_game.c:5395
+"%s: %d ms, %s"	ui_game.c:2847
+"%s: %d ms, %s (%d steps behind)"	ui_game.c:2846
 "%s: %s (host %s, you %s)"	net/ds_modcheck.h:155
-"%s: %s. Right-click its portrait to take it."	ui_game.c:805
-"%s: disconnected"	ui_game.c:2840
+"%s: %s. Right-click its portrait to take it."	ui_game.c:807
+"%s: +%.0f XP."	fe_menu.c:243
+"%s: comes home as before."	fe_menu.c:241
+"%s: disconnected"	ui_game.c:2844
 "%s: host %s, you %s"	net/ds_modcheck.h:262
-"%s<color=#a69085> pinged a spot.</color>"	ui_game.c:4021
-"(click for options)"	ui_game.c:3841
-"(none)"	ui_teams.c:290
+"%s: level %.0f → %.0f."	fe_menu.c:242
+"%s: removed from your save, with its gear."	fe_menu.c:240
+"%s: unchanged."	fe_menu.c:244
+"%s<color=#a69085> pinged a spot.</color>"	ui_game.c:4027
+"(click for options)"	ui_game.c:3847
+"(none)"	ui_teams.c:292
 "(off)"	net/ds_modcheck.h:412
-", "	mpmenu.c:1301 mpmenu.c:2323 mpmenu.c:3214 mpmenu_model.c:636 ui_game.c:4575 ui_game.c:5367 ui_model.c:106 ui_model.c:132 ui_model.c:158 ui_model.c:372 ui_model.c:415 ui_teams.c:340 ui_teams.c:773 ui_teams.c:1251 net/ds_modcheck.h:120 net/ds_modcheck.h:147 net/ds_modcheck.h:428
+"+%.0f XP"	fe_menu.c:231
+"+%.0f levels"	fe_menu.c:232
+", "	mpmenu.c:1381 mpmenu.c:2403 mpmenu.c:3294 mpmenu_model.c:636 ui_game.c:4581 ui_game.c:5373 ui_model.c:106 ui_model.c:132 ui_model.c:158 ui_model.c:372 ui_model.c:415 ui_teams.c:342 ui_teams.c:775 ui_teams.c:1253 net/ds_modcheck.h:120 net/ds_modcheck.h:147 net/ds_modcheck.h:428
 "; "	net/ds_modcheck.h:261
-"<color=#a69085>%s's colour</color>"	ui_game.c:2661
-"<color=#a69085>Address:</color> <color=#ccbeb8>%s</color>"	ui_game.c:2472
-"<color=#a69085>Floor %d</color>"	ui_game.c:4657
-"<color=#a69085>You have no units on this run. You can watch and chat; %s gives the orders.</color>"	ui_game.c:3863
-"<color=#b5aeb0>%s</color> You   <color=#a69085>Click: look there</color>"	ui_game.c:4699
-"<color=#ccbeb8>%d s</color>"	ui_game.c:2638
-"<color=#ccbeb8>%s %s · %d s</color>"	ui_game.c:1139
-"<color=#ccbeb8>%s is choosing who returns</color>"	ui_game.c:1448
-"<color=#ccbeb8>On (%d)</color>"	ui_game.c:2626
-"<color=#d9be8f>%s  Following %s's view</color>"	ui_game.c:4545
-"<color=#d9be8f>From %s</color>"	ui_game.c:3588
-"<color=#d9be8f>Lent to %s</color>"	ui_game.c:3587
-"<color=#d9be8f>Units you recruit are yours. %s: %d more (%s)</color>"	ui_game.c:5089
-"<color=#d9be8f>Units you recruit are yours. Population full (%d/%d): host rule %s</color>"	ui_game.c:5086
-"<color=#d9be8f>Units you recruit are yours. Population full for you (%d/%d): host rule %s</color>"	ui_game.c:5087
+"<color=#CCBEB8>At home:</color> your units stay and keep working. Nothing changes until you bring the results home.   <color=#CCBEB8>In the hub:</color> their copies play. %s   <color=#CCBEB8>If a copy dies:</color> %s%s%s"	fe_menu.c:180
+"<color=#a69085>%s's colour</color>"	ui_game.c:2665
+"<color=#a69085>Address:</color> <color=#ccbeb8>%s</color>"	ui_game.c:2476
+"<color=#a69085>Floor %d</color>"	ui_game.c:4663
+"<color=#a69085>You have no units on this run. You can watch and chat; %s gives the orders.</color>"	ui_game.c:3869
+"<color=#b5aeb0>%s</color> You   <color=#a69085>Click: look there</color>"	ui_game.c:4705
+"<color=#ccbeb8>%d s</color>"	ui_game.c:2642
+"<color=#ccbeb8>%s %s · %d s</color>"	ui_game.c:1141
+"<color=#ccbeb8>%s is choosing who returns</color>"	ui_game.c:1452
+"<color=#ccbeb8>On (%d)</color>"	ui_game.c:2630
+"<color=#d9be8f>%s  Following %s's view</color>"	ui_game.c:4551
+"<color=#d9be8f>From %s</color>"	ui_game.c:3594
+"<color=#d9be8f>Lent to %s</color>"	ui_game.c:3593
+"<color=#d9be8f>Units you recruit are yours. %s: %d more (%s)</color>"	ui_game.c:5095
+"<color=#d9be8f>Units you recruit are yours. Population full (%d/%d): host rule %s</color>"	ui_game.c:5092
+"<color=#d9be8f>Units you recruit are yours. Population full for you (%d/%d): host rule %s</color>"	ui_game.c:5093
 "<color=#f16071>no</color>"	ui_model.c:394
 "<color=#f16071>out of sync</color>"	ui_model.c:478 ui_model.c:653
 "<color=%s>%s</color>  %d ms"	ui_model.c:626
 "<color=%s>%s</color>  <color=#f16071>out of sync</color>"	ui_model.c:624
 "<color=%s>%s</color>  loading"	ui_model.c:625
-"<color=%s>Follow %s's view</color>"	ui_game.c:3469
-"<color=%s>Give back %s</color>"	ui_game.c:3475
-"<color=%s>Lend control to %s</color>"	ui_game.c:3473
-"<color=%s>Mute %s's pings</color>"	ui_game.c:3471
-"<color=%s>Owned by %s</color>\nYou cannot change this unit"	ui_game.c:3301
-"<color=%s>Release (free unit)</color>"	ui_game.c:3476
-"<color=%s>Show %s's pings</color>"	ui_game.c:3472
-"<color=%s>Spectator: view only</color>\nYou are watching"	ui_game.c:3300
-"<color=%s>Stop following</color>"	ui_game.c:3470
-"<color=%s>Take back control</color>"	ui_game.c:3474
-"<color=%s>You</color>"	ui_game.c:4261
-"<size=150%%>%s disconnected</size>  <color=#f16071>X</color>\nThe game is paused for everyone.\n<size=88%%><color=#a69085>Waiting %d:%02d\nKeep playing: you control %s's units until %s comes back.</color></size>"	ui_game.c:1026
-"<size=150%%>%s</size>\n%s wants to %s.\n<size=88%%><color=#a69085>%s      %d s left</color></size>"	ui_game.c:1081
-"<size=86%%><smallcaps><color=#a69085>Watching (%d)</color></smallcaps></size>"	ui_game.c:2588
-"<size=86%><color=#a69085>Friends outside your network need your public IP and the port opened on the router.</color></size>"	ui_game.c:2485
-"<size=86%><color=#a69085>Right-click and drag to move the multiplayer windows</color></size>"	ui_game.c:2635
-"A map change vote (counted as yes)"	ui_game.c:1088
-"A player"	mp_core.c:278 mpmenu.c:2323 mpmenu.c:3007
-"A player disconnected and you chose Keep playing. You order their units until they come back; they stay theirs."	ui_game.c:5385
-"A player wants to go down a floor (or return to the settlement). Everyone goes together, so every player votes; the host breaks a tie. With no answer in 60 seconds, the vote is cancelled."	ui_game.c:5406
-"A spectator"	mpmenu.c:3002 ui_game.c:2599
+"<color=%s>Follow %s's view</color>"	ui_game.c:3475
+"<color=%s>Give back %s</color>"	ui_game.c:3481
+"<color=%s>Lend control to %s</color>"	ui_game.c:3479
+"<color=%s>Mute %s's pings</color>"	ui_game.c:3477
+"<color=%s>Owned by %s</color>\nYou cannot change this unit"	ui_game.c:3307
+"<color=%s>Release (free unit)</color>"	ui_game.c:3482
+"<color=%s>Show %s's pings</color>"	ui_game.c:3478
+"<color=%s>Spectator: view only</color>\nYou are watching"	ui_game.c:3306
+"<color=%s>Stop following</color>"	ui_game.c:3476
+"<color=%s>Take back control</color>"	ui_game.c:3480
+"<color=%s>You</color>"	ui_game.c:4267
+"<size=150%%>%s disconnected</size>  <color=#f16071>X</color>\nThe game is paused for everyone.\n<size=88%%><color=#a69085>Waiting %d:%02d\nKeep playing: you control %s's units until %s comes back.</color></size>"	ui_game.c:1028
+"<size=150%%>%s</size>\n%s wants to %s.\n<size=88%%><color=#a69085>%s      %d s left</color></size>"	ui_game.c:1083
+"<size=86%%><smallcaps><color=#a69085>Watching (%d)</color></smallcaps></size>"	ui_game.c:2592
+"<size=86%><color=#a69085>Friends outside your network need your public IP and the port opened on the router.</color></size>"	ui_game.c:2489
+"<size=86%><color=#a69085>Right-click and drag to move the multiplayer windows</color></size>"	ui_game.c:2639
+"A map change vote (counted as yes)"	ui_game.c:1090
+"A match is set up or running."	pvp_ui.c:191
+"A player"	mp_core.c:278 mpmenu.c:2403 mpmenu.c:3087 pvp_modcheck.c:112 pvp_mods.c:129
+"A player disconnected and you chose Keep playing. You order their units until they come back; they stay theirs."	ui_game.c:5391
+"A player wants to go down a floor (or return to the settlement). Everyone goes together, so every player votes; the host breaks a tie. With no answer in 60 seconds, the vote is cancelled."	ui_game.c:5412
+"A spectator"	mpmenu.c:3082 ui_game.c:2603
+"A unit"	pvp_game.c:920
 "A unit that dies goes home as it was at the last save."	mpmenu_model.c:102
 "A unit that dies is removed at home, with its gear."	mpmenu_model.c:102
-"A world"	mpmenu.c:1295
-"Abandoned Mine"	ui_teams.c:284
-"Abyss"	ui_teams.c:285
-"Address, like 192.168.1.20:47777"	mpmenu.c:864
-"Admin Mode"	mpmenu_model.c:56 ui_game.c:5331
+"A world"	mpmenu.c:1375
+"Abandoned Mine"	ui_teams.c:286
+"Abyss"	ui_teams.c:287
+"Address, like 192.168.1.20:47777"	mpmenu.c:947
+"Admin Mode"	mpmenu_model.c:56 ui_game.c:5337
 "Admin mode"	mpmenu_model.c:61
-"Admin mode (host)"	ui_game.c:2618
+"Admin mode (host)"	ui_game.c:2622
 "Agreed (%d of %d): %s"	ui_model.c:410
+"Alive"	fe_menu.c:234
 "All"	ui_model.c:605
 "Allowed"	mpmenu_model.c:77
 "Allowed · %d watching||Allowed · %d watching"	mpmenu_model.c:76
 "Allowed: anyone you invite can join to watch (at most 8). They see everything, can chat and ping, own no units, and cannot pause or vote. Not allowed: nobody can watch; turning it off during play removes the spectators."	mpmenu_model.c:51
-"Another map change is being voted on"	ui_game.c:1177 ui_game.c:1201
+"Already Brought Home"	fe_menu.c:308
+"Already brought home on %s."	mp_modes.c:133
+"Another map change is being voted on"	ui_game.c:1179 ui_game.c:1203
 "Anyone can pause"	mpmenu_model.c:67
-"Approve"	ui_teams.c:1308 ui_teams.c:2130
-"Approved: ready to go."	ui_teams.c:2140
-"Ask %s to lend a unit"	ui_game.c:3866
-"Ask for a Unit"	ui_game.c:5399
-"Asked %s to lend you a unit"	ui_game.c:3698
-"At most %d units can go on an expedition (now %d)"	ui_teams.c:412
-"At the settlement"	ui_teams.c:976
-"Auto"	ui_game.c:2663
-"Away"	ui_game.c:5433
-"Back"	mpmenu.c:3477 mpmenu_model.c:506
-"Bad address in this row: %s"	mpmenu.c:2699
-"Blue"	ui_model.c:23
+"Apply to a new save"	fe_menu.c:268 fe_menu.c:373
+"Approve"	ui_teams.c:1310 ui_teams.c:2132
+"Approved: ready to go."	ui_teams.c:2142
+"Arena"	pvp_ui.c:113
+"Ask %s to lend a unit"	ui_game.c:3872
+"Ask for a Unit"	ui_game.c:5405
+"Asked %s to lend you a unit"	ui_game.c:3704
+"At most %d units can go on an expedition (now %d)"	ui_teams.c:414
+"At the settlement"	ui_teams.c:978
+"Auto"	ui_game.c:2667
+"Away"	ui_game.c:5439
+"Back"	mpmenu.c:3556 mpmenu_model.c:506
+"Back from the Expedition"	fe_menu.c:212
+"Back to the PvP window."	pvp_ui.c:663
+"Back to the Title"	pvp_ui.c:635 pvp_ui.c:665
+"Back to the World"	pvp_ui.c:607 pvp_ui.c:635 pvp_ui.c:666
+"Bad address in this row: %s"	mpmenu.c:2779
+"Best of %d"	pvp_ui.c:106
+"Blue"	pvp_ui.c:257 pvp_ui.c:547 pvp_ui.c:578 pvp_ui.c:580 pvp_ui.c:632 ui_model.c:23
+"Blue Team"	pvp_ui.c:656
+"Blue scores!"	pvp_game.c:924
+"Blue wins the match"	pvp_ui.c:627
+"Blue wins the match  %d - %d"	pvp_game.c:928
+"Blue wins the round  %d - %d"	pvp_game.c:930
 "Both"	ui_model.c:602
-"Bring units"	mpmenu.c:1654
-"Cancel"	mpmenu.c:2343 mpmenu.c:2399 mpmenu.c:2431 mpmenu.c:2481 mpmenu.c:2489 mpmenu.c:2503 mpmenu.c:3475 mpmenu.c:3627 mpmenu_model.c:518 ui_game.c:1131 ui_teams.c:1309
-"Cancel Proposal"	ui_teams.c:2131
-"Cancels the expedition for everyone."	ui_teams.c:2132
-"Cannot reach %s. Check the address and your network."	mpmenu.c:2148
+"Bring"	pvp_ui.c:431 pvp_ui.c:662
+"Bring Units"	fe_menu.c:144 pvp_ui.c:439 pvp_ui.c:654
+"Bring Units..."	pvp_ui.c:178
+"Bring home to"	fe_menu.c:261 fe_menu.c:375 fe_menu.c:376
+"Bring these units"	fe_menu.c:188 fe_menu.c:189 fe_menu.c:369
+"Bring this unit"	fe_menu.c:368
+"Bring units"	mpmenu.c:1734
+"Brought home"	fe_menu.c:221
+"Brought home %s"	fe_menu.c:202
+"Brought: %s. The host starts the match with them."	pvp_ui.c:483
+"Cancel"	mpmenu.c:2423 mpmenu.c:2479 mpmenu.c:2511 mpmenu.c:2561 mpmenu.c:2569 mpmenu.c:2583 mpmenu.c:3554 mpmenu.c:3706 mpmenu_model.c:518 ui_game.c:1133 ui_teams.c:1311
+"Cancel Proposal"	ui_teams.c:2133
+"Cancels the expedition for everyone."	ui_teams.c:2134
+"Cannot reach %s. Check the address and your network."	mpmenu.c:2228
+"Capture the Flag"	pvp_ui.c:104
 "Catching up with the host..."	ui_model.c:147
 "Catching up with the host... (loading)"	ui_model.c:148
-"Change Map"	ui_game.c:5406
+"Change Map"	ui_game.c:5412
 "Change the map?"	ui_model.c:382
-"Changing map: orders wait for the new map"	ui_game.c:789
-"Chat"	mpmenu.c:3065 ui_game.c:2641 ui_game.c:5328
-"Chat Fade Time"	ui_game.c:5326
-"Chat messages fade after"	ui_game.c:2637
-"Choose at least one unit for the expedition"	ui_teams.c:411
+"Changing map: orders wait for the new map"	ui_game.c:791
+"Chat"	mpmenu.c:3145 ui_game.c:2645 ui_game.c:5334
+"Chat Fade Time"	ui_game.c:5332
+"Chat messages fade after"	ui_game.c:2641
+"Choose at least one unit for the expedition"	ui_teams.c:413
+"Choose the teams and the rules, then press Start Match."	pvp_ui.c:191
+"Choosing units..."	fe_menu.c:416 pvp_ui.c:765
 "Chosen"	ui_model.c:270
-"Clan limit"	ui_game.c:5089
+"Clan limit"	ui_game.c:5095
 "Clan limit x players connected, shared by all"	mpmenu_model.c:39
-"Click a section name, then units: they go to that player, or back to Free units."	ui_teams.c:2097
-"Click a world to reconnect the same way. x removes it from this list."	mpmenu.c:1192
-"Click to look where %s looks. Right-click for more: Follow %s's view, Mute %s's pings."	ui_game.c:5346
-"Click to move your camera there."	mpmenu.c:3249 ui_game.c:5355
-"Close"	mpmenu.c:2777 mpmenu.c:2777 ui_teams.c:869 ui_teams.c:2187
-"Closes the Rules."	mpmenu.c:3409
-"Closes the Teams window."	ui_teams.c:2187
-"Closes the rules."	mpmenu.c:3414
+"Click a section name, then units: they go to that player, or back to Free units."	ui_teams.c:2099
+"Click a world to reconnect the same way. x removes it from this list."	mpmenu.c:1275
+"Click to add or remove it. A copy travels with its gear and backpack; the unit itself stays at home and keeps working."	fe_menu.c:368
+"Click to look where %s looks. Right-click for more: Follow %s's view, Mute %s's pings."	ui_game.c:5352
+"Click to move your camera there."	mpmenu.c:3329 ui_game.c:5361
+"Click to pick or unpick this unit. The dungeon team is 4 units in total, shared between the players."	pvp_ui.c:661
+"Close"	mpmenu.c:2857 mpmenu.c:2857 ui_teams.c:871 ui_teams.c:2189
+"Closes the Rules."	mpmenu.c:3489
+"Closes the Teams window."	ui_teams.c:2189
+"Closes the result. The world is the same as before the match."	pvp_ui.c:666
+"Closes the rules."	mpmenu.c:3494
+"Closes this window. Nothing is sent."	fe_menu.c:370 pvp_ui.c:653
 "Co-op: your units in a shared hub"	mpmenu_model.c:167
 "Comes back"	mpmenu_model.c:93
 "Comes back: items your units find in dungeons go into your home storage. Items made from the hub's stock always stay in the hub."	mpmenu_model.c:115
-"Compact"	ui_game.c:2631
-"Connect"	mpmenu.c:3473 mpmenu_model.c:514
+"Compact"	ui_game.c:2635
+"Connect"	mpmenu.c:3552 mpmenu_model.c:514
 "Connect with the copied address"	mpmenu_model.c:514
-"Connecting"	mpmenu.c:2502
+"Connecting"	mpmenu.c:2582
 "Connecting to %s to watch..."	mpmenu_model.c:490
 "Connecting to %s..."	mpmenu_model.c:490
 "Connecting to host..."	ui_model.c:145
 "Connection to %s lost"	mpmenu_model.c:236
 "Connection to host lost"	ui_model.c:149
 "Connection to the host lost"	mp_game.c:1231 mpmenu_model.c:237
-"Connections"	ui_game.c:5379
-"Connects to the host and loads their world. It stops trying after 8 seconds without an answer."	mpmenu.c:3473
-"Copied"	mpmenu.c:1744 ui_game.c:2475
-"Copies your address so you can send it to a friend. They paste it in Join by address."	mpmenu.c:3425 mpmenu.c:3426
-"Copy"	mpmenu.c:1633 mpmenu.c:1744 ui_game.c:2475
-"Copy Address"	mpmenu.c:3425 mpmenu.c:3426
+"Connections"	ui_game.c:5385
+"Connects to the host and loads their world. It stops trying after 8 seconds without an answer."	mpmenu.c:3552
+"Copied"	mpmenu.c:1824 ui_game.c:2479
+"Copies the picked units with their gear and sends them to the host. A new Bring replaces your last one."	pvp_ui.c:662
+"Copies your address so you can send it to a friend. They paste it in Join by address."	mpmenu.c:3505 mpmenu.c:3506
+"Copy"	mpmenu.c:1713 mpmenu.c:1824 ui_game.c:2479
+"Copy Address"	mpmenu.c:3505 mpmenu.c:3506
 "Copy direct address"	mpmenu_model.c:515
 "Copy the host's address, then press Connect"	mpmenu_model.c:493
+"Could not bring the units. Try again."	pvp_ui.c:485
+"Could not bring the units: %s"	pvp_ui.c:484
+"Could not bring these units."	fe_game.c:621
+"Could not bring these units: the save could not be read."	fe_game.c:621
 "Could not connect to the host"	mp_game.c:922
-"Could not get the host's mods"	mpmenu.c:2741 mpmenu.c:2742 mpmenu.c:2757 mpmenu.c:2758
+"Could not get the host's mods"	mpmenu.c:2821 mpmenu.c:2822 mpmenu.c:2837 mpmenu.c:2838
 "Could not join"	mp_game.c:1015 net/ds_modcheck.h:401
 "Could not join %s's game"	mpmenu_model.c:217
-"Could not join %s's world (Steam). Try again, or use Join by address."	mpmenu.c:3385
+"Could not join %s's world (Steam). Try again, or use Join by address."	mpmenu.c:3465
 "Could not join the game"	mpmenu_model.c:218
-"Could not join: %s"	mp_game.c:925 mp_game.c:1218 mpmenu.c:2096 mpmenu_model.c:205
+"Could not join: %s"	mp_game.c:925 mp_game.c:1218 mpmenu.c:2176 mpmenu_model.c:205
 "Could not join: the data files of the mod %s could not be copied from the host"	mp_game.c:1196
 "Could not join: the host's mod data files could not be copied"	mp_game.c:1197
 "Could not join: the mod %s has more data files than can be sent (over 1 MB)"	mp_game.c:1195
-"Could not join: your gameplay mods are not the same as the host's"	mp_game.c:923 mpmenu.c:2095 mpmenu.c:2780
-"Could not save your game"	mpmenu.c:2448
+"Could not join: your gameplay mods are not the same as the host's"	mp_game.c:923 mpmenu.c:2175 mpmenu.c:2860
+"Could not save your game"	mpmenu.c:2528
 "Counts"	mpmenu_model.c:92
 "Counts: levels, skills and experience gained in the hub go home. Does not count: units go home exactly as they left."	mpmenu_model.c:114
-"Day %lld"	mpmenu.c:1294
-"Dead Swamp"	ui_teams.c:285
+"Day %lld"	mpmenu.c:1374
+"Dead Swamp"	ui_teams.c:287
 "Death"	mpmenu_model.c:85
-"Decline"	ui_teams.c:1309 ui_teams.c:2132
-"Disconnected. The game waits, or the host keeps playing their units."	mpmenu.c:3429 ui_game.c:5288 ui_teams.c:2086
+"Death is not permanent"	fe_menu.c:45
+"Death is permanent"	fe_menu.c:45
+"Decline"	ui_teams.c:1311 ui_teams.c:2134
+"Died · home as at the last hub save"	fe_menu.c:236
+"Died · removed at home, with its gear"	fe_menu.c:235
+"Disconnected. The game waits, or the host keeps playing their units."	mpmenu.c:3509 ui_game.c:5294 ui_teams.c:2088
 "Does not count"	mpmenu_model.c:92
-"Done"	mpmenu.c:955 mpmenu.c:1022 mpmenu.c:3409 mpmenu.c:3414
-"Downloading the host's mods... %d%%"	mpmenu.c:2764
-"Draws an outline around units. Your units: in the game's gold. Friends' units: in each friend's colour. Both, or Off. Only on your screen."	ui_game.c:5316
+"Done"	mpmenu.c:1038 mpmenu.c:1105 mpmenu.c:3489 mpmenu.c:3494
+"Downloading the host's mods... %d%%"	mpmenu.c:2844
+"Draws an outline around units. Your units: in the game's gold. Friends' units: in each friend's colour. Both, or Off. Only on your screen."	ui_game.c:5322
+"Draws: %d"	pvp_ui.c:633
+"Dungeon floor %d"	pvp_ui.c:109
 "Dungeon loot"	mpmenu_model.c:85
+"Dungeon loot comes back"	fe_menu.c:46
+"Dungeon loot · %d item||Dungeon loot · %d items"	fe_menu.c:249
 "Each player can recruit up to the full clan limit"	mpmenu_model.c:37
-"End for everyone"	mpmenu.c:2342
-"End the game for everyone?"	mpmenu.c:2328
+"Each result can be brought home once."	fe_menu.c:193
+"Each team needs at least one unit (claim units with right-click on their portraits)."	pvp_ui.c:267
+"Each team needs brought units: Blue has %d, Red has %d."	pvp_ui.c:791
+"End for everyone"	mpmenu.c:2422
+"End the game for everyone?"	mpmenu.c:2408
+"Ends this PvP game for everyone and goes back to the title screen. Nobody's save changed."	pvp_ui.c:665
 "Enter the dungeon?"	ui_model.c:381
-"Event Choice"	ui_game.c:5418
+"Event Choice"	ui_game.c:5424
 "Event Choices"	mpmenu_model.c:56
 "Event choices"	mpmenu_model.c:61
-"Event choices: %s (host rule)."	mpmenu.c:2535
+"Event choices: %s (host rule)."	mpmenu.c:2615
+"Every player needs the host's gameplay mods (the launcher gets them)."	pvp_mods.c:151
+"Every player needs the host's gameplay mods: %s."	pvp_mods.c:149
 "Everyone agreed: %s"	ui_model.c:409
-"Everyone approved"	ui_teams.c:1247
-"Everyone approved, but nobody marked a unit"	ui_teams.c:2279
-"Everyone approved: leaving for %s"	ui_teams.c:2279
-"Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home."	mpmenu.c:3866
-"Everyone in this world and their connection. Right-click and drag to move this panel."	ui_game.c:5383 ui_game.c:5384
-"Everyone in this world. The bars show each player's connection."	mpmenu.c:3427
+"Everyone approved"	ui_teams.c:1249
+"Everyone approved, but nobody marked a unit"	ui_teams.c:2281
+"Everyone approved: leaving for %s"	ui_teams.c:2281
+"Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home."	mp_modes.c:81
+"Everyone brings units onto the starting map and the teams fight each other. A world made only for the match: nobody's save changes."	mp_modes.c:86
+"Everyone in this world and their connection. Right-click and drag to move this panel."	ui_game.c:5389 ui_game.c:5390
+"Everyone in this world. The bars show each player's connection."	mpmenu.c:3507
 "Everything found stays in the hub."	mpmenu_model.c:104
-"Expedition Proposal"	ui_teams.c:1798
-"Expedition Rules"	mpmenu.c:1006
-"Expedition proposal"	ui_teams.c:1263
-"Expedition proposed: every player must approve."	ui_teams.c:1995
-"Expedition results"	mpmenu_model.c:505
+"Expedition Proposal"	ui_teams.c:1800
+"Expedition Results"	fe_menu.c:192
+"Expedition Rules"	mpmenu.c:1089
+"Expedition proposal"	ui_teams.c:1265
+"Expedition proposed: every player must approve."	ui_teams.c:1997
+"Expedition results"	fe_menu.c:380 mpmenu_model.c:505
+"Expedition version"	fe_menu.c:142 fe_menu.c:377
 "Experience"	mpmenu_model.c:86
+"Experience does not count here."	fe_menu.c:182
 "Extra (the host does not use them):"	net/ds_modcheck.h:186
 "Fast"	ui_model.c:121
-"Fast Join"	ui_game.c:5329
-"Fast join"	ui_game.c:2651
-"Fast speed needs every player. Press >> to agree."	ui_game.c:5415
-"Festering Burrow"	ui_teams.c:284
+"Fast Join"	ui_game.c:5335
+"Fast join"	ui_game.c:2655
+"Fast speed needs every player. Press >> to agree."	ui_game.c:5421
+"Festering Burrow"	ui_teams.c:286
+"Fight"	pvp_ui.c:104
+"Fight with units from one of your own saves instead of this world's units. They are copies: your save stays as it is."	pvp_ui.c:654
+"Fight: a team wins the round when the other team has no unit left standing. Capture the Flag: take the other team's banner flag and bring it to your own banner while your flag is home."	pvp_ui.c:115
+"Fight: how many rounds are played at most; the first team to win most of them wins the match. Capture the Flag: how many captures win the match."	pvp_ui.c:116
 "First to answer"	mpmenu_model.c:72
 "Fixed in a Foreign Expedition: each player has their own storage, so every item knows its owner when results go home."	mpmenu_model.c:117
 "Fixed in this mode: items must know their owner."	mpmenu_model.c:106
-"Folds the Teams window to a small bar at the top, so you can see and play the game. Show opens it again."	ui_teams.c:2191
-"Folds the proposal to one line so it covers less of the map. Escape folds it too. The game keeps running either way."	ui_teams.c:2134
-"Follow %s"	ui_game.c:3866
-"Follow %s's View"	ui_game.c:5300
-"Follow Camera"	ui_game.c:5396
-"Following %s"	ui_game.c:3866
-"Foreign Expedition"	mpmenu.c:3866 mpmenu_model.c:502
+"Folds the Teams window to a small bar at the top, so you can see and play the game. Show opens it again."	ui_teams.c:2193
+"Folds the proposal to one line so it covers less of the map. Escape folds it too. The game keeps running either way."	ui_teams.c:2136
+"Follow %s"	ui_game.c:3872
+"Follow %s's View"	ui_game.c:5306
+"Follow Camera"	ui_game.c:5402
+"Following %s"	ui_game.c:3872
+"Foreign Expedition"	mp_modes.c:80 mpmenu_model.c:502
 "Foreign Expedition · Death: %s · Experience: %s · Dungeon loot: %s · Units: %d · Recruiting: %s"	mpmenu_model.c:25
-"Forgotten Abyss"	ui_teams.c:284
-"Free"	ui_game.c:5024
-"Free Camera"	ui_game.c:5397
-"Free Unit"	ui_game.c:5432
-"Free Units"	ui_teams.c:2099
-"Free camera"	ui_game.c:3866
-"Free units"	ui_teams.c:1054 ui_teams.c:1131
-"Frees this unit: nobody controls it, and any player can take it."	ui_game.c:5310
+"Forgotten Abyss"	ui_teams.c:286
+"Free"	ui_game.c:5030
+"Free Camera"	ui_game.c:5403
+"Free Unit"	ui_game.c:5438
+"Free Units"	ui_teams.c:2101
+"Free camera"	ui_game.c:3872
+"Free units"	ui_teams.c:1056 ui_teams.c:1133
+"Frees this unit: nobody controls it, and any player can take it."	ui_game.c:5316
 "Friends hosting a world now:"	mpmenu_model.c:483
 "Friends outside your home: open port %s on your router, or use Steam invite"	mpmenu_model.c:555
-"Friends outside your home: open port %s on your router, or use Steam invite."	mpmenu.c:1740
-"Friends outside your home: open port %s on your router."	mpmenu.c:1740
+"Friends outside your home: open port %s on your router, or use Steam invite."	mpmenu.c:1820
+"Friends outside your home: open port %s on your router."	mpmenu.c:1820
 "Friends' units"	ui_model.c:602
-"From"	ui_teams.c:915
+"From"	ui_teams.c:917
+"Game folder"	fe_game.c:574
 "Gear"	mpmenu_model.c:56 mpmenu_model.c:61 mpmenu_model.c:85 mpmenu_model.c:475
-"Gear is now: %s (host rule)."	mpmenu.c:2534
+"Gear is now: %s (host rule)."	mpmenu.c:2614
 "Gear: %s"	mpmenu_model.c:509
-"Get the host's mods"	mpmenu.c:2766 mpmenu.c:2767 mpmenu.c:2777
-"Give Back"	ui_game.c:5309 ui_teams.c:2118
-"Give back"	ui_game.c:3590 ui_teams.c:936
+"Get ready"	pvp_ui.c:573
+"Get the host's mods"	mpmenu.c:2846 mpmenu.c:2847 mpmenu.c:2857
+"Give Back"	ui_game.c:5315 ui_teams.c:2120
+"Give back"	ui_game.c:3596 ui_teams.c:938
 "Go down to floor %d?"	ui_model.c:378
 "Go down to the next floor?"	ui_model.c:379
-"Going"	ui_teams.c:1728
+"Going"	ui_teams.c:1730
 "Gold"	ui_model.c:23
-"Good connection. In sync."	mpmenu.c:3430 ui_game.c:5287 ui_teams.c:2085
-"Has not answered yet."	ui_teams.c:2140
-"Hide"	ui_game.c:2633 ui_game.c:2654 ui_game.c:3842 ui_teams.c:1144 ui_teams.c:1264 ui_teams.c:2134 ui_teams.c:2191
-"Hide %s's pings and their sound on your screen. %s is not told."	ui_game.c:5302
-"Host"	mpmenu.c:1710 ui_model.c:13
-"Host Address"	mpmenu.c:3472
+"Good connection. In sync."	mpmenu.c:3510 ui_game.c:5293 ui_teams.c:2087
+"Has not answered yet."	ui_teams.c:2142
+"Hide"	ui_game.c:2637 ui_game.c:2658 ui_game.c:3848 ui_teams.c:1146 ui_teams.c:1266 ui_teams.c:2136 ui_teams.c:2193
+"Hide %s's pings and their sound on your screen. %s is not told."	ui_game.c:5308
+"Home version"	fe_menu.c:142 fe_menu.c:378
+"Host"	mpmenu.c:1790 pvp_ui.c:85 ui_model.c:13
+"Host Address"	mpmenu.c:3551
 "Host a Foreign Expedition"	mpmenu_model.c:462
-"Host a New Campaign"	mpmenu.c:3470
+"Host a New Campaign"	mpmenu.c:3549
 "Host a game"	mpmenu_model.c:496
 "Host a new campaign"	mpmenu_model.c:511
 "Host a new save"	mpmenu_model.c:462
-"Host a world"	mpmenu.c:2567 mpmenu.c:2567
+"Host a world"	mpmenu.c:2647 mpmenu.c:2647
 "Host address"	mpmenu_model.c:458
-"Host from a Save"	mpmenu.c:3469
+"Host from a Save"	mpmenu.c:3548
 "Host from a save"	mpmenu_model.c:510
 "Host has v%s, you have v%s: update and try again."	net/dsnet_link.c:74
 "Host only"	mpmenu_model.c:72
 "Host your save"	mpmenu_model.c:462
 "Host: %s"	mpmenu_model.c:460
-"Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you leave and return to the title; your units stay reserved for you."	mpmenu.c:3420
-"Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you return to the title; your units stay reserved for you."	mpmenu.c:3441
-"Host: click a section name to move the picked unit there."	ui_teams.c:1127
-"Host: units you click go to %s."	ui_teams.c:1131
-"How Teams Work"	ui_teams.c:2124
-"How long a chat message stays on screen (3 to 120 seconds). Press Enter to see the recent messages again."	ui_game.c:5326
+"Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you leave and return to the title; your units stay reserved for you."	mpmenu.c:3500
+"Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you return to the title; your units stay reserved for you."	mpmenu.c:3521
+"Host: click a section name to move the picked unit there."	ui_teams.c:1129
+"Host: units you click go to %s."	ui_teams.c:1133
+"How Teams Work"	ui_teams.c:2126
+"How long a chat message stays on screen (3 to 120 seconds). Press Enter to see the recent messages again."	ui_game.c:5332
 "How many units each player may bring into the hub (1, 2, 3, 4 or 6). Each dive takes up to the game's party limit (4 in the unmodded game)."	mpmenu_model.c:116
 "How the clan's population limit is shared. Shared: one limit for everyone, first come. Per player: each player has the full limit. Split equally: the limit is divided between players. Multiplied: limit times players, shared. A hire needs room here and under Units per Player."	mpmenu_model.c:47
-"How this multiplayer world plays: pause, speed, gear, units and events. Saved with the world; new worlds start with your last rules."	mpmenu.c:3468
-"IP %s"	mpmenu.c:1306
-"IP %s · with %s"	mpmenu.c:1306
+"How this multiplayer world plays: pause, speed, gear, units and events. Saved with the world; new worlds start with your last rules."	mpmenu.c:3547
+"IP %s"	mpmenu.c:1386
+"IP %s · with %s"	mpmenu.c:1386
 "In %s's lobby"	mpmenu_model.c:528
-"In a dungeon only lending works: use Lend on your units."	ui_teams.c:1126
-"In a dungeon you can only lend units (Lend on a portrait)"	ui_teams.c:1415
-"Installing the host's mods..."	mpmenu.c:2762
-"Internet: %s"	mpmenu.c:1742 mpmenu_model.c:553
-"Invite"	mpmenu.c:1686
+"In a dungeon only lending works: use Lend on your units."	ui_teams.c:1128
+"In a dungeon you can only lend units (Lend on a portrait)"	ui_teams.c:1417
+"In a dungeon: load it and return to the settlement first."	fe_menu.c:155
+"Installing the host's mods..."	mpmenu.c:2842
+"Internet: %s"	mpmenu.c:1822 mpmenu_model.c:553
+"Invite"	mpmenu.c:1766
 "Items found in dungeons go home. Hub stock stays."	mpmenu_model.c:104
-"Join %s's World"	mpmenu.c:3465
-"Join %s's game anyway?"	mpmenu.c:2479
+"Items made from hub stock stay in the hub."	fe_menu.c:253
+"Join %s's World"	mpmenu.c:3544
+"Join %s's game anyway?"	mpmenu.c:2559
 "Join %s's world"	mpmenu_model.c:468
-"Join %s?"	mpmenu.c:2487
-"Join a Friend on Steam"	mpmenu.c:3463
-"Join a Friend's World"	mpmenu.c:3465
+"Join %s?"	mpmenu.c:2567
+"Join a Friend on Steam"	mpmenu.c:3542
+"Join a Friend's World"	mpmenu.c:3544
 "Join a friend on Steam"	mpmenu_model.c:461 mpmenu_model.c:464 mpmenu_model.c:465
 "Join a friend's world"	mpmenu_model.c:469
-"Join a friend's world with their address. Use it without Steam, or on the same home network."	mpmenu.c:3462
+"Join a friend's world with their address. Use it without Steam, or on the same home network."	mpmenu.c:3541
 "Join a game"	mpmenu_model.c:497
 "Join a multiplayer world"	mpmenu_model.c:461
-"Join and Leave Lines"	ui_game.c:5327
-"Join anyway"	mpmenu.c:2481
-"Join by Address"	mpmenu.c:3462
+"Join and Leave Lines"	ui_game.c:5333
+"Join anyway"	mpmenu.c:2561
+"Join by Address"	mpmenu.c:3541
 "Join by address"	mpmenu_model.c:513
 "Join from the launcher: it gets the host's mods for this game."	net/ds_modcheck.h:190
 "Joining %s's game as a spectator..."	mpmenu_model.c:485
 "Joining %s's game as a spectator... loading"	mpmenu_model.c:485
-"Joining %s's game..."	mpmenu.c:2500 mpmenu_model.c:486
+"Joining %s's game..."	mpmenu.c:2580 mpmenu_model.c:486
 "Joining %s's game... loading"	mpmenu_model.c:486
-"Joins this friend's world through Steam. The world loads from the host; your own saves are not touched."	mpmenu.c:3467
-"Joins this world again the same way as last time (Steam or the IP address). Your units come back to you. A world you hosted opens the load list, to host it again."	mpmenu.c:3451
-"Keep Playing"	ui_game.c:5412
-"Keep playing"	ui_game.c:1062
+"Joins this friend's world through Steam. The world loads from the host; your own saves are not touched."	mpmenu.c:3546
+"Joins this world again the same way as last time (Steam or the IP address). Your units come back to you. A world you hosted opens the load list, to host it again."	mpmenu.c:3531
+"Keep Playing"	ui_game.c:5418
+"Keep playing"	ui_game.c:1064
+"Keeps the results. Bring them home later from Multiplayer > Expedition results."	fe_menu.c:374
 "Large"	ui_model.c:575
-"Leave"	mpmenu.c:1652 mpmenu.c:2342
-"Leave Multiplayer"	mpmenu.c:3420 mpmenu.c:3441
-"Leave multiplayer"	mpmenu.c:1652 mpmenu.c:1938 mpmenu_model.c:517
-"Leave multiplayer to load another world"	mpmenu.c:1484
-"Leave multiplayer to load another world."	mpmenu.c:3443
-"Leave multiplayer?"	mpmenu.c:2328
-"Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it."	ui_teams.c:2124
-"Left-click to take"	ui_teams.c:1055
-"Left-click: free this unit. Use Lend to give control to another player."	ui_teams.c:2091
-"Left-click: take this unit."	ui_teams.c:2092
-"Lend"	ui_teams.c:913
-"Lend Control"	ui_teams.c:2107
-"Lend Control to %s"	ui_game.c:5306 ui_teams.c:2115
-"Lend control to %s"	ui_teams.c:933
-"Lent by %s"	ui_teams.c:2109
-"Lent to %s"	ui_teams.c:2108
-"Lent to %s: take it back to control it"	ui_game.c:776
-"Lent:"	ui_teams.c:914
-"Lets another player order this unit, in the dungeon too. It stays your unit; take it back any time."	ui_teams.c:2107
+"Later"	fe_menu.c:267 fe_menu.c:374
+"Leave"	mpmenu.c:1732 mpmenu.c:2422
+"Leave Multiplayer"	mpmenu.c:3500 mpmenu.c:3521
+"Leave multiplayer"	mpmenu.c:1732 mpmenu.c:2018 mpmenu_model.c:517
+"Leave multiplayer to load another world"	mpmenu.c:1564
+"Leave multiplayer to load another world."	mpmenu.c:3523
+"Leave multiplayer?"	mpmenu.c:2408
+"Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it."	ui_teams.c:2126
+"Left-click to take"	ui_teams.c:1057
+"Left-click: free this unit. Use Lend to give control to another player."	ui_teams.c:2093
+"Left-click: take this unit."	ui_teams.c:2094
+"Lend"	ui_teams.c:915
+"Lend Control"	ui_teams.c:2109
+"Lend Control to %s"	ui_game.c:5312 ui_teams.c:2117
+"Lend control to %s"	ui_teams.c:935
+"Lent by %s"	ui_teams.c:2111
+"Lent to %s"	ui_teams.c:2110
+"Lent to %s: take it back to control it"	ui_game.c:778
+"Lent:"	ui_teams.c:916
+"Lets another player order this unit, in the dungeon too. It stays your unit; take it back any time."	ui_teams.c:2109
 "Light blue"	ui_model.c:23
-"Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."	mpmenu.c:3463
-"Load Campaign"	mpmenu.c:3442
+"Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."	mpmenu.c:3542
+"Load Campaign"	mpmenu.c:3522
 "Loading the campaign failed"	mpmenu_model.c:350
-"Loading the host's mods..."	mpmenu.c:2763
-"Loading the world"	mpmenu.c:2502
+"Loading the host's mods..."	mpmenu.c:2843
+"Loading the world"	mpmenu.c:2582
 "Local: %s"	mpmenu_model.c:552
+"Loot stays in the hub"	fe_menu.c:46
+"Made with %s. Load and save it once in this build first."	fe_menu.c:156
+"Made with %s; the expedition ran on %s."	mp_modes.c:136
 "Majority vote"	mpmenu_model.c:72
-"Makes the units you do not control see-through, so your own units stand out. Off shows them normally. Only on your screen."	ui_game.c:5315
-"Map Vote"	ui_game.c:5403
-"Max %d units per player: %s has more"	ui_teams.c:413
+"Makes the units you do not control see-through, so your own units stand out. Off shows them normally. Only on your screen."	ui_game.c:5321
+"Map Vote"	ui_game.c:5409
+"Map: the starting settlement. In the lobby each player brings units; Start puts the teams at the two ends of the map."	pvp_ui.c:819
+"Max %d units per player: %s has more"	ui_teams.c:415
 "Medium"	ui_model.c:575
-"Message not sent: no connection to the other players."	mpmenu.c:3169
-"Mini overview (O)"	ui_game.c:2653
+"Message not sent: no connection to the other players."	mpmenu.c:3249
+"Mini overview (O)"	ui_game.c:2657
 "Missing (the host uses them):"	net/ds_modcheck.h:185
-"More Worlds"	mpmenu.c:3453 mpmenu.c:3453
+"Missing: %s."	pvp_modcheck.c:130
+"Mode"	pvp_ui.c:113
+"Mods that only change your screen are fine. Gameplay mods are not."	pvp_mods.c:148
+"Mods that only change your screen are fine. Gameplay mods are not: turn off %s."	pvp_mods.c:147
+"More Worlds"	mpmenu.c:3533 mpmenu.c:3533
 "More differences: %d"	net/ds_modcheck.h:424
-"Move Units"	ui_teams.c:2097
-"Move your camera yourself."	ui_game.c:5397
-"Multiplayer"	mpmenu.c:1914 mpmenu.c:3573 mpmenu_model.c:455 mpmenu_model.c:456
-"Multiplayer Lobby"	mpmenu.c:1681
+"More saves ›"	fe_menu.c:141
+"More units ›"	fe_menu.c:141
+"Move Units"	ui_teams.c:2099
+"Move your camera yourself."	ui_game.c:5403
+"Multiplayer"	mpmenu.c:1994 mpmenu.c:3652 mpmenu_model.c:455 mpmenu_model.c:456
+"Multiplayer Lobby"	mpmenu.c:1761
 "Multiplayer could not start"	mpmenu_model.c:350 mpmenu_model.c:356
-"Multiplayer ended. You are playing alone now; the world stays on your computer."	mpmenu.c:3376
-"Multiplayer is not running yet: changes here are not applied."	ui_teams.c:1125
-"Multiplayer is not running yet: the expedition cannot start"	ui_teams.c:1992
-"Multiplayer is not running yet: this change cannot be applied"	ui_teams.c:1395
+"Multiplayer ended. You are playing alone now; the world stays on your computer."	mpmenu.c:3456
+"Multiplayer folder"	fe_game.c:574
+"Multiplayer is not running yet: changes here are not applied."	ui_teams.c:1127
+"Multiplayer is not running yet: the expedition cannot start"	ui_teams.c:1994
+"Multiplayer is not running yet: this change cannot be applied"	ui_teams.c:1397
 "Multiplayer lobby"	mpmenu_model.c:529
-"Multiplied"	mpmenu_model.c:71 ord_mp.c:33 ui_game.c:5068
-"Mute %s's Pings"	ui_game.c:5302
-"Names Above Units"	ui_game.c:5322
-"Names above units"	ui_game.c:2616
-"Needs Units Laboratory"	mpmenu.c:1247
-"Needs the Steam version"	mpmenu.c:1747 mpmenu_model.c:465
-"New Save"	mpmenu.c:3458
+"Multiplied"	mpmenu_model.c:71 ord_mp.c:33 ui_game.c:5074
+"Mute %s's Pings"	ui_game.c:5308
+"Names Above Units"	ui_game.c:5328
+"Names above units"	ui_game.c:2620
+"Needs the Steam version"	mpmenu.c:1827 mpmenu_model.c:465
+"New Save"	mpmenu.c:3538
 "New save"	mpmenu_model.c:500
-"Next"	ui_teams.c:187
-"Next Player"	ui_game.c:5398
-"Next player ›"	ui_game.c:3866
-"Next: take a free unit (left-click)."	ui_teams.c:1133
+"Next"	ui_teams.c:189
+"Next Player"	ui_game.c:5404
+"Next player ›"	ui_game.c:3872
+"Next: take a free unit (left-click)."	ui_teams.c:1135
 "No Steam friend is hosting right now. Ask them to host, or use Join by address."	mpmenu_model.c:483
-"No answer from %s. Check the address, and ask the host to open port %u on the router."	mpmenu.c:2145
-"No answer from %s: expedition cancelled"	ui_teams.c:341
+"No answer from %s. Check the address, and ask the host to open port %u on the router."	mpmenu.c:2225
+"No answer from %s: expedition cancelled"	ui_teams.c:343
 "No answer in %d s: the vote was cancelled"	ui_model.c:402
-"No answer in 60 s: %s chooses"	ui_game.c:1974
-"No answer in 60 s: you choose for this event"	ui_game.c:1974
-"No free units"	ui_teams.c:1060
-"No mod offers this choice."	mpmenu.c:3330 mpmenu.c:3338 mpmenu.c:3346
-"No other player"	ui_teams.c:934
-"No pause"	mpmenu_model.c:67
-"No ping to look at"	ui_game.c:4085
-"No unit of theirs goes: they watch the expedition."	ui_teams.c:2141
-"No units: watches"	ui_teams.c:1761
-"No units: watches the expedition"	ui_teams.c:1297
-"Nobody controls these units. Left-click one to take it. The host orders them until someone takes them."	ui_teams.c:2099
-"Nobody controls this unit. Take it in the Teams window."	ui_game.c:5432
-"Nobody else is in this world now. Friends can no longer join."	mpmenu.c:2329
-"Nobody is hosting at %s. Check the address and the port."	mpmenu.c:2146
-"Normal"	ui_game.c:2631 ui_model.c:121
-"Normal or Compact. Compact makes the Players panel and the Teams button smaller."	ui_game.c:5324
-"Not Your Unit"	ui_game.c:5390
+"No answer in 60 s: %s chooses"	ui_game.c:1978
+"No answer in 60 s: you choose for this event"	ui_game.c:1978
+"No free units"	ui_teams.c:1062
+"No gear"	fe_menu.c:173
+"No mod offers this choice."	mpmenu.c:3410 mpmenu.c:3418 mpmenu.c:3426
+"No other player"	ui_teams.c:936
+"No pause"	mpmenu_model.c:67 pvp_ui.c:108
+"No pause: nobody can pause during the match. Planning pause: the game stops every 7 seconds of fighting so everyone can give orders; it goes on after 5 seconds or when everyone pressed Ready."	pvp_ui.c:118
+"No ping to look at"	ui_game.c:4091
+"No portals in a PvP match"	pvp_game.c:276 pvp_game.c:285
+"No save at the settlement"	fe_menu.c:177
+"No skill tree yet"	fe_menu.c:171
+"No unit of theirs goes: they watch the expedition."	ui_teams.c:2143
+"No units: watches"	ui_teams.c:1763
+"No units: watches the expedition"	ui_teams.c:1299
+"Nobody brought units yet: Bring units first."	fe_game.c:215
+"Nobody brought units yet: everyone picks units with Bring Units first."	pvp_ui.c:786
+"Nobody controls these units. Left-click one to take it. The host orders them until someone takes them."	ui_teams.c:2101
+"Nobody controls this unit. Take it in the Teams window."	ui_game.c:5438
+"Nobody else is in this world now. Friends can no longer join."	mpmenu.c:2409
+"Nobody is hosting at %s. Check the address and the port."	mpmenu.c:2226
+"Nobody wins the match  %d - %d"	pvp_game.c:929
+"Normal"	ui_game.c:2635 ui_model.c:121
+"Normal or Compact. Compact makes the Players panel and the Teams button smaller."	ui_game.c:5330
+"Not Your Unit"	ui_game.c:5396
 "Not allowed"	mpmenu_model.c:77
+"Not allowed: %s."	pvp_modcheck.c:131
+"Not in a multiplayer session."	pvp_units.c:98
 "Not permanent"	mpmenu_model.c:91
-"Not your unit (%s)"	ui_game.c:777
-"Not your unit (free: only the host orders it)"	ui_game.c:779
-"Not your unit (owned by %s)"	ui_game.c:778
-"OK"	mpmenu.c:2222 mpmenu.c:2722
-"Off"	mpmenu.c:2537 mpmenu_model.c:20 ui_game.c:2619 ui_game.c:2625 ui_game.c:2634 ui_game.c:2640 ui_game.c:2642 ui_game.c:2643 ui_game.c:2649 ui_game.c:2652 ui_model.c:602 ui_model.c:605
+"Not your unit (%s)"	ui_game.c:779
+"Not your unit (free: only the host orders it)"	ui_game.c:781
+"Not your unit (owned by %s)"	ui_game.c:780
+"Nothing that happens in the match stays: the world comes back as it was before."	pvp_ui.c:268
+"OK"	fe_menu.c:222 mpmenu.c:2302 mpmenu.c:2802
+"Off"	mpmenu.c:2617 mpmenu_model.c:20 ui_game.c:2623 ui_game.c:2629 ui_game.c:2638 ui_game.c:2644 ui_game.c:2646 ui_game.c:2647 ui_game.c:2653 ui_game.c:2656 ui_model.c:602 ui_model.c:605
 "Off: each player sees only what their own units see; places explored by others stay dark until a reload. On: everyone sees what any unit has revealed. The world is the same for everyone either way."	mpmenu_model.c:50
+"Off: mods allowed"	pvp_ui.c:103
 "Off: recruiting is not offered in the hub. On: players can recruit in the hub; recruits belong to the player who hired them and stay in the hub (they never go home)."	mpmenu_model.c:118
-"Older ›"	mpmenu.c:1195
-"On"	mpmenu.c:2537 mpmenu_model.c:20 ui_game.c:2627 ui_game.c:2634 ui_game.c:2640 ui_game.c:2642 ui_game.c:2643 ui_game.c:2649 ui_game.c:2652
-"On the Run"	ui_teams.c:2090
-"On the run"	ui_teams.c:976
-"On: anyone you invite can join to watch (at most 8). They see everything, can chat and ping, own no units, and cannot pause or vote. Off: nobody can watch; turning it off removes the spectators (you are asked first)."	ui_game.c:5332
+"Older ›"	mpmenu.c:1278
+"On"	mpmenu.c:2617 mpmenu_model.c:20 ui_game.c:2631 ui_game.c:2638 ui_game.c:2644 ui_game.c:2646 ui_game.c:2647 ui_game.c:2653 ui_game.c:2656
+"On the Run"	ui_teams.c:2092
+"On the run"	ui_teams.c:978
+"On: anyone you invite can join to watch (at most 8). They see everything, can chat and ping, own no units, and cannot pause or vote. Off: nobody can watch; turning it off removes the spectators (you are asked first)."	ui_game.c:5338
 "On: players can play at Fast speed when every player asks for it. Off: the game stays at normal speed for everyone."	mpmenu_model.c:44
 "On: the host can order every unit and release the units of absent players. Off: the host is a normal player for other players' units."	mpmenu_model.c:49
-"On: you can order every unit and release the units of absent players."	ui_game.c:5331
-"On: your loading screen closes as soon as the world is ready, 1.5 to 3.5 seconds sooner. Joins and reloads finish faster, but the first moments can stutter. Only your own screen changes."	ui_game.c:5329
+"On: vanilla only"	pvp_ui.c:103
+"On: vanilla only. No gameplay mods for anyone. Client mods (screen and controls) are fine.\n\nOff: mods allowed. The host's gameplay mods are required, and the launcher shares them with every player."	pvp_ui.c:120
+"On: you can order every unit and release the units of absent players."	ui_game.c:5337
+"On: your loading screen closes as soon as the world is ready, 1.5 to 3.5 seconds sooner. Joins and reloads finish faster, but the first moments can stutter. Only your own screen changes."	ui_game.c:5335
 "One clan limit for everyone, first come"	mpmenu_model.c:39
 "Only the host can change the gear of a unit nobody owns"	mp_game.c:1074
-"Only the host can change the rules."	mpmenu.c:1755
-"Only the host saves this world"	ui_game.c:3389
-"Only the host saves this world. It is saved on the host's computer."	ui_game.c:5426
-"Open Settings"	mpmenu.c:2399
-"Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer."	mpmenu.c:3457
-"Opens Steam's invite window so you can invite friends into this world."	mpmenu.c:3440
-"Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version."	mpmenu.c:3424
-"Opens the whole Teams window again."	ui_teams.c:2186
-"Other Units See-through"	ui_game.c:5315
+"Only the host can change the rules."	mpmenu.c:1835
+"Only the host saves this world"	ui_game.c:3395
+"Only the host saves this world. It is saved on the host's computer."	ui_game.c:5432
+"Only the host starts a Foreign Expedition."	fe_game.c:216
+"Only the host starts the match."	pvp_ui.c:785
+"Open Settings"	mpmenu.c:2479
+"Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer."	mpmenu.c:3537
+"Open to see what your units bring home. Each result can be brought home once."	fe_menu.c:380
+"Opens Steam's invite window so you can invite friends into this world."	mpmenu.c:3520
+"Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version."	mpmenu.c:3504
+"Opens the PvP match setup, where two teams of players fight each other. After the match, the world is back as it was."	pvp_ui.c:645
+"Opens the whole Teams window again."	ui_teams.c:2188
+"Other Units See-through"	ui_game.c:5321
 "Other setting values:"	net/ds_modcheck.h:189
-"Other units see-through"	ui_game.c:2615
+"Other units see-through"	ui_game.c:2619
 "Other version:"	net/ds_modcheck.h:187
 "Others"	ui_model.c:605
-"Overview"	ui_game.c:4655
-"Overview hidden. Press O to show it again."	ui_game.c:4735
-"Overview size"	ui_game.c:2655
+"Overview"	ui_game.c:4661
+"Overview hidden. Press O to show it again."	ui_game.c:4741
+"Overview size"	ui_game.c:2659
 "Own storage"	mpmenu_model.c:69 mpmenu_model.c:95
 "Owner of the unit"	mpmenu_model.c:72
-"Pack Supplies"	ui_teams.c:2147
-"Pack supplies for your own units on this run, from the settlement storage. Other players pack for their own units. The time left is in the Going list: when it runs out, the expedition is cancelled."	ui_teams.c:2147
-"Panel Size"	ui_game.c:5324
-"Panel size"	ui_game.c:2630
-"Pause"	mpmenu_model.c:56 mpmenu_model.c:61 mpmenu_model.c:473
+"Pack Supplies"	ui_teams.c:2149
+"Pack supplies for your own units on this run, from the settlement storage. Other players pack for their own units. The time left is in the Going list: when it runs out, the expedition is cancelled."	ui_teams.c:2149
+"Panel Size"	ui_game.c:5330
+"Panel size"	ui_game.c:2634
+"Pause"	mpmenu_model.c:56 mpmenu_model.c:61 mpmenu_model.c:473 pvp_ui.c:113
 "Pause by vote"	mpmenu_model.c:67
-"Pause is now: %s (host rule)."	mpmenu.c:2532
+"Pause is now: %s (host rule)."	mpmenu.c:2612
 "Pause: %s"	mpmenu_model.c:507
 "Pause: %s  ·  Speed-up: %s  ·  Gear: %s"	mpmenu_model.c:546
 "Pause: %s · Speed-up: %s · Gear: %s · Units: %d · Population: %s · Events: %s · Admin: %s · Shared fog: %s · Spectators: %s"	mpmenu_model.c:32
@@ -492,339 +615,443 @@
 "Paused by %s"	ui_model.c:117 ui_model.c:118 ui_model.c:471
 "Paused for a story event"	ui_model.c:116 ui_model.c:472
 "Paused for a story event (and by %s)"	ui_model.c:116
-"Per player"	mpmenu_model.c:71 ord_mp.c:33 ui_game.c:5068
+"Per player"	mpmenu_model.c:71 ord_mp.c:33 ui_game.c:5074
 "Permanent"	mpmenu_model.c:91
 "Permanent: a unit that dies in the expedition is removed from its home save, with the gear it wears at home. Not permanent: it goes home in its state from the last multiplayer save where it was alive."	mpmenu_model.c:113
-"Pick one of your saves to open to other players. The world stays on your computer, and only you save it."	mpmenu.c:3469
-"Pick the next player to follow."	ui_game.c:5398
-"Ping"	mpmenu.c:3249
-"Ping Lines in Chat"	ui_game.c:5319
-"Ping Sound"	ui_game.c:5318
-"Ping lines in chat"	ui_game.c:2646
-"Ping sound"	ui_game.c:2645
+"Pick one of your saves to open to other players. The world stays on your computer, and only you save it."	mpmenu.c:3548
+"Pick one of your saves, then the units to bring. Copies travel: your units stay at home and keep working."	fe_menu.c:145
+"Pick the next player to follow."	ui_game.c:5404
+"Pick up to %d unit from a save on your computer. Copies only: nothing is changed.||Pick up to %d units from a save on your computer. Copies only: nothing is changed."	pvp_ui.c:440
+"Ping"	mpmenu.c:3329
+"Ping Lines in Chat"	ui_game.c:5325
+"Ping Sound"	ui_game.c:5324
+"Ping lines in chat"	ui_game.c:2650
+"Ping sound"	ui_game.c:2649
 "Pink"	ui_model.c:23
-"Play a short sound when someone pings."	ui_game.c:5318
-"Player"	mpmenu.c:1699 mpmenu.c:2993 mpmenu.c:2999 mpmenu_model.c:539
-"Player %d"	ui_model.c:14 ui_teams.c:331
-"Players"	mpmenu.c:3427 ui_game.c:5383 ui_game.c:5384
-"Players (%d)"	mpmenu.c:1686 ui_model.c:666
-"Players who have not answered yet. With no answer in 60 seconds, the expedition is cancelled."	ui_teams.c:2129
+"Places"	pvp_ui.c:573
+"Planning"	pvp_ui.c:575
+"Planning pause every 7 s"	pvp_ui.c:108
+"Planning pause: give your orders, then press Ready"	pvp_game.c:916
+"Play a short sound when someone pings."	ui_game.c:5324
+"Player"	mpmenu.c:1779 mpmenu.c:3073 mpmenu.c:3079 mpmenu_model.c:539 pvp_ui.c:85
+"Player %d"	ui_model.c:14 ui_teams.c:333
+"Players"	mpmenu.c:3507 ui_game.c:5389 ui_game.c:5390
+"Players (%d)"	mpmenu.c:1766 ui_model.c:666
+"Players who have not answered yet. With no answer in 60 seconds, the expedition is cancelled."	ui_teams.c:2131
 "Population"	mpmenu_model.c:57 mpmenu_model.c:62
-"Population full (%d/%d): host rule %s"	ord_mp.c:54 ui_game.c:5156
-"Population full for you (%d/%d): host rule %s"	ord_mp.c:55 ui_game.c:5157
-"Population: %s (host rule)."	mpmenu.c:2536
-"Portal"	ui_game.c:5422
-"Prepares the world for this mode and opens the lobby. Friends join you there."	mpmenu.c:3461
-"Press B over it to remove it. It goes away when a unit reaches it."	ui_game.c:5352
-"Proposed by"	ui_teams.c:1272
-"Proposed by you"	ui_teams.c:1271
-"Proposed this expedition."	ui_teams.c:2140
-"PvP"	mpmenu.c:1241 mpmenu.c:3460
-"Ready does not work with this Multiplayer version. Update the mod"	ui_teams.c:1382
-"Recent Worlds"	mpmenu.c:1334 mpmenu.c:3454
-"Reconnect"	mpmenu.c:3451
-"Recruiting"	mpmenu_model.c:85 ui_game.c:5436
+"Population full (%d/%d): host rule %s"	ord_mp.c:54 ui_game.c:5162
+"Population full for you (%d/%d): host rule %s"	ord_mp.c:55 ui_game.c:5163
+"Population: %s (host rule)."	mpmenu.c:2616
+"Portal"	ui_game.c:5428
+"Prepares the world for this mode and opens the lobby. Friends join you there."	mpmenu.c:3540
+"Press B over it to remove it. It goes away when a unit reaches it."	ui_game.c:5358
+"Proposed by"	ui_teams.c:1274
+"Proposed by you"	ui_teams.c:1273
+"Proposed this expedition."	ui_teams.c:2142
+"PvP"	mp_modes.c:85
+"PvP Match"	pvp_ui.c:189 pvp_ui.c:645 pvp_ui.c:686
+"PvP Rules"	pvp_ui.c:817
+"Ready"	pvp_ui.c:558 pvp_ui.c:581 pvp_ui.c:646
+"Ready does not work with this Multiplayer version. Update the mod"	ui_teams.c:1384
+"Ready to bring home"	fe_menu.c:202
+"Recent Worlds"	mpmenu.c:1414 mpmenu.c:3534
+"Reconnect"	mpmenu.c:3531
+"Recruiting"	mpmenu_model.c:85 ui_game.c:5442
 "Recruiting is not offered in the hub."	mpmenu_model.c:107
 "Recruits belong to the recruiter and stay in the hub."	mpmenu_model.c:107
-"Region"	ui_teams.c:1275 ui_teams.c:2128
-"Release"	ui_game.c:5310
-"Remove"	mpmenu.c:2431 mpmenu.c:3627
-"Remove from List"	mpmenu.c:3449
-"Remove tag"	mpmenu.c:3578
-"Remove the multiplayer tag?"	mpmenu.c:3626
-"Remove the spectator now?||Remove the %d spectators now?"	mpmenu.c:2429
-"Removes this world from Recent Worlds. The world itself and its save are not deleted."	mpmenu.c:3449
-"Reserved"	ui_teams.c:2100
-"Reserved for %s (away)"	ui_teams.c:1074
+"Red"	pvp_ui.c:257 pvp_ui.c:547 pvp_ui.c:578 pvp_ui.c:580 pvp_ui.c:632
+"Red Team"	pvp_ui.c:657
+"Red scores!"	pvp_game.c:924
+"Red wins the match"	pvp_ui.c:627
+"Red wins the match  %d - %d"	pvp_game.c:928
+"Red wins the round  %d - %d"	pvp_game.c:930
+"Region"	ui_teams.c:1277 ui_teams.c:2130
+"Release"	ui_game.c:5316
+"Remove"	mpmenu.c:2511 mpmenu.c:3706
+"Remove from List"	mpmenu.c:3529
+"Remove tag"	mpmenu.c:3657
+"Remove the multiplayer tag?"	mpmenu.c:3705
+"Remove the spectator now?||Remove the %d spectators now?"	mpmenu.c:2509
+"Removes this world from Recent Worlds. The world itself and its save are not deleted."	mpmenu.c:3529
+"Reserved"	ui_teams.c:2102
+"Reserved for %s (away)"	ui_teams.c:1076
+"Results apply once, so units cannot come home twice."	fe_menu.c:308
 "Return to the settlement?"	ui_model.c:380
-"Returns control of this unit to its owner."	ui_game.c:5309 ui_teams.c:2118
-"Returns to the previous menu."	mpmenu.c:3477
-"Right-click 1 to %d of your units to mark them for the run first"	ui_teams.c:1422
-"Right-click and drag to move"	mpmenu.c:3067
-"Rules"	mpmenu.c:937 mpmenu.c:1269 mpmenu.c:1686 mpmenu.c:3422 mpmenu.c:3423 mpmenu.c:3468 mpmenu_model.c:471
-"Same View"	ui_game.c:5369
+"Returns control of this unit to its owner."	ui_game.c:5315 ui_teams.c:2120
+"Returns to the previous menu."	mpmenu.c:3556
+"Right-click 1 to %d of your units to mark them for the run first"	ui_teams.c:1424
+"Right-click and drag to move"	mpmenu.c:3147
+"Round %d"	pvp_ui.c:577
+"Round %d - Capture the flag!"	pvp_game.c:914
+"Round %d - Fight!"	pvp_game.c:914
+"Round drawn  %d - %d"	pvp_game.c:931
+"Round time"	pvp_ui.c:113
+"Rounds:"	pvp_ui.c:631
+"Rules"	mpmenu.c:1020 mpmenu.c:1349 mpmenu.c:1766 mpmenu.c:3502 mpmenu.c:3503 mpmenu.c:3547 mpmenu_model.c:471 pvp_ui.c:161
+"Rules:"	fe_menu.c:216
+"Same View"	ui_game.c:5375
 "Same as the host:"	net/ds_modcheck.h:426
 "Same version, different files (reinstall):"	net/ds_modcheck.h:188
-"Save Campaign"	ui_game.c:5426
-"Save and join"	mpmenu.c:2489
-"Saved with this world. New worlds start with your last rules."	mpmenu.c:1204 mpmenu.c:1661
-"Say:"	mpmenu.c:3074
-"Send the proposal to your friends anyway?"	ui_teams.c:1909
-"Send to Friends"	ui_teams.c:2149
-"Send to friends"	ui_teams.c:1917
-"Sends %s a request to lend you one of their units on this run."	ui_game.c:5399
-"Sends this region and these units to every player as a proposal. The expedition starts only when everyone approves."	ui_teams.c:2149
-"Set by the host."	mpmenu.c:1755
+"Save"	pvp_ui.c:660
+"Save Campaign"	ui_game.c:5432
+"Save and join"	mpmenu.c:2569
+"Saved as \"%s\". Load it from Load campaign.\nYour old save is not changed, and a backup copy was made first."	fe_menu.c:220
+"Saved with this world. New worlds start with your last rules."	mpmenu.c:1287 mpmenu.c:1741
+"Say:"	mpmenu.c:3154
+"Send the proposal to your friends anyway?"	ui_teams.c:1911
+"Send to Friends"	ui_teams.c:2151
+"Send to friends"	ui_teams.c:1919
+"Sends %s a request to lend you one of their units on this run."	ui_game.c:5405
+"Sends copies of the picked units to the host. You can bring other units instead until the host presses Start."	fe_menu.c:369
+"Sends everyone to the arena floor with the teams and rules shown. The match begins by itself once everyone has arrived."	pvp_ui.c:652
+"Sends this region and these units to every player as a proposal. The expedition starts only when everyone approves."	ui_teams.c:2151
+"Set by the host."	mpmenu.c:1835
 "Set the same values in the Mods window (Settings of that mod), then join again."	net/ds_modcheck.h:191
-"Settings"	ui_game.c:5381
-"Settlement"	ui_game.c:4657
-"Share your address, then press Start when everyone is in."	mpmenu.c:1682 mpmenu_model.c:536
-"Shared"	mpmenu_model.c:71 ord_mp.c:33 ui_game.c:5068
+"Settings"	ui_game.c:5387
+"Settlement"	ui_game.c:4663
+"Share your address, then press Start when everyone is in."	mpmenu.c:1762 mpmenu_model.c:536
+"Shared"	mpmenu_model.c:71 ord_mp.c:33 ui_game.c:5074
 "Shared Fog of War"	mpmenu_model.c:56
 "Shared fog"	mpmenu_model.c:61
-"Shared fog of war: %s (host rule)."	mpmenu.c:2537
+"Shared fog of war: %s (host rule)."	mpmenu.c:2617
 "Shared, any unit"	mpmenu_model.c:69
 "Shared, own units"	mpmenu_model.c:69
-"Show"	ui_game.c:2633 ui_game.c:2654 ui_game.c:3842 ui_teams.c:868 ui_teams.c:1264 ui_teams.c:2133 ui_teams.c:2186
-"Show %s's Pings"	ui_game.c:5303
-"Show %s's pings on your screen again."	ui_game.c:5303
-"Show / Hide"	ui_game.c:5382
-"Show Friends' Views"	ui_game.c:5320
-"Show Off-screen Friends"	ui_game.c:5321
-"Show Pings"	ui_game.c:5317
-"Show Tooltips on Hover"	ui_game.c:5323
-"Show a small mark at the edge of the screen toward friends who look somewhere else. Click it to look there."	ui_game.c:5321
-"Show friends' views"	ui_game.c:2646
-"Show join / leave lines"	ui_game.c:2639
+"Show"	ui_game.c:2637 ui_game.c:2658 ui_game.c:3848 ui_teams.c:870 ui_teams.c:1266 ui_teams.c:2135 ui_teams.c:2188
+"Show %s's Pings"	ui_game.c:5309
+"Show %s's pings on your screen again."	ui_game.c:5309
+"Show / Hide"	ui_game.c:5388
+"Show Friends' Views"	ui_game.c:5326
+"Show Off-screen Friends"	ui_game.c:5327
+"Show Pings"	ui_game.c:5323
+"Show Tooltips on Hover"	ui_game.c:5329
+"Show a small mark at the edge of the screen toward friends who look somewhere else. Click it to look there."	ui_game.c:5327
+"Show friends' views"	ui_game.c:2650
+"Show join / leave lines"	ui_game.c:2643
 "Show multiplayer worlds"	mpmenu_model.c:569
-"Show off-screen friends"	ui_game.c:2646
-"Show or hide the Teams button. Hidden, it takes no room on your screen; show it again here to open Teams."	ui_game.c:5325
-"Show pings"	ui_game.c:2645
+"Show off-screen friends"	ui_game.c:2650
+"Show or hide the Teams button. Hidden, it takes no room on your screen; show it again here to open Teams."	ui_game.c:5331
+"Show pings"	ui_game.c:2649
 "Show single-player worlds"	mpmenu_model.c:569
-"Show the corners of what each friend sees, in their colour."	ui_game.c:5320
-"Show the spots other players mark. Mark a spot yourself: click the middle mouse button, or press B. B over a ping removes it."	ui_game.c:5317
-"Show tooltips on hover"	ui_game.c:2629
-"Shows a chat line when a player joins, leaves or reconnects."	ui_game.c:5327
-"Shows how this world plays. Only the host can change them."	mpmenu.c:3422 mpmenu.c:3423
-"Shows or hides the player list. The header stays."	ui_game.c:5382
-"Shows the next page of Recent Worlds."	mpmenu.c:3453 mpmenu.c:3453
-"Shows the owner's name above units. Others: only other players' units. All: every unit. Off: none."	ui_game.c:5322
-"Shows the whole proposal again: who goes, who approved, and the buttons."	ui_teams.c:2133
-"Shows these explanations when you point at a multiplayer button or setting."	ui_game.c:5323
+"Show the corners of what each friend sees, in their colour."	ui_game.c:5326
+"Show the spots other players mark. Mark a spot yourself: click the middle mouse button, or press B. B over a ping removes it."	ui_game.c:5323
+"Show tooltips on hover"	ui_game.c:2633
+"Shows a chat line when a player joins, leaves or reconnects."	ui_game.c:5333
+"Shows how this world plays. Only the host can change them."	mpmenu.c:3502 mpmenu.c:3503
+"Shows or hides the player list. The header stays."	ui_game.c:5388
+"Shows the next page of Recent Worlds."	mpmenu.c:3533 mpmenu.c:3533
+"Shows the owner's name above units. Others: only other players' units. All: every unit. Off: none."	ui_game.c:5328
+"Shows the whole proposal again: who goes, who approved, and the buttons."	ui_teams.c:2135
+"Shows these explanations when you point at a multiplayer button or setting."	ui_game.c:5329
 "Silver"	ui_model.c:23
-"Slow connection, or catching up with the game."	mpmenu.c:3430 ui_game.c:5287 ui_teams.c:2085
-"Slow connection, or the game is loading or catching up."	mpmenu.c:3429 ui_game.c:5288 ui_teams.c:2086
+"Slow connection, or catching up with the game."	mpmenu.c:3510 ui_game.c:5293 ui_teams.c:2087
+"Slow connection, or the game is loading or catching up."	mpmenu.c:3509 ui_game.c:5294 ui_teams.c:2088
 "Small"	ui_model.c:575
-"So you did not join %s's game. Save from the Esc menu, then ask %s to invite you again."	mpmenu.c:2447
-"Something went wrong."	mpmenu.c:2756
-"Spectator"	mpmenu.c:2997 ui_game.c:5388 ui_game.c:5394 ui_game.c:5401
-"Spectators"	mpmenu_model.c:56 mpmenu_model.c:61 ui_game.c:5332
-"Spectators (host)"	ui_game.c:2624
-"Spectators cannot join through Steam."	mpmenu.c:2688
-"Spectators cannot pause or change speed."	ui_game.c:5401
-"Speed Request"	ui_game.c:5415
+"So you did not join %s's game. Save from the Esc menu, then ask %s to invite you again."	mpmenu.c:2527
+"Something went wrong."	mpmenu.c:2836
+"Spectator"	mpmenu.c:3077 ui_game.c:5394 ui_game.c:5400 ui_game.c:5407
+"Spectators"	mpmenu_model.c:56 mpmenu_model.c:61 ui_game.c:5338
+"Spectators (host)"	ui_game.c:2628
+"Spectators cannot join through Steam."	mpmenu.c:2768
+"Spectators cannot pause or change speed."	ui_game.c:5407
+"Speed Request"	ui_game.c:5421
 "Speed-up"	mpmenu_model.c:56 mpmenu_model.c:61 mpmenu_model.c:474
-"Speed-up is now %s (host rule)."	mpmenu.c:2533
+"Speed-up is now %s (host rule)."	mpmenu.c:2613
 "Speed-up: %s"	mpmenu_model.c:508
-"Split equally"	mpmenu_model.c:71 ord_mp.c:33 ui_game.c:5068
-"Start"	mpmenu.c:1653 mpmenu.c:3419 mpmenu.c:3461 mpmenu_model.c:504 mpmenu_model.c:516
-"Start a new campaign and open it to other players as soon as it is created."	mpmenu.c:3458 mpmenu.c:3470
-"Starts the game for everyone in the lobby. Players who join later catch up with the running game."	mpmenu.c:3419
+"Split equally"	mpmenu_model.c:71 ord_mp.c:33 ui_game.c:5074
+"Start"	mpmenu.c:1733 mpmenu.c:3499 mpmenu.c:3540 mpmenu_model.c:504 mpmenu_model.c:516
+"Start Match"	pvp_ui.c:177 pvp_ui.c:651 pvp_ui.c:652
+"Start Match was refused."	pvp_ui.c:302
+"Start a new campaign and open it to other players as soon as it is created."	mpmenu.c:3538 mpmenu.c:3549
+"Start this from the title screen."	fe_hub.c:149
+"Starts at one end of the settlement."	pvp_ui.c:656
+"Starts at the arrival point of the arena."	pvp_ui.c:656
+"Starts at the far end of the arena, by the exit portal (which does not work in a match)."	pvp_ui.c:657
+"Starts at the other end of the settlement."	pvp_ui.c:657
+"Starts the game for everyone in the lobby. Players who join later catch up with the running game."	mpmenu.c:3499
+"Starts the match here with the teams and rules shown: each team walks to its end of the settlement, then the fight begins."	pvp_ui.c:651
+"Status"	fe_menu.c:224
 "Stays in the hub"	mpmenu_model.c:93
-"Steam"	mpmenu.c:1305
-"Steam Invite"	mpmenu.c:3424 mpmenu.c:3440
+"Steam"	mpmenu.c:1385
+"Steam Invite"	mpmenu.c:3504 mpmenu.c:3520
 "Steam connection closed"	net/steam/dsnet_steam.c:382
 "Steam could not connect you to the host"	net/steam/dsnet_steam.c:607
 "Steam could not open the host's lobby"	net/steam/dsnet_steam.c:768
-"Steam invite"	mpmenu.c:1629 mpmenu.c:1746 mpmenu.c:1747 mpmenu_model.c:512
+"Steam invite"	mpmenu.c:1709 mpmenu.c:1826 mpmenu.c:1827 mpmenu_model.c:512
 "Steam lobby could not be created"	mp_game.c:1280
-"Steam · with %s"	mpmenu.c:1305
-"Stop Following"	ui_game.c:5301
-"Stopped following %s."	ui_game.c:4359
-"Stops connecting. You stay on this page. Escape does the same."	mpmenu.c:3476
-"Stops joining and returns to the title. Escape does the same."	mpmenu.c:3475
-"Take Back Control"	ui_game.c:5308 ui_teams.c:2117
-"Take a free unit below (left-click)."	ui_teams.c:1038
-"Take back"	ui_game.c:3590
-"Take back control"	ui_teams.c:935
+"Steam · with %s"	mpmenu.c:1385
+"Stop Following"	ui_game.c:5307
+"Stopped following %s."	ui_game.c:4365
+"Stops connecting. You stay on this page. Escape does the same."	mpmenu.c:3555
+"Stops joining and returns to the title. Escape does the same."	mpmenu.c:3554
+"Take Back Control"	ui_game.c:5314 ui_teams.c:2119
+"Take a free unit below (left-click)."	ui_teams.c:1040
+"Take back"	ui_game.c:3596
+"Take back control"	ui_teams.c:937
 "Taupe"	ui_model.c:23
+"Team"	pvp_ui.c:655
 "Team battle or Capture the Flag"	mpmenu_model.c:168
-"Teams"	ui_teams.c:866 ui_teams.c:1110 ui_teams.c:1659 ui_teams.c:2122
-"Teams (watching)"	ui_teams.c:1110
-"Teams Button"	ui_game.c:5325
-"Teams button"	ui_game.c:2632
-"Teams of players fight each other. Install and turn on the Units Laboratory mod to play it."	mpmenu.c:3460
-"Temporary Control"	ui_game.c:5385
-"The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead."	mpmenu.c:3365
-"The Teams screen is not available here"	ui_teams.c:1461
-"The address the host shares from their lobby, for example 192.168.1.20:47777. Outside your home network, the host must open the port on their router."	mpmenu.c:3472
-"The cards are the units that go. The other units stay at the settlement and keep working."	ui_teams.c:2141
+"Teams"	ui_teams.c:868 ui_teams.c:1112 ui_teams.c:1661 ui_teams.c:2124
+"Teams (watching)"	ui_teams.c:1112
+"Teams Button"	ui_game.c:5331
+"Teams button"	ui_game.c:2636
+"Temporary Control"	ui_game.c:5391
+"The Blue flag is back home"	pvp_game.c:923
+"The Blue flag was dropped"	pvp_game.c:922
+"The Foreign Expedition could not start."	fe_game.c:217
+"The Red flag is back home"	pvp_game.c:923
+"The Red flag was dropped"	pvp_game.c:922
+"The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead."	mpmenu.c:3445
+"The Teams screen is not available here"	ui_teams.c:1463
+"The Vanilla check refused the start."	pvp_ui.c:796
+"The address the host shares from their lobby, for example 192.168.1.20:47777. Outside your home network, the host must open the port on their router."	mpmenu.c:3551
+"The cards are the units that go. The other units stay at the settlement and keep working."	ui_teams.c:2143
 "The clan limit is divided between the players"	mpmenu_model.c:38
-"The colour %s has on your screen: name, pings, view corners, outline. Auto: the colour the game gave. Only you see your choice."	ui_game.c:5337
-"The colour is this player's colour everywhere: names above units, portraits, Teams and chat."	mpmenu.c:3432
+"The colour %s has on your screen: name, pings, view corners, outline. Auto: the colour the game gave. Only you see your choice."	ui_game.c:5343
+"The colour is this player's colour everywhere: names above units, portraits, Teams and chat."	mpmenu.c:3512
 "The connection to the host failed. Try again, or ask the host to invite you again"	mpmenu_model.c:219
-"The expedition could not be started"	ui_teams.c:2312
-"The expedition window could not be opened"	ui_teams.c:1411
+"The expedition could not be started"	ui_teams.c:2314
+"The expedition window could not be opened"	ui_teams.c:1413
 "The first answer decides%s"	ui_model.c:284
-"The game goes on. You order %s's units until %s comes back."	ui_game.c:5411
+"The game goes on. You order %s's units until %s comes back."	ui_game.c:5417
 "The game starts when %s presses Start."	mpmenu_model.c:535
-"The game stays paused until %s comes back. %s's units stay %s's."	ui_game.c:5409
-"The game went out of sync. A report was saved: %s"	ui_game.c:5259
-"The host"	mpmenu.c:2005 mpmenu.c:2528 mpmenu.c:2840
-"The host chooses who returns to the settlement"	ui_game.c:1377
+"The game stays paused until %s comes back. %s's units stay %s's."	ui_game.c:5415
+"The game went out of sync. A report was saved: %s"	ui_game.c:5265
+"The home save is not on this computer."	fe_menu.c:263
+"The host"	mpmenu.c:2085 mpmenu.c:2608 mpmenu.c:2920
+"The host chooses the teams and the rules."	pvp_ui.c:191
+"The host chooses who returns to the settlement"	ui_game.c:1381
+"The host clicks a player to move them to the other team. Each player brings the units they own."	pvp_ui.c:655
+"The host ended the expedition. Here is what your units bring home."	fe_menu.c:214
+"The host has no gameplay mod: nobody may have one."	pvp_mods.c:150
 "The host is waiting for you: rejoin from Recent worlds."	mpmenu_model.c:237
 "The host left the game"	mp_game.c:1231 mpmenu_model.c:229
 "The host turned spectators off"	mp_game.c:1230 mpmenu_model.c:233
 "The host uses a mod that is not one of our official mods, so the game cannot get the host's mods for you. Ask the host for it, or ask the host to turn it off."	net/ds_modcheck.h:436
 "The host's Gear rule does not let you equip this unit"	ord_game.c:616
 "The host's game could not save the world for you. Try to join again"	mp_game.c:1228
+"The host's hub"	fe_menu.c:200
+"The host's hub rules:"	fe_menu.c:42
 "The host's world did not arrive. Try to join again"	mp_game.c:1229
-"The map change could not be sent"	ui_game.c:1206
-"The map change could not be started"	ui_game.c:1248
-"The most units each player can control (1, 2, 3, 4 or 6). Changes apply to everyone at once."	ui_game.c:5330
+"The hub map could not be downloaded from dungeonsettlers.wiki (needed once). Check the internet connection and try again."	fe_hub.c:51
+"The hub map could not be written into the Saves folder."	fe_hub.c:134
+"The hub map file is not a base save."	fe_hub.c:89
+"The map change could not be sent"	ui_game.c:1208
+"The map change could not be started"	ui_game.c:1250
+"The match could not start. Try again."	pvp_ui.c:797
+"The match is a draw"	pvp_ui.c:627
+"The most units each player can control (1, 2, 3, 4 or 6). Changes apply to everyone at once."	ui_game.c:5336
 "The most units each player can control at the same time (1, 2, 3, 4 or 6). The host can change it during play."	mpmenu_model.c:46
-"The name other players see: in the player list, above your units and in chat."	mpmenu.c:3471
-"The player whose unit used the portal chooses who returns. Everyone else watches; when %s confirms, everyone returns together."	ui_game.c:5421
-"The proposal closes when the time runs out. Every player who has not answered by then cancels the expedition."	ui_teams.c:2135
-"The proposal could not be sent"	ui_teams.c:418
-"The return could not be sent"	ui_game.c:1215
-"The units you control. Only you can give them orders."	ui_teams.c:2098
-"The units you controlled in this world when you last left. They stay reserved for you until you come back."	mpmenu.c:3450
+"The name other players see: in the player list, above your units and in chat."	mpmenu.c:3550
+"The player whose unit used the portal chooses who returns. Everyone else watches; when %s confirms, everyone returns together."	ui_game.c:5427
+"The proposal closes when the time runs out. Every player who has not answered by then cancels the expedition."	ui_teams.c:2137
+"The proposal could not be sent"	ui_teams.c:420
+"The results could not be applied."	mp_modes.c:144
+"The return could not be sent"	ui_game.c:1217
+"The save that gets the results: the units' home campaign, newest first."	fe_menu.c:375 fe_menu.c:376
+"The teams fight with the %d brought unit shown above; the world's units step aside until the end.||The teams fight with the %d brought units shown above; the world's units step aside until the end."	pvp_ui.c:275
+"The units you control. Only you can give them orders."	ui_teams.c:2100
+"The units you controlled in this world when you last left. They stay reserved for you until you come back."	mpmenu.c:3530
 "The vote said no: staying here"	ui_model.c:420
 "The vote said no: staying on floor %d"	ui_model.c:418
+"The world is back as it was before the match."	pvp_ui.c:634
 "The world is saved on %s's computer. To play again, %s hosts it and invites you."	mpmenu_model.c:228
 "The world is saved on the host's computer. To play again, the host hosts it and invites you."	mpmenu_model.c:230
-"The world itself does not change. The tag comes back if a friend joins it again."	mpmenu.c:3626
-"The world stays on your computer. You keep playing it alone."	mpmenu.c:2329
+"The world itself does not change. The tag comes back if a friend joins it again."	mpmenu.c:3705
+"The world stays on your computer. You keep playing it alone."	mpmenu.c:2409
 "The world stays open as a single-player game"	mpmenu_model.c:356
-"They go back to the title. Nobody can watch until you allow spectators again."	mpmenu.c:2430
+"These results are already in this save."	mp_modes.c:137
+"These results are not for your units."	mp_modes.c:134
+"These results were brought home on %s.\nSaved as \"%s\". Load it from Load campaign."	fe_menu.c:307
+"These units came from My Units or a wiki link: nothing to bring home (your saves are not changed)."	mp_modes.c:140
+"They go back to the title. Nobody can watch until you allow spectators again."	mpmenu.c:2510
+"This PvP world is only for the match: back to the title to play again."	pvp_ui.c:634
 "This host allows no gameplay mods. Client mods (comfort mods) are fine."	net/ds_modcheck.h:402
 "This host allows no gameplay mods. Turn off: %s. Client mods (comfort mods) are fine."	net/ds_modcheck.h:181
 "This is %s's unit. The host's Gear rule lets you equip only your own units"	mp_game.c:1076
-"This is what %s sees now."	ui_game.c:5360
+"This is what %s sees now."	ui_game.c:5366
 "This item belongs to %s"	ord_mp.c:88
-"This mode could not start."	mpmenu.c:3349 mpmenu_model.c:195
-"This player controls the unit. Grey: the player is away."	ui_game.c:5434
-"This player is not here. These units wait and go back to them when they rejoin. With Admin Mode, the host can release them."	ui_teams.c:2100
-"This unit is in the dungeon now. The others stay at the settlement."	ui_teams.c:2090
+"This mode could not start."	mpmenu.c:3429 mpmenu_model.c:195
+"This player controls the unit. Grey: the player is away."	ui_game.c:5440
+"This player is not here. These units wait and go back to them when they rejoin. With Admin Mode, the host can release them."	ui_teams.c:2102
+"This settlement"	pvp_ui.c:109
+"This unit is in the dungeon now. The others stay at the settlement."	ui_teams.c:2092
 "This unit is reserved for %s: only its owner can change its gear"	mp_game.c:1073
-"This world was joined through Steam: needs the Steam version."	mpmenu.c:2685 mpmenu.c:2868
-"Time Left"	ui_teams.c:2135 ui_teams.c:2146
-"Time to pack and answer the proposal. When it runs out, the expedition is cancelled for everyone. Next shows the proposal with Approve and Decline."	ui_teams.c:2146
-"To start an expedition, use the game's Enter Dungeon."	ui_teams.c:1134
-"Tower of Apocalypse"	ui_teams.c:285
-"Turns the chat on or off on your screen."	ui_game.c:5328
-"Unit Outline"	ui_game.c:5316
-"Unit outline"	ui_game.c:2650
-"Units %s controls. You cannot order them unless %s lends you one."	ui_teams.c:2102
+"This world was joined through Steam: needs the Steam version."	mpmenu.c:2765 mpmenu.c:2948
+"Time Left"	ui_teams.c:2137 ui_teams.c:2148
+"Time for one round of game time at normal speed. When it runs out: Fight gives the round to the team with more health left; Capture the Flag counts it as a draw."	pvp_ui.c:117
+"Time to pack and answer the proposal. When it runs out, the expedition is cancelled for everyone. Next shows the proposal with Approve and Decline."	ui_teams.c:2148
+"To start an expedition, use the game's Enter Dungeon."	ui_teams.c:1136
+"To win"	pvp_ui.c:113
+"Tower of Apocalypse"	ui_teams.c:287
+"Turns the chat on or off on your screen."	ui_game.c:5334
+"Unit"	fe_menu.c:224 pvp_ui.c:661
+"Unit Outline"	ui_game.c:5322
+"Unit outline"	ui_game.c:2654
+"Units"	pvp_ui.c:419
+"Units %s controls. You cannot order them unless %s lends you one."	ui_teams.c:2104
+"Units changed at home since they left. Bring home:"	fe_menu.c:264
+"Units come from this save. It is only read: nothing in it changes until you bring the results home."	fe_menu.c:367
 "Units each player may bring."	mpmenu_model.c:105
 "Units go home as they left."	mpmenu_model.c:103
-"Units per Player"	mpmenu_model.c:56 ui_game.c:5330
-"Units per player"	mpmenu_model.c:61 mpmenu_model.c:85 mpmenu_model.c:476 ui_game.c:2617
-"Units per player is now %d (host rule)."	mpmenu.c:2531
-"Units you recruit are yours"	ui_game.c:5084
-"Units you recruit are yours. The clan limit and Units per Player both apply (host's Population rule)."	ui_game.c:5436
-"Unknown address: %s. Check the address."	mpmenu.c:2147
-"Unsaved progress in this world will be lost."	mpmenu.c:2480
-"VPN"	ui_game.c:2471
-"Veil of Silence"	ui_teams.c:284
-"Visitors see these rules before they choose units."	mpmenu.c:1021
-"Vote sent"	ui_game.c:1958
+"Units in %s"	fe_menu.c:162
+"Units per Player"	mpmenu_model.c:56 ui_game.c:5336
+"Units per player"	mpmenu_model.c:61 mpmenu_model.c:85 mpmenu_model.c:476 ui_game.c:2621
+"Units per player is now %d (host rule)."	mpmenu.c:2611
+"Units that changed at home since they left come back as they ended the expedition."	fe_menu.c:377
+"Units that changed at home since they left keep their home progress; the expedition's is dropped."	fe_menu.c:378
+"Units you recruit are yours"	ui_game.c:5090
+"Units you recruit are yours. The clan limit and Units per Player both apply (host's Population rule)."	ui_game.c:5442
+"Unknown address: %s. Check the address."	mpmenu.c:2227
+"Unsaved progress in this world will be lost."	mpmenu.c:2560
+"Up to %d unit each in this hub.||Up to %d units each in this hub."	fe_menu.c:289
+"VPN"	ui_game.c:2475
+"Vanilla check"	pvp_ui.c:113
+"Vanilla check is on: %s has the gameplay mod %s. %s must turn it off in the Mods window.||Vanilla check is on: %s has the gameplay mods %s. %s must turn them off in the Mods window."	pvp_modcheck.c:119
+"Vanilla check is on: turn off your gameplay mod %s, or set Vanilla check to Off.||Vanilla check is on: turn off your gameplay mods %s, or set Vanilla check to Off."	pvp_modcheck.c:115
+"Veil of Silence"	ui_teams.c:286
+"Visitors see these rules before they choose units."	mpmenu.c:1104
+"Vote sent"	ui_game.c:1962
 "Vote · %d of %d · host breaks ties%s"	ui_model.c:285
-"Wait a moment before you ping again."	ui_game.c:4047
-"Wait for %s"	ui_game.c:1059 ui_game.c:5408
-"Waiting"	ui_teams.c:2129
+"Wait a moment before you ping again."	ui_game.c:4053
+"Wait for %s"	ui_game.c:1061 ui_game.c:5414
+"Waiting"	ui_teams.c:2131
 "Waiting for %s (%d of %d agree)"	ui_model.c:374
-"Waiting for %s (disconnected) · %d:%02d · %s decides"	ui_game.c:914
+"Waiting for %s (disconnected) · %d:%02d · %s decides"	ui_game.c:916
 "Waiting for %s (loading)"	ui_model.c:160
-"Waiting for %s to start"	mpmenu.c:1683 ui_game.c:919
-"Waiting for %s · %d:%02d · press Play to keep playing with their units"	ui_game.c:913
+"Waiting for %s to start"	mpmenu.c:1763 ui_game.c:921
+"Waiting for %s · %d:%02d · press Play to keep playing with their units"	ui_game.c:915
 "Waiting for the host's game..."	ui_model.c:146
-"Waiting for the world"	mpmenu.c:2502
-"Waiting for: %s"	ui_teams.c:1252
-"Watch"	mpmenu.c:1188 mpmenu.c:3447 mpmenu.c:3474 mpmenu_model.c:519
-"Watch the game: you see everything and can chat and ping, but you own no units and cannot pause or vote."	mpmenu.c:3447 mpmenu.c:3474
-"Watching"	ui_game.c:3839 ui_game.c:5395
-"Watching %s's expedition"	ui_game.c:3838
-"Watching %s's world"	ui_game.c:3838
-"Where the expedition goes. Chosen by the player who proposed it."	ui_teams.c:2128
+"Waiting for the mod list of %s. Press Start Match again in a moment."	pvp_mods.c:135
+"Waiting for the world"	mpmenu.c:2582
+"Waiting for: %s"	ui_teams.c:1254
+"Watch"	mpmenu.c:1271 mpmenu.c:3527 mpmenu.c:3553 mpmenu_model.c:519
+"Watch the game: you see everything and can chat and ping, but you own no units and cannot pause or vote."	mpmenu.c:3527 mpmenu.c:3553
+"Watching"	ui_game.c:3845 ui_game.c:5401
+"Watching %s's expedition"	ui_game.c:3844
+"Watching %s's world"	ui_game.c:3844
+"What will be applied"	fe_menu.c:257
+"Where the expedition goes. Chosen by the player who proposed it."	ui_teams.c:2130
 "Where the host has an older version, you get the host's version."	net/ds_modcheck.h:434
+"Where the match is played. A dungeon floor: the same map for everyone, with no monsters, no items and no portal. In a PvP world or an expedition hub: this settlement. Teams start at opposite ends."	pvp_ui.c:119
 "White"	ui_model.c:23
 "Who answers an event. Owner of the unit: the player who controls the unit in the event. Host only. First to answer. Majority vote: the host breaks a tie."	mpmenu_model.c:48
-"Who answers this event, from the host's Event Choices rule. In a vote, the host breaks a tie."	ui_game.c:5418
+"Who answers this event, from the host's Event Choices rule. In a vote, the host breaks a tie."	ui_game.c:5424
 "Who can pause the game. Anyone can pause: one player pauses it for everyone. Pause by vote: it pauses only when every player votes for it. No pause: nobody can pause it. Events, the Portal screen and a lost player still pause in every mode."	mpmenu_model.c:43
-"Who controls which units. Take free units, and lend yours to another player. Right-click and drag to move this button."	ui_teams.c:2122
+"Who controls which units. Take free units, and lend yours to another player. Right-click and drag to move this button."	ui_teams.c:2124
 "Who may change gear. Shared, own units: everyone uses the settlement storage, and each player equips only their own units. Shared, any unit: anyone equips any unit. Own storage: each player has their own items."	mpmenu_model.c:45
-"Withdraws your proposal. Nobody leaves."	ui_teams.c:2131
-"Worlds you played in multiplayer, newest first, with the day, the players and your units."	mpmenu.c:3454
-"Write \"Ben pinged a spot.\" in the chat. Click the line to look there."	ui_game.c:5319
+"Withdraws your proposal. Nobody leaves."	ui_teams.c:2133
+"Worlds you played in multiplayer, newest first, with the day, the players and your units."	mpmenu.c:3534
+"Write \"Ben pinged a spot.\" in the chat. Click the line to look there."	ui_game.c:5325
+"Writes the results into a NEW save next to your home save. Your old save is not changed, and the whole save folder is copied to a backup first. Results apply once."	fe_menu.c:373
+"XP"	fe_menu.c:224
 "XP and levels gained here go home."	mpmenu_model.c:103
+"XP counts"	fe_menu.c:45 fe_menu.c:217
+"XP does not count"	fe_menu.c:45 fe_menu.c:217
+"XP, levels and dungeon loot can come back."	fe_menu.c:182
 "Yellow"	ui_model.c:23
-"You"	mpmenu.c:1710 ui_game.c:2570 ui_game.c:2603
+"You"	mpmenu.c:1790 ui_game.c:2574 ui_game.c:2607
 "You (host)"	mpmenu_model.c:537
-"You agree to go. When every player approves, everyone leaves together. The panel then folds to one line."	ui_teams.c:2130
+"You agree to go. When every player approves, everyone leaves together. The panel then folds to one line."	ui_teams.c:2132
 "You already have %d unit: host rule Units per player||You already have %d units: host rule Units per player"	ord_mp.c:53
-"You already have %d units: host rule Units per player"	ui_game.c:5155
-"You already marked %d units for the run"	ui_teams.c:1420
-"You are a spectator. You can chat and ping."	ui_game.c:3862
-"You are watching"	ui_game.c:4964
-"You are watching. You can look at every unit's details, but spectators give no orders."	ui_game.c:5388
-"You are watching: %s is choosing"	ui_game.c:1944
-"You are watching: only players change the map"	ui_game.c:1199
-"You are watching: only players plan expeditions"	ui_game.c:1323 ui_teams.c:1978
-"You are watching: only the host saves this world"	ui_game.c:3389
+"You already have %d units: host rule Units per player"	ui_game.c:5161
+"You already marked %d units for the run"	ui_teams.c:1422
+"You are a spectator. You can chat and ping."	ui_game.c:3868
+"You are watching"	ui_game.c:4970
+"You are watching. You can look at every unit's details, but spectators give no orders."	ui_game.c:5394
+"You are watching: %s is choosing"	ui_game.c:1948
+"You are watching: only players change the map"	ui_game.c:1201
+"You are watching: only players plan expeditions"	ui_game.c:1327 ui_teams.c:1980
+"You are watching: only the host saves this world"	ui_game.c:3395
 "You are watching: spectators cannot change gear"	mp_game.c:1070
-"You are watching: spectators cannot change teams"	ui_teams.c:1476
-"You are watching: spectators cannot give orders"	ui_game.c:795
-"You are watching: spectators cannot recruit"	ui_game.c:5148
-"You are watching: spectators cannot take units"	ui_game.c:544
-"You are watching: the players are voting"	ui_game.c:1944
-"You asked %s a moment ago"	ui_game.c:3693
-"You can control at most %d units (host rule)"	ui_game.c:568 ui_game.c:742
+"You are watching: spectators cannot change teams"	ui_teams.c:1478
+"You are watching: spectators cannot give orders"	ui_game.c:797
+"You are watching: spectators cannot recruit"	ui_game.c:5154
+"You are watching: spectators cannot take units"	ui_game.c:546
+"You are watching: the players are voting"	ui_game.c:1948
+"You asked %s a moment ago"	ui_game.c:3699
+"You can control at most %d units (host rule)"	ui_game.c:570 ui_game.c:744
 "You can no longer watch this world."	mpmenu_model.c:234
-"You can only mark your own units"	ui_teams.c:1423
+"You can only mark your own units"	ui_teams.c:1425
 "You cannot equip this unit"	mp_game.c:1068
 "You choose%s"	ui_model.c:282
-"You control %s's units until they return"	ui_game.c:2679
+"You control %s's units until they return"	ui_game.c:2683
 "You decide (no answer in 60 s)"	ui_model.c:272
-"You gave back %s"	ui_game.c:3548
-"You have no units on this run. You can watch and chat; %s gives the orders."	ui_game.c:5395
-"You hosted"	mpmenu.c:1304
-"You hosted · with %s"	mpmenu.c:1304
+"You gave back %s"	ui_game.c:3554
+"You have given your orders. The planning pause ends when every player pressed Ready, or after 5 seconds."	pvp_ui.c:646
+"You have no units on this run. You can watch and chat; %s gives the orders."	ui_game.c:5401
+"You hosted"	mpmenu.c:1384
+"You hosted · with %s"	mpmenu.c:1384
 "You left the game"	mp_game.c:1296
-"You lent %s to %s"	ui_game.c:3542
-"You order this unit again."	ui_game.c:5308 ui_teams.c:2117
-"You pinged a spot."	ui_game.c:4020
-"You release %s"	ui_game.c:558 ui_game.c:3436
-"You see everything and can chat (Enter) and ping (B or the middle mouse button). You own no units and cannot pause or vote."	ui_game.c:5394
-"You take %s"	ui_game.c:557
-"You took back %s"	ui_game.c:3545
+"You lent %s to %s"	ui_game.c:3548
+"You order this unit again."	ui_game.c:5314 ui_teams.c:2119
+"You pinged a spot."	ui_game.c:4026
+"You release %s"	ui_game.c:560 ui_game.c:3442
+"You see everything and can chat (Enter) and ping (B or the middle mouse button). You own no units and cannot pause or vote."	ui_game.c:5400
+"You take %s"	ui_game.c:559
+"You took back %s"	ui_game.c:3551
 "You want %s · waiting for %s"	ui_model.c:173
-"Your Name"	mpmenu.c:3471
-"Your Ping"	ui_game.c:5352
-"Your Save"	mpmenu.c:3457
-"Your Units"	mpmenu.c:3450 ui_teams.c:2098
-"Your answer could not be sent"	ui_game.c:955
-"Your camera follows what %s looks at."	ui_game.c:5396
-"Your camera follows what %s looks at. Move your camera to stop."	ui_game.c:5300
-"Your camera stays where it is. Moving the camera also stops following."	ui_game.c:5301
-"Your choice could not be sent"	ui_game.c:1957
-"Your game could not be saved"	mpmenu.c:2480
+"Your Name"	mpmenu.c:3550
+"Your Ping"	ui_game.c:5358
+"Your Save"	mpmenu.c:3537
+"Your Saves"	fe_menu.c:147 pvp_ui.c:418
+"Your Units"	mpmenu.c:3530 ui_teams.c:2100
+"Your answer could not be sent"	ui_game.c:957
+"Your camera follows what %s looks at."	ui_game.c:5402
+"Your camera follows what %s looks at. Move your camera to stop."	ui_game.c:5306
+"Your camera stays where it is. Moving the camera also stops following."	ui_game.c:5307
+"Your choice could not be sent"	ui_game.c:1961
+"Your game could not be saved"	mpmenu.c:2560
 "Your game went out of sync. Everyone reloads %s's save"	ui_model.c:459
 "Your gameplay mods are not the same as the host's."	net/ds_modcheck.h:183 net/ds_modcheck.h:403
-"Your limit"	ui_game.c:5089
+"Your limit"	ui_game.c:5095
 "Your mod settings are not the same as the host's."	net/ds_modcheck.h:184
-"Your mods stay as they were."	mpmenu.c:2742 mpmenu.c:2756
-"Your name"	mpmenu.c:869 mpmenu_model.c:480
-"Your own display settings for multiplayer. The host also sets Units per Player and Admin Mode here."	ui_game.c:5381
-"Your progress here is saved first, then this world closes."	mpmenu.c:2488
-"Your proposal waits for the other players."	ui_game.c:5403
-"Your save"	mpmenu_model.c:499
-"Your team could not be sent"	ui_teams.c:1385
-"Your units"	mpmenu.c:1309 ui_model.c:602 ui_teams.c:1016
-"Your units (+%d)"	mpmenu.c:1309
-"a friend"	mpmenu.c:3385
+"Your mods stay as they were."	mpmenu.c:2822 mpmenu.c:2836
+"Your name"	mpmenu.c:952 mpmenu_model.c:480
+"Your own display settings for multiplayer. The host also sets Units per Player and Admin Mode here."	ui_game.c:5387
+"Your progress here is saved first, then this world closes."	mpmenu.c:2568
+"Your proposal waits for the other players."	ui_game.c:5409
+"Your save"	fe_menu.c:367 mpmenu_model.c:499
+"Your team could not be sent"	ui_teams.c:1387
+"Your units"	mpmenu.c:1389 ui_model.c:602 ui_teams.c:1018
+"Your units (+%d)"	mpmenu.c:1389
+"a file from the wiki arrived incomplete"	fe_http.c:205
+"a friend"	mpmenu.c:3465
 "a multiplayer game is running"	mp_api.c:36
 "a multiplayer game is starting"	mp_api.c:39
-"a player"	ui_game.c:913 ui_game.c:914 ui_game.c:2579 ui_game.c:5376
-"a player who is away"	ui_teams.c:775
+"a player"	ui_game.c:915 ui_game.c:916 ui_game.c:2583 ui_game.c:5382
+"a player who is away"	ui_teams.c:777
 "a player who left"	mp_game.c:1073
-"an absent player"	ui_game.c:209 ui_game.c:2679
+"a unit comes from %s, the hub is %s"	mp_modes.c:130
+"a unit is not in this save's clan"	mp_modes.c:128
+"an absent player"	ui_game.c:209 ui_game.c:2683
+"an item of one unit is missing from this save"	mp_modes.c:129
 "another player"	mp_game.c:1076 ord_mp.c:88
 "any unit"	mpmenu_model.c:138
 "anyone"	mpmenu_model.c:135
-"anyone can pause"	mpmenu.c:2532
-"approved"	ui_teams.c:1286
+"anyone can pause"	mpmenu.c:2612
+"approved"	ui_teams.c:1288
+"backup failed: nothing applied"	mp_modes.c:143
+"bad url"	fe_http.c:58
 "by vote"	mpmenu_model.c:135
-"catching up"	ui_game.c:2841
+"catching up"	ui_game.c:2845
 "change the map"	ui_model.c:353 ui_model.c:386
 "changing the map"	ui_model.c:408
 "comes back"	mpmenu_model.c:26
+"connection error"	fe_http.c:134
+"connection error %lu"	fe_http.c:78
+"could not connect"	fe_http.c:77
+"could not connect (error %lu)"	fe_http.c:63 fe_http.c:66 fe_http.c:68
 "could not enter the host's Steam lobby"	net/steam/dsnet_steam.c:527
 "could not reach the host through Steam"	net/steam/dsnet_steam.c:589
+"could not write the new save (a save with that name may exist already)"	mp_modes.c:139
 "counts"	mpmenu_model.c:26
+"death is not permanent"	fe_menu.c:216
+"death is permanent"	fe_menu.c:216
+"death is permanent here: that unit and its gear are removed at home."	fe_menu.c:183
 "default"	net/ds_modcheck.h:258 net/ds_modcheck.h:258
-"does not count"	mpmenu_model.c:26
+"does not count"	fe_menu.c:230 mpmenu_model.c:26
+"draw"	pvp_ui.c:632
+"dungeon loot comes back"	fe_menu.c:217
 "enter the dungeon"	ui_model.c:350 ui_model.c:386
 "entering the dungeon"	ui_model.c:408
 "first"	mpmenu_model.c:30
@@ -835,57 +1062,75 @@
 "host"	mpmenu_model.c:30 ui_model.c:655
 "host runs game build %s, you run %s"	net/steam/dsnet_steam.c:533
 "host runs mod version %s, you run %s"	net/steam/dsnet_steam.c:536
-"in sync"	ui_game.c:2841 ui_model.c:478
-"left the game"	ui_teams.c:1096
-"loading"	ui_game.c:2841 ui_model.c:478 ui_model.c:654
-"looks at the same part of the map as you.||look at the same part of the map as you."	ui_game.c:5368
-"macOS blocked the local network for Dungeon Settlers. Allow it in System Settings > Privacy & Security > Local Network."	mpmenu.c:2141
+"in sync"	ui_game.c:2845 ui_model.c:478
+"it comes home as it was at the last hub save."	fe_menu.c:183
+"left the game"	ui_teams.c:1098
+"loading"	ui_game.c:2845 ui_model.c:478 ui_model.c:654
+"looks at the same part of the map as you.||look at the same part of the map as you."	ui_game.c:5374
+"loot stays in the hub"	fe_menu.c:217
+"macOS blocked the local network for Dungeon Settlers. Allow it in System Settings > Privacy & Security > Local Network."	mpmenu.c:2221
 "majority"	mpmenu_model.c:30
 "multiplied"	mpmenu_model.c:31
-"no pause"	mpmenu.c:2532
+"no internet (name not resolved)"	fe_http.c:76 fe_http.c:132
+"no pause"	mpmenu.c:2612
+"no results for this run"	mp_modes.c:141
+"none"	fe_menu.c:233 fe_menu.c:252
 "not one of our official mods: it cannot be downloaded"	net/ds_modcheck.h:391
 "not permanent"	mpmenu_model.c:26
-"off"	mpmenu.c:2533 mpmenu_model.c:19 mpmenu_model.c:135 net/ds_modcheck.h:56
-"on"	mpmenu.c:2533 mpmenu_model.c:19 net/ds_modcheck.h:56
+"off"	mpmenu.c:2613 mpmenu_model.c:19 mpmenu_model.c:135 net/ds_modcheck.h:56
+"on"	mpmenu.c:2613 mpmenu_model.c:19 net/ds_modcheck.h:56
+"only %s is allowed"	fe_http.c:147
 "other gameplay settings"	net/ds_modcheck.h:390
 "own storage"	mpmenu_model.c:138
-"own storage per player"	mpmenu.c:2534
+"own storage per player"	mpmenu.c:2614
 "own units"	mpmenu_model.c:138
 "owner"	mpmenu_model.c:30
-"pause by vote"	mpmenu.c:2532
+"pause by vote"	mpmenu.c:2612
 "per player"	mpmenu_model.c:31
 "permanent"	mpmenu_model.c:26
-"proposed by"	ui_teams.c:1732
-"proposes"	ui_teams.c:1286
-"proposes (not ready)"	ui_teams.c:1286
-"resyncing"	ui_game.c:2841
+"proposed by"	ui_teams.c:1734
+"proposes"	ui_teams.c:1288
+"proposes (not ready)"	ui_teams.c:1288
+"resyncing"	ui_game.c:2845
 "return to the settlement"	ui_model.c:351 ui_model.c:386
 "returning to the settlement"	ui_model.c:407
 "same version, different files"	net/ds_modcheck.h:387
-"sees this too||see this too"	ui_game.c:4579
+"sees this too||see this too"	ui_game.c:4585
 "shared"	mpmenu_model.c:31
-"shared, anyone equips any unit"	mpmenu.c:2534
-"shared, equip your own units"	mpmenu.c:2534
+"shared, anyone equips any unit"	mpmenu.c:2614
+"shared, equip your own units"	mpmenu.c:2614
 "split"	mpmenu_model.c:31
 "stays"	mpmenu_model.c:26
 "the connection could not be set up on this computer"	net/steam/dsnet_steam.c:787
+"the download broke off (error %lu)"	fe_http.c:85
+"the download could not start"	fe_http.c:121
 "the game is full"	net/dsnet_client.c:581
-"the host"	mpmenu.c:1680 mpmenu.c:2499 mpmenu.c:2672 mpmenu_model.c:487 mpmenu_model.c:528 mpmenu_model.c:534 ui_teams.c:331
+"the home save is gone"	mp_modes.c:142
+"the host"	mpmenu.c:1760 mpmenu.c:2579 mpmenu.c:2752 mpmenu_model.c:487 mpmenu_model.c:528 mpmenu_model.c:534 ui_teams.c:333
 "the host does not use it"	net/ds_modcheck.h:389
 "the host has an older version: the host should update"	net/ds_modcheck.h:388
 "the host is playing another world now"	net/dsnet_client.c:583
 "the host left the Steam lobby"	net/steam/dsnet_steam.c:540
-"this one"	mpmenu.c:2005
-"this unit"	ui_game.c:96 ui_game.c:98 ui_game.c:113 ui_teams.c:1390
+"the new save failed its safety check, so it was not written (details in the log)"	mp_modes.c:138
+"the system's download library is missing"	fe_http.c:113 fe_http.c:120
+"the wiki is missing a file for this fight"	fe_http.c:205
+"the wiki sent more data than expected"	fe_http.c:87 fe_http.c:131
+"these results are damaged"	mp_modes.c:132
+"this one"	mpmenu.c:2085
+"this save is not the campaign the units came from"	mp_modes.c:135
+"this save is not the hub of that run"	mp_modes.c:131
+"this unit"	ui_game.c:96 ui_game.c:98 ui_game.c:113 ui_teams.c:1392
 "this world already has the most spectators it allows"	net/dsnet_client.c:586
 "this world does not allow spectators"	net/dsnet_client.c:585
-"to pack and answer"	ui_teams.c:1815
-"verb\u0004Host"	mpmenu.c:2568 mpmenu.c:2568
-"virtual adapter"	ui_game.c:2471
-"waiting"	ui_teams.c:1286
-"with %s"	mpmenu.c:3572
-"yes"	ui_game.c:1074
-"you"	ui_teams.c:1251
+"timed out"	fe_http.c:75 fe_http.c:133
+"to pack and answer"	ui_teams.c:1817
+"verb\u0004Host"	mpmenu.c:2648 mpmenu.c:2648
+"virtual adapter"	ui_game.c:2475
+"waiting"	ui_teams.c:1288
+"where they came from"	fe_game.c:681
+"with %s"	mpmenu.c:3651
+"yes"	ui_game.c:1076
+"you"	ui_teams.c:1253
 "you are already in this game (same Steam account or same copy of the game)"	net/dsnet_client.c:582
 "you do not have it"	net/ds_modcheck.h:385
 "you have it, turned off"	net/ds_modcheck.h:384
@@ -896,4 +1141,4 @@
 "your gameplay mods are different from the host's: start the game from the launcher with the host's mods"	net/dsnet_client.c:584
 "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version"	net/dsnet_client.c:579
 "your version is older"	net/ds_modcheck.h:386
-"‹ Newer"	mpmenu.c:1194
+"‹ Newer"	mpmenu.c:1277
