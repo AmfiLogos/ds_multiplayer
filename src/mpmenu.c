@@ -4577,7 +4577,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         bput(&b, ",\"obs\":{\"scene\":%d,\"ready\":%d,\"title\":%d,\"picker\":%d,\"role\":%d,\"guest_loading\":%d,\"failed\":%d,\"esc\":%d},\"visible\":%llu",
              o.scene, o.campaign_ready, o.title_visible, o.picker_open, o.role, o.guest_loading, o.failed, o.esc_open, (unsigned long long)mpm_visible(&M, &o));
         mp_session *ss = mp_game_session();
-        bput(&b, ",\"port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0); bstr(&b, M.direct);
+        bput(&b, ",\"port\":%u,\"host_port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0, (unsigned)mpm_host_port()); bstr(&b, M.direct);
         Obj fl = u_gc_get(h_field); char ft[256] = "";
         if (u_alive(fl)) str_utf8((mm_is(fl, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(fl, NULL) : NULL), ft, sizeof ft);
         bput(&b, ",\"field\":{\"exists\":%s,\"active\":%s,\"text\":", u_alive(fl) ? "true" : "false", u_on(fl) ? "true" : "false"); bstr(&b, ft); bput(&b, "}");
