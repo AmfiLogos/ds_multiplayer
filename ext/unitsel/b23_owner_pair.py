@@ -27,7 +27,10 @@ def owner(x, g):
 def body(X, Y):
     L.setup(X, Y, save=BASE, claim=False)
     t0 = st(X)['tick']
-    a = wait('guest: Teams opened by itself', lambda: (lambda s: s if s.get('open') else None)(tm(Y)), timeout=40, every=1)
+    try:
+        a = wait('guest: Teams opened by itself', lambda: (lambda s: s if s.get('open') else None)(tm(Y)), timeout=40, every=1)
+    except RuntimeError:
+        a = None
     check('B3: guest with no unit: the Teams window opens with "Pick your units"', bool(a) and 'Pick your units' in (a or {}).get('hint', ''), (a or {}).get('hint'))
     check('B3: the host (it orders free units) gets no window', not tm(X).get('open'))
     tm(Y, action='close'); time.sleep(6)

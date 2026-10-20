@@ -27,7 +27,7 @@ def body(X, Y):
     t0 = st(X)['tick']
     u, w = mine[Y][0], mine[X][0]
     for x in (X, Y):
-        c(x, cmd='ui_coop', action='camera', x=u['cell'][0] + 0.5, y=u['cell'][1] + 0.5)
+        c(x, cmd='ui_coop', action='camera', x=u['cell'][0] + 0.5, y=u['cell'][1] + 0.5, zoom=5)
     log('guest selects', u['name'], select(Y, u['guid']))
     t = wait('host sees the guest selection', lambda: (lambda s: glow_ok(tag_of(s, u['guid'])) and s)(c(X, cmd='ui_selshow')), timeout=20, every=1)
     check("host screen: the guest's selected unit glows in the guest's colour, name tag above", bool(t), t)

@@ -1084,7 +1084,7 @@ static void prompt_text(Obj v, char *txt, size_t cap) {
     int left = ui_map_timeout_s(mapv.kind) - (int)(now_s() - prompt_t0); if (left < 0) left = 0;
     ui_mapvote_marks(&mapv, &p, p.present, ok_glyph(AT(v, 0x30, Obj)), marks, sizeof marks);
     if (mapv.kind == UI_MAP_RETURN_SCROLL)                   /* unitsel B5: everyone returns to the settlement */
-        snprintf(txt, cap, TR("<size=150%%>%s</size>\n%s wants to use a Return scroll: everyone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>"),
+        snprintf(txt, cap, TR("<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>"),
                  ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), pname(&p, mapv.proposer, nm, sizeof nm), marks, left);
     else
     snprintf(txt, cap, TR("<size=150%%>%s</size>\n%s wants to %s.\n<size=88%%><color=#a69085>%s      %d s left</color></size>"),
@@ -5115,7 +5115,9 @@ static char *ui_coop_cmd(const char *line) {
     else if (!strcmp(a, "chatlink")) rc = ui_chat_link_click(1 + ((int)pl << 8 | ((int)x & 255))) ? 0 : -1;   /* chatlink {player, x: id}: the chat line's click */
     else if (!strcmp(a, "mapchanging")) map_changing = now_s();   /* test: an agreed change that never changes the map */
     else if (!strcmp(a, "zoom")) { Obj cs = cam_setting(); if (cs && x > 0.5) F(0xD22DB0, void (*)(Obj, float, void *))(cs, (float)x, NULL); cam_apply(); }   /* zoom {x: ortho size} */
-    else if (!strcmp(a, "camera")) { Obj cs = cam_setting(); if (cs) { V3 cur = F(0xD23584, V3 (*)(Obj, void *))(cs, NULL); F(0xD22C54, void (*)(Obj, V3, void *))(cs, (V3){ (float)x, (float)y, cur.z }, NULL); cam_apply(); } }
+    else if (!strcmp(a, "camera")) { Obj cs = cam_setting(); if (cs) { V3 cur = F(0xD23584, V3 (*)(Obj, void *))(cs, NULL); F(0xD22C54, void (*)(Obj, V3, void *))(cs, (V3){ (float)x, (float)y, cur.z }, NULL);
+        double zo = 0; jnum(line, "zoom", &zo); if (zo > 0.5) F(0xD22DB0, void (*)(Obj, float, void *))(cs, (float)zo, NULL);   /* unitsel test: ortho size */
+        cam_apply(); } }
     pings_draw(); views_draw();
     Obj cs = cam_setting(); V3 cp = cs ? F(0xD23584, V3 (*)(Obj, void *))(cs, NULL) : (V3){ 0, 0, 0 }; float co = cs ? F(0xD23590, float (*)(Obj, void *))(cs, NULL) : 0;
     int mx = 0, my = 0; if (cam_main()) mouse_cell(&mx, &my);
