@@ -41,7 +41,7 @@ RL=(-Wl,--no-insert-timestamp)                                   # and no build 
 CF=($PM -O2 -g -Wall -Wno-unused-function -Wno-format -D__USE_MINGW_ANSI_STDIO=1 -fno-strict-aliasing -DCM_SAME_IMAGE)
 TARGET=${DSMP_TARGET:-baselib}
 if [[ $TARGET == module ]]; then CF+=(-DDSMP_MODULE); INC=(-I${DSL_SDK:-~/ds_launcher/loader/sdk} $INC); fi   # the loader's dsl_sdk.h before sdk/ (an older copy)
-GEN=(build/gen/*.c build/gen/net/dsnet_link.c build/gen/net/dsnet_server.c build/gen/net/dsnet_client.c)
+GEN=(build/gen/*.c build/gen/net/dsnet_link.c build/gen/net/dsnet_server.c build/gen/net/dsnet_client.c build/gen/net/dsnet_steam.c)
 CM_SOLO=(); CM_MP=(); while read k f; do if [[ $k == solo ]]; then CM_SOLO+=(build/gen_cm/$f); else CM_MP+=(build/gen_cm/$f); fi; done < build/gen_cm/lists.txt
 # rig baselib.dll: Custom Modes in the same DLL (its mp part calls the solo part: My Units, fe_json); cm_module.c is the
 # loader's entry, not used by the rig
@@ -52,7 +52,7 @@ mkdir -p $O build/old_obj; olds=($O/*.o(N)); (( ${#olds} )) && mv -f $olds build
 # i18n: three string tables in the rig DLL (multiplayer, Custom Modes solo, Custom Modes mp; each has its own
 # DSI_IMPLEMENTATION): -DDSI_PREFIX renames the Custom Modes ones (cms_tr ..., cmm_tr ...). The module target has one per DLL.
 dsi_pfx() { DP=(); [[ $TARGET == module ]] && return; (( ${CM_MP[(Ie)$1]} )) && DP=(-DDSI_PREFIX=cmm_); (( ${CM_SOLO[(Ie)$1]} )) && DP=(-DDSI_PREFIX=cms_); return 0; }
-for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c port/steam_stub_win.c math/dsmath_win.c $GEN $NET; do dsi_pfx $f; nice -n 5 $TC $CF $DP -fwrapv $CEMB $INC -include dswin.h -include port/cm/xm_bsd_win.h -c $f -o $O/${f:t:r}.o; done
+for f in port/rig_main_win.c port/win_test_cmds.c port/win_kit.c math/dsmath_win.c $GEN $NET; do dsi_pfx $f; nice -n 5 $TC $CF $DP -fwrapv $CEMB $INC -include dswin.h -include port/cm/xm_bsd_win.h -c $f -o $O/${f:t:r}.o; done
 for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $ZL/zutil.c; do nice -n 5 $TC $PM -O2 -w -c $f -o $O/zl_${f:t:r}.o; done
 if [[ $TARGET == module ]]; then
 nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o

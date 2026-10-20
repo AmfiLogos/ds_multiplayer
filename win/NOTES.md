@@ -154,7 +154,10 @@ Build: `win/build_win.sh` -> `win/build/baselib.dll` (proxy + rig + det + mp + d
   sets it after our DllMain. **Under CrossOver/Rosetta the flag is 3** (Rosetta reports FMA3/AVX2).
 - `port/rig_sock_tcp.inc`: control channel on TCP 127.0.0.1:`DSRIG_PORT` (the test tools use 47811). Off when
   `DSRIG_PORT` is not set (no default port: test builds only). The port is also written to `<rig_dir>/ctl.port`.
-- `port/steam_stub_win.c`: the Steam bridge is not ported. It reports "no Steam", so mp uses direct TCP.
+- Steam (lane steamwin, 2026-10-20): `src/net/steam/dsnet_steam.c` is built for Windows too (gen_port.py, `_WIN32`
+  blocks: GetModuleHandleA("steam_api64.dll") + GetProcAddress, +connect_lobby from GetCommandLineA). A missing symbol =
+  "missing symbol X" in the log and direct-address play only. The old stub is in `port/old/steam_stub_win.c`.
+  `build_steam_check.sh` = build/steam_check.exe (standalone check, game closed).
 
 Math: `win/math/` = musl 1.2.5 libm (MIT) with a dsm_ prefix, built with `-ffp-contract=off` and the
 non-FMA paths. `build_math.sh` builds it for arm64, x86_64 and win64. `dsmath_test` (about 7 M results, NaNs

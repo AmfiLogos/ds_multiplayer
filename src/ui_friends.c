@@ -10,8 +10,8 @@
  *
  * Built with the menu kit (mpmenu_kit.h, the same widgets as the lobby), on the Esc menu's root like the lobby
  * window; it hides the lobby (or the Esc column) while open. Hooks: mpmenu_register_hooks (press / escape / click /
- * frame_late / exec), registered on the first open. Windows: Steam is stubbed there (option D is its own lane),
- * so ui_friends_invite_click() returns 0 and the menu keeps today's path.
+ * frame_late / exec), registered on the first open. Windows: the same code (steam_api64.dll since lane steamwin);
+ * the overlay check decides there too.
  * Test: mpm_friends {"action": "state" | "open" | "row", "i": n | "next" | "prev" | "wheel", "dir": +-1 | "close"};
  * DSRIG_TEST_STEAMFRIENDS=1 in a test copy gives a fake friends list and a fake invite (mp_steam.h). */
 #include "mpmenu_kit.h"
@@ -26,10 +26,6 @@
 int ui_friends_invite_click(void);
 float ui_friends_lobby_note(float x, float y, float w, int steam);
 
-#ifdef _WIN32
-int ui_friends_invite_click(void) { return 0; }                                  /* Steam stubbed: today's path */
-float ui_friends_lobby_note(float x, float y, float w, int steam) { (void)x; (void)y; (void)w; (void)steam; return 0; }
-#else
 
 #define UF_ROWS 8
 #define UF_MAX 400
@@ -278,4 +274,3 @@ float ui_friends_lobby_note(float x, float y, float w, int steam) {
     tmp_set(n, TR("Your friend must open Dungeon Settlers Modded first."));
     return 22;
 }
-#endif
