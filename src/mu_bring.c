@@ -333,8 +333,14 @@ size_t mu_bring_test_state(char *out, size_t cap) {
     char m[600]; jesc(m, sizeof m, B.msg);
     const mu_drawn *d; int nd = mu_drawn_list(&d), icons = 0, sprites = mu_drawn_sprites();
     for (int i = 0; i < nd; i++) if (!d[i].is_text && d[i].card >= 0) icons++;
-    return (size_t)snprintf(out, cap, "{\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
+    char files[1600] = ""; size_t fo = 0;                              /* the listed save files (names only) */
+    for (int i = 0; i < B.nsaves && fo + 140 < sizeof files; i++) {
+        const char *f = strrchr(B.saves[i].path, '/'); f = f ? f + 1 : B.saves[i].path;
+        { const char *b = strrchr(f, '\\'); if (b) f = b + 1; }
+        char e[260]; jesc(e, sizeof e, f); fo += (size_t)snprintf(files + fo, sizeof files - fo, "%s\"%.120s\"", i ? "," : "", e);
+    }
+    return (size_t)snprintf(out, cap, "{\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
                             "\"page\":%d,\"pages\":%d,\"msg\":\"%s\",\"saves\":%d,\"sel_save\":%d,\"units\":%d,\"w\":%.0f,\"h\":%.0f}",
-                            B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
+                            files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
                             B.page, B.pages, m, B.nsaves, B.sel_save, B.nsu, B.w, B.h);
 }

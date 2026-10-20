@@ -15,6 +15,7 @@
 #include "net/dsnet.h"
 #include "pvp_core.h"
 #include "fe_save.h"
+#include "mp_worldsave.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -366,7 +367,7 @@ static void br_list_saves(void) {
     DIR *d = opendir(dir);
     for (struct dirent *e; d && (e = readdir(d)) && n < 64; ) {
         size_t l = strlen(e->d_name); if (l < 6 || strcmp(e->d_name + l - 5, ".json")) continue;
-        if (!strncmp(e->d_name, "mp_sync", 7) || !strncmp(e->d_name, "MPFE_", 5) || !strncmp(e->d_name, "MPPvP_", 6) || !strncmp(e->d_name, "MPHub_", 6)) continue;
+        if (mp_world_save_name(e->d_name)) continue;                     /* the mod's own worlds (hub, PvP): mp_worldsave.h */
         snprintf(all[n].f, sizeof all[n].f, "%s/%s", dir, e->d_name);
         snprintf(all[n].st, sizeof all[n].st, "%.*s", (int)(l - 5), e->d_name);
         struct stat sb; all[n].t = stat(all[n].f, &sb) == 0 ? sb.st_mtime : 0; n++;

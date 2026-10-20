@@ -450,7 +450,7 @@ static int few_lobby_name(int id, const char *nmn, char *t2, size_t cap) {   /* 
 static char *few_exec(const char *cmd, const char *line) {               /* Foreign Expedition window read-back; the Bring Units card window */
     (void)line;
     if (!strcmp(cmd, "mpm_fewin")) return few_status();
-    if (!strcmp(cmd, "mpm_bring_state")) { char *s = malloc(2048); if (s) mu_bring_test_state(s, 2048); return s; }
+    if (!strcmp(cmd, "mpm_bring_state")) { char *s = malloc(4096); if (s) mu_bring_test_state(s, 4096); return s; }
     if (!strcmp(cmd, "mpm_bring_close")) { mu_bring_close(); char *s = malloc(16); if (s) snprintf(s, 16, "{\"ok\":true}"); return s; }
     return NULL;
 }
