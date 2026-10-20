@@ -897,3 +897,17 @@
 "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version"	net/dsnet_client.c:579
 "your version is older"	net/ds_modcheck.h:386
 "‹ Newer"	mpmenu.c:1194
+"%d-%d of %d"	ui_friends.c:143
+"Busy"	ui_friends.c:116
+"In Dungeon Settlers"	ui_friends.c:115
+"Invite a Steam friend"	ui_friends.c:121
+"Invite sent"	ui_friends.c:133 ui_friends.c:238
+"Invite sent to %s."	ui_friends.c:174
+"No Steam friends found."	ui_friends.c:141
+"Not sent"	ui_friends.c:134 ui_friends.c:238
+"Offline"	ui_friends.c:114
+"Online"	ui_friends.c:118
+"Steam did not send the invite to %s. Try again, or use the direct address."	ui_friends.c:175
+"Steam is not running in this game, so no friends can be shown."	ui_friends.c:141
+"The Steam lobby is not ready yet. Wait a moment, then try again."	ui_friends.c:169
+"Your friend must open Dungeon Settlers Modded first."	ui_friends.c:122 ui_friends.c:240 ui_friends.c:278

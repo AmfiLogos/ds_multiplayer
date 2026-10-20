@@ -1664,6 +1664,8 @@ static char lw_rowname[LW_ROWS][32];                    /* row names (tooltip ti
 static int lw_host_built = -1, lw_level[LW_ROWS];   /* connection level shown per row (-1 none), for the read-back */
 static int64_t copied_until;
 static float lw_h = 740;
+static float lw_note_h;                                 /* steaminv: height of the note under Steam invite (ui_friends.c) */
+int ui_friends_invite_click(void); float ui_friends_lobby_note(float x, float y, float w, int steam);
 static Obj lwt(int k) { Obj t = u_gc_get(h_lwt[k]); return u_alive(t) ? t : NULL; }
 #define LX(x) ((x) - 440.0f)
 #define LY(y) (lw_h / 2 - (y))
@@ -1821,7 +1823,8 @@ static void lw_texts(void) {
         lw_header_lines(4, lwt(T_INV), 32, 396, LY(hy), 0);
         float y1 = hy + 13 + 10 + 20;                                       /* Steam invite 40 high */
         Obj ib = u_gc_get(h_lwb[LW_INVITE]); if (ib) place(ib, LX(32 + 198), LY(y1), 396, 40);
-        float y2 = y1 + 20 + 10 + 20;
+        lw_note_h = ui_friends_lobby_note(LX(32 + 198), LY(y1 + 20 + 4 + 10), 396, in.steam);   /* steaminv: "Your friend must open ... first." */
+        float y2 = y1 + 20 + 10 + 20 + lw_note_h;
         place(u_gc_get(h_lw_addrbox[0]), LX(32 + 146), LY(y2), 292, 40); place(u_gc_get(h_lw_addrbox[1]), LX(32 + 146), LY(y2), 290, 38);
         place(lwt(T_INV_ADDR), LX(32 + 12 + 134), LY(y2), 268, 30);
         Obj cb = u_gc_get(h_lwb[LW_COPY]); if (cb) place(cb, LX(428 - 48), LY(y2), 96, 40);
@@ -1849,7 +1852,7 @@ static void lw_texts(void) {
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
     /* height from the content: no empty band under the columns; the window stays centred */
-    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + 40 + 10 + 34 : rows_end, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
+    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + 40 + 10 + 34 + lw_note_h : rows_end, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
     float H = (left > right ? left : right) + 24 + 76;
     place(u_gc_get(h_lw_frame), 0, LY(H / 2), 880, H);
     { float top = host ? 123 : 127, bot = H - 77; place(u_gc_get(h_lw_body), 0, LY((top + bot) / 2), 876, bot - top); }
@@ -3452,7 +3455,7 @@ static void run_actions(int a, const mpm_obs *o) {
     }
     if (a & MPA_COPY_ADDR) { copied_until = frames + 60; F(0x518AFE0, void (*)(Obj, void *))(u_str(M.direct), NULL); rig_log("mpmenu: copied %s", M.direct); }
     if (a & MPA_INVITE) {                                                   /* F18: a failed overlay is said, not only logged */
-        int rc = mp_steam_invite(); rig_log("mpmenu: invite rc %d", rc);
+        int rc = ui_friends_invite_click() ? 0 : mp_steam_invite(); rig_log("mpmenu: invite rc %d", rc);   /* steaminv: overlay off = friends picker (ui_friends.c) */
         if (rc) say("%s", TR("The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead."));
     }
     if (a & MPA_CONFIRM_LEAVE) leave_box_show();
