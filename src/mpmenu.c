@@ -4257,9 +4257,10 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     }
     if (!strcmp(cmd, "mpm_testchoice")) return testchoice_exec(line);    /* test: dummy register_host_choice2 choices */
     if (!strcmp(cmd, "mpm_newcampaign")) {                                  /* test: what the new-campaign screen's Start sends */
-        char nm[64] = "MP Test", sd[32] = "12345"; double sc = 1; jstr(line, "name", nm, sizeof nm); jstr(line, "seed", sd, sizeof sd); jnum(line, "scenario", &sc);
+        char nm[64] = "MP Test", sd[32] = "12345"; double sc = 1, cd = 1, md = 1; jstr(line, "name", nm, sizeof nm); jstr(line, "seed", sd, sizeof sd); jnum(line, "scenario", &sc);
+        jnum(line, "combat", &cd); jnum(line, "mgmt", &md);                 /* difficulties (default 1); Hell = 5 */
         Obj ev = obj_new(0x664BC18);                                        /* CreateCampaignRequested */
-        F(0xD61EDC, void (*)(Obj, Obj, int, int, int, Obj, bool, bool, bool, Obj, bool, void *))(ev, u_str(nm), (int)sc, 1, 1, u_str(sd), false, false, false, u_str(""), false, NULL);
+        F(0xD61EDC, void (*)(Obj, Obj, int, int, int, Obj, bool, bool, bool, Obj, bool, void *))(ev, u_str(nm), (int)sc, (int)cd, (int)md, u_str(sd), false, false, false, u_str(""), false, NULL);
         F(0xCCFAD4, void (*)(Obj, Obj, void *))(AT(mf, 0x48, Obj), ev, NULL);
         return strdup("{\"ok\":true}");
     }
