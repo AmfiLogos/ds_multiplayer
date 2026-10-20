@@ -320,6 +320,15 @@ void assets_scan_now(void) {
     double t0 = scan_ms_now(); assets_scan_body(); double d = scan_ms_now() - t0;
     scan_ms_sum += d; if (d > scan_ms_max) scan_ms_max = d;
 }
+/* CheckBox_Normal comes in 5 x 5 (Settings, see-through corners: a round ring when drawn big), 10 x 10 and 12 x 12: the
+   load-list box takes the 10 x 10 one, the same square as CheckBox_Checked (owner 2026-10-20: square boxes) */
+static int chk_size_ok(int k, Obj sp) {
+    if (k != S_CHK_N && k != S_CHK_C) return 1;
+    static void *mr; if (!mr) mr = mth("UnityEngine", "Sprite", "get_rect", 0);
+    if (!mr) return 1;
+    RectF2 r = MCALL(mr, RectF2, Obj, const void *)(sp, mr);
+    return r.w > 9.5f && r.w < 10.5f && r.h > 9.5f && r.h < 10.5f;
+}
 static void assets_scan_body(void) {
     scan_last = frames; scans++;
     popup_prefab(8); popup_prefab(2); popup_prefab(13);                     /* load the Recruit / Expedition / Task Planner prefabs: their sprites too */
@@ -331,7 +340,7 @@ static void assets_scan_body(void) {
     for (int i = 0; i < n; i++) {
         Obj sp = AT((char *)arr + 0x20, i * 8, Obj); char nm[64] = "";
         str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(sp, NULL), nm, sizeof nm);
-        for (int k = 0; k < S_N; k++) if (!h_spr[k] && !strcmp(nm, spr_name[k])) { h_spr[k] = u_gc_new(sp); found++; }
+        for (int k = 0; k < S_N; k++) if (!h_spr[k] && !strcmp(nm, spr_name[k]) && chk_size_ok(k, sp)) { h_spr[k] = u_gc_new(sp); found++; }
     }
     if (!h_cinzel) {
         Obj fa = MCALL(mi, Obj, Obj, const void *)(type_obj("TMPro", "TMP_FontAsset"), mi);
@@ -3868,7 +3877,7 @@ static void lf_toggle_sync(Obj slv) {
         if (!strcmp(cls_name(tog), "DASText")) AT(tog, 0x7C0, bool) = false;   /* our text, not a localisation key */
         F(0x5260348, void (*)(Obj, bool, void *))(tog, true, NULL);         /* raycastTarget: the click is ours */
         u_gc_free(h_lf_tog); h_lf_tog = u_gc_new(tog);
-        box = tpl_img ? mk_img(tpl_img, u_tr(low), S_CHK_N, C_WHITE, 0, 0, 28, 28) : NULL;
+        box = tpl_img ? mk_img(tpl_img, u_tr(low), S_CHK_N, C_WHITE, 0, 0, 20, 20) : NULL;   /* 2x the 10 x 10 box: whole pixels */
         u_gc_free(h_lf_box); h_lf_box = box ? u_gc_new(box) : 0;
         rig_log("mpmenu: load list toggle built (box %s)", box ? "yes" : "no");
     }
@@ -3876,7 +3885,7 @@ static void lf_toggle_sync(Obj slv) {
     URect lr = F(0x5106978, URect (*)(Obj, void *))(u_tr(low), NULL);       /* bottom row, local (centre = 0,0) */
     float y = lr.h / 2 + LF_BAND / 2.0f, x0 = -lr.w / 2 + 4;
     Obj sp = spr(lf_other ? S_CHK_C : S_CHK_N);
-    if (box) { place(box, x0 + 14, y, 28, 28); img_set(box, sp, sp ? C_WHITE : C_SUB); u_active(box, true); }
+    if (box) { place(box, x0 + 14, y, 20, 20); img_set(box, sp, sp ? C_WHITE : C_SUB); u_active(box, true); }
     place(tog, x0 + 36 + 200, y, 400, 36);
     tmp_set(tog, lbl); u_active(tog, true);
 }
