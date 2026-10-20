@@ -255,6 +255,14 @@ static void test_mapvote(void) {
     CHECK(ui_mapvote_vote(&m, 2, 77, 1, 0x7) == 1);
     CHECK(!ui_mapvote_open(&m));
     CHECK(ui_mapvote_vote(&m, 0, 77, 1, 0x7) == 1);                           /* decided stays */
+    /* unitsel B5: Return scroll, 3 players, proposer 2; host says no, player 1 silent: the timeout counts him as yes
+       (2 yes, 1 no: go); a guest's timeout order is ignored; the wire keeps accept 4 */
+    CHECK(ui_mapvote_propose(&m, 90, 2, UI_MAP_RETURN_SCROLL, ord, 3, 0x7));
+    CHECK(ui_mapvote_vote(&m, 0, 90, 0, 0x7) == -1);
+    CHECK(ui_mapvote_vote(&m, 1, 90, UI_MAP_TIMEOUT_YES, 0x7) == -1 && ui_mapvote_open(&m));
+    CHECK(ui_mapvote_vote(&m, 2, 90, UI_MAP_TIMEOUT_YES, 0x7) == 1 && m.vote[1] == 1);
+    { uint8_t w[5]; uint32_t id; int acc; ui_map_vote_write(w, 91, UI_MAP_TIMEOUT_YES); CHECK(!ui_map_vote_read(w, 5, &id, &acc) && acc == UI_MAP_TIMEOUT_YES); }
+    CHECK(ui_map_timeout_s(UI_MAP_RETURN_SCROLL) == 60);
     /* 2 players, tie 1-1: host's vote wins (host declines) */
     CHECK(ui_mapvote_propose(&m, 80, 1, UI_MAP_ENTER_DUNGEON, NULL, 0, 0x3));
     CHECK(ui_mapvote_vote(&m, 0, 80, 0, 0x3) == 0);

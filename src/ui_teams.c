@@ -29,6 +29,9 @@ int      dsnet_marked_of(dsnet_client *c, int player, uint8_t out[3][16]) __attr
 int      dsnet_expedition_ready(dsnet_client *c, int ready, const uint8_t (*guids)[16], int n) __attribute__((weak_import));
 void    *ord_debug_class(const char *ns, const char *name) __attribute__((weak_import));
 void     ui_portrait_style(void *parts, int owner) __attribute__((weak_import));   /* mpui: colour frame / dim */
+void     ui_vote_hold(int bit, int on) __attribute__((weak_import));
+int      rig_det_mp_ready(void);
+static int pick_hint, pick_done_gen = -1; static double pick_ready_t;   /* unitsel B3 */               /* unitsel: an open vote pauses everyone */
 
 /* ---------------------------------------------------------------- il2cpp / Unity */
 typedef struct { float x, y; } V2;
@@ -1125,6 +1128,7 @@ static void layout(void) {
     if ((o = u_gc_get(h_hint))) {
         char stl[300] = "";
         if (!mp_running()) snprintf(stl, sizeof stl, "%s", ui_col(C_WARN, TR("Multiplayer is not running yet: changes here are not applied.")));
+        else if (st.in_dungeon && pick_hint && !mine) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>  %s", TR("Pick your units."), TR("In a dungeon a friend can lend you one (Lend on his portrait)."));
         else if (st.in_dungeon) snprintf(stl, sizeof stl, "%s", TR("In a dungeon only lending works: use Lend on your units."));
         else if (host_admin && hsel.picked >= 0) snprintf(stl, sizeof stl, "%s", TR("Host: click a section name to move the picked unit there."));
         else if (st.me == 0 && hsel.target != TM_NO_TARGET) {
@@ -1132,6 +1136,7 @@ static void layout(void) {
             if (hsel.target >= 0) { player_name(hsel.target, nm); snprintf(pls.name[hsel.target], 32, "%s", nm); }
             snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
         }
+        else if (st.me >= 0 && !mine && pick_hint) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>  %s", TR("Pick your units."), TR("Left-click a free unit to take it."));
         else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "%s", TR("Next: take a free unit (left-click)."));
         else if (st.me >= 0) snprintf(stl, sizeof stl, "%s", TR("To start an expedition, use the game's Enter Dungeon."));
         snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>", stl);
@@ -1322,6 +1327,8 @@ static void close_screen(void);
 static void stock_countdown(void);
 /* every frame: show / hide / refresh; host: the timeout; everyone: the proposer left; the receiver's steps */
 static void prop_frame(unsigned n) {
+    { static int held; int want = sess() && prop.active && me() >= 0 && prop.proposer == me();   /* unitsel (owner 2026-10-20 late): */
+      if (want != held && ui_vote_hold) { ui_vote_hold(1, want); held = want; } }                /* the proposal pauses everyone */
     if (close_stock) { close_stock = 0; stock_close(); }
     if (pstage == ST_SUPPLIES_PENDING && me() >= 0 && scene() == 2) {
         model_refresh();
@@ -1443,6 +1450,7 @@ static int open_screen(void) {
     return 0;
 }
 static void close_screen(void) {
+    pick_hint = 0;
     opened = 0; hsel = (tm_sel)TM_SEL_INIT;
     if (root()) u_go_active(u_go(root()), false);
 }
@@ -2203,6 +2211,22 @@ static void tips_frame(void) {
     for (int k = 0; k < nhdr; k++) if (hit(u_gc_get(h_hdr[k]), m, cam)) { tip_header(u_gc_get(h_hdr[k]), hdr_player[k]); return; }
 }
 static void start_frame(void);
+/* unitsel B3 (owner feedback v0.1.20): a guest who arrives in a world with no unit gets the Teams window, once per
+   session, with the hint "Pick your units" (it stays until he has a unit or closes the window). 3 s after the world
+   is ready, so the load's own windows are gone. */
+static void first_open_frame(void) {
+    int gen = (int)mp_game_session_gen();
+    if (pick_done_gen == gen) return;
+    if (!mp_running() || me() <= 0 || spect() || !screen_ok() || !rig_det_mp_ready()) { pick_ready_t = 0; return; }
+    if (!pick_ready_t) { pick_ready_t = now_s(); return; }
+    if (now_s() - pick_ready_t < 3) return;
+    pick_done_gen = gen;
+    model_refresh();
+    int own = 0; for (int u = 0; u < st.nunits; u++) own += st.owner[u] == st.me;
+    if (own || !st.nunits) { rig_log("teams: arrival: %d unit(s) of mine: no Teams window", own); return; }
+    if (opened) { pick_hint = 1; shown_sig = 0; return; }
+    if (open_screen() == 0) { pick_hint = 1; shown_sig = 0; model_refresh(); layout(); rig_log("teams: arrival with no unit: Teams window opened (Pick your units)"); }
+}
 void ui_teams_frame(void) {
     if (!hooks_done) install_hooks();
 #ifdef TEAMS_MOUSE_TEST
@@ -2219,6 +2243,7 @@ void ui_teams_frame(void) {
     if (n % 3 == 0 && sess()) stock_gear_frame();        /* any stock expedition window in multiplayer */
     if (me() < 0 || scene() != 2) { if (opened) close_screen(); return; }
     start_frame();
+    first_open_frame();
     if (n % 30 == 1) hud_frame();
     hud_place();
     hud_input();

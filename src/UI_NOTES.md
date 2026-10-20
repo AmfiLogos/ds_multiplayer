@@ -301,3 +301,26 @@ menu in multiplayer pauses nobody (#7). Test: `ui_test/uxgame_pair.py` (one pair
   Saved as "folded" in mp_teams_button.json; Teams reopens folded until Show. The Teams button on a folded window = Show.
   Test: ui_teams {action: tfold, on}; state tfold / modal / bar_rect / win_rect / hide_rect.
 - Cog "Teams button: Show / Hide" (mp_ui.json "teams_button", default shown); ui_teams reads ui_teams_button_on (dlsym).
+
+## unitsel (v0.1.21, owner feedback on v0.1.20, 2026-10-20)
+- B1 friends' selections: each peer sends its selected units as dsnet P_SEL (new packet, outside the sim like P_VIEW:
+  relayed to players not loading, never stamped / saved / hashed; `dsnet_sel_send` / `dsnet_sel_of`, max 24 units, on
+  change at most 5/s, keep-alive 4 s, stale after 12 s). A unit a friend has selected glows (the game's unit outline,
+  world_frame, overrides the cog outline) in that friend's name colour, with a small name tag above it (8m). Probe
+  `ui_selshow` (mine, friends, tags with glow state + colour, over_ui).
+- B2: `sel_owner_frame` (8a2): a selected unit this player could order and no longer may (dsnet_may_order: Teams move,
+  lend, take back) leaves his selection through the stock SelectProcessor (`ord_select_units`, ord_game.c: Select
+  0xD54B7C / Clear 0xD54C84, PlayerControlEventHandler +0x28). A friend's unit clicked only to look at stays.
+- B3 (ui_teams.c `first_open_frame`): a guest who arrives in a world with no unit gets the Teams window once per
+  session (3 s after ready), hint "Pick your units." (dungeon: a friend can lend one).
+- B4: orders given while paused already go out at once and apply in the paused steps (0 ticks) on every peer, the
+  units walk on resume (hidden pair, capture path and the fake real-mouse path, both PASS before any change).
+  `ext/unitsel/b4_pause_pair.py` keeps it proven (2 min, pauses + orders, 0 desyncs).
+- B5: a Return scroll use (ord UseSkill, skill class SKILL_ReturnScroll or key *ReturnScroll*) goes to the map vote as
+  kind 4 (order = owner guid + ord payload). Box "<name> wants to use a Return scroll ..." Agree / Refuse, 60 s; then
+  the proposer sends accept 4 (UI_MAP_TIMEOUT_YES): every silent player counts as agree, usual tally (tie = host).
+  Agreed: the PROPOSER sends his own order (his unit, his item, owner checks unchanged).
+- Every vote pauses everyone in every pause mode (owner 2026-10-20 late): the proposer holds dsnet's
+  DSNET_STORY_PAUSE (map / scroll vote: bit 0, Teams expedition proposal: bit 1 via `ui_vote_hold`) until the vote
+  ends; story popups now also hold it in the "all must vote" mode. Text "Paused while everyone votes".
+  Probe `ui_vote_state`. Tests: ext/unitsel/b1_glow_pair.py, b23_owner_pair.py, b4_pause_pair.py, b5_scroll_pair.py.

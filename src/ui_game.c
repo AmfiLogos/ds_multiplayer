@@ -869,6 +869,8 @@ static void resync_frame(const ui_players *p) {
 static int status_agree;                                     /* the status line asks the others to press >> (by state, not by text) */
 static char status_text[256], pause_text[256];             /* pause_text: the one pause line (panel + banner, #20) */
 static ui_mapvote mapv;
+static void vote_pause(int on_);
+static int story_want, vote_hold;
 static void resync_frame(const ui_players *p);
 static void status_frame(void) {
     clock_lobby(u_gc_get(h_clock));                          /* stock SetSpeedChangeOnUI may re-enable them */
@@ -886,6 +888,7 @@ static void status_frame(void) {
         v.allow_speedup = c ? dsnet_allow_speedup(c) : 1; v.allow_pause = c ? dsnet_allow_pause(c) : 1;
         v.busy = c && dsnet_busy_mask ? dsnet_busy_mask(c) : 0;
         v.story_pause = c && dsnet_story_pause_mask ? dsnet_story_pause_mask(c) : (uint32_t)story_held << (me() & 31);
+        v.vote_open = ui_mapvote_open(&mapv);
         v.pause_by1 = c ? dsnet_pause_by(c) + 1 : 0;
         v.paused_ext = st.paused;
         if (c && dsnet_vote_of)
@@ -934,7 +937,7 @@ static void status_frame(void) {
    with "TEXTKEY". Our prompt passes null actions; the confirm/cancel hooks turn the click into a vote. */
 static uintptr_t h_notice;
 static uint32_t prompt_id, map_counter;
-static int map_submit, prompt_close, map_report = -1;
+static int map_submit, scroll_submit, prompt_close, map_report = -1;
 static double map_open_t; static uint32_t map_cancel_sent;  /* proposer: when its vote opened (60 s timeout, review #5) */
 static double now_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
 /* floor index (DungeonData +0x14 of EntityDataContainer +0x40; 0 = 1F, seen in a run), -1 outside a dungeon */
@@ -1078,8 +1081,12 @@ static const char *ok_glyph(Obj tmp) {                       /* a check mark the
 static int next_floor_no(void) { int f = cur_floor(); return f >= 0 ? f + 2 : 0; }   /* 0-based index: 1F = 0 */
 static void prompt_text(Obj v, char *txt, size_t cap) {
     char q[64], nm[96], marks[1024]; ui_players p; players(&p);
-    int left = UI_MAP_TIMEOUT_S - (int)(now_s() - prompt_t0); if (left < 0) left = 0;
+    int left = ui_map_timeout_s(mapv.kind) - (int)(now_s() - prompt_t0); if (left < 0) left = 0;
     ui_mapvote_marks(&mapv, &p, p.present, ok_glyph(AT(v, 0x30, Obj)), marks, sizeof marks);
+    if (mapv.kind == UI_MAP_RETURN_SCROLL)                   /* unitsel B5: everyone returns to the settlement */
+        snprintf(txt, cap, TR("<size=150%%>%s</size>\n%s wants to use a Return scroll: everyone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>"),
+                 ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), pname(&p, mapv.proposer, nm, sizeof nm), marks, left);
+    else
     snprintf(txt, cap, TR("<size=150%%>%s</size>\n%s wants to %s.\n<size=88%%><color=#a69085>%s      %d s left</color></size>"),
              ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), pname(&p, mapv.proposer, nm, sizeof nm), ui_map_short(mapv.kind), marks, left);
 }
@@ -1092,6 +1099,7 @@ static void prompt_show(void) {
     prompt_id = mapv.id;
     rig_log("ui: map vote prompt: %s", txt);
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str(txt), NULL, NULL, true, NULL);   /* Yes / No */
+    if (mapv.kind == UI_MAP_RETURN_SCROLL) { tmp_set(AT(v, 0x40, Obj), TR("Agree")); tmp_set(AT(v, 0x50, Obj), TR("Refuse")); }   /* B5: _txtConfirm / _txtCancle */
     Obj nt = AT(v, 0x30, Obj);
     (ui_is(nt, K_TMP) ? F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL) : (void)0);          /* Center */
     u_go_active(u_go(v), true);
@@ -1137,7 +1145,7 @@ static void strip_frame(void) {
     Obj parts[4] = { bg, tx, bt, btx };
     for (int i = 0; i < 4; i++) if (u_alive(parts[i]) && u_go_active_self(u_go(parts[i])) != open_) u_go_active(u_go(parts[i]), open_);
     if (!open_) { strip_shown[0] = 0; return; }
-    int left = UI_MAP_TIMEOUT_S - (int)(now_s() - map_open_t); if (left < 0) left = 0;
+    int left = ui_map_timeout_s(mapv.kind) - (int)(now_s() - map_open_t); if (left < 0) left = 0;
     snprintf(line, sizeof line, TR("<color=#ccbeb8>%s %s · %d s</color>"), ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), wl, left);
     if (strcmp(line, strip_shown)) { snprintf(strip_shown, sizeof strip_shown, "%s", line); tmp_set(tx, line); }
     float y = -150, x0 = -380;                               /* under the pause banner, top centre */
@@ -1152,7 +1160,8 @@ static void map_cancel_send(int why) {                     /* proposer: UI_MAP_C
     map_cancel_sent = mapv.id;
     ui_map_vote_write(a, mapv.id, why);
     int rc = mp_order(sess(), UI_ORDER_MAP_VOTE, zero, a, sizeof a);
-    rig_log("ui: map vote %08x: cancel sent (%s, rc %d)", mapv.id, why == UI_MAP_CANCEL ? "no decision in 60 s" : "Cancel pressed", rc);
+    rig_log("ui: map vote %08x: %s sent (%s, rc %d)", mapv.id, why == UI_MAP_TIMEOUT_YES ? "timeout" : "cancel",
+            why == UI_MAP_CANCEL ? "no decision in 60 s" : why == UI_MAP_TIMEOUT_YES ? "60 s: no answer counts as agree" : "Cancel pressed", rc);
 }
 static void strip_mouse(void) {
     Obj bt = u_gc_get(h_strip_btn);
@@ -1164,11 +1173,16 @@ static void strip_mouse(void) {
 int ui_debug_map_cancel(void) { if (!ui_mapvote_open(&mapv) || mapv.proposer != me()) return 0; map_cancel_send(UI_MAP_CANCEL_USER); return 1; }
 static void map_decided(int d) {                             /* command apply: same step on every peer */
     if (d < 0) return;
+    if (mapv.proposer == me()) vote_pause(0);                /* unitsel: the vote ended: the game goes on */
     if (prompt_id == mapv.id) { prompt_id = 0; prompt_close = 1; }
     map_report = d;
     if (d == 1) map_changing = now_s();                      /* every peer: orders wait for the new map */
     dsnet_client *c = cli();
-    if (d == 1 && c && dsnet_is_host(c)) { memcpy(map_order, mapv.order, mapv.order_len); map_order_len = mapv.order_len; map_submit = 1; }
+    if (d == 1 && mapv.kind == UI_MAP_RETURN_SCROLL) {      /* B5: the user's own order (his unit, his item), sent by him */
+        if (mapv.proposer == me() && mapv.order_len > 16) { memcpy(map_order, mapv.order, mapv.order_len); map_order_len = mapv.order_len; scroll_submit = 1; }
+        rig_log("ui: Return scroll vote %08x: agreed (proposer %d)", mapv.id, mapv.proposer);
+    } else if (mapv.kind == UI_MAP_RETURN_SCROLL) rig_log("ui: Return scroll vote %08x: refused (proposer %d)", mapv.id, mapv.proposer);
+    else if (d == 1 && c && dsnet_is_host(c)) { memcpy(map_order, mapv.order, mapv.order_len); map_order_len = mapv.order_len; map_submit = 1; }
 }
 static int map_propose_order(mp_session *s, int player, const uint8_t guid[16], const uint8_t *args, uint16_t len) {
     (void)s; (void)guid;
@@ -1183,7 +1197,8 @@ static int map_propose_order(mp_session *s, int player, const uint8_t guid[16], 
     else if (spect()) { char nm[40]; notice(TR("%s wants to %s"), ui_player_label(&p, player, nm), ui_map_short(kind)); }   /* no vote */
     else if (player != me() && left_prompt) { prompt_pending = 1; rig_log("ui: map vote waits for the disconnect box to close (ux_flow F20)"); }
     else if (player != me()) prompt_show();
-    else { map_open_t = now_s(); map_cancel_sent = 0; }      /* the panel line "Waiting for <names> to agree" says the rest */
+    else { map_open_t = now_s(); map_cancel_sent = 0; vote_pause(1); }   /* the panel line "Waiting for <names> to agree" says the rest;
+                                                                unitsel: an open vote pauses everyone, every pause mode */
     return 0;
 }
 static int map_vote_order(mp_session *s, int player, const uint8_t guid[16], const uint8_t *args, uint16_t len) {
@@ -1199,7 +1214,7 @@ int ui_map_propose(int kind, const uint8_t *order, size_t len) {
     mp_session *s = sess();
     if (!on() || !s || len > UI_MAP_MAX_ORDER) return 0;
     if (spect()) { notice("%s", TR("You are watching: only players change the map")); return 1; }
-    if (result_open && result_chooser == me()) return result_send(kind, order, len);
+    if (result_open && result_chooser == me() && kind != UI_MAP_RETURN_SCROLL) return result_send(kind, order, len);
     if (ui_mapvote_open(&mapv)) { notice("%s", TR("Another map change is being voted on")); return 1; }
     uint8_t buf[UI_MAP_MAX_ORDER + 8]; static const uint8_t zero[16];
     uint32_t id = (uint32_t)(me() + 1) << 24 ^ ++map_counter ^ (uint32_t)rig_frames << 8;
@@ -1207,6 +1222,14 @@ int ui_map_propose(int kind, const uint8_t *order, size_t len) {
     size_t n = ui_map_propose_write(buf, sizeof buf, id, kind, order, len);
     if (!n || mp_order(s, UI_ORDER_MAP_PROPOSE, zero, buf, (uint16_t)n)) { notice("%s", TR("The map change could not be sent")); return 1; }
     return 1;
+}
+/* unitsel B5 (ord_game.c, dlsym): a Return scroll use captured on this peer goes to a vote of every player first.
+   owner = the order's owner guid (the user's unit), order = the ord payload. 1 = taken (do not send now). */
+int ui_scroll_propose(const uint8_t owner[16], const uint8_t *order, size_t len) {
+    if (!on() || len + 16 > UI_MAP_MAX_ORDER) return 0;
+    uint8_t buf[UI_MAP_MAX_ORDER]; memcpy(buf, owner, 16); memcpy(buf + 16, order, len);
+    rig_log("ui: Return scroll use goes to a vote (%zu bytes)", len);
+    return ui_map_propose(UI_MAP_RETURN_SCROLL, buf, len + 16);
 }
 static int result_send(int kind, const uint8_t *order, size_t len) {
     uint8_t buf[UI_MAP_MAX_ORDER + 1];
@@ -1230,7 +1253,8 @@ static void map_frame(void) {
         if (u_alive(v)) o_cn_cancel(v, NULL);                /* stock close (null actions), no vote: prompt_id is 0 */
     }
     /* review #5: the proposer withdraws its vote after 60 s with no decision (a command: same on every peer) */
-    if (ui_mapvote_open(&mapv) && mapv.proposer == me() && map_open_t > 0 && now_s() - map_open_t > UI_MAP_TIMEOUT_S) map_cancel_send(UI_MAP_CANCEL);
+    if (ui_mapvote_open(&mapv) && mapv.proposer == me() && map_open_t > 0 && now_s() - map_open_t > ui_map_timeout_s(mapv.kind))
+        map_cancel_send(mapv.kind == UI_MAP_RETURN_SCROLL ? UI_MAP_TIMEOUT_YES : UI_MAP_CANCEL);   /* B5: scroll = no answer counts as agree */
     if (prompt_id) {                                         /* voter box: votes and time left, once a second */
         static int last = -1; int nv = 0;
         for (int i = 0; i < UI_MAX_PLAYERS; i++) nv += mapv.vote[i] >= 0;
@@ -1243,6 +1267,12 @@ static void map_frame(void) {
         char r[200]; ui_mapvote_result(&mapv, &p, p.present, cur_floor() >= 0 ? cur_floor() + 1 : 0, r, sizeof r);
         notice("%s", r);
         map_report = -1;
+    }
+    if (scroll_submit) {                                     /* B5: agreed: the scroll order goes out now, as the user's order */
+        scroll_submit = 0;
+        int rc = sess() ? mp_order(sess(), ORD_MP_TYPE, map_order, map_order + 16, (uint16_t)(map_order_len - 16)) : -1;
+        rig_log("ui: Return scroll order sent (rc %d)", rc);
+        if (rc) { notice("%s", TR("The Return scroll could not be used")); map_changing = 0; }
     }
     if (map_submit) {
         map_submit = 0;
@@ -1263,12 +1293,27 @@ static int popup_active(int type) {                          /* PopUpViewContain
     Obj c = u_gc_get(h_popups);
     return c && F(0xF62D64, bool (*)(Obj, int, void *))(c, type, NULL);
 }
+/* The one DSNET_STORY_PAUSE hold of this peer (0 game ticks for everyone, in every pause mode) carries two wants:
+   a story popup with pause off, and (unitsel, owner 2026-10-20 late) an open vote this peer proposed: every vote
+   pauses the game for everyone, in every pause mode, until it ends. */
+static void hold_apply(void) {
+    dsnet_client *c = cli();
+    int want = story_want || vote_hold;
+    if (!c || want == story_held) return;
+    uint8_t b = (uint8_t)want;
+    if (dsnet_submit(c, DSNET_STORY_PAUSE, 0, &b, 1) == 0) { story_held = want; rig_log("ui: pause hold %d (story %d, vote %d)", want, story_want, vote_hold); }
+}
 static void story_pause(int on_) {
     dsnet_client *c = cli();
-    if (!c || dsnet_allow_pause(c) || on_ == story_held) return;   /* pause on: the EssentialPopup vote does it */
-    uint8_t b = (uint8_t)on_;
-    if (dsnet_submit(c, DSNET_STORY_PAUSE, 0, &b, 1) == 0) story_held = on_;
+    if (!c) return;
+    /* mode "anyone pauses": the EssentialPopup vote does it. "No pause" and (unitsel: every vote pauses, every mode)
+       "all must vote": this hold */
+    story_want = on_ && dsnet_pause_mode(c) != DSNET_PAUSE_ANYONE;
+    hold_apply();
 }
+static void vote_pause(int on_) { vote_hold = on_ ? vote_hold | 1 : vote_hold & ~1; hold_apply(); }   /* bit 0: map / scroll vote */
+/* other lanes' votes (ui_teams.c expedition proposal: bit 1), proposer side only; weak import there */
+void ui_vote_hold(int bit, int on_) { if (bit < 1 || bit > 7) return; vote_hold = on_ ? vote_hold | (1 << bit) : vote_hold & ~(1 << bit); hold_apply(); }
 static void (*o_set_timelock)(Obj, void *);
 static void (*o_unset_timelock)(Obj, void *);
 static void hk_lu_target(Obj helper, Obj unit, void *mi) {    /* sim: LevelUpHandler.Process */
@@ -1645,6 +1690,7 @@ static void hk_ev_click(Obj v, int idx, void *mi); static uintptr_t h_chip_tx[],
 static double tip_until; static char tip_shown[160]; int ui_conn_text(int player, char *out, int cap); static int ev_rule(void);
 static char *ui_lend_cmd(const char *line); static char *ui_host_addr_cmd(const char *line); static char *ui_escape_cmd(const char *line); static char *ui_tip_hover_cmd(const char *line); static char *ui_tip_where_cmd(void); static char *ui_players_lists_cmd(const char *line); static void viewer_geom(float *g); static void viewer_move_test(const char *line, int reset); static void viewer_overlay_json(Buf *b, const char *action); static void viewer_follow(int on_); static void viewer_ask(void); static Obj cam_setting(void);
 static int viewer_on, viewer_leader, follow_target; static uintptr_t h_vtitle; static uint32_t followers[UI_MAX_PLAYERS];
+static char *selshow_exec(const char *line);
 char *ui_exec(const char *cmd, const char *line) {
     teams_lookup();
     if (ui_teams_exec) { char *r = ui_teams_exec(cmd, line); if (r) return r; }
@@ -1666,6 +1712,7 @@ char *ui_exec(const char *cmd, const char *line) {
         if (v) { if (!strcmp(bt, "cancel")) hk_cn_cancel(v, NULL); else hk_cn_confirm(v, NULL); }
         Buf b = {0}; bput(&b, "{\"ok\":%s,\"left_prompt\":%d}", v ? "true" : "false", left_prompt); return b.p;
     }
+    if (!strcmp(cmd, "ui_selshow")) return selshow_exec(line);   /* unitsel B1 probe */
     if (!strcmp(cmd, "ui_owner")) {                          /* ui_owner {guid}: dsnet owner (-1 unclaimed) */
         char gs[64] = ""; Guid g; jstr(line, "guid", gs, sizeof gs);
         Buf b = {0}; bput(&b, "{\"ok\":true,\"owner\":%d}", guid_parse(gs, &g) ? owner_of_guid((const uint8_t *)&g) : -1); return b.p;
@@ -1809,6 +1856,12 @@ char *ui_exec(const char *cmd, const char *line) {
         bput(&b, "]}"); return b.p;
     }
     if (!strcmp(cmd, "ui_items")) return ui_items_cmd(line);
+    if (!strcmp(cmd, "ui_vote_state")) {                     /* unitsel test probe: the open vote and this peer's pause hold */
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"id\":%u,\"kind\":%d,\"open\":%d,\"decided\":%d,\"proposer\":%d,\"prompt\":%d,\"vote_hold\":%d,\"story_held\":%d,\"votes\":[",
+                              mapv.id, mapv.kind, ui_mapvote_open(&mapv), mapv.decided, mapv.proposer, prompt_id != 0, vote_hold, story_held);
+        for (int i = 0; i < 4; i++) bput(&b, "%s%d", i ? "," : "", mapv.vote[i]);
+        bput(&b, "]}"); return b.p;
+    }
     if (!strcmp(cmd, "ui_map_cancel")) { Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", ui_debug_map_cancel()); return b.p; }
     if (!strcmp(cmd, "ui_buildings")) return ui_buildings_cmd(line);
     if (strcmp(cmd, "ui_levelup") && strcmp(cmd, "ui_interact")) return NULL;
@@ -2014,7 +2067,7 @@ static void story_frame(void) {
         mp_set_order_handler(s, UI_ORDER_ASK, ask_order);
         memset(followers, 0, sizeof followers); follow_target = -1;
         map_changing = 0;                                    /* never carried into a new session (lead 2026-10-14) */
-        story_held = 0; ui_mapvote_clear(&mapv); prompt_id = 0;
+        story_held = 0; story_want = 0; vote_hold = 0; ui_mapvote_clear(&mapv); prompt_id = 0;
         story_sess = s; ui_story_reset(&story, 0, -1);
     }
     if (!s) return;
@@ -3029,6 +3082,7 @@ static void ol_set(Obj eg, int on_, GCol c) {
     ol[k].c = c; AT(eg, 0x34, float) = 1; AT(eg, 0x38, GCol) = c;
     if (o_eg_apply) o_eg_apply(eg, NULL);
 }
+static int sel_friend_of(const uint8_t g[16]);
 static void world_frame(int force) {
     Obj srt = u_gc_get(h_srtype);
     if (!srt) { srt = type_of("UnityEngine", "SpriteRenderer"); if (!srt) return; h_srtype = u_gc_new(srt); }
@@ -3050,6 +3104,8 @@ static void world_frame(int force) {
           int own_ = pu2 && e2 == me(), fr_ = pu2 && e2 >= 0 && e2 != me();
           int want_ol = (own_ && (uiset.outline & UI_OUTLINE_OWN)) || (fr_ && (uiset.outline & UI_OUTLINE_FRIENDS));
           const char *hx = own_ ? UI_OWN_ACCENT : fr_ ? ui_player_color(e2) : "#ffffff";
+          int sp_ = pu2 ? sel_friend_of((const uint8_t *)e + UNIT_GUID) : -1;   /* unitsel B1: a friend selected it: glow in his colour */
+          if (sp_ >= 0) { want_ol = 1; hx = ui_player_color(sp_); }
           int sig = want_ol ? 1 + (int)(strtoul(hx + 1, NULL, 16) & 0xFFFFFF) : 0;
           if (sig != uo[i].ol_sig || (force && sig)) {
               Obj eg = u_gc_get(uo[i].eg);
@@ -3219,6 +3275,29 @@ static void (*o_sel_select)(Obj, Obj, void *);
 static void (*o_sel_toggle)(Obj, Obj, void *);
 static void hk_sel_select(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_select(sp, list, mi); }
 static void hk_sel_toggle(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_toggle(sp, list, mi); }
+
+/* 8a2. unitsel B2 (owner feedback v0.1.20): a unit that changes owner (Teams, lend, take back) leaves the selection of
+   every player who could order it and no longer can, so nobody keeps giving orders to units he does not own. Only the
+   change counts: a friend's unit you click to look at stays selected. Local UI, between frames (never in a step). */
+int ord_select_units(int map, const uint8_t (*g)[16], int n) __attribute__((weak_import));
+int ord_debug_selection(uint8_t (*out)[16], int max, int *group) __attribute__((weak_import));
+static uint8_t selown_ok[32][16]; static int selown_n; static unsigned selown_dropped;
+static void sel_owner_frame(void) {
+    dsnet_client *c = cli();
+    if (!on() || !c || !ord_debug_selection || !ord_select_units || busy()) { selown_n = 0; return; }
+    uint8_t g[32][16]; int grp = 0, n = ord_debug_selection(g, 32, &grp);
+    if (grp < 3000 || grp > 3999) n = 0;                      /* units only */
+    uint8_t keep[32][16], ok[32][16]; int nk = 0, nok = 0, lost = 0;
+    for (int i = 0; i < n; i++) {
+        int may = dsnet_may_order(c, me(), g[i]);
+        int was = 0; for (int k = 0; k < selown_n && !was; k++) was = !memcmp(selown_ok[k], g[i], 16);
+        if (was && !may) { lost++; char un[64]; unit_name_g(g[i], un, sizeof un); rig_log("ui: %s left my selection: not mine any more (owner %d)", un, owner_of_guid(g[i])); continue; }
+        memcpy(keep[nk++], g[i], 16);
+        if (may) memcpy(ok[nok++], g[i], 16);
+    }
+    if (lost) { ord_select_units(cur_map(), (const uint8_t (*)[16])keep, nk); selown_dropped += (unsigned)lost; }
+    memcpy(selown_ok, ok, (size_t)nok * 16); selown_n = nok;
+}
 
 /* 8b. Expedition window: only my units. SubUI_SelectRegionUI.InitOnActivate 0xEF3A80 gets the playerUnits
    List<UnitEntity>; SubUI_SelectRegionUI.SetUnit 0xEF42E0 gets the presenter's selected party List<Guid>
@@ -4393,6 +4472,136 @@ static void follow_frame(void) {
     }
     follow_set_pos = F(0xD23584, V3 (*)(Obj, void *))(cs, NULL); follow_set_o = F(0xD23590, float (*)(Obj, void *))(cs, NULL); follow_set = 1;   /* after the stock clamp */
 }
+/* 8m. Friends' selections (unitsel B1, owner feedback v0.1.20: "show the units another player has selected"). The
+   selection is local UI: each peer sends its own selected units as dsnet P_SEL (outside the sim like P_VIEW / P_MARK:
+   never stamped, never in saves, hashes or replays). Owner 2026-10-20 late: no ring; a unit a friend has selected
+   glows (the game's own unit outline, world_frame) in the colour of that friend's name, with a small name tag above
+   it (position from the sim, read only). Sent when the selection changes (at most 5 a second) and every 4 s; nothing
+   selected = an empty list. Look only, on this screen. */
+int dsnet_sel_send(dsnet_client *c, uint32_t map_key, const uint8_t (*guids)[16], int n) __attribute__((weak_import));
+int dsnet_sel_of(dsnet_client *c, int player, uint32_t *map_key, uint8_t (*out)[16], int max, double *age_ms) __attribute__((weak_import));
+#define SEL_MAX 24                                            /* = DSNET_SEL_MAX */
+#define SEL_RINGS 48
+static uintptr_t h_snm[SEL_RINGS];
+static struct { int player; uint8_t g[16]; float sx, sy; int on; } sel_drawn[SEL_RINGS];
+static int sel_ndrawn; static unsigned sel_sent_n;
+static uint64_t sel_last_sig; static double sel_last_send;
+static int sel_local(uint8_t (*g)[16], int max) {             /* own selected units (players' units only, no items / buildings) */
+    if (!ord_debug_selection) return 0;
+    uint8_t all[32][16]; int grp = 0, n = ord_debug_selection(all, 32, &grp), k = 0;
+    if (grp < 3000 || grp > 3999) return 0;                   /* SelectGroup UNIT_START..UNIT_END */
+    for (int i = 0; i < n && k < max; i++) memcpy(g[k++], all[i], 16);
+    return k;
+}
+static void sel_send(void) {
+    dsnet_client *c = cli();
+    if (!c || !dsnet_sel_send || spect()) return;
+    uint8_t g[SEL_MAX][16]; int n = coop_ok() ? sel_local(g, SEL_MAX) : 0;
+    uint32_t key = coop_key();
+    uint64_t sig = fnv(1469598103934665603ull, &key, sizeof key); sig = fnv(sig, &n, sizeof n);
+    if (n) sig = fnv(sig, g, (size_t)n * 16);
+    double t = now_s();
+    if ((sig == sel_last_sig && t - sel_last_send < 4) || t - sel_last_send < 0.2) return;
+    if (dsnet_sel_send(c, key, (const uint8_t (*)[16])g, n) == 0) {
+        if (sig != sel_last_sig) rig_log("ui: selection sent: %d unit(s) on map %08x", n, key);
+        sel_last_sig = sig; sel_last_send = t; sel_sent_n++;
+    }
+}
+static int unit_pos(const uint8_t g[16], float *x, float *y) {   /* sim position (pos_dict), read only */
+    Obj pd = pos_dict(cur_map()); Obj pe = pd ? AT(pd, 0x18, Obj) : NULL; int pn = pd ? AT(pd, 0x20, int32_t) : 0;
+    for (int q = 0; pe && q < pn; q++) {
+        char *e = (char *)pe + 0x20 + q * 0x20;
+        if (*(int32_t *)e < 0 || memcmp(e + 8, g, 16)) continue;
+        *x = *(float *)(e + 0x18); *y = *(float *)(e + 0x1C);
+        return 1;
+    }
+    return 0;
+}
+/* the friend (lowest slot) who has this unit selected on this map now, or -1 */
+static int sel_friend_of(const uint8_t g[16]) {
+    dsnet_client *c = cli();
+    if (!c || !dsnet_sel_of || !coop_ok()) return -1;
+    ui_players p; players(&p); uint32_t key = coop_key();
+    for (int pl = 0; pl < UI_MAX_PLAYERS; pl++) {
+        if (pl == me() || !(p.present >> pl & 1u)) continue;
+        uint8_t sg[SEL_MAX][16]; uint32_t mk = 0; double age = 0;
+        int n = dsnet_sel_of(c, pl, &mk, sg, SEL_MAX, &age);
+        if (n <= 0 || mk != key || age > 12000) continue;
+        for (int i = 0; i < n; i++) if (!memcmp(sg[i], g, 16)) return pl;
+    }
+    return -1;
+}
+static void sel_hide_from(int k) { for (int i = k; i < SEL_RINGS; i++) { show(u_gc_get(h_snm[i]), 0); sel_drawn[i].on = 0; } }
+static void sels_draw(void) {                                /* the name tags (the glow itself: world_frame) */
+    static int drawn;
+    dsnet_client *c = cli(); Obj ml = mlayer();
+    int ok = c && dsnet_sel_of && coop_ok() && ml && cam_main();
+    int k = 0;
+    if (ok) {
+        ui_players p; players(&p);
+        uint32_t key = coop_key();
+        float km = layer_k(ml);
+        V3 a0 = w2s(0, 0), a1 = w2s(1, 0); float cell = (a1.x - a0.x) / km; if (cell < 4) cell = 4;
+        float sw = (float)scr_w(), sh = (float)scr_h();
+        uint8_t done[SEL_RINGS][16]; int ndone = 0;           /* a unit two friends selected: the second tag above the first */
+        for (int pl = 0; pl < UI_MAX_PLAYERS && k < SEL_RINGS; pl++) {
+            if (pl == me() || !(p.present >> pl & 1u)) continue;
+            uint8_t g[SEL_MAX][16]; uint32_t mk = 0; double age = 0;
+            int n = dsnet_sel_of(c, pl, &mk, g, SEL_MAX, &age);
+            if (n <= 0 || mk != key || age > 12000) continue;
+            const char *hex = ui_player_color(pl);
+            char nm[40], tx[96]; snprintf(tx, sizeof tx, "<color=%s>%s</color>", hex, ui_player_label(&p, pl, nm));
+            for (int i = 0; i < n && k < SEL_RINGS; i++) {
+                float wx, wy; if (!unit_pos(g[i], &wx, &wy)) continue;
+                V3 sp = w2s(wx, wy);
+                if (sp.x < -cell * km || sp.y < -cell * km || sp.x > sw + cell * km || sp.y > sh + cell * km) continue;   /* off screen */
+                int twice = 0; for (int d = 0; d < ndone; d++) twice += !memcmp(done[d], g[i], 16);
+                if (ndone < SEL_RINGS) memcpy(done[ndone++], g[i], 16);
+                Obj nt = u_gc_get(h_snm[k]);
+                if (!u_alive(nt)) {
+                    nt = line_clone(ml, 0.5f, 160, 18, 0);
+                    if (nt) { pivot_centre(nt); if (ui_is(nt, K_TMP)) tmp_style(nt, u_gc_get(h_lora), 12, 514); }
+                    u_gc_free(h_snm[k]); h_snm[k] = u_gc_new(nt);
+                }
+                float ux, uy; scr_to_layer(ml, sp.x, sp.y, &ux, &uy);
+                show(nt, 1); line_text(nt, tx); place(nt, ux, uy + cell * 0.9f + 8 + 14 * (float)twice, 160, 18);
+                sel_drawn[k].player = pl; memcpy(sel_drawn[k].g, g[i], 16); sel_drawn[k].sx = sp.x; sel_drawn[k].sy = sp.y; sel_drawn[k].on = 1;
+                k++;
+            }
+        }
+    }
+    sel_ndrawn = k;
+    if (k || drawn) sel_hide_from(k);
+    drawn = k > 0;
+}
+/* test probe: ui_selshow -> what this peer sends and draws */
+static char *selshow_exec(const char *line) {
+    (void)line;
+    dsnet_client *c = cli(); ui_players p; players(&p);
+    uint8_t mine[SEL_MAX][16]; int nm_ = coop_ok() ? sel_local(mine, SEL_MAX) : 0;
+    V3 mpx = mouse_px();
+    Buf b = {0}; bput(&b, "{\"ok\":true,\"me\":%d,\"api\":%d,\"key\":%u,\"sent\":%u,\"over_ui\":%d,\"mouse\":[%.0f,%.0f],\"mine\":[", me(), dsnet_sel_send != NULL, coop_key(), sel_sent_n,
+                          scene() == 2 ? over_ui() : -1, mpx.x, mpx.y);
+    for (int i = 0; i < nm_; i++) { char t[40]; Guid gg; memcpy(&gg, mine[i], 16); guid_str(gg, t); bput(&b, "%s\"%s\"", i ? "," : "", t); }
+    bput(&b, "],\"friends\":[");
+    int first = 1;
+    for (int pl = 0; c && dsnet_sel_of && pl < UI_MAX_PLAYERS; pl++) {
+        if (pl == me() || !(p.present >> pl & 1u)) continue;
+        uint8_t g[SEL_MAX][16]; uint32_t mk = 0; double age = 0; int n = dsnet_sel_of(c, pl, &mk, g, SEL_MAX, &age);
+        bput(&b, "%s{\"player\":%d,\"n\":%d,\"key\":%u,\"age_ms\":%.0f,\"units\":[", first ? "" : ",", pl, n, mk, age); first = 0;
+        for (int i = 0; i < n; i++) { char t[40]; Guid gg; memcpy(&gg, g[i], 16); guid_str(gg, t); bput(&b, "%s\"%s\"", i ? "," : "", t); }
+        bput(&b, "]}");
+    }
+    bput(&b, "],\"tags\":[");
+    for (int i = 0; i < sel_ndrawn; i++) { char t[40]; Guid gg; memcpy(&gg, sel_drawn[i].g, 16); guid_str(gg, t);
+        Obj r = u_gc_get(h_snm[i]); int gl = -1; GCol gc = {0, 0, 0, 0};
+        for (int q = 0; q < MAX_UO; q++) { Obj h = u_gc_get(uo[q].hud); Obj e = h ? AT(h, 0x118, Obj) : NULL; Obj eg = u_gc_get(uo[q].eg);
+            if (is_unit(e) && !memcmp((char *)e + UNIT_GUID, sel_drawn[i].g, 16) && u_alive(eg)) { gl = AT(eg, 0x34, float) > 0.5f; gc = AT(eg, 0x38, GCol); } }
+        bput(&b, "%s{\"player\":%d,\"unit\":\"%s\",\"x\":%.0f,\"y\":%.0f,\"tag\":%d,\"glow\":%d,\"glow_rgb\":[%.2f,%.2f,%.2f],\"want\":\"%s\"}", i ? "," : "", sel_drawn[i].player, t, sel_drawn[i].sx, sel_drawn[i].sy,
+             u_alive(r) ? (int)F(0x50F3724, bool (*)(Obj, void *))(u_go(r), NULL) : 0, gl, gc.r, gc.g, gc.b, ui_player_color(sel_drawn[i].player)); }
+    bput(&b, "]}");
+    return b.p;
+}
 /* 8k. Spectator mini overview (owner 2026-10-14 ~19:55, board design/project/SpectatorHUDAMini). While a spectator
    follows a player, a small window shows the whole map (a second camera renders it into a texture a few times a
    second), every player's view as a rectangle in their colour, this screen's own view (grey), player units as dots and
@@ -5500,6 +5709,8 @@ void ui_frame(void) {
     lend_mouse();
     viewer_mouse();
     coop_input(); follow_frame(); pings_draw(); views_draw();   /* lan_v10 co-op markers (8j), every frame: smooth */
+    sel_owner_frame();                                       /* unitsel B2: units that changed owner leave the selection */
+    sel_send(); sels_draw();                                 /* unitsel B1: friends' selections (8m) */
     mini_input(); mini_frame();                              /* spectator mini overview (8k) */
     tips_frame();                                            /* lan_v9: the game-format tooltips (ui_tip.c) */
     if (n++ % 6) return;                                     /* 10 times a second is enough */

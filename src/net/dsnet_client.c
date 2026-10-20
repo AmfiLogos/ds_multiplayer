@@ -68,6 +68,7 @@ struct dsnet_client {
     double typing_until[DSNET_MAX_PLAYERS];                     /* "is typing" (ms clock), 0 = not */
     double typing_sent; int typing_on;                          /* own: last "on" sent, state */
     struct { int set; uint32_t map; float r[4]; double at; } view[DSNET_MAX_PLAYERS];   /* friends' views (outside the sim) */
+    struct { int set, n; uint32_t map; uint8_t g[DSNET_SEL_MAX][16]; double at; } sel[DSNET_MAX_PLAYERS];   /* unitsel B1: friends' selections (outside the sim) */
     dsnet_mark_ev marks[64]; uint32_t mark_head, mark_tail;                            /* ping events ring */
     int allow_speedup, pause_mode, gear_mode, busy;
     uint32_t busy_mask, window_mask;            /* window: held by a window (busy 2) */
@@ -173,7 +174,7 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
         }
         for (int i = 0; i < DSNET_MAX_PLAYERS; i++) if (c->sp[i].set && !now[i]) {
             if (c->sp_seen && i != c->player) chat_local(c, i, DSNET_CHAT_STOPPED_WATCHING, c->sp[i].name);
-            c->sp[i].set = 0; c->view[i].set = 0;
+            c->sp[i].set = 0; c->view[i].set = 0; c->sel[i].set = 0;
         }
         c->sp_seen = 1;
         break;
@@ -199,6 +200,15 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
             int f = p[1]; c->view[f].set = 1; c->view[f].map = get32(p + 2);
             for (int i = 0; i < 4; i++) { uint32_t u = get32(p + 6 + 4 * i); memcpy(&c->view[f].r[i], &u, 4); }
             c->view[f].at = dsnet_now_ms();
+        }
+        break;
+    case P_SEL:                                      /* unitsel B1: a friend's selection */
+        if (n >= 7 && p[1] < DSNET_MAX_PLAYERS) {
+            int f = p[1], k = p[6]; if (k > DSNET_SEL_MAX) k = DSNET_SEL_MAX;
+            if ((uint32_t)7 + 16u * (uint32_t)k > n) break;
+            c->sel[f].set = 1; c->sel[f].map = get32(p + 2); c->sel[f].n = k;
+            memcpy(c->sel[f].g, p + 7, (size_t)k * 16);
+            c->sel[f].at = dsnet_now_ms();
         }
         break;
     case P_MARK:
@@ -1090,6 +1100,28 @@ int dsnet_view_of(dsnet_client *c, int player, uint32_t *map_key, float out[4], 
     pthread_mutex_unlock(&c->mu);
     return r;
 }
+/* unitsel B1: this player's selected units (outside the sim) */
+int dsnet_sel_send(dsnet_client *c, uint32_t map_key, const uint8_t (*guids)[16], int n) {
+    if (!c || !c->welcomed || n < 0) return -1;
+    if (n > DSNET_SEL_MAX) n = DSNET_SEL_MAX;
+    uint8_t b[6 + 16 * DSNET_SEL_MAX], *p = b;
+    p = put8(p, P_SEL); p = put32(p, map_key); p = put8(p, (uint8_t)n);
+    if (n) memcpy(p, guids, (size_t)n * 16);
+    return dsnet_link_send(&c->link, b, (uint32_t)(6 + 16 * n)) ? -1 : 0;
+}
+int dsnet_sel_of(dsnet_client *c, int player, uint32_t *map_key, uint8_t (*out)[16], int max, double *age_ms) {
+    if (!c || player < 0 || player >= DSNET_MAX_PLAYERS) return -1;
+    pthread_mutex_lock(&c->mu);
+    int r = c->sel[player].set ? c->sel[player].n : -1;
+    if (r >= 0) {
+        if (r > max) r = max;
+        if (map_key) *map_key = c->sel[player].map;
+        if (out && r) memcpy(out, c->sel[player].g, (size_t)r * 16);
+        if (age_ms) *age_ms = dsnet_now_ms() - c->sel[player].at;
+    }
+    pthread_mutex_unlock(&c->mu);
+    return r;
+}
 int dsnet_mark_send(dsnet_client *c, int op, int owner, int id, uint32_t map_key, int x, int y) {
     if (!c || !c->welcomed || (op != DSNET_MARK_ADD && op != DSNET_MARK_DEL)) return -1;
     uint8_t b[12], *p = b;
@@ -1135,7 +1167,7 @@ int dsnet_take_cmds_for_tick(dsnet_client *c, uint32_t timer, dsnet_cmd_cb cb, v
         qcmd e = c->q[c->qh++];
         if (e.c.tick < timer) dsnet_logf("client %d: command seq %u for tick %u run late at %u", c->player, e.c.seq, e.c.tick, timer);
         if (e.c.type == DSNET_PLAYER_JOIN || e.c.type == DSNET_PLAYER_LEAVE) chat_system(c, &e.c);   /* before: knows "rejoin" */
-        if ((e.c.type == DSNET_PLAYER_JOIN || e.c.type == DSNET_PLAYER_LEAVE) && e.c.player < DSNET_MAX_PLAYERS) c->view[e.c.player].set = 0;   /* his view is gone */
+        if ((e.c.type == DSNET_PLAYER_JOIN || e.c.type == DSNET_PLAYER_LEAVE) && e.c.player < DSNET_MAX_PLAYERS) { c->view[e.c.player].set = 0; c->sel[e.c.player].set = 0; }   /* his view is gone */
         sim_apply(&c->sim, &e.c);
         int start_len = 0;
         uint8_t *start = NULL;
