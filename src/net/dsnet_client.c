@@ -69,7 +69,8 @@ struct dsnet_client {
     struct { int set; uint32_t map; float r[4]; double at; } view[DSNET_MAX_PLAYERS];   /* friends' views (outside the sim) */
     dsnet_mark_ev marks[64]; uint32_t mark_head, mark_tail;                            /* ping events ring */
     int allow_speedup, pause_mode, gear_mode, busy;
-    uint32_t busy_mask;
+    uint32_t busy_mask, window_mask;            /* window: held by a window (busy 2) */
+    double held_since;                          /* guest waiting for the save: since when the host is held (ms) */
     struct { uint8_t state, via; uint16_t ping, behind; } net[DSNET_MAX_PLAYERS];   /* via: enum dsnet_via */
     uint32_t fp_interval;
     uint32_t tick_until, remote_timer, remote_sent, received;
@@ -267,11 +268,15 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
         process_timectl(c);
         break;
     }
+    case P_HELD:                                     /* while loading: who holds the game (masks only, no timing) */
+        if (n >= 9) { c->busy_mask = get32(p + 1); c->window_mask = get32(p + 5); }
+        break;
     case P_TIMECTL:
         if (n < 13) return;
         c->remote_timer = get32(p + 1); c->remote_sent = get32(p + 5); c->tpt_ms = get32(p + 9) / 1000.0f;
         c->tc_seen = 1;
         if (n >= 17) c->busy_mask = get32(p + 13);
+        if (n >= 21) c->window_mask = get32(p + 17);
         process_timectl(c);
         break;
     case P_FP: {
@@ -362,12 +367,18 @@ static void *client_main(void *arg) {
         /* waiting for a save that never comes (host save failed with no notice, or a lost upload): leave, never hang */
         int sw = dsnet_save_wait_ms();
         if (c->welcomed && c->needs_state && !c->is_host && !c->has_pending && sw && !c->link.dead) {
+            /* the host (player 0) is busy (a Yes/No box open, a load): it cannot reach the join point yet.
+               The wait does not count while it is held, up to dsnet_save_held_ms (it never hangs forever). */
+            if (c->busy_mask & 1u) {
+                if (!c->held_since) { c->held_since = now; dsnet_logf("client %d: host is held (%s), waiting for it", c->player, c->window_mask & 1u ? "a window is open" : "busy"); }
+                if (now - c->held_since < dsnet_save_held_ms()) c->save_wait = now;
+            } else c->held_since = 0;
             if (!c->save_wait) c->save_wait = now;
             else if (now - c->save_wait > sw) {
                 dsnet_logf("client %d: no save byte for %d ms, leaving", c->player, (int)(now - c->save_wait));
                 c->save_fail = DSNET_SAVE_FAIL_TIMEOUT; c->link.dead = 1;
             }
-        } else c->save_wait = 0;
+        } else c->save_wait = c->held_since = 0;
         if (c->welcomed && now - c->last_ka >= 100) {       /* keep-alive: how far behind tickUntil we are */
             uint8_t b[9], *p = b; p = put8(p, P_KEEPALIVE); p = put32(p, c->timer); p = put32(p, c->tick_until);
             dsnet_link_send(&c->link, b, p - b);
@@ -1306,12 +1317,15 @@ int dsnet_player_id(dsnet_client *c) { pthread_mutex_lock(&c->mu); int r = c->we
 int dsnet_is_host(dsnet_client *c) { return c->is_host; }
 uint32_t dsnet_busy_mask(dsnet_client *c) { pthread_mutex_lock(&c->mu); uint32_t r = c->busy_mask; pthread_mutex_unlock(&c->mu); return r; }
 
+uint32_t dsnet_window_mask(dsnet_client *c) { pthread_mutex_lock(&c->mu); uint32_t r = c->window_mask; pthread_mutex_unlock(&c->mu); return r; }
+
 void dsnet_set_busy(dsnet_client *c, int busy) {
+    uint8_t v = busy <= 0 ? 0 : busy == 2 ? 2 : 1;   /* 2 = held by a window */
     pthread_mutex_lock(&c->mu);
-    int changed = c->busy != (busy != 0);
-    c->busy = busy != 0;
+    int changed = c->busy != v;
+    c->busy = v;
     pthread_mutex_unlock(&c->mu);
-    if (changed) { uint8_t b[2] = { P_BUSY, busy != 0 }; dsnet_link_send(&c->link, b, 2); }
+    if (changed) { uint8_t b[2] = { P_BUSY, v }; dsnet_link_send(&c->link, b, 2); }
 }
 
 uint32_t dsnet_story_pause_mask(dsnet_client *c) {

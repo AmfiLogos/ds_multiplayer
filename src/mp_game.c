@@ -1482,6 +1482,7 @@ void mp_steam_state(mp_steam_info *o) {
         int ready = o->player >= 0 && !dsnet_needs_state(dc) && rig_det_mp_ready();
         o->state = ready ? MP_STEAM_IN_GAME : MP_STEAM_JOINING;
         o->phase = ready ? MP_PH_IN_GAME : o->player < 0 ? MP_PH_CONNECTING : dsnet_needs_state(dc) ? MP_PH_WAITING_SAVE : MP_PH_LOADING;
+        if (o->phase == MP_PH_WAITING_SAVE && dsnet_window_mask(dc) & 1u) o->phase = MP_PH_HOST_WINDOW;   /* the host must close a box first */
     }
 }
 

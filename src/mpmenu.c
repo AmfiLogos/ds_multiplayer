@@ -865,6 +865,7 @@ static void observe(mpm_obs *o) {
     else if (in.state == MP_STEAM_JOINING || in.state == MP_STEAM_IN_GAME) {
         o->role = 2;
         o->guest_loading = in.state == MP_STEAM_JOINING && in.player >= 0;           /* welcomed, waiting for / loading the save */
+        o->host_window = in.phase == MP_PH_HOST_WINDOW;
     }
     if (o->role == 2) snprintf(o->host_name, sizeof o->host_name, "%s", in.host_name);
     { mp_session *ss = mp_game_session(); o->spectator = ss && mp_is_spectator(ss); }
@@ -2650,7 +2651,8 @@ static void invite_frame(const mpm_obs *o) {
         const char *h = in.host_name[0] ? in.host_name : inv_host[0] ? inv_host : TR("the host");
         char hd[160]; snprintf(hd, sizeof hd, TR("Joining %s's game..."), h);
         char t[300]; snprintf(t, sizeof t, "<size=150%%>%s</size>\n<size=88%%><color=#a69085>%s</color></size>", hd,
-                              in.phase == MP_PH_LOADING ? TR("Loading the world") : in.phase == MP_PH_WAITING_SAVE ? TR("Waiting for the world") : TR("Connecting"));
+                              in.phase == MP_PH_LOADING ? TR("Loading the world") : in.phase == MP_PH_WAITING_SAVE ? TR("Waiting for the world")
+                              : in.phase == MP_PH_HOST_WINDOW ? TR("Waiting for the host to close a window...") : TR("Connecting"));
         box_show(BX_JOINING, t, mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")), NULL);
         join_phase_shown = in.phase;
     }

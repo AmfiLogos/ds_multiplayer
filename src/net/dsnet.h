@@ -421,8 +421,13 @@ uint32_t    dsnet_present_mask(dsnet_client *c);                 /* bit per play
 uint32_t    dsnet_busy_mask(dsnet_client *c);
 /* Barrier (transitions_design.md 3.7): set while a local flow holds this peer mid-step. The server
  * stops its timer while any playing peer is busy, so everyone stops within a few steps; it
- * restarts when all are done. Holding the remaining ticks of the step is the game hook's job. */
+ * restarts when all are done. Holding the remaining ticks of the step is the game hook's job.
+ * busy 2 = held by a window the player must close (a stock Yes/No box holds the game's event queue). */
 void        dsnet_set_busy(dsnet_client *c, int busy);
+/* Players held by a window (dsnet_set_busy 2), from the server with the busy mask. A guest waiting for the
+ * join save while the host (player 0) is held does not time out (up to dsnet_save_held_ms, 10 min). */
+uint32_t    dsnet_window_mask(dsnet_client *c);
+int         dsnet_save_held_ms(void);
 uint32_t    dsnet_story_pause_mask(dsnet_client *c);             /* bit per player with a story popup open */
 int         dsnet_vote_of(dsnet_client *c, int player, int *speed, int *pause);   /* 0 ok, -1 not present */
 const char *dsnet_player_name(dsnet_client *c, int player);      /* NULL if not present; copy it, the
@@ -504,6 +509,7 @@ int dsnet_upload_save_failed(dsnet_client *c);
 enum { DSNET_SAVE_FAIL_HOST = 1, DSNET_SAVE_FAIL_TIMEOUT = 2 };
 int dsnet_save_failed(dsnet_client *c);
 void dsnet_set_save_wait_ms(int ms);
+void dsnet_set_save_held_ms(int ms);              /* tests: how long a held host (busy) stops the save wait */
 
 /* Mail (Foreign Expedition, plan F3): an addressed message outside the simulation (never stamped, never in saves or
  * hashes), any size up to DSNET_MAIL_MAX, sent in 1 KB fragments. to_uid NULL = the host. The server stamps the sender's

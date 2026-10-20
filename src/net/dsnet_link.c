@@ -107,6 +107,9 @@ void dsnet_set_tx_stall_ms(int ms) { tx_stall = ms < 0 ? 0 : ms; }
 static int save_wait = -1;
 int  dsnet_save_wait_ms(void) { return env_ms(&save_wait, "DSNET_SAVE_WAIT_MS", 90000); }
 void dsnet_set_save_wait_ms(int ms) { save_wait = ms < 0 ? 0 : ms; }
+static int save_held = -1;
+int  dsnet_save_held_ms(void) { return env_ms(&save_held, "DSNET_SAVE_HELD_MS", 600000); }
+void dsnet_set_save_held_ms(int ms) { save_held = ms < 0 ? 0 : ms; }
 
 double dsnet_now_ms(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);

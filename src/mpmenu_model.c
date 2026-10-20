@@ -268,7 +268,7 @@ static int rule_arrow(mpm_model *m, int c) {
 }
 int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
     int a = 0; cur = o;
-    m->steam = o->steam; m->spect = o->spectator;
+    m->steam = o->steam; m->spect = o->spectator; m->host_window = o->host_window;
     /* Escape = Back on every title page. Host page: the Rules are always open (owner v12 item 5), nothing to close first */
     if (o->escape && c == MPB_NONE && o->scene == 1) {
         /* one rule (ux_flow F16): Escape = the visible Cancel if there is one, else Back */
@@ -488,7 +488,8 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
             const char *f = m->spect ? (m->state == MPM_GUEST_LOADING ? TR("Joining %s's game as a spectator... loading") : TR("Joining %s's game as a spectator..."))
                                      : (m->state == MPM_GUEST_LOADING ? TR("Joining %s's game... loading") : TR("Joining %s's game..."));
             snprintf(tmp, sizeof tmp, f, m->host[0] ? m->host : TR("the host"));
-            snprintf(out, cap, "<size=75%%>%s</size>", tmp);
+            if (m->host_window) snprintf(out, cap, "<size=75%%>%s\n%s</size>", tmp, TR("Waiting for the host to close a window..."));
+            else snprintf(out, cap, "<size=75%%>%s</size>", tmp);
         }
         else if (m->connecting[0]) { snprintf(tmp, sizeof tmp, m->watch ? TR("Connecting to %s to watch...") : TR("Connecting to %s..."), m->connecting);
                                      snprintf(out, cap, "<size=70%%>%s</size>", tmp); }
