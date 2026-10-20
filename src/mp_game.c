@@ -32,8 +32,9 @@ enum { PS_ROLLBACK = 0, PS_ABSOLUTE = 1 };   /* SwitchPauseState */
 #define MP_SAVE_NAME "mp_sync"
 #define TI_QUIT_TITLE_REQ   0x6652F28   /* QuitToTitleSceneRequested */
 #define VA_QUIT_TITLE_CTOR  0xD61E50    /* .ctor(bool autoSaveBeforeQuit) */
-/* Steamworks.NET (in GameAssembly): NativeMethods.SteamAPI_ManualDispatch_GetNextCallback, the P/Invoke stub the
-   game's CallbackDispatcher.RunFrame (0x1167898) pulls every callback of its pipe through (dump.cs 25846389). */
+/* Steamworks.NET (in GameAssembly): NativeMethods.SteamAPI_ManualDispatch_GetNextCallback, the P/Invoke wrapper.
+   Only the fallback when the name lookup fails (steamcb_find): IL2CPP inlined it into CallbackDispatcher.RunFrame
+   (0x1167898), which reads the wrapper's native-function slot itself, so a hook on this address never runs. */
 #define VA_STEAM_GETNEXT 0x1141AAC  /* bool (HSteamPipe pipe, IntPtr pCallbackMsg) */
 /* SystemMenuView.QuitToTitleSceneCallback: the confirmed "Quit to title" (UIInput 0x5c on the view's stream +0x28) */
 #define VA_QUIT_TO_TITLE 0xF2F234
@@ -63,7 +64,6 @@ static int host_reload;             /* host: reload its own join-point save afte
 static bool (*o_setspeed)(Obj, int, int, void *);
 static bool (*o_addpause)(Obj, int, void *);
 static bool (*o_rempause)(Obj, int, void *);
-static bool (*o_getnext)(int32_t, void *, void *);
 
 static Obj speed_setting(void) { Obj s = mf ? AT(mf, 0xD8, Obj) : NULL; return s ? AT(s, 0x10, Obj) : NULL; }
 /* Not ready = loading (join, resync, host reload) or title: the load flow's own SetSpeed / pause calls stay local.
@@ -112,16 +112,95 @@ static bool h_rempause(Obj gs, int reason, void *mi) {
     }
 }
 
-/* Every callback the game's Steam dispatcher takes. The game registers no lobby/invite callbacks, so
-   GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) would be dropped: hand them to dsnet_steam. */
+/* ---------------------------------------------------------------- accepted Steam invites (steamaccept, 2026-10-20)
+   Every callback the game's Steam dispatcher takes. The game registers no lobby/invite callbacks, so
+   GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) would be dropped: hand them to dsnet_steam.
+   The game's CallbackDispatcher.RunFrame has the P/Invoke wrapper of SteamAPI_ManualDispatch_GetNextCallback inlined:
+   it loads the wrapper's lazily filled static slot (the native libsteam_api function) and calls it directly (Mac
+   RunFrame 0x1167c3c / 0x1167c68 read slot 0x696eb38; Windows 0xe317db reads 0x51f3a78). Until v0.1.19 we hooked the
+   wrapper (never called: no invite ever arrived). Now the SLOT holds cb_wrap: a data write, no code hook.
+   The slot is found by name (NativeMethods.SteamAPI_ManualDispatch_GetNextCallback -> its methodPointer = the wrapper ->
+   its first slot load), the rv() address of the wrapper only when the name fails; both decoded the same way.
+   The game fills the slot at its first Steam frame; steamcb_frame (main thread, like RunFrame) swaps it then, and
+   again if anything ever writes another function there (that one becomes the original). */
 typedef struct { int32_t user, id; uint8_t *param; int32_t cub; } steam_cbmsg;   /* CallbackMsg_t */
-static bool h_getnext(int32_t pipe, void *msg, void *mi) {
-    bool r = o_getnext(pipe, msg, mi);
+typedef bool (*steam_getnext_fn)(int32_t pipe, void *msg);                        /* T2: bool, never int */
+static void **cb_slot;                    /* the slot in GameAssembly's data */
+static int cb_state;                      /* 0 not looked up, 1 found, -1 not found (log once, invites only by +connect_lobby) */
+static const char *cb_by = "";            /* "name" / "rv" */
+static steam_getnext_fn cb_orig;          /* the native function the game put in the slot */
+static uint64_t cb_total, cb_fed, cb_swaps;
+static bool cb_wrap(int32_t pipe, void *msg) {
+    steam_getnext_fn o = cb_orig;
+    bool r = o ? o(pipe, msg) : false;
     if (r && msg) {
         steam_cbmsg *m = msg;
-        if (m->id == 333 || m->id == 337) dsnet_steam_feed_callback(m->id, m->param, m->cub);
+        cb_total++;
+        if (m->id == 333 || m->id == 337) { cb_fed++; dsnet_steam_feed_callback(m->id, m->param, m->cub); }
     }
     return r;
+}
+/* the wrapper's first load of a static pointer slot (the cached native function): arm64 adrp + ldr x, [x, #imm];
+   x64 mov rax, [rip + disp32]. NULL when the code does not look like that (a game update changed it). */
+static void **slot_of_wrapper(const uint8_t *fn) {
+    if (!fn) return NULL;
+#if defined(__aarch64__)
+    const uint32_t *w = (const uint32_t *)fn;
+    for (int i = 0; i < 24; i++) {
+        uint32_t a = w[i], b = w[i + 1];
+        if ((a & 0x9F000000u) != 0x90000000u) continue;                          /* adrp */
+        if ((b & 0xFFC00000u) != 0xF9400000u || ((b >> 5) & 31) != (a & 31)) continue;   /* ldr Xt, [Xn(adrp's), #imm*8] */
+        int64_t imm = (int64_t)(((a >> 29) & 3) | (((a >> 5) & 0x7FFFF) << 2));
+        imm = (imm << 43) >> 43;                                                  /* 21-bit signed page count */
+        uintptr_t page = ((uintptr_t)(w + i) & ~(uintptr_t)0xFFF) + (uintptr_t)(imm * 4096);
+        return (void **)(page + ((b >> 10) & 0xFFF) * 8);
+    }
+#elif defined(__x86_64__) || defined(_M_X64)
+    for (int i = 0; i < 64; i++)
+        if (fn[i] == 0x48 && fn[i + 1] == 0x8B && fn[i + 2] == 0x05) {           /* mov rax, [rip + disp32] */
+            int32_t d; memcpy(&d, fn + i + 3, 4);
+            return (void **)(fn + i + 7 + d);
+        }
+#endif
+    return NULL;
+}
+static int slot_sane(void **s) { return s && (uintptr_t)s > ds_base && (uintptr_t)s - ds_base < ((uintptr_t)192 << 20); }   /* inside GameAssembly */
+void *class_by_name(const char *ns, const char *name);      /* mpmenu.c */
+static void steamcb_find(void) {
+    void *k = class_by_name("Steamworks", "NativeMethods");
+    void *mi = k ? F(0x6F8C1C, void *(*)(void *, const char *, int))(k, "SteamAPI_ManualDispatch_GetNextCallback", 2) : NULL;
+    void **by_name = mi ? slot_of_wrapper(*(const uint8_t **)mi) : NULL;           /* MethodInfo->methodPointer = the wrapper */
+    void **by_rv = slot_of_wrapper((const uint8_t *)(ds_base + rv(VA_STEAM_GETNEXT)));
+    if (slot_sane(by_name)) { cb_slot = by_name; cb_by = "name"; }
+    else if (slot_sane(by_rv)) { cb_slot = by_rv; cb_by = "rv"; }
+    cb_state = cb_slot ? 1 : -1;
+    if (cb_slot) rig_log("mp: Steam callback slot at +0x%lx (found by %s%s): accepted invites come through it", (unsigned long)((uintptr_t)cb_slot - ds_base),
+                         cb_by, slot_sane(by_name) && slot_sane(by_rv) && by_name != by_rv ? "; the rv() table says otherwise" : "");
+    else rig_log("mp: Steam callback slot NOT found (method %s): accepted invites only work through +connect_lobby", mi ? "found, code changed" : "not found");
+}
+/* test (mp_test_steamcb only): a native GetNextCallback with a fixed queue: PersonaStateChange 304, UserStatsReceived
+   1101, GameLobbyJoinRequested 333 (lobby, friend), UserStatsStored 1102 (the stock ones must reach the game unchanged) */
+static const int test_ids[] = { 304, 1101, 333, 1102 };
+static uint8_t test_bufs[4][24]; static uint8_t *test_param[4]; static int test_q; static uint64_t test_lobby;
+static bool test_getnext(int32_t pipe, void *msg) {
+    (void)pipe;
+    if (test_q >= 4) return false;
+    int i = test_q++; steam_cbmsg *m = msg;
+    memset(test_bufs[i], 0, sizeof test_bufs[i]);
+    if (test_ids[i] == 333) { uint64_t fr = 76561190000000001ULL; memcpy(test_bufs[i], &test_lobby, 8); memcpy(test_bufs[i] + 8, &fr, 8); }
+    test_param[i] = test_bufs[i];
+    m->user = 1; m->id = test_ids[i]; m->param = test_bufs[i]; m->cub = test_ids[i] == 333 ? 16 : 12;
+    return true;
+}
+static void steamcb_frame(void) {
+    if (!cb_state) steamcb_find();
+    if (cb_state != 1) return;
+    void *cur = __atomic_load_n(cb_slot, __ATOMIC_ACQUIRE);
+    if (!cur || cur == (void *)cb_wrap) return;                                   /* not filled yet (no Steam frame) / ours */
+    cb_orig = (steam_getnext_fn)cur;
+    __atomic_store_n(cb_slot, (void *)cb_wrap, __ATOMIC_RELEASE);
+    cb_swaps++;
+    rig_log("mp: Steam callbacks now pass through the multiplayer mod (slot swap %llu)", (unsigned long long)cb_swaps);
 }
 
 /* ---------------------------------------------------------------- the world's save lives only on the host (owner 2026-10-13)
@@ -789,7 +868,10 @@ static void leave_for_quit(const char *why) {
 }
 static void h_app_quit(void *mi) { leave_for_quit("Application.Quit"); o_app_quit(mi); }
 static void h_app_quit_i(int code, void *mi) { leave_for_quit("Application.Quit(code)"); o_app_quit_i(code, mi); }
-static void mp_atexit(void) { if (S) { mp_stop(S); S = NULL; } }
+static void mp_atexit(void) {
+    if (S) { mp_stop(S); S = NULL; }
+    if (cb_swaps) rig_log("mp: Steam callbacks through the slot: %llu (invites %llu)", (unsigned long long)cb_total, (unsigned long long)cb_fed);
+}
 
 /* The stock "Quit to title" (system menu confirm -> InputEventFactory) and ReturnTitleAction both build a
    QuitToTitleSceneRequested; the load path does not. Building one while in a session = leave NOW (the title takes ~1 s
@@ -819,8 +901,6 @@ static void install_hooks(void) {
     if (rig_hook(VA_SAVE, (void *)h_save, (void **)&o_save, "CampaignSaveLoader.Save") ||
         rig_hook(VA_KEEPONLY, (void *)h_keeponly, (void **)&o_keeponly, "CampaignSaveLoader.KeepOnlyRetainedCampaignSave"))
         rig_log("mp: SAVE HOOKS FAILED: a guest could write the mp world, an iron-mode host could lose its saves");
-    if (rig_hook(VA_STEAM_GETNEXT, (void *)h_getnext, (void **)&o_getnext, "Steamworks ManualDispatch_GetNextCallback"))
-        rig_log("mp: Steam invite hook failed: accepted invites only work through +connect_lobby");
     if (rig_hook(VA_LOAD_CHECKPOINT, (void *)h_checkpoint, (void **)&o_checkpoint, "CampaignLoadingEventHandler.LogLoadCheckpoint") ||
         rig_hook(VA_STABILIZE_NEXT, (void *)h_stabilize, (void **)&o_stabilize, "WaitUntilGameStabilizes.MoveNext") ||
         rig_hook(VA_DEFTICKS_NEXT, (void *)h_defticks, (void **)&o_defticks, "WaitForDefaultTicks.MoveNext"))
@@ -1135,6 +1215,7 @@ int mp_game_steam_invite(void) { return steam_host ? dsnet_steam_host_invite(ste
    player's answer (mpmenu shows "Join <host>? Your unsaved progress here will be lost." with Save and join / Join / Cancel):
    mp_game_invite_pending gives the host's name, mp_game_invite_answer the choice. On the title it joins at once. */
 static int invite_open; static mp_config invite_cfg; static char invite_host[48];
+static int cb_test_join;               /* test (mp_test_steamcb): take join requests without Steam (the rig has none) */
 static void invite_accepted(const mp_config *c, const char *host, const char *how) {
     if (scene() == 2 && !guest_world) {
         invite_cfg = *c; snprintf(invite_host, sizeof invite_host, "%s", host && *host ? host : TR("your friend")); dsi_utf8_fix_end(invite_host); invite_open = 1;
@@ -1253,7 +1334,8 @@ void mp_game_poll(void) {
         }
     }
     if (S) mpx_frame(MP_FRAME_SESSION);                /* Custom Modes (FE poll + mailbox) */
-    if (!S && !steam_join && steam_ready()) {
+    steamcb_frame();
+    if (!S && !steam_join && (steam_ready() || cb_test_join)) {
         uint64_t lobby = dsnet_steam_take_join_request();
         if (lobby) {
             mp_config c; mp_config_defaults(&c);
@@ -1524,6 +1606,31 @@ char *mp_game_exec(const char *cmd, const char *line) {
         mp_config c; mp_config_defaults(&c); c.host = 0; snprintf(c.host_addr, sizeof c.host_addr, "%s", h); c.port = (uint16_t)port; snprintf(c.name, sizeof c.name, "Guest");
         invite_accepted(&c, nm, "test");
         Buf b = {0}; bput(&b, "{\"ok\":true,\"pending\":%d,\"session\":%d}", invite_open, S != NULL); return b.p;
+    }
+    if (!strcmp(cmd, "mp_steamcb")) {                     /* test: the Steam callback slot (where, swapped, counts) */
+        Buf b = {0};
+        bput(&b, "{\"ok\":true,\"state\":%d,\"by\":\"%s\",\"slot_rva\":\"0x%lx\",\"wrapped\":%d,\"swaps\":%llu,\"total\":%llu,\"fed\":%llu}",
+             cb_state, cb_by, cb_slot ? (unsigned long)((uintptr_t)cb_slot - ds_base) : 0UL, cb_slot && *cb_slot == (void *)cb_wrap,
+             (unsigned long long)cb_swaps, (unsigned long long)cb_total, (unsigned long long)cb_fed);
+        return b.p;
+    }
+    if (!strcmp(cmd, "mp_test_steamcb")) {                /* test (steamaccept): a synthetic GameLobbyJoinRequested through the REAL slot */
+        char lb[32] = "109775241000000001"; jstr(line, "lobby", lb, sizeof lb);
+        steamcb_frame();
+        if (cb_state != 1) return merr("Steam callback slot not found");
+        if (*cb_slot && *cb_slot != (void *)cb_wrap && cb_orig != test_getnext) return merr("the game's real Steam fills the slot: not in a test copy");
+        if (!*cb_slot) *cb_slot = (void *)test_getnext;    /* the rig has no Steam: stands in for the game's lazy fill */
+        steamcb_frame();                                  /* the same swap as every frame */
+        test_lobby = strtoull(lb, NULL, 10); test_q = 0;
+        uint64_t t0 = cb_total, f0 = cb_fed;
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"wrapped\":%d,\"in\":[", *cb_slot == (void *)cb_wrap);
+        for (int i = 0; i < (int)(sizeof test_ids / sizeof test_ids[0]); i++) bput(&b, "%s%d", i ? "," : "", test_ids[i]);
+        bput(&b, "],\"out\":[");
+        steam_cbmsg m; int n = 0;                          /* RunFrame's loop: call what the slot holds until false */
+        while (n < 16 && ((steam_getnext_fn)*cb_slot)(1, &m)) bput(&b, "%s[%d,%d,%d]", n++ ? "," : "", m.id, m.cub, m.param == test_param[test_q - 1]);
+        cb_test_join = 1;
+        bput(&b, "],\"through\":%llu,\"fed\":%llu,\"scene\":%d}", (unsigned long long)(cb_total - t0), (unsigned long long)(cb_fed - f0), scene());
+        return b.p;
     }
     if (!strcmp(cmd, "mp_invite_answer")) { double v; if (!jnum(line, "choice", &v)) return merr("need choice 0|1|2"); return mok(mp_game_invite_answer((int)v)); }
     if (!strcmp(cmd, "mp_expect_world")) {                /* test (F17): the next join is for this campaign id */
