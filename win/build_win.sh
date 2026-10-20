@@ -57,7 +57,7 @@ for f in $ZL/adler32.c $ZL/crc32.c $ZL/inffast.c $ZL/inflate.c $ZL/inftrees.c $Z
 if [[ $TARGET == module ]]; then
 nice -n 5 $TC $CF -c port/dswin.c -o $O/dswin.o
 mkdir -p build/link                                              # the import library names the DLL by its output file name
-nice -n 5 $TC -shared $RL -o build/link/multiplayer.dll $O/*.o math/build/libdsmath_win64.a -Wl,--export-all-symbols -Wl,--out-implib,build/libmultiplayer.dll.a -static -static-libgcc -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
+nice -n 5 $TC -shared $RL -o build/link/multiplayer.dll $O/*.o math/build/libdsmath_win64.a -Wl,--export-all-symbols -Wl,--out-implib,build/libmultiplayer.dll.a -static -static-libgcc -lwinhttp -lws2_32 -liphlpapi -lbcrypt -Wl,-Bstatic -lpthread
 mv -f build/link/multiplayer.dll build/multiplayer.dll
 echo built build/multiplayer.dll
 # Custom Modes, its own module. mp part: -DCM_SAME_IMAGE here means "multiplayer's rig_hook" (imported from
