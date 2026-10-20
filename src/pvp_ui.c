@@ -58,7 +58,7 @@ static char pv_err[700], pv_note_txt[700];                            /* Start M
 #define PV_FLOOR 2
 #define PV_SEED 424242
 enum { PVR_MODE, PVR_WIN, PVR_TIME, PVR_PAUSE, PVR_ARENA, PVR_VANILLA, PVR_N };
-enum { PVB_ESC, PVB_CLOSE, PVB_START, PVB_READY, PVB_RESULT_OK, PVB_BRING, PVB_BR_BACK, PVB_BR_SEND, PVB_BR_WIKI, PVB_BR_SAVE0, PVB_BR_UNIT0 = PVB_BR_SAVE0 + 8,
+enum { PVB_ESC, PVB_CLOSE, PVB_START, PVB_READY, PVB_FIGHT, PVB_PROP_YES, PVB_PROP_NO, PVB_HUD_BRING, PVB_RESULT_OK, PVB_BRING, PVB_BR_BACK, PVB_BR_SEND, PVB_BR_WIKI, PVB_BR_SAVE0, PVB_BR_UNIT0 = PVB_BR_SAVE0 + 8,
        PVB_P0 = PVB_BR_UNIT0 + 12, PVB_ARROW0 = PVB_P0 + 8, PVB_N = PVB_ARROW0 + 2 * PVR_N };
 static uintptr_t h_pvb[PVB_N];
 static uintptr_t h_pv_por[8][4], h_pv_pname[8][4];
@@ -71,6 +71,19 @@ static char pv_col_names[16][64]; static int pv_ncol;                 /* names s
 static uintptr_t h_pv_vsub, h_pv_root, h_pv_view, h_pv_area, h_pv_title, h_pv_hint, h_pv_teamh[3], h_pv_units[3], h_pv_rlab[PVR_N], h_pv_rval[PVR_N], h_pv_rrow[PVR_N], h_pv_note;
 static uintptr_t h_pr_root, h_pr_title, h_pr_score, h_pr_rounds;          /* result window */
 static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab;                        /* boss bar copy */
+static uintptr_t h_lab_yes, h_lab_no, h_lab_bring, h_hud_flab, h_prop_root, h_prop_txt, h_rs_root, h_rs_title, h_rs_score, h_rs_sub;    /* E4 fight button + proposal box, E9 round screen */
+static double rs_t0; static uint32_t rs_key; static char hud_last[400];                                                        /* E9: when this round screen showed (local clock) */
+int  mu_bring_is_open(void);                                         /* mu_bring.c */
+int  pvp_ui_vote(int op) __attribute__((weak_import));
+int  pvp_ui_my_slot(void) __attribute__((weak_import));
+int  pvp_ui_player_name(int slot, char *out, int cap) __attribute__((weak_import));
+/* E4 vote state for this player: 1 = may propose, 2 = proposal waits for my answer, 3 = I agreed, waiting, 4 = agreed countdown (may cancel) */
+static int vote_view(const pvp_state *s) {
+    int me = pvp_ui_my_slot ? pvp_ui_my_slot() : -1;
+    if (!s || !pvp_active(s) || !s->placing || s->round > 1 || s->resetting || s->ending || me < 0 || me >= PVP_MAX_PLAYERS || !s->team_of[me]) return 0;
+    if (s->vote_open) return (s->agree_mask >> me & 1u) ? 3 : 2;
+    return s->countdown_at ? 4 : 1;
+}
 static int pv_open, pr_open, pv_click = -1;
 static uint32_t pr_shown_match;
 static int pr_hist[16], pr_nhist; static uint32_t pr_hist_match, pr_hist_round;
@@ -328,6 +341,12 @@ static void pv_click_do(int k) {
     if (k == PVB_CLOSE) { pv_show(0); return; }
     if (k == PVB_START && host) { pv_start(); return; }
     if (k == PVB_READY) { if (pvp_ui_ready) rig_log("pvp ui: Ready (rc %d)", pvp_ui_ready()); return; }
+    if (k == PVB_FIGHT || k == PVB_PROP_YES || k == PVB_PROP_NO) {      /* E4: the fight vote */
+        const pvp_state *vs = pvp_ui_state ? pvp_ui_state() : NULL; int v = vote_view(vs);
+        int op = k == PVB_PROP_YES ? PVP_OP_AGREE : k == PVB_PROP_NO ? PVP_OP_NOTYET : v == 4 ? PVP_OP_CANCEL : PVP_OP_PROPOSE;
+        if (pvp_ui_vote) rig_log("pvp ui: fight vote button %d (view %d): op %d rc %d", k, v, op, pvp_ui_vote(op));
+        return;
+    }
     if (k == PVB_RESULT_OK && pvp_v1_world()) { u_active(pvt(h_pr_root), false); pr_open = 0; pvp_v1_to_title(); return; }
     if (k == PVB_RESULT_OK) { u_active(pvt(h_pr_root), false); pr_open = 0; Obj area = u_gc_get(h_pv_area); if (u_alive(area)) u_active(area, true);
                               Obj ev = esc_view(); if (ev && u_on(ev)) (mm_is(ev, K_SMV) ? F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL) : (void)0); return; }
@@ -516,6 +535,7 @@ static void br_send(void) {
 static int pv_bring_open(void);
 static int br_click(int k) {                                            /* 1 = a Bring window button */
     if (k == PVB_BRING) { if (!pv_bring_open()) return 1; br_sent[0] = 0; br_show(1); return 1; }   /* units from this player's own saves */
+    if (k == PVB_HUD_BRING) { if (pv_bring_open()) { br_lobby = 1; br_sent[0] = 0; br_show(1); } rig_log("pvp ui: Bring Units from the HUD (preparation)"); return 1; }   /* E2 */
     if (k == PVB_BR_BACK) { br_show(0); return 1; }
     if (k == PVB_BR_SEND) { br_send(); return 1; }
     if (k >= PVB_BR_SAVE0 && k < PVB_BR_SAVE0 + 8) { br_save = k - PVB_BR_SAVE0; br_sent[0] = 0; br_read_units(br_save); br_refresh(); return 1; }
@@ -580,10 +600,43 @@ static void hud_build(void) {
        Recruit button sprite + a Cinzel label; the click is read with Input.GetMouseButtonDown in hud_frame */
     if (u_alive(head) && u_alive(name)) {
         Obj hrt = u_tr(body ? body : head); V2 hp = mm_is(hrt, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(hrt, NULL) : (V2){ 0, 0 };
+        if (mm_is(hrt, K_RT)) { typedef struct { float x, y, w, h; } RectB; RectB rb = F(0x5106978, RectB (*)(Obj, void *))(hrt, NULL); hp.x += rb.w / 2; }   /* the bar's pivot is its left edge (above): centre under it */
         Obj b = mk_img(head, u_tr_parent(hrt), S_RECRUIT, C_WHITE, hp.x, hp.y - 44, 170, 38);   /* under the bars, centred */
         if (b) { Obj l = mk_txt(name, u_tr(b), 1, 18, 514, 0, 0, 0, 170, 38, C_START);
                  if (l) { AT(l, 0x7C0, bool) = false; AT(l, 0x7C8, Obj) = NULL; cmt_set(l, TR("Ready")); u_gc_free(h_hud_rlab); h_hud_rlab = u_gc_new(l); } }
         u_gc_free(h_pvb[PVB_READY]); h_pvb[PVB_READY] = b ? u_gc_new(b) : 0; u_active(b, false);
+        /* E4: Start fight (host) / Propose fight (guest) in the preparation: same place as Ready (never both shown) */
+        Obj fb = mk_img(head, u_tr_parent(hrt), S_RECRUIT, C_WHITE, hp.x, hp.y - 44, 220, 38);
+        if (fb) { Obj l = mk_txt(name, u_tr(fb), 1, 18, 514, 0, 0, 0, 220, 38, C_START);
+                  if (l) { AT(l, 0x7C0, bool) = false; AT(l, 0x7C8, Obj) = NULL; u_gc_free(h_hud_flab); h_hud_flab = u_gc_new(l); } }
+        u_gc_free(h_pvb[PVB_FIGHT]); h_pvb[PVB_FIGHT] = fb ? u_gc_new(fb) : 0; u_active(fb, false);
+        /* E2: Bring Units in the preparation, under it */
+        Obj hb = mk_img(head, u_tr_parent(hrt), S_NBTN, C_WHITE, hp.x, hp.y - 88, 220, 34);
+        if (hb) { Obj l = mk_txt(name, u_tr(hb), 1, 16, 514, 0, 0, 0, 220, 34, C_MAIN); if (l) { AT(l, 0x7C0, bool) = false; AT(l, 0x7C8, Obj) = NULL; cmt_set(l, TR("Bring Units...")); u_gc_free(h_lab_bring); h_lab_bring = u_gc_new(l); } }
+        u_gc_free(h_pvb[PVB_HUD_BRING]); h_pvb[PVB_HUD_BRING] = hb ? u_gc_new(hb) : 0; u_active(hb, false);
+        /* E4: the host's box when a guest proposes the fight: "<name> proposes a fight" + Start / Not yet */
+        if (!scan_done) assets_scan_now();
+        Obj pb = mk_img(head, u_tr_parent(hrt), S_BOX, C_WHITE, hp.x, hp.y - 120, 440, 104);
+        if (pb) {
+            Obj t = mk_txt(name, u_tr(pb), 0, 18, 514, 1, 0, 22, 410, 40, C_MAIN);
+            if (t) { AT(t, 0x7C0, bool) = false; AT(t, 0x7C8, Obj) = NULL; u_gc_free(h_prop_txt); h_prop_txt = u_gc_new(t); }
+            for (int k = 0; k < 2; k++) {
+                Obj bb = mk_img(head, u_tr(pb), k ? S_NBTN : S_RECRUIT, C_WHITE, k ? 100 : -100, -24, 170, 36);
+                Obj bl = bb ? mk_txt(name, u_tr(bb), 1, 17, 514, 0, 0, 0, 170, 36, k ? C_MAIN : C_START) : NULL;
+                if (bl) { AT(bl, 0x7C0, bool) = false; AT(bl, 0x7C8, Obj) = NULL; cmt_set(bl, k ? TR("Not yet") : TR("Agree")); uintptr_t *hl = k ? &h_lab_no : &h_lab_yes; u_gc_free(*hl); *hl = u_gc_new(bl); }
+                u_gc_free(h_pvb[k ? PVB_PROP_NO : PVB_PROP_YES]); h_pvb[k ? PVB_PROP_NO : PVB_PROP_YES] = bb ? u_gc_new(bb) : 0;
+            }
+        }
+        u_gc_free(h_prop_root); h_prop_root = pb ? u_gc_new(pb) : 0; u_active(pb, false);
+        /* E9: the round result screen, under the bars: "Blue wins round 1", the score, "Next round in 4" */
+        Obj rs = mk_img(head, u_tr_parent(hrt), S_BOX, C_WHITE, hp.x, hp.y - 170, 600, 190);
+        if (rs) {
+            Obj t1 = mk_txt(name, u_tr(rs), 1, 34, 514, 0, 0, 52, 560, 52, C_MAIN), t2 = mk_txt(name, u_tr(rs), 1, 30, 514, 0, 0, -4, 560, 44, C_GOLD),
+                t3 = mk_txt(name, u_tr(rs), 0, 18, 514, 0, 0, -56, 560, 30, C_SUB);
+            Obj tt[3] = { t1, t2, t3 }; uintptr_t *hh[3] = { &h_rs_title, &h_rs_score, &h_rs_sub };
+            for (int k = 0; k < 3; k++) if (tt[k]) { AT(tt[k], 0x7C0, bool) = false; AT(tt[k], 0x7C8, Obj) = NULL; u_gc_free(*hh[k]); *hh[k] = u_gc_new(tt[k]); }
+        }
+        u_gc_free(h_rs_root); h_rs_root = rs ? u_gc_new(rs) : 0; u_active(rs, false);
     }
     u_go_active(cl, false);
     rig_log("pvp ui: boss bar copy built (name %p, bars %p %p)", name, head, body);
@@ -597,20 +650,62 @@ static void hud_frame(const pvp_state *s) {
     if (!on || frames % 6) return;
     uint32_t pm[3] = { 0, 1000, 1000 }; if (pvp_ui_team_hp) pvp_ui_team_hp(pm);
     char t[400], clock[64] = "";
-    if (s->placing) snprintf(clock, sizeof clock, "%s", s->countdown_at ? TR("Get ready") : TR("Places"));
+    if (s->placing && s->countdown_at) {                                 /* E8: the countdown to the fight, in seconds */
+        int len = s->cd_ticks ? s->cd_ticks : PVP_COUNTDOWN_TICKS, left = (len - (int)(s->ticks - (s->countdown_at - 1)) + 59) / 60; if (left < 1) left = 1;
+        snprintf(clock, sizeof clock, TR("Fight in %d"), left);
+    } else if (s->placing && s->vote_open) snprintf(clock, sizeof clock, "%s", TR("Fight proposed"));
+    else if (s->placing && s->round <= 1) snprintf(clock, sizeof clock, "%s", TR("Preparation"));
+    else if (s->placing) snprintf(clock, sizeof clock, "%s", TR("Places"));
     else if (s->fight_start) { int left = (int)s->rules.round_secs - (int)((s->ticks - (s->fight_start - 1)) / 60); if (left < 0) left = 0; snprintf(clock, sizeof clock, "%d:%02d", left / 60, left % 60); }
     if (s->planning) snprintf(clock, sizeof clock, "%s", TR("Planning"));
     dsi_utf8_fix_end(clock);
     char rd[64]; snprintf(rd, sizeof rd, TR("Round %d"), s->round);
     snprintf(t, sizeof t, "<color=#7FA8FF>%s</color> %d - %d <color=#FF7F7F>%s</color>   %s   %s", TR("Blue"), s->score[1], s->score[2], TR("Red"), rd, clock);
     Obj nm = u_gc_get(h_hud_name); if (u_alive(nm)) cmt_set(nm, t);
+    { size_t k = 0; for (const char *q = t; *q && k < sizeof hud_last - 1; q++) hud_last[k++] = *q == '"' || *q == '\\' ? '\'' : *q; hud_last[k] = 0; }   /* tests */
     for (int k = 0; k < 2; k++) { Obj l = u_gc_get(h_hud_lab[k]); if (u_alive(l)) cmt_set(l, k ? TR("Red") : TR("Blue")); }
     { Obj l = u_gc_get(h_hud_rlab); if (u_alive(l)) cmt_set(l, TR("Ready")); }   /* (DASText re-reads its key on enable) */
     for (int k = 0; k < 2; k++) { Obj im = u_gc_get(h_hud_bar[k]); Obj rt = u_alive(im) ? u_tr(im) : NULL;
         if (mm_is(rt, K_TR)) F(0x510AFF8, void (*)(Obj, V3, void *))(rt, (V3){ pm[k + 1] / 1000.0f, 1, 1 }, NULL); }   /* Transform.localScale */
     Obj rb = pvb(PVB_READY); if (rb) u_active(rb, s->planning != 0);
+    /* E4: Propose fight / Cancel (agreed countdown); the vote box: "<name> proposes a fight" Agree / Not yet, or waiting */
+    int vv = vote_view(s);
+    Obj fb = pvb(PVB_FIGHT); if (fb) u_active(fb, (vv == 1 || vv == 4) && !s->planning);
+    Obj hbb = pvb(PVB_HUD_BRING); if (hbb) u_active(hbb, vv == 1 && pvp_v1_world() && !br_open && !mu_bring_is_open());   /* E2 */
+    { Obj l = u_gc_get(h_hud_flab); if (u_alive(l)) cmt_set(l, vv == 4 ? TR("Cancel") : TR("Propose fight")); }
+    { uintptr_t lh[3] = { h_lab_yes, h_lab_no, h_lab_bring }; const char *lt[3] = { TR("Agree"), TR("Not yet"), TR("Bring Units...") };
+      for (int k = 0; k < 3; k++) { Obj l = u_gc_get(lh[k]); if (u_alive(l)) cmt_set(l, lt[k]); } }   /* (DASText re-reads its key on enable: set every refresh, like Ready) */
+    Obj pr = u_gc_get(h_prop_root); if (u_alive(pr)) u_active(pr, vv == 2 || vv == 3);
+    for (int k = 0; k < 2; k++) { Obj bb = pvb(k ? PVB_PROP_NO : PVB_PROP_YES); if (bb) u_active(bb, vv == 2); }
+    if (vv == 2 || vv == 3) {
+        char pn[64] = "", t2[200]; if (pvp_ui_player_name) pvp_ui_player_name(s->vote_by, pn, sizeof pn);
+        if (vv == 2) snprintf(t2, sizeof t2, TR("%s proposes a fight"), pn); else snprintf(t2, sizeof t2, "%s", TR("Waiting for the other players to agree"));
+        dsi_utf8_fix_end(t2); Obj l = u_gc_get(h_prop_txt); if (u_alive(l)) cmt_set(l, t2);
+    }
+    /* E9: the round result screen while the ended round waits (the world stands still); the host's NEXT ends it */
+    Obj rs = u_gc_get(h_rs_root); int ending = s->ending && !s->resetting;
+    if (u_alive(rs)) u_active(rs, ending);
+    if (ending) {
+        uint32_t key = s->matches * 64 + s->round;
+        if (key != rs_key) { rs_key = key; struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); rs_t0 = ts.tv_sec + ts.tv_nsec / 1e9; rig_log("pvp ui: round result screen (round %d, winner %d, score %d-%d, %s)", s->round, s->last_winner, s->score[1], s->score[2], s->ending == PVP_RESET_MATCH ? "match over" : "next round"); }
+        struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); int left = 5 - (int)(ts.tv_sec + ts.tv_nsec / 1e9 - rs_t0); if (left < 1) left = 1;
+        char a[160], b2[160], c2[160];
+        if (s->ending == PVP_RESET_MATCH) snprintf(a, sizeof a, "%s", s->match_winner == PVP_TEAM_BLUE ? TR("Blue wins the match") : s->match_winner == PVP_TEAM_RED ? TR("Red wins the match") : TR("The match is a draw"));
+        else if (s->last_winner == PVP_TEAM_BLUE) snprintf(a, sizeof a, TR("Blue wins round %d"), s->round);
+        else if (s->last_winner == PVP_TEAM_RED) snprintf(a, sizeof a, TR("Red wins round %d"), s->round);
+        else snprintf(a, sizeof a, TR("Round %d is a draw"), s->round);
+        snprintf(b2, sizeof b2, "<color=#7FA8FF>%s</color>  %d - %d  <color=#FF7F7F>%s</color>", TR("Blue"), s->score[1], s->score[2], TR("Red"));
+        if (s->ending == PVP_RESET_MATCH) snprintf(c2, sizeof c2, TR("Results in %d"), left); else snprintf(c2, sizeof c2, TR("Next round in %d"), left);
+        dsi_utf8_fix_end(a); dsi_utf8_fix_end(c2);
+        Obj t; if (u_alive(t = u_gc_get(h_rs_title))) cmt_set(t, a); if (u_alive(t = u_gc_get(h_rs_score))) cmt_set(t, b2); if (u_alive(t = u_gc_get(h_rs_sub))) cmt_set(t, c2);
+    }
 }
 static void hud_click(const pvp_state *s) {                             /* every frame: a left click on Ready */
+    if (s && F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) {              /* E4: Start / Propose fight, the proposal box's buttons */
+        V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL); float r[4];
+        static const int ks[4] = { PVB_FIGHT, PVB_PROP_YES, PVB_PROP_NO, PVB_HUD_BRING };
+        for (int i = 0; i < 4; i++) { Obj b = pvb(ks[i]); if (u_on(b) && rect_of(b, r) && m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]) { pv_click = ks[i]; return; } }
+    }
     Obj rb = pvb(PVB_READY);
     if (!s || !s->planning || !u_on(rb) || !F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) return;   /* Input.GetMouseButtonDown(0) */
     float r[4]; V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL);                                         /* Input.mousePosition */
@@ -725,6 +820,11 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     else if (!strcmp(a, "close")) pv_click = PVB_CLOSE;
     else if (!strcmp(a, "start")) pv_click = PVB_START;
     else if (!strcmp(a, "ready")) pv_click = PVB_READY;
+    else if (!strcmp(a, "press_fight") || !strcmp(a, "press_prop_yes") || !strcmp(a, "press_prop_no") || !strcmp(a, "press_hud_bring")) {   /* E4 / E2: only when shown (as a click) */
+        int k = a[6] == 'f' ? PVB_FIGHT : a[6] == 'h' ? PVB_HUD_BRING : a[11] == 'y' ? PVB_PROP_YES : PVB_PROP_NO;
+        if (!u_on(pvb(k))) return strdup("{\"ok\":false,\"error\":\"button not shown\"}");
+        pv_click = k; goto out;
+    }
     else if (!strcmp(a, "ok")) pv_click = PVB_RESULT_OK;
     else if (!strncmp(a, "press_", 6)) {                                  /* the real path: OnPressButton of the clone */
         if (!strcmp(a + 6, "ready")) { if (!u_on(pvb(PVB_READY))) return strdup("{\"ok\":false,\"error\":\"Ready not shown\"}"); pv_click = PVB_READY; goto out; }   /* image button: same handler as its click */
@@ -759,8 +859,8 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     bput(&b, "],\"save\":%d,\"units\":[", br_save);
     for (int i = 0; i < br_nunits; i++) { bput(&b, "%s[", i ? "," : ""); bstr(&b, br_unit_name[i]); bput(&b, ",\"%s\",%d,%d]", br_unit_guid[i], br_unit_lvl[i], br_pick[i]); }
     bput(&b, "],\"status\":"); bstr(&b, br_sent); bput(&b, "},");
-    bput(&b, "\"window\":%d,\"result\":%d,\"esc_entry\":%d,\"hud\":%d,\"ready\":%d,\"mode\":%d,\"bo\":%d,\"secs\":%d,\"pause\":%d,\"vanilla\":%d,\"vanilla_shown\":%d,\"note\":",
-         pv_open, pr_open, u_on(pvb(PVB_ESC)), u_go_active_self(u_gc_get(h_hud)), u_on(pvb(PVB_READY)), pv.mode, pv_bo[pv.bo], pv_secs[pv.secs], pv.pause,
+    bput(&b, "\"window\":%d,\"result\":%d,\"esc_entry\":%d,\"hud\":%d,\"ready\":%d,\"fight_btn\":%d,\"proposal_box\":%d,\"round_screen\":%d,\"hud_text\":\"%s\",\"mode\":%d,\"bo\":%d,\"secs\":%d,\"pause\":%d,\"vanilla\":%d,\"vanilla_shown\":%d,\"note\":",
+         pv_open, pr_open, u_on(pvb(PVB_ESC)), u_go_active_self(u_gc_get(h_hud)), u_on(pvb(PVB_READY)), u_on(pvb(PVB_FIGHT)), u_alive(u_gc_get(h_prop_root)) && u_on(u_gc_get(h_prop_root)), u_alive(u_gc_get(h_rs_root)) && u_on(u_gc_get(h_rs_root)), hud_last, pv.mode, pv_bo[pv.bo], pv_secs[pv.secs], pv.pause,
          pv.vanilla, pv_vanilla_shown(pvp_ui_state ? pvp_ui_state() : NULL, pvp_ui_is_host && pvp_ui_is_host()));
     bstr(&b, pv_note_txt); bput(&b, ",\"tip\":");
     bstr(&b, tip_now);

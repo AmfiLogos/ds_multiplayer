@@ -41,7 +41,7 @@ static void say(const char *fmt, ...) { va_list ap; va_start(ap, fmt); vsnprintf
 static jv *recv_entries;             /* host: brought units (closure + manifest), any player, by sender uid */
 static jv *pending;                  /* host: run id, entries, maps of the start in flight */
 static int armed;                    /* host: the next join point builds the PvP world */
-static int n_received, n_built;
+static int n_received, n_built, roster_gen;
 static uint8_t *owners_kept; static size_t owners_len;   /* host: owner tables before the match */
 static int owners_restore_due;
 
@@ -87,7 +87,7 @@ static void host_take(const char *uid_hex, jv *entries) {
         jset(jget(e, "manifest"), "player_uid", jstrv(uid_hex));          /* the server-stamped sender, not his claim */
         jpush(recv_entries, e);
     }
-    n_received = (int)recv_entries->cnt;
+    n_received = (int)recv_entries->cnt; roster_gen++;
     roster_from_entries(); dsnet_client *c = cli(); if (c) roster_send(c);
 }
 static char *cmd_bring(const char *line) {
@@ -140,9 +140,11 @@ static char *cmd_start(void) {
     if (cur_map() != 0) { bput(&b, "{\"ok\":false,\"error\":\"start from the settlement (the brought units arrive there)\"}"); return b.p; }
     /* what the match end brings back: the world and the owner tables */
     if (pvp_snap_world_lock()) { bput(&b, "{\"ok\":false,\"error\":\"world snapshot failed\"}"); return b.p; }
-    free(owners_kept); owners_len = dsnet_export_owners(c, NULL, 0);
-    owners_kept = owners_len ? malloc(owners_len) : NULL;
-    if (owners_kept) dsnet_export_owners(c, owners_kept, owners_len);
+    if (!owners_kept) {                                  /* E2: units brought again in the preparation: the tables of before the FIRST start stay */
+        owners_len = dsnet_export_owners(c, NULL, 0);
+        owners_kept = owners_len ? malloc(owners_len) : NULL;
+        if (owners_kept) dsnet_export_owners(c, owners_kept, owners_len);
+    }
     char rid[33]; fe_new_id(rid);
     jv *maps = fe_hub_maps(recv_entries);
     /* DSNET_FE_START payload: run_id[16], u16 nu, (guid, uid)..., u16 ni, (guid, uid)... */
@@ -208,6 +210,7 @@ int pvp_units_join_point(const char *path) {
 }
 int pvp_units_received(void) { dsnet_client *c = cli(); return c && dsnet_is_host(c) ? n_received : 0; }
 int pvp_units_built(void) { return n_built; }
+int pvp_units_gen(void) { return roster_gen; }               /* E2: changes with every Bring the host takes */
 /* pvp_game.c: the world snapshot was reloaded after the match (host): put the owner tables back */
 void pvp_units_after_match(void) { if (owners_kept) owners_restore_due = 1; }
 
