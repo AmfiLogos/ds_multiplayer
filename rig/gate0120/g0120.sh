@@ -33,7 +33,7 @@ trap "verdict ${0:A}" EXIT
 # owner rule (2026-10-20): never bind TCP 47777 while the owner's game runs (menu-hosted test copies listen there):
 # every check waits while his launcher / game runs (launcher by name, his app's path, the launcher's own game copy under
 # DSModLauncher/games/ (binary "Dungeon Settlers" with a space: missed until 2026-10-20 22:35), any game outside the test instances folders)
-owner_wait() { local n=0; while pgrep -x DSModLauncher >/dev/null || pgrep -f 'Applications/Dungeon Settlers Modded.app/' >/dev/null || pgrep -f 'DSModLauncher/games/' >/dev/null || pgrep -fl 'MacOS/(DungeonSettlers|Dungeon Settlers)( |$)' | command grep -v /instances/ | command grep -q .; do
+owner_wait() { local n=0; while pgrep -x DSModLauncher >/dev/null || pgrep -f 'Applications/Dungeon Settlers Modded.app/' >/dev/null || pgrep -f 'DSModLauncher/games/' >/dev/null || pgrep -fl 'MacOS/(DungeonSettlers|Dungeon Settlers)( |$)' | command grep -vE '/instances/|^[0-9]+ /private/tmp/|^[0-9]+ /tmp/' | command grep -q .; do
   (( n++ == 0 )) && print "$(date '+%T') owner's game runs: next check waits (no TCP 47777 bind)" | tee -a $SUM; sleep 30; done; }
 functions[chk_lib]=${functions[chk]}
 chk() { owner_wait; chk_lib "$@"; }
