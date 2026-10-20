@@ -199,7 +199,7 @@ static const mpm_obs *cur;
 /* a failed start or join (lan_v10, ux_flow F8): the reason goes to the stock notice box (game side), not in small type
  * in brackets on the Multiplayer button; the button stays plain. head and why: already translated. */
 static int fail(mpm_model *m, const char *head, const char *why) {
-    char r[200]; snprintf(r, sizeof r, "%s", cur && cur->msg[0] ? cur->msg : why);
+    char r[640]; snprintf(r, sizeof r, "%s", cur && cur->msg[0] ? cur->msg : why);   /* 200 cut a Russian reason (213 bytes) mid-word */
     /* the title line says "Could not join" already: drop that start of a refusal. Both texts come from the same
        TR("Could not join: %s") (mp_game), so this compares one translated text with itself, in any language */
     const char *f = TR("Could not join: %s"), *ps = strstr(f, "%s");
@@ -346,6 +346,9 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         else if (m->picker_seen && ++m->closed_frames > 90) return go(m, MPM_TITLE_HOST);   /* closed, nothing loads: back */
         break;
     case MPM_HOST_LOADING:
+        /* the tutorial is single-player: one unit, scripted steps and pop-ups per player (Foctopus 2026-10-20). The
+           session does not start; the world stays a single-player game. */
+        if (o->campaign_ready && o->tutorial) return fail(m, TR("Multiplayer could not start"), TR("The tutorial is single-player only: you play it alone. To play together, start a campaign without the tutorial"));
         if (o->campaign_ready) { m->closed_frames = 0; return go(m, MPM_LOBBY) | MPA_HOST_START | MPA_LOBBY_SHOW; }
         if (o->scene == 1 && o->title_visible && !o->loading && ++m->closed_frames > 300) return fail(m, TR("Multiplayer could not start"), TR("Loading the campaign failed"));
         break;

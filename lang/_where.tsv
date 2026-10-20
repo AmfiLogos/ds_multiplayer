@@ -5,6 +5,7 @@
 " · %d s, then %s decides"	ui_model.c:279
 " · %d s, then the votes decide"	ui_model.c:277
 " · %d s, then you decide"	ui_model.c:278
+"The tutorial is single-player only: you play it alone. To play together, start a campaign without the tutorial"	mpmenu_model.c:351
 "\"%s\" is not an address. It looks like 192.168.1.20:47777"	mpmenu.c:2110
 "\"Get the host's mods\" downloads what is missing from our official releases, sets your gameplay mods like the host's, then joins the host again."	net/ds_modcheck.h:433
 "%d / %d members"	ui_teams.c:1300

@@ -910,6 +910,7 @@ static void end_session_c(int code, const char *why) {
     rig_log("mp: session ended (%d): %s", code, why);
     snprintf(ended_msg, sizeof ended_msg, "%s", why); dsi_utf8_fix_end(ended_msg); ended = 1; ended_code = code;
     if (S) { ord_mp_attach(NULL); mp_bridge_attach(NULL); mp_stop(S); S = NULL; }
+    trn_clear_role(); rig_det_disarm();                    /* fully off: the world (if one stays) runs as single player */
     if (steam_join) { dsnet_steam_join_close(steam_join); steam_join = NULL; }
     if (steam_host) { dsnet_steam_host_stop(steam_host); steam_host = NULL; }
     cfg_ok = 0; start_failed = 0; host_reload = 0; join_lobby_id = 0; played = 0; owners_restored = 0;

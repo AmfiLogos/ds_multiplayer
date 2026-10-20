@@ -666,6 +666,16 @@ void rig_det_arm(void) {
     rig_log("det: armed by the multiplayer session (%s)", load_left ? "campaign running: locking" : "waiting for a campaign");
 }
 
+/* The multiplayer session ended (Leave, host gone, refused join). A host who stays in the world plays it alone: det must
+   let the game's own clock run again. Locked without a session, nothing moved the target and the world stood still
+   (Foctopus 2026-10-20: "cancelling multiplayer doesn't actually cancel the game"). Same as the "unlock" command. */
+void rig_det_disarm(void) {
+    if (!locked && !hold) return;
+    locked = 0; hold = 0; load_left = 0; target = -1;
+    Obj th = mf ? AT(mf, 0x40, Obj) : NULL; if (th) AT(th, 0x44, float) = 0.0f;   /* no burst of saved-up time */
+    rig_log("det: session over: unlocked, the game's own clock runs (tick %lld)", (long long)tick());
+}
+
 /* Long-lived System.Random objects keep a state that is NOT in the save (WeatherSystem._random decides the next
    base/dungeon weather change minute; EnvironmentAffectHelper._rnd; ItemDropSelector's static Random). A peer
    that loaded later, or a host whose objects outlived a reload, would draw a different sequence: the orders lane
