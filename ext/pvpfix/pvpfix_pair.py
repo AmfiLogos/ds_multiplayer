@@ -115,15 +115,15 @@ def body(t):
             c0 = cells2[u['guid']]['cell']; tgt = min(en, key=lambda v: (cells2[v['guid']]['cell'][0] - c0[0]) ** 2 + (cells2[v['guid']]['cell'][1] - c0[1]) ** 2)
             tc = cells2[tgt['guid']]['cell']
             t.c(owner[u['guid']], cmd='ord_run_attack', unit=u['guid'], target=tgt['guid'], x=tc[0], y=tc[1], mp=1)
-    first_order = True; done = set()
+    first_order = True; done = set(); last_order = 0
     while time.time() < t_end:
         s = t.c(H, cmd='pvp_status')
         if not s.get('active') and s.get('matches', 0) >= 1: break
         if s.get('ending') and s['round'] not in rounds_seen:
             rounds_seen[s['round']] = s['ending']
-            n, first, ds = t.fp_compare(seg_from, settle=0.3); segs.append((n, first, ds)); t.log('segment fingerprints', n, first, ds)   # the world stands still: fp.log is complete
-            a0 = t.c(H, cmd='status')['tick']; time.sleep(1.5)
+            a0 = t.c(H, cmd='status')['tick']; time.sleep(0.8)
             sc = {x: t.c(x, cmd='mpm_pvp') for x in (H, G)}; a1 = t.c(H, cmd='status')['tick']
+            n, first, ds = t.fp_compare(seg_from, settle=0); segs.append((n, first, ds)); t.log('segment fingerprints', n, first, ds)   # the world stands still: fp.log is complete
             for x in (H, G): t.shot(x, f'round{s["round"]}_screen')
             screen_ok.append(all(sc[x].get('round_screen') for x in (H, G)) and a0 == a1)
             t.log('round', s['round'], 'ending', s['ending'], 'score', s['score'], 'screen', {x: sc[x].get('round_screen') for x in (H, G)}, 'frozen', a0 == a1)
@@ -154,12 +154,12 @@ def body(t):
                                    or before[x].get('target') == ZERO) for x in (H, G))
                         t.check('E7b my orders on an enemy unit change nothing on it (its target and options stay, both copies)', keep,
                                 {x: ((before[x].get('target', '')[:8], before[x].get('options')), (after[x].get('target', '')[:8], after[x].get('options'))) for x in (H, G)})
-            if s['round'] not in rounds_seen and s.get('ticks', 0) % 1 == 0:
-                order_all()
+            if s['round'] not in rounds_seen and time.time() - last_order >= 4:
+                order_all(); last_order = time.time()
         elif s.get('placing') and s.get('round', 1) > 1:
             seg_from = t.c(H, cmd='status')['tick']                          # a new world segment after the reload
             first_order = True; hc = None
-        time.sleep(4)
+        time.sleep(1)
     t.check('E7 hold position: the held unit did not walk off when the fight began (no automatic attack orders)', hold_ok and s.get('kicks', 0) == 0)
     t.check('E9 round result screen on both copies while the world stands still, for every ended round', screen_ok and all(screen_ok), (rounds_seen, screen_ok))
     t.wait('match over on both + world back', lambda: all((lambda q2: not q2.get('active') and q2.get('phase') == 0)(t.c(x, cmd='pvp_status')) for x in (H, G)), timeout=600, every=2)

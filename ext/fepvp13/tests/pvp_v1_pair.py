@@ -155,6 +155,8 @@ def run(H, G, port):
     ends = {x: ps[x]['ends'] for x in (H, G)}
     check('3a base ends: two different cells, same on both', ends[H] == ends[G] and ends[H][0] != ends[H][1] and ends[H][0] != [0, 0], json.dumps(ends))
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_start.png'))
+    time.sleep(12)                                           # v0.1.21 (E4): the teams walk to their ends, then a fight vote: G proposes, H agrees
+    c(G, cmd='pvp_vote', op='propose'); wait('vote open', lambda: c(H, cmd='pvp_status').get('vote_open'), timeout=60, every=1); c(H, cmd='pvp_vote', op='agree')
     wait('fight begins (teams in place)', lambda: c(H, cmd='pvp_status').get('fight_start', 0) > 0 and not c(H, cmd='pvp_status').get('placing'), timeout=300, every=2)
     s = c(H, cmd='pvp_status'); cells = {u['guid']: u for u in c(H, cmd='list_units')['units']}
     log('PvP units at the fight', [(cells[u['guid']]['name'], u['guid'][:8], u['team'], cells[u['guid']].get('cell'), cells[u['guid']].get('task'), cells[u['guid']].get('downed')) for u in s['units'] if u['guid'] in cells])
@@ -166,8 +168,18 @@ def run(H, G, port):
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_placed.png'))
     hp0 = {u['guid']: u.get('hp', 0) for u in s['units']}
     down = None; lost = None; t_run = time.time()
+    owner = {u['guid']: (H if u['player'] == 0 else G) for u in c(H, cmd='pvp_status')['units']}
+    def orders():                                            # v0.1.21 (E7): no automatic attack orders: each player orders his units, like right-clicks
+        q = c(H, cmd='pvp_status'); cl = {u['guid']: u for u in c(H, cmd='list_units')['units']}
+        al = [u for u in q.get('units', []) if u.get('out_tick', -1) < 0 and 'cell' in cl.get(u['guid'], {})]
+        for u in al:
+            en = [v for v in al if v['team'] != u['team']]
+            if en:
+                c0 = cl[u['guid']]['cell']; tg = min(en, key=lambda v: (cl[v['guid']]['cell'][0] - c0[0]) ** 2 + (cl[v['guid']]['cell'][1] - c0[1]) ** 2); tc = cl[tg['guid']]['cell']
+                c(owner[u['guid']], cmd='ord_run_attack', unit=u['guid'], target=tg['guid'], x=tc[0], y=tc[1], mp=1)
     while time.time() - t_run < 600:
         s = c(H, cmd='pvp_status')
+        if s.get('active') and not s.get('ending') and not s.get('resetting') and s.get('fight_start') and not s.get('placing'): orders()
         if s.get('units'):
             l = {u['guid']: hp0.get(u['guid'], 0) - u.get('hp', 0) for u in s['units'] if 'hp' in u}
             if not lost and any(v > 0 for g, v in l.items() if any(u['guid'] == g and u['team'] == 1 for u in s['units'])) and \
