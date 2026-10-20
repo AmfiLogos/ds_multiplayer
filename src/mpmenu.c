@@ -1787,7 +1787,7 @@ static void lw_texts(void) {
     int host = M.state == MPM_LOBBY;
     mp_steam_info in; mp_steam_state(&in);
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
-    char b[256]; const char *hn = M.host[0] ? M.host : TR("the host");
+    char b[1024]; const char *hn = M.host[0] ? M.host : TR("the host");   /* the lobby note: 3 lines, up to ~500 bytes in Russian (a 256 cut the Windows Allow line) */
     if (host) tmp_set(lwt(T_TITLE), TR("Multiplayer Lobby")); else { snprintf(b, sizeof b, TR("%s's Lobby"), hn); tmp_set(lwt(T_TITLE), b); }
     tmp_set(lwt(T_HINT), TR("Share your address, then press Start when everyone is in."));
     snprintf(b, sizeof b, TR("Waiting for %s to start"), hn); tmp_set(lwt(T_GUEST), b);
@@ -1864,7 +1864,7 @@ static void lw_texts(void) {
           int up_ok = up_state == UPNPP_OPENED || up_state == UPNPP_ALREADY;
           snprintf(lobby_addr, sizeof lobby_addr, "%s", inet ? M.internet : M.direct);
           tmp_set(lwt(T_INV_ADDR), lobby_addr[0] ? lobby_addr : "...");
-          char l1[400];
+          char l1[640];
           if (inet_state == EXTADDR_PRIVATE) snprintf(l1, sizeof l1, "%s", in.steam ? TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes. Use Steam invite.")
                                                                               : TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes."));
           else if (inet_state == EXTADDR_PENDING || inet_state == EXTADDR_IDLE || up_state == UPNPP_PENDING) snprintf(l1, sizeof l1, "%s", TR("Looking for your internet address..."));
@@ -4685,7 +4685,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           bput(&b, ",\"name_field\":{\"exists\":%s,\"active\":%s,\"text\":", u_alive(nf) ? "true" : "false", u_on(nf) ? "true" : "false"); bstr(&b, nt); bput(&b, "}"); }
         bput(&b, ",\"my_name\":"); bstr(&b, my_name);
         bput(&b, ",\"frames\":%lld,\"connecting\":", (long long)frames); bstr(&b, M.connecting);
-        { Obj root = u_gc_get(h_lw_root); char t[256];                     /* lobby window (v2 §2b) read-back */
+        { Obj root = u_gc_get(h_lw_root); char t[1024];                    /* lobby window (v2 §2b) read-back (the note is longer than 256) */
           bput(&b, ",\"lw\":{\"active\":%d,\"area_active\":%d,\"settings_open\":%d,\"title\":", u_on(root), u_on(u_gc_get(h_lw_area)), M.lobby_settings_open);
           t[0] = 0; if (lwt(T_TITLE)) str_utf8(tmp_get(lwt(T_TITLE)), t, sizeof t); bstr(&b, t);
           bput(&b, ",\"guest\":"); t[0] = 0; if (lwt(T_GUEST) && u_on(lwt(T_GUEST))) str_utf8(tmp_get(lwt(T_GUEST)), t, sizeof t); bstr(&b, t);
