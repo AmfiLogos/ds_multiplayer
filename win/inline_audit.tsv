@@ -21,6 +21,7 @@ Refactor.SubUI_SettlerNameCase$$Init	0x5eb860	0x85e50c	mac_callers=2	win_callers
 Refactor.Combat.CombatUtility$$GetClosestSingleEnemy	0x6120d0	0x8af164	mac_callers=10	win_callers=8
 Refactor.Combat.ExecutionContext$$Convert	0x619f90	0x8a7b9c	mac_callers=56	win_callers=55
 Refactor.Combat.ExecutionContext$$SetTarget	0x61a320	0x8a7d6c	mac_callers=2	win_callers=2
+Refactor.Tick.PassiveActionContainer$$Register	0x7beeb0	0xa782c8	mac_callers=2	win_callers=3
 Refactor.Tick.DataApply.MainEventApplier$$Apply	0x7f41e0	0xab7628	mac_callers=1	win_callers=1
 Refactor.Tick.TickFlow$$Update	0x80b3a0	0xaadcf4	mac_callers=2	win_callers=2
 Refactor.Task.TaskAssignableHelper$$IsAvailable	0x826470	0xae5038	mac_callers=1	win_callers=2
