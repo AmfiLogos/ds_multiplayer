@@ -11,6 +11,14 @@ typedef struct mpm_settings { int pause_mode, speedup, gear, units, admin, event
                               int spectators, watching;
                               int fe, fe_death, fe_xp, fe_loot, fe_recruit; } mpm_settings;   /* fog: shared fog of war 0/1 (default 0); spectators: host allows them (1 default); watching: how many watch now (game side, display only); fe: World = Foreign Expedition (boards FESettingsA, ForeignHost) */
 #define MPM_DEFAULT_PORT 47777   /* direct TCP port the host listens on (beside Steam) */
+/* "Host port" setting (mod.json "host_port", scope local: not in the mod-set hash). The loader glue (ds_modloader
+   modules/multiplayer/mp_module.c, win/port/rig_main_win.c) sets mp_setting_int_fn to dsl_get_int; NULL (dsrig without the
+   loader, an older loader) or a value outside 1024..65535 = MPM_DEFAULT_PORT. Joining by address keeps MPM_DEFAULT_PORT. */
+extern int (*mp_setting_int_fn)(const char *id, int dflt);
+static inline uint16_t mpm_host_port(void) {
+    int p = mp_setting_int_fn ? mp_setting_int_fn("host_port", MPM_DEFAULT_PORT) : MPM_DEFAULT_PORT;
+    return p >= 1024 && p <= 65535 ? (uint16_t)p : MPM_DEFAULT_PORT;
+}
 
 enum mpm_state {
     MPM_IDLE = 0,          /* title, no multiplayer */

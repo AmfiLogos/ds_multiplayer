@@ -3400,7 +3400,7 @@ static void run_actions(int a, const mpm_obs *o) {
         char p[1200]; snprintf(p, sizeof p, "%s/mp.json", rig_dir);
         mp_config f; if (mp_config_load(p, &f) == 0) { snprintf(c.name, sizeof c.name, "%s", f.name); c.port = f.port; }
         c.host = 1; c.allow_speedup = M.set.speedup; c.allow_pause = M.set.pause_mode != MPM_PAUSE_NONE;
-        c.pause_mode = M.set.pause_mode; c.gear_mode = M.set.gear; c.port = MPM_DEFAULT_PORT;
+        c.pause_mode = M.set.pause_mode; c.gear_mode = M.set.gear; c.port = mpm_host_port();
         c.allow_spectators = M.set.spectators;
         if (my_name[0]) snprintf(c.name, sizeof c.name, "%s", my_name);
         else if (!in.steam) default_name(c.name, sizeof c.name);
@@ -4577,7 +4577,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         bput(&b, ",\"obs\":{\"scene\":%d,\"ready\":%d,\"title\":%d,\"picker\":%d,\"role\":%d,\"guest_loading\":%d,\"failed\":%d,\"esc\":%d},\"visible\":%llu",
              o.scene, o.campaign_ready, o.title_visible, o.picker_open, o.role, o.guest_loading, o.failed, o.esc_open, (unsigned long long)mpm_visible(&M, &o));
         mp_session *ss = mp_game_session();
-        bput(&b, ",\"port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0); bstr(&b, M.direct);
+        bput(&b, ",\"port\":%u,\"host_port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0, (unsigned)mpm_host_port()); bstr(&b, M.direct);
         Obj fl = u_gc_get(h_field); char ft[256] = "";
         if (u_alive(fl)) str_utf8((mm_is(fl, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(fl, NULL) : NULL), ft, sizeof ft);
         bput(&b, ",\"field\":{\"exists\":%s,\"active\":%s,\"text\":", u_alive(fl) ? "true" : "false", u_on(fl) ? "true" : "false"); bstr(&b, ft); bput(&b, "}");
@@ -4611,6 +4611,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           bput(&b, ",\"note\":"); t[0] = 0; if (lwt(T_NOTE)) str_utf8(tmp_get(lwt(T_NOTE)), t, sizeof t); bstr(&b, t);
           { Obj ib3 = u_gc_get(h_lwb[LW_INVITE]); char it[160] = ""; if (u_on(ib3)) str_utf8(tmp_get(AT(ib3, 0x28, Obj)), it, sizeof it); bput(&b, ",\"invite\":"); bstr(&b, it); }
           bput(&b, ",\"addr\":"); t[0] = 0; if (lwt(T_INV_ADDR) && u_on(lwt(T_INV_ADDR))) str_utf8(tmp_get(lwt(T_INV_ADDR)), t, sizeof t); bstr(&b, t);
+          bput(&b, ",\"inv_note\":"); t[0] = 0; if (lwt(T_INV_NOTE) && u_on(lwt(T_INV_NOTE))) str_utf8(tmp_get(lwt(T_INV_NOTE)), t, sizeof t); bstr(&b, t);   /* test: "open port N" line */
           bput(&b, ",\"rows\":[");
           for (int i = 0; i < LW_ROWS; i++) {
               char n[128] = "", st[64] = ""; int lit = 0;
