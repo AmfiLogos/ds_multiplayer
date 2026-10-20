@@ -805,7 +805,7 @@ int ui_view_marks(float w, float h, float x0, float y0, float x1, float y1, int 
 static int ui_name_starts(const char *s, const char *p) { return !strncmp(s, p, strlen(p)); }
 int ui_addr_kind(const char *nm) {
     static const char *const vpn[] = { "utun", "ipsec", "ppp", "tun", "tap", "wg", "zt" };
-    static const char *const virt[] = { "vmnet", "bridge", "vnic", "vboxnet", "veth", "docker" };
+    static const char *const virt[] = { "vmnet", "bridge", "vnic", "vboxnet", "veth", "docker", "awdl", "llw", "anpi", "ap1" };
     if (!nm) return UI_ADDR_LAN;
     for (size_t i = 0; i < sizeof vpn / sizeof vpn[0]; i++) if (ui_name_starts(nm, vpn[i])) return UI_ADDR_VPN;
     for (size_t i = 0; i < sizeof virt / sizeof virt[0]; i++) if (ui_name_starts(nm, virt[i])) return UI_ADDR_VIRTUAL;

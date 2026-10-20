@@ -370,8 +370,10 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (m->lobby_settings_open && (c == MPB_SPECT_PREV || c == MPB_SPECT_NEXT)) return MPA_SPECTATORS | MPA_REFRESH;   /* game side: confirm box / mp_set_spectators */
         if (m->lobby_settings_open && rule_arrow(m, c)) return MPA_RULES | MPA_REFRESH;   /* host changes the rules in the lobby */
         /* host Leave ends everyone's session (ux_flow F7): ask first */
+        /* owner 2026-10-20: Quit = the same + back to the title; Leave (Turn off multiplayer) = the host keeps playing alone */
         if (c == MPB_LEAVE && !m->confirm_leave) { m->confirm_leave = 1; return MPA_CONFIRM_LEAVE | MPA_REFRESH; }
-        if (c == MPB_LEAVE_CONFIRM && m->confirm_leave) return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE;
+        if (c == MPB_LOBBY_QUIT && !m->confirm_leave) { m->confirm_leave = 2; return MPA_CONFIRM_LEAVE | MPA_REFRESH; }
+        if (c == MPB_LEAVE_CONFIRM && m->confirm_leave) { int q = m->confirm_leave == 2; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE | (q ? MPA_QUIT_TITLE : 0); }
         if (c == MPB_LEAVE_CANCEL && m->confirm_leave) { m->confirm_leave = 0; return MPA_LEAVE_BOX_CLOSE | MPA_REFRESH; }
         break;
     case MPM_PLAYING:
@@ -394,7 +396,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (o->scene == 1 && o->title_visible && !o->loading) {
             if (++m->closed_frames > 90) { m->closed_frames = 0; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE; }
         } else m->closed_frames = 0;
-        if (c == MPB_LEAVE) { m->msg[0] = 0; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE; }
+        if (c == MPB_LEAVE || c == MPB_LOBBY_QUIT) { m->msg[0] = 0; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE | MPA_QUIT_TITLE; }   /* guest: Quit (the world is the host's) */
         if (c == MPB_FE_BRINGWIN) return MPA_FE_BRING;
         if (o->role == 0) return (o->msg[0] ? ended(m, o) : go(m, MPM_IDLE)) | MPA_LOBBY_HIDE;
         if (!o->host_lobby) return go(m, MPM_PLAYING) | MPA_LOBBY_HIDE;
@@ -418,6 +420,7 @@ int mpm_is_visible(const mpm_model *m, const mpm_obs *o, int b) {
     { int k = mpm_choice_of_btn(b); if (k >= 0) return m->state == MPM_TITLE_MENU && k < nch(m); }   /* only once a mod registered it */
     if (b == MPB_HOST_START) return m->state == MPM_TITLE_HOST && cur_v2(m);
     if (b == MPB_JOIN_DIV || b == MPB_JOIN_HDR) return m->state == MPM_TITLE_MENU;   /* Host a game ... | divider | Join a game ... */
+    if (b == MPB_LOBBY_QUIT) return m->state == MPM_LOBBY || m->state == MPM_GUEST_LOBBY;
     if (b < 0 || b >= 64) return 0;
     return (int)(mpm_visible(m, o) >> b & 1u);
 }
@@ -519,6 +522,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_COPY_ADDR: snprintf(out, cap, "%s", TR("Copy direct address")); break;
     case MPB_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start"))); break;
     case MPB_LEAVE: snprintf(out, cap, "%s", TR("Leave multiplayer")); break;
+    case MPB_LOBBY_QUIT: snprintf(out, cap, "%s", TR("Quit")); break;
     case MPB_CANCEL_JOIN: snprintf(out, cap, "%s", mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel"))); break;
     case MPB_WATCH: case MPB_HISTW0: case MPB_HISTW1: case MPB_HISTW2: case MPB_HISTW3: case MPB_HISTW4: case MPB_HISTW5: snprintf(out, cap, "%s", TR("Watch")); break;
     case MPB_SPECT_PREV: case MPB_SPECT_NEXT: out[0] = 0; break;

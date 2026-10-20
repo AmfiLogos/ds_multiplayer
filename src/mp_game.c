@@ -1455,6 +1455,13 @@ __attribute__((visibility("default"))) void mp_game_leave_to_title(void) {
     mp_steam_leave();
     if (guest) { quit_pending = 1; rig_log("mp: guest left: back to the title"); }
 }
+/* lobby Quit (owner 2026-10-20): leave the session (host: every guest gets "The host left the game"), then the title for
+   the host too. The same no-autosave quit as above: the stock "Quit to title" asks no save question (SystemMenuView
+   OnQuitToTitlePressed = a Yes/No box only), and the lobby runs before Start (the world is still the loaded save). */
+__attribute__((visibility("default"))) void mp_game_quit_to_title(void) {
+    mp_steam_leave();
+    quit_pending = 1; rig_log("mp: Quit: left the session, back to the title");
+}
 
 void mp_steam_state(mp_steam_info *o) {
     memset(o, 0, sizeof *o);

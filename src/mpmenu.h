@@ -78,6 +78,8 @@ enum mpm_button {
     MPB_HOST_C1, MPB_HOST_C2, MPB_HOST_C3,                                  /* host choices 2..4 (MPB_HOST_FE = choice 1), registration order */
     MPB_HOST_START,                                                         /* host page of a register_host_choice2 choice: Start (page_start) */
     MPB_JOIN_DIV, MPB_JOIN_HDR,                                             /* Multiplayer page: the game's divider + "Join a game" over the join rows (owner v13 item 1) */
+    MPB_LOBBY_QUIT,                                                         /* lobby window: Quit = end the session + the title (owner 2026-10-20); MPB_LEAVE there = Turn off multiplayer (host) */
+    MPB_SHOW_ADDR,                                                          /* lobby window (host, Steam): "Show address for friends without Steam" (game side only) */
     MPB_COUNT
 };
 /* what the game side sees each frame */
@@ -137,6 +139,7 @@ enum {
     MPA_FE_BRING       = 1 << 23,  /* open the Bring units window (lobby, every player) */
     MPA_CHOICE_PAGE    = 1 << 24,  /* host page Start of a register_host_choice2 choice: call its page_start, then mpm_page_started */
     MPA_CHOICE_LOBBY   = 1 << 25,  /* lobby Start of a session hosted from such a choice: call its lobby_start (0 = started) */
+    MPA_QUIT_TITLE     = 1 << 26,  /* with MPA_LEAVE: then back to the title (lobby Quit; the host too) */
 };
 typedef struct mpm_model {
     int state;
@@ -156,7 +159,7 @@ typedef struct mpm_model {
     int nhist, hist_page, hist_pick;                 /* Recent worlds: count (game side), page of 6, picked index */
     char friends[6][48];
     int closed_frames;      /* frames since it closed with no load started */
-    int confirm_leave;      /* host: the "End the game for everyone?" box is up */
+    int confirm_leave;      /* host: the "End the game for everyone?" box is up (2 = for the lobby's Quit: then the title) */
     int watch;              /* the join asked from the title (Connect / Watch, a Recent worlds row) is a spectator join */
     int spect;              /* last obs.spectator (labels) */
     int host_window;        /* last obs.host_window (labels) */
