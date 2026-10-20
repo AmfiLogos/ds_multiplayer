@@ -106,7 +106,19 @@ static char *jstr(const char *j, const char *k, char *out, size_t cap) {   /* "k
 static double jnum(const char *j, const char *k, double d) { char pat[64]; snprintf(pat, sizeof pat, "\"%s\":", k); const char *p = strstr(j, pat); return p ? atof(p + strlen(pat)) : d; }
 static void jesc(char *o, size_t cap, const char *s) { size_t n = 0; for (; *s && n + 3 < cap; s++) { if (*s == '"' || *s == '\\') o[n++] = '\\'; if ((unsigned char)*s < 0x20) continue; o[n++] = *s; } o[n] = 0; }
 
+/* "bring:<name>": the Bring Units card window of the multiplayer module (src/mu_bring.c mu_bring_test_find; since the Units
+   Laboratory split it is there, not in custom-modes). Looked up on use: the module image is mapped by then. */
+static DSLObj mp_bring_target(const char *n) {
+    static DSLObj (*f)(const char *); static int looked;
+    if (!looked) {
+        looked = 1; char p[1200]; snprintf(p, sizeof p, "%s/../multiplayer/multiplayer.dylib", H->module_dir(ME));
+        void *h = dlopen(p, RTLD_NOLOAD | RTLD_LOCAL); if (h) *(void **)&f = dlsym(h, "mu_bring_test_find");
+        H->log(ME, "multiplayer image %p (%s): bring target %p", h, p, (void *)f);
+    }
+    return f ? f(n) : NULL;
+}
 static DSLObj target(const char *t) {
+    if (!strncmp(t, "bring:", 6)) { DSLObj o = mp_bring_target(t + 6); if (o) return o; }
     if (!strcmp(t, "notice_ok")) return t_notice_btn(0);
     if (!strcmp(t, "notice_cancel")) return t_notice_btn(1);
     if (!strncmp(t, "title:", 6)) return t_title(t + 6, NULL, 0);

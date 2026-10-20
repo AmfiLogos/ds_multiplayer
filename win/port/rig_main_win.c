@@ -342,6 +342,7 @@ DSL_EXPORT int dsl_module_load(const DSLHost *host, DSLPlugin *self) {
     AddVectoredExceptionHandler(0, crash_note);
     DH = host; DME = self;
     mp_setting_int_fn = win_setting_int;                                 /* mod settings (mpmenu.h mpm_host_port) */
+    { void mp_cards_host(const DSLHost *, DSLPlugin *); mp_cards_host(host, self); }   /* Bring Units card window: the loader's widget kit (src/mu_ui.c) */
     const char *d = getenv("DSRIG_DIR");
     if (!d || !*d) { host->log(self, "DSRIG_DIR not set: multiplayer inactive"); return 1; }
     snprintf(rig_dir, sizeof rig_dir, "%s", d);

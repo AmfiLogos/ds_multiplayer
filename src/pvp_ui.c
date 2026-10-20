@@ -487,8 +487,9 @@ static void br_send(void) {
     free(r);
     br_refresh();
 }
+static int pv_bring_open(void);
 static int br_click(int k) {                                            /* 1 = a Bring window button */
-    if (k == PVB_BRING) { br_sent[0] = 0; br_show(1); return 1; }   /* units from this player's own saves */
+    if (k == PVB_BRING) { if (!pv_bring_open()) return 1; br_sent[0] = 0; br_show(1); return 1; }   /* units from this player's own saves */
     if (k == PVB_BR_BACK) { br_show(0); return 1; }
     if (k == PVB_BR_SEND) { br_send(); return 1; }
     if (k >= PVB_BR_SAVE0 && k < PVB_BR_SAVE0 + 8) { br_save = k - PVB_BR_SAVE0; br_sent[0] = 0; br_read_units(br_save); br_refresh(); return 1; }
@@ -743,10 +744,33 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     return b.p;
 }
 
+/* Bring Units = the card window (mu_bring.h: this player's own saves, Compact Plus cards with the game's icons), up to this
+   player's share. Without the loader's widget kit (the rig's own dylib) the text list above opens. */
+#include "mu_bring.h"
+int pvp_bring_picks(const mu_pick *picks, int n, char *err, size_t errn);   /* fe_game.c */
+void ui_notice(const char *text);
+static mu_pick pv_last_picks[8]; static int pv_nlast;
+static void pv_bring_done(const mu_pick *picks, int n, void *ud) {
+    (void)ud; if (n < 0) return;
+    char err[300] = "";
+    if (pvp_bring_picks(picks, n, err, sizeof err)) { rig_log("pvp ui: Bring Units: %s", err); snprintf(br_sent, sizeof br_sent, TR("Could not bring the units: %s"), err); dsi_utf8_fix_end(br_sent); ui_notice(err); return; }
+    pv_nlast = n < 8 ? n : 8; memcpy(pv_last_picks, picks, sizeof picks[0] * (size_t)pv_nlast);
+    snprintf(br_sent, sizeof br_sent, TRN("Brought %d unit. The host starts the match with them.", "Brought %d units. The host starts the match with them.", n), n);
+    rig_log("pvp ui: Bring Units: %d unit(s) sent", n);
+    if (pv_open) pv_refresh();
+}
+static int pv_bring_open(void) {
+    char sub[400]; snprintf(sub, sizeof sub, TRN("Up to %d unit for the match. Copies only: your saves do not change.",
+                                                 "Up to %d units for the match. Copies only: your saves do not change.", br_share()), br_share());
+    dsi_utf8_fix_end(sub);
+    mu_bring_req r = { .title = TR("Bring Units"), .subtitle = sub, .max_units = br_share(), .ticked = pv_last_picks, .nticked = pv_nlast, .done = pv_bring_done };
+    return mu_bring_open(&r);
+}
+
 /* ---- PvP v1 lobby (host choice "PvP"): Bring Units from the lobby, who brought what, the host's Start */
-static int v1_lobby_bring(void) { return pvp_v1_world() && !br_open; }
+static int v1_lobby_bring(void) { return pvp_v1_world() && !br_open && !mu_bring_is_open(); }
 static void v1_action(int a) {
-    if ((a & MPA_FE_BRING) && pvp_v1_world()) { br_lobby = 1; br_sent[0] = 0; br_show(1); }
+    if ((a & MPA_FE_BRING) && pvp_v1_world() && pv_bring_open()) { br_lobby = 1; br_sent[0] = 0; br_show(1); }
 }
 static int v1_brought(int player) {                                     /* units the host's roster has from this player */
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;

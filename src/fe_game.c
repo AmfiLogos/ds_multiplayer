@@ -161,6 +161,42 @@ static char *cmd_bring(const char *line) {
     jfree(entries);
     return r;
 }
+/* Bring Units card window (mu_bring.h): the picks of one Bring = one send. Each pick is exported from its save (read only),
+   the way cmd_bring does it. files[i] = the save of entry i. NULL + err on failure. */
+#include "mu_bring.h"
+static jv *picks_entries(const mu_pick *picks, int n, const char *me, const char **files, char *err, size_t errn) {
+    jv *entries = jarr(); size_t nf = 0;
+    for (int i = 0; i < n && nf < 64; i++) {
+        char e1[300]; jv *save = jload(picks[i].save_file, e1, sizeof e1);
+        jv *e = save ? fe_export_entry(save, picks[i].unit_guid, me, e1, sizeof e1) : NULL;
+        jfree(save);
+        if (!e) { jfree(entries); char em[300]; snprintf(err, errn, TR("Could not bring %s: %s"), picks[i].name, cmt_msg(e1, em, sizeof em)); dsi_utf8_fix_end(err); return NULL; }
+        jpush(entries, e); if (files) files[nf] = picks[i].save_file; nf++;
+    }
+    return entries;
+}
+/* Foreign Expedition lobby */
+int fe_bring_picks(const mu_pick *picks, int n, char *err, size_t errn) {
+    char me[33]; dsnet_client *c = cli();
+    if (!c || my_uid_hex(me)) { snprintf(err, errn, "%s", TR("Not in a multiplayer session.")); return -1; }
+    const char *files[64] = { 0 };
+    jv *entries = picks_entries(picks, n, me, files, err, errn);
+    if (!entries) return -1;
+    char *r = send_entries(entries, files, me, "Bring Units");
+    int ok = r && strstr(r, "\"ok\":true");
+    if (!ok) snprintf(err, errn, "%s", TR("The units could not be sent to the host."));
+    free(r); jfree(entries);
+    return ok ? 0 : -1;
+}
+/* PvP (lobby of a PvP world, or the PvP window): the same picks go to the host's PvP list (pvp_units.c) */
+int pvp_units_send_entries(jv *entries, char *err, size_t errn);
+int pvp_bring_picks(const mu_pick *picks, int n, char *err, size_t errn) {
+    char me[33]; dsnet_client *c = cli();
+    if (!c || my_uid_hex(me)) { snprintf(err, errn, "%s", TR("Not in a multiplayer session.")); return -1; }
+    jv *entries = picks_entries(picks, n, me, NULL, err, errn);
+    if (!entries) return -1;
+    return pvp_units_send_entries(entries, err, errn);
+}
 /* ---------------------------------------------------------------- start (host) */
 static const char *fe_host_name(void);
 static char *cmd_start(const char *line) {
