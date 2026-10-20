@@ -191,6 +191,9 @@ static void *const h_scope[NSCOPE] = { h_scope0, h_scope1, h_scope2, h_scope3, h
 
 /* ---------------------------------------------------------------- 3. host-only autosave */
 void trn_set_role(int is_host) { role = is_host ? 1 : 0; }
+/* session over: a guest that left kept role 0, and every RequestAutoSave of its own single-player world after that was
+   dropped (no autosave until the game restarted); a host kept the multiplayer autosave detour */
+void trn_clear_role(void) { role = -1; }
 static Obj save_helper(void) {                 /* MainFlow._eventHandler -> CampaignEventHandler -> _campaignSaveHelper */
     Obj eh = mf ? AT(mf, 0x50, Obj) : NULL; Obj ce = eh ? AT(eh, 0x20, Obj) : NULL;
     return ce ? AT(ce, 0xA8, Obj) : NULL;

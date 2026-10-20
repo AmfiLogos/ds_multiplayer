@@ -855,7 +855,10 @@ static void observe(mpm_obs *o) {
     o->campaign_ready = o->scene == 2 && c && AT(c, 0x10, int32_t) != -1 && !busy() && tick() > 0;
     Obj tv = o->scene == 1 ? title_view() : NULL;
     o->title_visible = tv && u_on(tv);
-    o->picker_open = o->scene == 1 && popup_open(5);                         /* SaveLoadUI */
+    /* SaveLoadUI or CreateCampaign: the title view stays active under the new-campaign screen, so without popup 7 a
+       Cancel there left the menu in PICK_NEW and the next single-player load was hosted (Foctopus 2026-10-20) */
+    o->picker_open = o->scene == 1 && (popup_open(5) || popup_open(7));
+    { Obj dd = o->scene == 2 && c ? AT(c, 0x40, Obj) : NULL; o->tutorial = dd && AT(dd, 0x10, int32_t) == 7; }   /* CampaignDataContainer dungeon data: region 7 = Tutorial */
     o->loading = busy();
     static int (*load_pending)(void); static int lp_looked;                /* mpglue: an mp load / reload / retry runs */
     if (!lp_looked) { lp_looked = 1; load_pending = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_load_pending"); }
@@ -2297,6 +2300,8 @@ static void notice_frame(const mpm_obs *o) {
     static int calm_scene;
     if (o->scene != calm_scene) { calm_scene = o->scene; title_calm = 0; }
     title_calm = (o->scene == 1 && o->title_visible && !o->loading) || (o->scene == 2 && M.state == MPM_FAILED && o->campaign_ready && !o->loading) ? title_calm + 1 : 0;
+    if (M.notice[0] && title_calm && o->scene == 2)                         /* a world pop-up (tutorial, story event) draws over the box: */
+        for (int i = 2; i < 30; i++) if (popup_open(i)) { title_calm = 0; break; }   /* show it once they stay closed */
     if (HM.pending) M.notice[0] = 0;                                        /* the hostmods box says it (hostmods_frame) */
     if (!M.notice[0] || title_calm < 90) return;                            /* the loading curtain is gone (~3 s of title, or of the world) */
     if (M.confirm_leave) return;                                            /* never over the Leave box */
@@ -4348,10 +4353,20 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     }
     if (!strcmp(cmd, "mpm_testchoice")) return testchoice_exec(line);    /* test: dummy register_host_choice2 choices */
     if (!strcmp(cmd, "mpm_newcampaign")) {                                  /* test: what the new-campaign screen's Start sends */
+        double cn = 0;
+        if (jnum(line, "cancel", &cn) && cn != 0) {                         /* {cancel:1}: the screen's own Cancel button (CreateCampaignView.OnClickedCancelButton) */
+            static uintptr_t h_ccv; static void *k_ccv; Obj v = find_view_x(&h_ccv, &k_ccv, "Refactor.UI", "CreateCampaignView", false);
+            static void *mpress; if (!mpress) mpress = mth("UnityEngine.UI", "Button", "Press", 0);   /* _cancelButton +0x68: what a click runs */
+            Obj cb = v ? AT(v, 0x68, Obj) : NULL; if (u_alive(cb) && mpress) MCALL(mpress, void, Obj, const void *)(cb, mpress);
+            char o[64]; snprintf(o, sizeof o, "{\"ok\":%s,\"open\":%d}", v ? "true" : "false", popup_open(7)); return strdup(o);
+        }
+        if (jnum(line, "popups", &cn) && cn != 0) { char o[256] = "{\"ok\":true,\"open\":["; for (int i = 1; i < 32; i++) if (popup_open(i)) snprintf(o + strlen(o), sizeof o - strlen(o), "%d,", i); strcat(o, "0]}"); return strdup(o); }   /* {popups:1}: open stock pop-ups */
+        if (jnum(line, "close", &cn) && cn != 0) { Obj p = popups(); if (p && popup_open((int)cn)) F(0xF62A88, void (*)(Obj, int, void *))(p, (int)cn, NULL); return strdup("{\"ok\":true}"); }   /* {close:N}: DeactivateView(N), as the pop-up's own close */
+        if (jnum(line, "probe", &cn) && cn != 0) { char o[64]; snprintf(o, sizeof o, "{\"ok\":true,\"open\":%d}", popup_open(7)); return strdup(o); }
         char nm[64] = "MP Test", sd[32] = "12345"; double sc = 1, cd = 1, md = 1; jstr(line, "name", nm, sizeof nm); jstr(line, "seed", sd, sizeof sd); jnum(line, "scenario", &sc);
-        jnum(line, "combat", &cd); jnum(line, "mgmt", &md);                 /* difficulties (default 1); Hell = 5 */
+        double tut = 0; jnum(line, "combat", &cd); jnum(line, "mgmt", &md); jnum(line, "tutorial", &tut);   /* difficulties (default 1); Hell = 5; tutorial 1 = PlayTutorial */
         Obj ev = obj_new(0x664BC18);                                        /* CreateCampaignRequested */
-        F(0xD61EDC, void (*)(Obj, Obj, int, int, int, Obj, bool, bool, bool, Obj, bool, void *))(ev, u_str(nm), (int)sc, (int)cd, (int)md, u_str(sd), false, false, false, u_str(""), false, NULL);
+        F(0xD61EDC, void (*)(Obj, Obj, int, int, int, Obj, bool, bool, bool, Obj, bool, void *))(ev, u_str(nm), (int)sc, (int)cd, (int)md, u_str(sd), false, false, tut != 0, u_str(""), false, NULL);
         F(0xCCFAD4, void (*)(Obj, Obj, void *))(AT(mf, 0x48, Obj), ev, NULL);
         return strdup("{\"ok\":true}");
     }

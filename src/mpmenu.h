@@ -100,6 +100,7 @@ typedef struct mpm_obs {
     char msg_v1[160];       /* layout only: the text is msg, appended at the end */
     int end;                /* MPM_END_*: what msg says, for the logic (msg is in the player's language) */
     char msg[512];          /* why the session ended / failed (mp_steam_state), "" none; display text (translated). Appended (i18n) */
+    int tutorial;           /* the world on screen is in the tutorial (campaign dungeon region = DungeonRegion.Tutorial 7). Appended */
 } mpm_obs;
 /* why a session ended (mpm_obs.end; mp_game's mp_steam_end_code): the logic switches on this, never on the text */
 enum { MPM_END_OTHER = 0,       /* msg is shown as is (or: a failed join) */
