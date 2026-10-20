@@ -166,6 +166,7 @@ os.replace(os.path.join(OUT_CM, "lists.txt.tmp"), os.path.join(OUT_CM, "lists.tx
 # generated custom files of older runs sat in build/gen (compiled into multiplayer by its *.c glob): move them out
 os.makedirs(os.path.join(os.path.dirname(OUT), "old_gen"), exist_ok=True)
 for b in seen:
+    if b in FILES: continue                     # also a multiplayer source (the Bring Units card copies: mu_ui.c, cm_il.c ...)
     if os.path.exists(os.path.join(OUT, b)): os.replace(os.path.join(OUT, b), os.path.join(os.path.dirname(OUT), "old_gen", b))
 FILES += [f"custom/{f}" for f in CUSTOM_SOLO + CUSTOM_MP if os.path.exists(os.path.join(CUSTOM, f))]
 for fn in FILES:

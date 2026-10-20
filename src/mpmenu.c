@@ -1059,8 +1059,10 @@ static char test_hover[64];                                                  /* 
 char tip_now[64];                                                     /* test status: the title shown this frame */
 static int tip_hit;
 static inline bool u_on_tree(Obj comp) { Obj g = u_alive(comp) ? u_go(comp) : NULL; return g && mm_is(g, K_GO) && F(0x50F3724, bool (*)(Obj, void *))(g, NULL); }   /* activeInHierarchy */
+int mu_bring_is_open(void);                                           /* mu_bring.c: the Bring Units card window */
 int tip_try(Obj o, const char *title, const char *body) {
     if (tip_hit || !o || !u_on_tree(o)) return 0;
+    if (mu_bring_is_open()) return 0;                                       /* our menus' tips (mouse-in-rect) never through the card window */
     int hov;
     if (test_hover[0]) hov = !strcmp(test_hover, title);
     else { float r[4]; V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL); hov = rect_of(o, r) && m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]; }

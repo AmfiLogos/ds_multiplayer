@@ -52,6 +52,7 @@ typedef struct simstate {
 
 struct dsnet_client {
     dsnet_link link;
+    uint8_t hello_uid[16];             /* the stable id this client sent in its HELLO (the server stamps it on PLAYER_JOIN) */
     pthread_t th;
     volatile int running;
     pthread_mutex_t mu;
@@ -415,6 +416,7 @@ static dsnet_client *client_new(int fd, const char *name, int want_host, int rol
     p = put8(p, P_HELLO); p = put16(p, DSNET_PROTO); p = put8(p, want_host);
     p = put32(p, dsnet_mod_version); p = put32(p, (uint32_t)fegetround());
     if (dsnet_uid_set) memcpy(p, dsnet_uid, 16); else arc4random_buf(p, 16);
+    memcpy(c->hello_uid, p, 16);
     p += 16;
     p = put8(p, bl); memcpy(p, dsnet_build_id, bl); p += bl;
     p = put8(p, dsnet_match_rule); p = put8(p, ml); memcpy(p, dsnet_modset, ml); p += ml;
@@ -1546,9 +1548,14 @@ int dsnet_mail_poll(dsnet_client *c, uint8_t from_uid[16], uint8_t *kind, uint8_
     free(m);
     return 1;
 }
+/* My stable id once the server has welcomed me. The sim registers it only when my PLAYER_JOIN command runs in a step, and
+   a host alone in its lobby holds the world (0 ticks): before that, the id from my HELLO (the same one the server stamps
+   on my PLAYER_JOIN). Without this fallback a host alone could not bring units ("Not in a multiplayer session"). */
 int dsnet_my_uid(dsnet_client *c, uint8_t uid[16]) {
     if (!c || c->player < 0) return -1;
-    return dsnet_player_uid(c, c->player, uid);
+    if (!dsnet_player_uid(c, c->player, uid)) return 0;
+    if (uid) memcpy(uid, c->hello_uid, 16);
+    return 0;
 }
 
 int dsnet_request_resync(dsnet_client *c) {

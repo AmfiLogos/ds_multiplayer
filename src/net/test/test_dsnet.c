@@ -1399,6 +1399,22 @@ static void test_hold(void) {
 }
 
 /* ---- 18. frozen game threads (map load, big save) with a live link: nobody disconnects (default 5 s limit) ---- */
+/* A host alone in its lobby (v0.1.19 VM report: "Not in a multiplayer session" when the host brought units before anyone
+   joined): the lobby hold goes on before the host's first tick, so its PLAYER_JOIN does not run in its sim yet. My stable
+   id must still be known (it is the HELLO id), else Bring Units is refused. */
+static void test_host_alone(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_cfg cfg = test_cfg(2);
+    dsnet_server *srv = dsnet_server_start(&cfg);
+    peer *h = peer_new("host", connect_as(srv, "host", 0xC0, 1), 420); dsnet_wait_welcome(h->c, 2000);
+    dsnet_hold(h->c, 1, DSNET_HOLD_LOBBY, NULL);                   /* mpmenu lobby_hold(1), before any frame */
+    peer_go(h); sleep_ms(400);
+    uint8_t u[16], want[16]; memset(want, 0xC0, 16); memset(u, 0, 16);
+    int rc = dsnet_my_uid(h->c, u);
+    CHECK(rc == 0 && !memcmp(u, want, 16), "host alone in a held lobby: dsnet_my_uid failed or returned another id");
+    peer *ps[1] = { h }; stop_all(ps, 1, srv);
+    printf("%s host_alone: lobby hold before the host's first tick, its own id still known (%.1fs)\n", ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
+}
 static void test_freeze8(void) {
     int ok = 1; double t0 = now_ms();
     dsnet_server *srv; peer *ps[3];
@@ -2518,6 +2534,7 @@ int main(int argc, char **argv) {
     if (!only) for (int i = 0; i < 2; i++) { char *fa[] = { argv[0], "--only", (char *)side[i], NULL }; posix_spawn(&kids[i], argv[0], NULL, NULL, fa, environ); }
 #define RUN(name, fn) if (!only || !strcmp(only, name)) fn
     RUN("basic", test_basic());
+    RUN("host_alone", test_host_alone());
     RUN("latency", test_latency());
     RUN("netlag", test_netlag());
     RUN("slow", test_slow_peer());
