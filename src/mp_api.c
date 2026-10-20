@@ -32,6 +32,7 @@ static int a_players(mp_player *out, int max) {
     }
     return n;
 }
+__attribute__((visibility("default"))) int (*mp_setting_int_fn)(const char *id, int dflt);   /* mpmenu.h mpm_host_port; set by the loader glue */
 const char *mp_session_busy_reason(void) {
     if (mp_game_session()) return TR("a multiplayer game is running");      /* shown by the loader (same process, same language) */
     switch (M.state) {
