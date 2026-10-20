@@ -210,6 +210,13 @@ typedef struct dsnet_server_stats {
 } dsnet_server_stats;
 extern uint32_t dsnet_log_trim_min;   /* trim the server log in chunks of at least this many entries (default 4096; tests) */
 void dsnet_server_get_stats(dsnet_server *s, dsnet_server_stats *out);
+/* Host only: how player `player` is connected (enum dsnet_via) and, for DSNET_VIA_DIRECT / STEAM, its TCP peer as
+ * "a.b.c.d:port" in out ("" otherwise). Players only (no spectators); DSNET_VIA_UNKNOWN when not connected. */
+int  dsnet_server_peer(dsnet_server *s, int player, char *out, size_t n);
+/* Relay bridges (Steam P2P) reach the server over loopback TCP: they mark their loopback source port here, and a
+ * server connection from 127.0.0.1:<port> then counts as DSNET_VIA_STEAM. on = 0 removes the mark. Any thread. */
+void dsnet_relay_port_mark(uint16_t port, int on);
+int  dsnet_relay_port_is(uint16_t port);
 
 /* ---- client side ---- */
 typedef void (*dsnet_cmd_cb)(const dsnet_cmd *cmd, void *user);
@@ -400,6 +407,10 @@ size_t   dsnet_save_overhead(dsnet_client *c);       /* bytes dsnet would put in
 /* Player list (from the server, ~5 Hz). state: enum dsnet_net_state. 0 ok, -1 absent. */
 enum dsnet_net_state { DSNET_NET_ABSENT = 0, DSNET_NET_IN_SYNC, DSNET_NET_RESYNCING, DSNET_NET_LOADING };
 int      dsnet_player_net(dsnet_client *c, int player, int *ping_ms, int *ticks_behind, int *state);
+/* How a player reaches the host (owner 2026-10-20: the players rows say "Steam" or "Direct"). From the server's player
+ * list, the same on every peer: guests learn the kind only, never an address (dsnet_server_peer, host only). */
+enum dsnet_via { DSNET_VIA_UNKNOWN = 0, DSNET_VIA_HOST, DSNET_VIA_DIRECT, DSNET_VIA_STEAM };
+int      dsnet_player_via(dsnet_client *c, int player);
 /* Host lobby settings from the WELCOME. With allow_pause 0 the game hook should also stop local
  * popups (letters, dialogs) from pausing the game. */
 int      dsnet_allow_speedup(dsnet_client *c);

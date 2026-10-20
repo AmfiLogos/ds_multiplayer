@@ -1211,6 +1211,25 @@ int mp_game_join(const mp_config *c) {
 
 int mp_game_steam_invite(void) { return steam_host ? dsnet_steam_host_invite(steam_host) : -1; }
 
+/* conninfo (owner 2026-10-20): how `player` is connected, as this copy may say it (enum dsnet_via).
+   Host: itself = DSNET_VIA_HOST; a guest = DIRECT / STEAM with its "ip:port" in addr (only the host has guests' addresses).
+   Guest: the kind from the host's player list. Its own row and the host's row (player 0) = how this copy reached the host;
+   addr (host's row only) = the address it joined for a direct join. Another guest's address is never known here. */
+__attribute__((visibility("default"))) int mp_game_conn(int player, char *addr, size_t n) {
+    if (addr && n) addr[0] = 0;
+    if (!S) return steam_join && !cfg.host ? DSNET_VIA_STEAM : DSNET_VIA_UNKNOWN;
+    if (cfg.host) return player == 0 ? DSNET_VIA_HOST : dsnet_server_peer(mp_server(S), player, addr, n);
+    dsnet_client *c = mp_client(S); int me = c ? dsnet_player_id(c) : -1;
+    if (player != 0 && player != me) return c ? dsnet_player_via(c, player) : DSNET_VIA_UNKNOWN;
+    int v = me >= 0 ? dsnet_player_via(c, me) : DSNET_VIA_UNKNOWN;   /* how the host sees this copy's link */
+    if (v != DSNET_VIA_STEAM && v != DSNET_VIA_DIRECT) v = steam_join ? DSNET_VIA_STEAM : DSNET_VIA_DIRECT;
+    if (v == DSNET_VIA_DIRECT && player == 0 && addr && n) {
+        if (strchr(cfg.host_addr, ':')) snprintf(addr, n, "[%s]:%u", cfg.host_addr, (unsigned)cfg.port);
+        else snprintf(addr, n, "%s:%u", cfg.host_addr, (unsigned)cfg.port);
+    }
+    return v;
+}
+
 /* ux_flow F9: an invite accepted while a single-player world runs never replaces it on its own. The join waits for the
    player's answer (mpmenu shows "Join <host>? Your unsaved progress here will be lost." with Save and join / Join / Cancel):
    mp_game_invite_pending gives the host's name, mp_game_invite_answer the choice. On the title it joins at once. */

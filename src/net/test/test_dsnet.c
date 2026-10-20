@@ -2434,6 +2434,35 @@ static void test_fe_start(void) {
            ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
 }
 
+/* conninfo (owner 2026-10-20): every peer learns how each player is connected (host / direct / Steam bridge); only the host
+   has addresses. Breaks if the via bytes are lost, misread, or a Steam guest (loopback from a marked bridge port) shows as direct. */
+static void test_conn_via(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_server *srv; peer *ps[3];
+    if (setup(&srv, ps, 3, 300, NULL, NULL)) { printf("  FAIL setup\n"); failures++; return; }
+    for (int i = 0; i < 3; i++) peer_go(ps[i]);
+    sleep_ms(400);
+    char a1[64], a2[64];
+    CHECK(dsnet_server_peer(srv, 1, a1, sizeof a1) == DSNET_VIA_DIRECT && !strncmp(a1, "127.0.0.1:", 10), "host: c1 direct with its address (%s)", a1);
+    CHECK(dsnet_server_peer(srv, 0, a2, sizeof a2) == DSNET_VIA_HOST && !a2[0], "host: own row is the host, no address");
+    dsnet_server_peer(srv, 2, a2, sizeof a2);
+    const char *pc = strrchr(a2, ':'); uint16_t p2 = pc ? (uint16_t)atoi(pc + 1) : 0;
+    CHECK(p2 != 0, "host: c2 has a peer port (%s)", a2);
+    dsnet_relay_port_mark(p2, 1);                            /* what the Steam bridge does for its loopback hop */
+    sleep_ms(500);
+    CHECK(dsnet_server_peer(srv, 2, a2, sizeof a2) == DSNET_VIA_STEAM, "host: c2 through the bridge = Steam");
+    for (int i = 0; i < 3; i++) {
+        CHECK(dsnet_player_via(ps[i]->c, 0) == DSNET_VIA_HOST, "%s: player 0 = host (%d)", ps[i]->name, dsnet_player_via(ps[i]->c, 0));
+        CHECK(dsnet_player_via(ps[i]->c, 1) == DSNET_VIA_DIRECT, "%s: c1 = direct (%d)", ps[i]->name, dsnet_player_via(ps[i]->c, 1));
+        CHECK(dsnet_player_via(ps[i]->c, 2) == DSNET_VIA_STEAM, "%s: c2 = Steam (%d)", ps[i]->name, dsnet_player_via(ps[i]->c, 2));
+    }
+    dsnet_relay_port_mark(p2, 0);
+    CHECK(!dsnet_relay_port_is(p2), "bridge closed: mark removed");
+    wait_done(ps, 3, 15000);
+    stop_all(ps, 3, srv);
+    printf("%s conn_via: host / direct / Steam seen by every peer, address on the host only (%.1fs)\n", ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
+}
+
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     const char *role = NULL, *out = NULL, *only = NULL;
@@ -2500,6 +2529,7 @@ int main(int argc, char **argv) {
     RUN("ownersplit", test_owner_split());
     RUN("fe_mail", test_fe_mail());
     RUN("fe_start", test_fe_start());
+    RUN("conn_via", test_conn_via());
     if (only && !strcmp(only, "lowfps")) test_low_fps();
     RUN("multiproc", test_multiproc(argv[0]));
     for (int i = 0; i < 2; i++) if (kids[i]) {

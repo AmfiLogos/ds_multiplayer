@@ -2187,6 +2187,7 @@ static float pl_y0;
 static int pl_anchor_bar, pl_pop;                            /* pl_pop: the cog is pressed (settings rows shown) */
 static float pl_cur_L, pl_cur_Y; static int pl_shown, pl_hide_why, cog_has_icon;       /* where the panel is now (lan_v8 drag) */
 static int row_player[19];                                   /* player of each row (connection tooltip; PL_MAXROWS + 1) */
+int mpmenu_conn_words(int player, char *out, size_t n);       /* mpmenu.c (conninfo): "Steam" / "Direct (ip:port)" */
 static int row_lvl[19];                                      /* its connection level (ui_conn_level; -2 = left, -3 = "Watching" divider) */
 static int row_watch[19];                                    /* the row is a spectator (no Follow / look menu: they send no view) */
 typedef struct { float x, y, w, h; } RectF4;
@@ -2556,7 +2557,7 @@ static void plist_frame(void) {
     dsnet_client *c = cli(); ui_players p; players(&p);
     mp_stats ms; mp_get_stats(sess(), &ms);
     /* rows: present players, then players that left and are waited for (red X) */
-    char bl[2600] = "<line-height=32>", br[1200] = "<line-height=32>", row[256], rr[128];
+    char bl[2600] = "<line-height=32>", br[3200] = "<line-height=32>", row[256], rr[200];
     size_t nl = strlen(bl), nr = strlen(br); int np = 0, rows = 0, lvl[PL_MAXROWS], worst = 3;
     memset(row_watch, 0, sizeof row_watch);
     for (int i = 0; i < UI_MAX_PLAYERS && rows < PL_MAXROWS; i++) {
@@ -2571,7 +2572,10 @@ static void plist_frame(void) {
         lvl[rows] = i == me() ? -1 : ui_conn_level(ping, behind, state); row_lvl[rows] = lvl[rows];
         row_player[rows] = i;
         if (lvl[rows] >= 0 && lvl[rows] < worst) worst = lvl[rows];
-        snprintf(rr, sizeof rr, "%s", i == me() ? ui_col("#a69085", TR("You")) : " ");
+        { char cw[128];                                      /* conninfo (owner 2026-10-20): how that player is connected; space for its bars */
+          if (i == me()) snprintf(rr, sizeof rr, "%s", ui_col("#a69085", TR("You")));
+          else if (mpmenu_conn_words(i, cw, sizeof cw)) snprintf(rr, sizeof rr, "<margin-right=26><color=#a69085>%s</color></margin>", cw);
+          else snprintf(rr, sizeof rr, " "); }
         nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "%s%s", rows ? "\n" : "", row);
         nr += (size_t)snprintf(br + nr, sizeof br - nr, "%s%s", rows ? "\n" : "", rr);
         rows++;

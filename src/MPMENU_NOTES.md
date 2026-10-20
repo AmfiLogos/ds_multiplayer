@@ -170,3 +170,16 @@ Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_men
   until the split. FE "Death permanent" default Off.
 - "Remove tag" text now sits under the world row (not under its open/close button): a click no longer folds the row.
 - Test: ext/wpmenu/tests/menu_pair.py (fake-mouse build), 17/17 on GH.
+
+## Connection words in the players rows (owner 2026-10-20, branch conninfo)
+- dsnet: the server's P_PLAYERS list appends one `enum dsnet_via` byte per entry after the 6-byte entries (older clients
+  stop at 2 + 6 n): HOST (own socket pair), DIRECT (TCP), STEAM (loopback from a port the Steam bridge marked with
+  `dsnet_relay_port_mark`, net/steam/dsnet_steam.c host_bridge). `dsnet_player_via` (every peer: kind only),
+  `dsnet_server_peer` (host only: the guest's "ip:port"). Host test: net/test `--only conn_via`.
+- `mp_game_conn` (mp_game.c) + `mpmenu_conn_words` (mpmenu.c): host's own row "Steam lobby" / its internet (else local)
+  address; host about a guest "Steam" / "Direct (ip:port)"; guest "Steam" / "Direct", the host's row adds the address it
+  joined. Another guest's address is never shown (guests never receive it).
+- Lobby rows (lw_texts): a small grey second line under the name. Guest lobby: T_CONN under the players,
+  "Connected to <host> through Steam" / "Connected to <ip:port>". In game: ui_game.c Players panel right column.
+- Test: `mpm_conn` (rows' via + words; test copies: `{mark:id}` on the host marks that guest's loopback port like the
+  Steam bridge); mpm_status lw.conn, lw.addr_rects (frames mask this Mac's addresses). Pair test ext/conninfo/conninfo_pair.py.

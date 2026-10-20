@@ -70,7 +70,7 @@ struct dsnet_client {
     dsnet_mark_ev marks[64]; uint32_t mark_head, mark_tail;                            /* ping events ring */
     int allow_speedup, pause_mode, gear_mode, busy;
     uint32_t busy_mask;
-    struct { uint8_t state; uint16_t ping, behind; } net[DSNET_MAX_PLAYERS];
+    struct { uint8_t state, via; uint16_t ping, behind; } net[DSNET_MAX_PLAYERS];   /* via: enum dsnet_via */
     uint32_t fp_interval;
     uint32_t tick_until, remote_timer, remote_sent, received;
     float tpt_ms;
@@ -154,6 +154,8 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
             const uint8_t *e = p + 2 + 6 * i;
             if (e[0] < DSNET_MAX_PLAYERS) { c->net[e[0]].state = e[1]; c->net[e[0]].ping = get16(e + 2); c->net[e[0]].behind = get16(e + 4); }
         }
+        if (n >= 2 + 7u * p[1])                              /* one via byte per entry after them (conninfo, 2026-10-20) */
+            for (int i = 0; i < p[1]; i++) { const uint8_t *e = p + 2 + 6 * i; if (e[0] < DSNET_MAX_PLAYERS) c->net[e[0]].via = p[2 + 6 * p[1] + i]; }
         break;
     case P_SPECT: {                                          /* spectators: came / went lines (not on the first list) */
         if (n < 4 || n < 4 + 36u * p[3]) return;
@@ -1738,6 +1740,14 @@ int dsnet_player_net(dsnet_client *c, int player, int *ping_ms, int *ticks_behin
     if (state) *state = st;
     pthread_mutex_unlock(&c->mu);
     return st == DSNET_NET_ABSENT ? -1 : 0;
+}
+
+int dsnet_player_via(dsnet_client *c, int player) {
+    if (!c || player < 0 || player >= DSNET_MAX_PLAYERS) return DSNET_VIA_UNKNOWN;
+    pthread_mutex_lock(&c->mu);
+    int v = c->net[player].state == DSNET_NET_ABSENT ? DSNET_VIA_UNKNOWN : c->net[player].via;
+    pthread_mutex_unlock(&c->mu);
+    return v;
 }
 
 int dsnet_is_disconnected(dsnet_client *c) { pthread_mutex_lock(&c->mu); int r = c->disconnected; pthread_mutex_unlock(&c->mu); return r; }

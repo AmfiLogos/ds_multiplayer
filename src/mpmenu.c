@@ -1658,7 +1658,7 @@ enum { LW_START, LW_INVITE, LW_COPY, LW_LEAVE, LW_GEAR, LW_BRING, LW_NB };
 static const int lw_ids[LW_NB] = { MPB_START, MPB_INVITE, MPB_COPY_ADDR, MPB_LEAVE, MPB_LOBBY_SETTINGS, MPB_FE_BRINGWIN };
 uintptr_t h_lwr[MPB_COUNT];                       /* the lobby Rules panel's arrows + Done, by button id */
 #define LW_ROWS 4
-enum { T_TITLE, T_HINT, T_GUEST, T_PLAYERS, T_INV, T_RULES, T_INV_ADDR, T_INV_NOTE, T_RULES_NOTE, T_NOTE,
+enum { T_TITLE, T_HINT, T_GUEST, T_PLAYERS, T_INV, T_RULES, T_INV_ADDR, T_INV_NOTE, T_RULES_NOTE, T_NOTE, T_CONN,
        T_R0L, T_R1L, T_R2L, T_R3L, T_R4L, T_R5L, T_R6L, T_R7L, T_R8L, T_R0V, T_R1V, T_R2V, T_R3V, T_R4V, T_R5V, T_R6V, T_R7V, T_R8V, T_NT };
 _Static_assert(T_R0V - T_R0L == MPM_RULE_ROWS, "one label + one value text per rules row");
 uintptr_t h_lw_root; static uintptr_t h_lw_view, h_lw_area, h_lwb[LW_NB], h_lwt[T_NT];
@@ -1672,6 +1672,24 @@ static char lobby_addr[96];                              /* the address in the l
 static float lw_h = 740;
 static float lw_note_h;                                 /* steaminv: height of the note under Steam invite (ui_friends.c) */
 int ui_friends_invite_click(void); float ui_friends_lobby_note(float x, float y, float w, int steam);
+int mp_game_conn(int player, char *addr, size_t n);      /* mp_game.c (conninfo): enum dsnet_via + the address this copy may show */
+/* conninfo (owner 2026-10-20): the connection words of a players row, for the lobby and ui_game.c's Players panel.
+   Host's own row: "Steam lobby" while its Steam lobby is up, else its address (internet when known, else local).
+   Host about a guest: "Steam" or "Direct (ip:port)". Guest: "Steam" / "Direct"; the host's row adds the address it joined
+   by address. Another guest's address is never shown (only the host has it). 0 = nothing to say. */
+__attribute__((visibility("default"))) int mpmenu_conn_words(int player, char *out, size_t n) {
+    if (!out || !n) return 0;
+    out[0] = 0;
+    char a[96]; int v = mp_game_conn(player, a, sizeof a);
+    if (v == DSNET_VIA_HOST) {
+        mp_steam_info in; mp_steam_state(&in);
+        if (in.steam && in.lobby && in.lobby != ~0ull) snprintf(out, n, "%s", TR("Steam lobby"));
+        else if (inet_state == EXTADDR_OK && M.internet[0]) snprintf(out, n, "%s", M.internet);
+        else snprintf(out, n, "%s", M.direct);
+    } else if (v == DSNET_VIA_STEAM) snprintf(out, n, "%s", TR("Steam"));
+    else if (v == DSNET_VIA_DIRECT) { if (a[0]) snprintf(out, n, TR("Direct (%s)"), a); else snprintf(out, n, "%s", TR("Direct")); }
+    return out[0] != 0;
+}
 static Obj lwt(int k) { Obj t = u_gc_get(h_lwt[k]); return u_alive(t) ? t : NULL; }
 #define LX(x) ((x) - 440.0f)
 #define LY(y) (lw_h / 2 - (y))
@@ -1699,7 +1717,8 @@ static void lw_build(Obj v, int host) {
     mk_img(tpl_img, R, -1, C_ROW1, 0, LY(host ? 97 : 99), 876, host ? 49 : 53);
     mk_img(tpl_img, R, -1, C_ROW2, 0, LY(host ? 122 : 126), 876, 1);
     if (host) T(T_HINT, 0, 16, 513, 0, 0, LY(97), 816, 30, C_SUB)
-    else { KEEP(h_lw_guestdot, mk_txt(tpl_txt, R, 0, 26, 514, 0, LX(37), LY(99), 20, 30, C_GOLD)); T(T_GUEST, 0, 18, 513, 0, LX(54 + 300), LY(99), 600, 30, C_MAIN); }
+    else { KEEP(h_lw_guestdot, mk_txt(tpl_txt, R, 0, 26, 514, 0, LX(37), LY(99), 20, 30, C_GOLD)); T(T_GUEST, 0, 18, 513, 0, LX(54 + 300), LY(99), 600, 30, C_MAIN);
+           T(T_CONN, 0, 14, 513, 0, LX(32 + 198), 0, 396, 24, C_SUB); }  /* conninfo: under the players (placed in lw_texts) */
     /* section headers: Cinzel 20 gold between two lines (lines placed at refresh, once the text width is known) */
     T(T_PLAYERS, 1, 20, 514, 0, LX(32 + 198), LY(159), 200, 28, C_GOLD);
     T(T_RULES, 1, 20, 514, 0, LX(452 + 198), LY(159), 200, 28, C_GOLD);
@@ -1780,6 +1799,13 @@ static void lw_texts(void) {
     if (host) tmp_set(lwt(T_TITLE), TR("Multiplayer Lobby")); else { snprintf(b, sizeof b, TR("%s's Lobby"), hn); tmp_set(lwt(T_TITLE), b); }
     tmp_set(lwt(T_HINT), TR("Share your address, then press Start when everyone is in."));
     snprintf(b, sizeof b, TR("Waiting for %s to start"), hn); tmp_set(lwt(T_GUEST), b);
+    if (!host && lwt(T_CONN)) {                                            /* conninfo: "Connected to <host> through Steam" / "... to <ip:port>" */
+        char a[96]; int v = mp_game_conn(0, a, sizeof a);
+        if (v == DSNET_VIA_STEAM) snprintf(b, sizeof b, TR("Connected to %s through Steam"), hn);
+        else if (v == DSNET_VIA_DIRECT && a[0]) snprintf(b, sizeof b, TR("Connected to %s"), a);
+        else b[0] = 0;
+        tmp_set(lwt(T_CONN), b);
+    }
     if (u_gc_get(h_lw_guestdot)) tmp_set(u_gc_get(h_lw_guestdot), "\xE2\x80\xA2");
     int n = in.nplayers > 0 ? in.nplayers : 1;
     snprintf(b, sizeof b, TR("Players (%d)"), n); tmp_set(lwt(T_PLAYERS), b); tmp_set(lwt(T_RULES), TR("Rules")); tmp_set(lwt(T_INV), TR("Invite"));
@@ -1796,9 +1822,12 @@ static void lw_texts(void) {
         if (shown) {
             int id = in.nplayers > 0 ? in.players[i].id : 0, me = in.nplayers > 0 ? in.player : 0;
             const char *nmn = in.nplayers > 0 && in.players[i].name[0] && strcmp(in.players[i].name, "player") ? in.players[i].name : in.nplayers > 0 ? TR("Player") : my_name;
-            tmp_set(nm, nmn); snprintf(lw_rowname[i], sizeof lw_rowname[i], "%s", nmn);
+            char rowt[400]; snprintf(rowt, sizeof rowt, "%s", nmn); snprintf(lw_rowname[i], sizeof lw_rowname[i], "%s", nmn);
             for (int k = 0; k < nhooks; k++) { char t2[160];                /* Custom Modes (Foreign Expedition): "2 units brought" / "Choosing units..." */
-                if (hooks[k].lobby_name && hooks[k].lobby_name(id, nmn, t2, sizeof t2)) { tmp_set(nm, t2); break; } }
+                if (hooks[k].lobby_name && hooks[k].lobby_name(id, nmn, t2, sizeof t2)) { snprintf(rowt, sizeof rowt, "%s", t2); break; } }
+            { char cw[128]; size_t rl = strlen(rowt);                      /* conninfo: how this player is connected, under the name */
+              if (mpmenu_conn_words(id, cw, sizeof cw) && rl < sizeof rowt) snprintf(rowt + rl, sizeof rowt - rl, "\n<size=75%%><color=#A69085>%s</color></size>", cw); }
+            tmp_set(nm, rowt);
             { char d[48]; snprintf(d, sizeof d, "<color=%s>\xE2\x80\xA2</color>", ui_player_color(id)); tmp_set(dot, d); }   /* the player's colour */
             int ping = 0, behind = 0, state = DSNET_NET_IN_SYNC;
             if (c && in.nplayers > 0) dsnet_player_net(c, id, &ping, &behind, &state);
@@ -1823,6 +1852,7 @@ static void lw_texts(void) {
     /* header lines + invite block position (after the visible rows) */
     float rows_end = 182 + 44 * (n < LW_ROWS ? n : LW_ROWS);
     lw_header_lines(0, lwt(T_PLAYERS), 32, 396, LY(159), 0);
+    if (!host && lwt(T_CONN)) place(lwt(T_CONN), LX(32 + 198), LY(rows_end + 20), 396, 24);
     lw_header_lines(2, lwt(T_RULES), 452, 396, LY(159), host ? 42 : 0);
     if (host) {
         float hy = rows_end + 18 + 13;
@@ -1868,7 +1898,7 @@ static void lw_texts(void) {
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
     /* height from the content: no empty band under the columns; the window stays centred */
-    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + 40 + 10 + 52 + lw_note_h : rows_end, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
+    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + 40 + 10 + 52 + lw_note_h : rows_end + 36, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
     float H = (left > right ? left : right) + 24 + 76;
     place(u_gc_get(h_lw_frame), 0, LY(H / 2), 880, H);
     { float top = host ? 123 : 127, bot = H - 77; place(u_gc_get(h_lw_body), 0, LY((top + bot) / 2), 876, bot - top); }
@@ -4578,6 +4608,19 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         if (!strcmp(w, "confirm")) F(0xF65A18, void (*)(Obj, void *))(v, NULL); else F(0xF65638, void (*)(Obj, void *))(v, NULL);
         return strdup("{\"ok\":true}");
     }
+    if (!strcmp(cmd, "mpm_conn")) {                                          /* conninfo read-back: each player's connection words;
+                                                                                test copies only: {mark:id} on the host makes that guest's link count as
+                                                                                a Steam bridge (the rig has no Steam: the same loopback mark the bridge sets) */
+        double mk = -1; jnum(line, "mark", &mk);
+        int marked = 0;
+        if (mk >= 0 && test_mode()) { char a[96]; mp_game_conn((int)mk, a, sizeof a); const char *pc = strrchr(a, ':');
+            if (pc) { dsnet_relay_port_mark((uint16_t)atoi(pc + 1), 1); marked = atoi(pc + 1); } }
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"marked\":%d,\"rows\":[", marked);
+        for (int i = 0, k = 0; i < 8; i++) { char w[128], a[96]; int v = mp_game_conn(i, a, sizeof a); if (v == DSNET_VIA_UNKNOWN) continue;
+            mpmenu_conn_words(i, w, sizeof w);
+            bput(&b, "%s{\"player\":%d,\"via\":%d,\"words\":", k++ ? "," : "", i, v); bstr(&b, w); bput(&b, "}"); }
+        bput(&b, "]}"); return b.p;
+    }
     if (!strcmp(cmd, "mpm_fail_join")) {                                     /* test stand-in for a refused Steam-invite join (no Steam in the rig):
                                                                                 the model sees "joining", then the session ending with {msg} */
         char why[160] = "", host[64] = ""; jstr(line, "msg", why, sizeof why); jstr(line, "host", host, sizeof host);
@@ -4648,12 +4691,15 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           t[0] = 0; if (lwt(T_TITLE)) str_utf8(tmp_get(lwt(T_TITLE)), t, sizeof t); bstr(&b, t);
           bput(&b, ",\"guest\":"); t[0] = 0; if (lwt(T_GUEST) && u_on(lwt(T_GUEST))) str_utf8(tmp_get(lwt(T_GUEST)), t, sizeof t); bstr(&b, t);
           bput(&b, ",\"note\":"); t[0] = 0; if (lwt(T_NOTE)) str_utf8(tmp_get(lwt(T_NOTE)), t, sizeof t); bstr(&b, t);
+          bput(&b, ",\"conn\":"); t[0] = 0; if (lwt(T_CONN) && u_on(lwt(T_CONN))) str_utf8(tmp_get(lwt(T_CONN)), t, sizeof t); bstr(&b, t);
+          { float r1[4] = {0}, r2[4] = {0}; if (lwt(T_INV_ADDR) && u_on(lwt(T_INV_ADDR))) rect_of(lwt(T_INV_ADDR), r1); if (lwt(T_INV_NOTE) && u_on(lwt(T_INV_NOTE))) rect_of(lwt(T_INV_NOTE), r2);
+            bput(&b, ",\"addr_rects\":[[%.0f,%.0f,%.0f,%.0f],[%.0f,%.0f,%.0f,%.0f]]", r1[0], r1[1], r1[2], r1[3], r2[0], r2[1], r2[2], r2[3]); }   /* test frames mask this Mac's addresses */
           { Obj ib3 = u_gc_get(h_lwb[LW_INVITE]); char it[160] = ""; if (u_on(ib3)) str_utf8(tmp_get(AT(ib3, 0x28, Obj)), it, sizeof it); bput(&b, ",\"invite\":"); bstr(&b, it); }
           bput(&b, ",\"addr\":"); t[0] = 0; if (lwt(T_INV_ADDR) && u_on(lwt(T_INV_ADDR))) str_utf8(tmp_get(lwt(T_INV_ADDR)), t, sizeof t); bstr(&b, t);
           bput(&b, ",\"inv_note\":"); t[0] = 0; if (lwt(T_INV_NOTE) && u_on(lwt(T_INV_NOTE))) str_utf8(tmp_get(lwt(T_INV_NOTE)), t, sizeof t); bstr(&b, t);
           bput(&b, ",\"rows\":[");
           for (int i = 0; i < LW_ROWS; i++) {
-              char n[128] = "", st[64] = ""; int lit = 0;
+              char n[400] = "", st[64] = ""; int lit = 0;
               if (u_gc_get(h_lw_name[i])) str_utf8(tmp_get(u_gc_get(h_lw_name[i])), n, sizeof n);
               if (u_gc_get(h_lw_stat[i])) str_utf8(tmp_get(u_gc_get(h_lw_stat[i])), st, sizeof st);
               for (int k = 0; k < 3; k++) lit += u_on(u_gc_get(h_lw_bar[i][k]));
