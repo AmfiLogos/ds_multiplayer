@@ -187,6 +187,8 @@ chk g019_hostport 'RESULT ALL PASS' $WT env HP_BUILD=$LD/loader/build python3 ex
 chk g019_extaddr 'RESULT PASS' $WT python3 ext/extaddr/extaddr_lobby.py --dylib $D --out $OUT/g019_extaddr   # lobby internet address: upnp / web / unknown
 chk g019_picker 'RESULT PASS' $WT python3 ext/steaminv/picker_test.py --dylib $D --out $OUT/g019_picker   # Steam friends picker (fake list, no Steam)
 chk g019_titlepos 'RESULT PASS ([0-9]+)/\1' $LD/loader python3 $LR l1_titlepos_test.py $OUT/g019_titlepos   # Mods button under Load Campaign / Multiplayer when mods are off
+chk g019_steamaccept 'RESULT PASS' $WT env STEAMACCEPT_DYLIB=$D STEAMACCEPT_OUT=$OUT/g019_steamaccept_out python3 rig/steamaccept_test.py   # accepted Steam invites reach the multiplayer code (callback slot)
+chk g019_reopen '([0-9]+)/\1 checks, summary' $LD/loader python3 $LR reopen_test.py $OUT/g019_reopen   # Mods window reopens after Apply (prewarm on/off), never at a later start
 chk g019_foc 'RESULT ALL PASS' $WT env FOC_DYLIB=$D FOC_TAG=_g019 python3 ext/fixfoc/foc_proof.py   # new-campaign Cancel, host Leave, tutorial not hosted
 print "g019_inputs_unchanged $([[ $( { echo "MP $(git -C $WT rev-parse HEAD)  LD $(git -C $LD rev-parse HEAD)  CM $(git -C $CMR rev-parse HEAD)  pins $(head -1 $LD/loader/mp_pin.txt) $(head -1 $LD/loader/cm_pin.txt)  RELEASE $(cat $LD/RELEASE $LD/loader/RELEASE 2>/dev/null | head -1)"; for f in $REL/* $D $WT/build/custom-modes*.dylib; do print -r -- "$(shasum -a 256 "$f" | cut -c1-64)  $f"; done; } | shasum -a 256 | cut -c1-64) == $IN ]] && echo PASS || echo FAIL)" | tee -a $SUM
 print "g019_prefs $([[ $(prefs) == identical ]] && echo PASS || echo FAIL)" | tee -a $SUM
