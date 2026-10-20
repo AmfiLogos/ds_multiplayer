@@ -60,7 +60,33 @@ def c(**k):
     if not running():
         raise SystemExit(f'copy {X} is not running (mac.sh start)')
     touch()
-    return lrig.send(X, k, timeout=60, connect_wait=30)
+    return send(k)
+
+
+sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'rig'))
+import ctl_token                                                   # noqa: E402  v0.1.16: the token goes first on each connection
+
+
+def send(obj, timeout=60, connect_wait=30):
+    """one command to copy X over its control socket, token first (lrig.send of older loader checkouts has no token)"""
+    import socket
+    d = lrig.idir(X); t0 = time.time()
+    while True:
+        try:
+            s = socket.socket(socket.AF_UNIX); s.settimeout(timeout); s.connect(os.path.join(d, 'ctl.sock')); break
+        except OSError:
+            if time.time() - t0 > connect_wait:
+                raise
+            time.sleep(0.5)
+    s.sendall(ctl_token.token_line(d) + json.dumps(obj).encode() + b'\n')
+    buf = b''
+    while not buf.endswith(b'\n'):
+        r = s.recv(1 << 20)
+        if not r:
+            break
+        buf += r
+    s.close()
+    return json.loads(buf)
 
 
 def sha(p):
@@ -124,7 +150,7 @@ def proof():
         mj = os.path.join(md, m, 'mod.json')
         if os.path.exists(mj):
             j = json.load(open(mj)); e = j.get('platforms', {}).get('mac-arm64', {}).get('entry')
-            p['modules'][m] = {'version': j.get('version'), 'entry': e, 'sha256': (sha(os.path.join(md, m, e)) or '')[:16]}
+            p['modules'][m] = {'version': j.get('version'), 'entry': e, 'sha256': (sha(os.path.join(md, m, e)) or '')[:16] if e else None}   # a library mod (dsmp-bridge) has no entry
     return p
 
 

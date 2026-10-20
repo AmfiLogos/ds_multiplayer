@@ -248,7 +248,8 @@ def _secret(*a):
 
 def vmrun(*args, timeout=90):
     """guest operation through vmrun (passwords read from the Keychain, never printed)"""
-    g = ['-T', 'fusion', '-vp', _secret('-s', VMX), '-gu', GUEST_USER, '-gp', _secret('-s', 'vmware-win-tester', '-a', GUEST_USER)]
+    vp = _secret('-s', VMX)                                      # empty: the VM is no longer encrypted
+    g = ['-T', 'fusion', *(['-vp', vp] if vp else []), '-gu', GUEST_USER, '-gp', _secret('-s', 'vmware-win-tester', '-a', GUEST_USER)]
     return subprocess.run([VMRUN, *g, args[0], VMX, *args[1:]], capture_output=True, text=True, timeout=timeout)
 
 
@@ -263,6 +264,7 @@ class Win:
     def __init__(self, target=TARGET, port=None):
         self.target = target
         self.port = port or GAME_PORT
+        self.starter = os.environ.get('WINBOT_STARTER') == '1'
         self.pid = None
         self.marks = {}
         self.t0 = time.time()
@@ -390,7 +392,7 @@ class Win:
         return self.a('ps', name=name)['procs']
 
     def kill_all(self):
-        for n in ('DungeonSettlers.exe', 'UnityCrashHandler64.exe', 'WerFault.exe'):
+        for n in ('DungeonSettlers.exe', 'UnityCrashHandler64.exe', 'WerFault.exe', 'Dungeon Settlers Modded.exe'):
             try:
                 self.a('kill', name=n)
             except GameError:
@@ -502,15 +504,24 @@ class Win:
         e = {'SteamAppId': '2798330', 'SteamGameId': '2798330', 'DSRIG_DIR': PROF, 'DSRIG_LIVE': '1', 'DSRIG_FPS': '60',
              'DSRIG_PORT': str(self.port), 'DSRIG_CTL': '1',  # the control channel opens only with these (v0.1.15 fix; the starter sets neither)
              'DSRIG_WRITE_DIRS': WORK, 'DSRIG_READ_DIRS': WORK,  # test-command file paths: the copy folder + the test work folder
+             'DSL_CLOUD': '0', 'DSMODDED_NO_STEAM': '1',     # never the owner's Steam Cloud from a test copy (VM = his account)
              'DSL_MODS_DIR': ROOT + r'\mods', 'DSL_PROFILE': DATA + r'\Mods\active.json',
              'DSL_LOG_DIR': PROF, 'DSML_SESSION': DATA + r'\Mods\worlds.json', 'DSML_BUILD': '25846389', 'DSML_APP': GAME,
              'DSML_DATA': DATA, 'DSML_GAME_SAVES': WORK + r'\fake_gamesaves', 'DSL_UI_TEST': UITEST, 'DSL_STEAM': '0',
-             'DSMODDED_NO_STEAM': '1', 'DSML_ROOT': ROOT, 'DOORSTOP_DISABLE': '1', 'DSL_UPDATE': '0'}
+             'DSML_ROOT': ROOT, 'DOORSTOP_DISABLE': '1', 'DSL_UPDATE': '0'}
         e.update(extra or {})                                # a value None leaves that variable out
         return [f'{k}={self.expand(v)}' for k, v in e.items() if v is not None]
 
+    def test_env(self, extra=None):
+        """starter mode: only the test switches; everything else is what the real player starter sets (Steam on)"""
+        e = {'DSRIG_PORT': str(self.port), 'DSRIG_CTL': '1', 'DSRIG_WRITE_DIRS': WORK, 'DSRIG_READ_DIRS': WORK,
+             'DSL_CLOUD': '0', 'DSL_UI_TEST': UITEST, 'DSL_UPDATE': '0'}
+        e.update(extra or {})
+        return [f'{k}={self.expand(v)}' for k, v in e.items() if v is not None]
+
     def start(self, env=None, args='', title=True, timeout=240):
-        """kill leftovers, park the old logs (moved, never deleted), start the game, wait for the title over the port"""
+        """kill leftovers, park the old logs (moved, never deleted), start the game, wait for the title over the port.
+        self.starter (WINBOT_STARTER=1): through the REAL player starter with Steam (only the test switches added)"""
         t0 = time.time()
         self.kill_all()
         park = WORK + r'\to_delete\logs_' + time.strftime('%Y%m%d-%H%M%S')
@@ -525,10 +536,17 @@ class Win:
         a = self.expand(f'-logFile "{PROF}\\player.log" {args}'.strip())
         if self.target == 'wine':
             a += ' -batchmode -nographics'
-        r = self.a('run', exe=self.expand(GAME + r'\DungeonSettlers.exe'), args=a, cwd=self.expand(GAME), env=self.start_env(env), show=True, wait_ms=0)
-        self.pid = r['pid']; self.marks = {}
+        if self.starter:
+            r = self.a('run', exe=self.expand(ROOT + r'\Dungeon Settlers Modded.exe'), args=args, cwd=self.expand(ROOT), env=self.test_env(env), show=True, wait_ms=0)
+            sp = r['pid']; self.marks = {}
+            log(f'starter pid {sp}')
+            self.pid = self.wait(lambda: (lambda q: q['pid'] if q and q.get('pid') and q['pid'] != sp else None)(self.ping()),
+                                 'the game started by the starter, on the control port', timeout)
+        else:
+            r = self.a('run', exe=self.expand(GAME + r'\DungeonSettlers.exe'), args=a, cwd=self.expand(GAME), env=self.start_env(env), show=True, wait_ms=0)
+            self.pid = r['pid']; self.marks = {}
+            self.wait(lambda: (self.ping() or {}).get('pid') == self.pid, 'the control port of the new game', timeout)
         log(f'game pid {self.pid}')
-        self.wait(lambda: (self.ping() or {}).get('pid') == self.pid, 'the control port of the new game', timeout)
         if title:
             self.wait(self.on_title, 'the title screen', timeout - (time.time() - t0))
         log(f'title after {time.time() - t0:.1f} s')
@@ -548,7 +566,8 @@ class Win:
 
     def wait_restart(self, old_pid, timeout=300):
         """soft restart: B takes the control port once A has quit (game fix winbot: bind retry). Returns B's pid."""
-        p = self.wait(lambda: (lambda r: r['pid'] if r and r.get('pid') != old_pid else None)(self.ping()), 'the restarted game on the port', timeout)
+        # a ping can meet B with A's token still read from ctl.token (B writes its token just before it listens): no pid, retry
+        p = self.wait(lambda: (lambda r: r['pid'] if r and r.get('pid') and r['pid'] != old_pid else None)(self.ping()), 'the restarted game on the port', timeout)
         self.pid = p
         return p
 

@@ -78,7 +78,8 @@ class Mac:
     def sh(self, *a, timeout=600):
         r = subprocess.run([MACSH, *a], capture_output=True, text=True, env=self.env, timeout=timeout)
         try:
-            return json.loads(r.stdout)
+            o = r.stdout
+            return json.loads(o[o.index('{'):] if '{' in o else o)    # lrig prints "W: started pid ..." before the JSON
         except ValueError:
             return {'raw': (r.stdout + r.stderr)[-600:]}
 
@@ -110,6 +111,8 @@ class Mac:
         self.env.update(DSML_SESSION=os.path.join(m, 'worlds.json'), DSL_SETTINGS_FILE=os.path.join(m, 'settings.json'),
                         DSL_PROFILE=os.path.join(m, 'active.json'))
         r = self.sh('start')
+        if 'started' not in r and 'already_running' not in r:
+            raise W.GameError(f'Mac copy W did not start: {str(r)[-400:]}')
         t = time.time()
         while time.time() - t < 240:
             try:
@@ -185,9 +188,28 @@ def load_with_boxes(w, guest_save, timeout=240):
     raise W.GameError(f'save did not load within {timeout} s (seen {seen})')
 
 
-def put_save(w, local, name):
-    w.put(local, W.DATA + '\\Saves\\' + name)
-    return W.DATA + '\\Saves\\' + name
+def fresh_world(local, label):
+    """a throwaway copy of a test save with a NEW world guid and name (VM = the owner's Steam account: a test world must
+    never share a guid with one of his worlds, or its saves would go to his game folder). Returns the local file."""
+    import re, uuid
+    s = open(local, encoding='utf-8').read()
+    m = re.search(r'"CampaignGuid"\s*:\s*"([0-9a-f-]{36})"', s)
+    if not m:
+        raise W.GameError(f'no CampaignGuid in {local}')
+    old = m.group(1); g = uuid.uuid4()
+    s = s.replace(old, str(g)).replace(old.replace('-', ''), g.hex)
+    s = re.sub(r'"CampaignName"\s*:\s*"[^"]*"', f'"CampaignName":"Winbot {label}"', s)
+    d = os.path.join(os.path.expanduser('~/.ds_winbot'), 'worlds'); os.makedirs(d, exist_ok=True)
+    out = os.path.join(d, f'Winbot{label}__AutoSave_{g.hex}_0.json')
+    open(out, 'w', encoding='utf-8').write(s)
+    return out
+
+
+def put_save(w, local, name=None, label='Test'):
+    """a fresh-guid copy of a test save into the modded profile's own Saves (never the game's folder)"""
+    f = fresh_world(local, label)
+    w.put(f, W.DATA + '\\Saves\\' + os.path.basename(f))
+    return W.DATA + '\\Saves\\' + os.path.basename(f)
 
 
 def mods_state(w):
@@ -229,8 +251,11 @@ def item1(w, rep, a):
         ms = mods_state(w)
         z = ms.get('mod:' + ZETU, {})
         rep.check(I, f'{kind}: Mods window shows {ZETU} OFF', z and not z.get('on'), z)
-        sp = W.WORK + r'\\fake_gamesaves\\' + GAME_SAVE_NAME          # a game-folder save (DSML_GAME_SAVES): the save warning path
-        w.put(a.save_base, sp)
+        if w.starter:                                                # DSML_GAME_SAVES = the owner's real folder: a modded test world only
+            sp = put_save(w, a.save_base, label='Base')
+        else:
+            sp = W.WORK + r'\\fake_gamesaves\\' + GAME_SAVE_NAME      # a game-folder save (DSML_GAME_SAVES): the save warning path
+            w.put(a.save_base, sp)
         s, boxes = load_with_boxes(w, sp)
         rep.check(I, f'{kind}: normal save loads with no ZET-U warning', not any('zet' in b.lower() for b in boxes), boxes or 'no warning')
         scan_logs(w, rep, I)
@@ -371,7 +396,8 @@ def _item2(w, rep, a, I):
 def item3(w, rep, a, mac):
     """German + Russian shots (screen checks: kept as pictures)"""
     I = '3'
-    host = mac_host_with_extra(mac, a)
+    nohost = os.environ.get('WINBOT_ITEM3_NOHOST') == '1'               # Mac copies busy: language shots only, the host's-mods box later
+    host = None if nohost else mac_host_with_extra(mac, a)
     for lang in ('de', 'ru'):
         w.prepare(lang=LANG[lang], active=BASE_MODS, settings={})
         w.start()
@@ -384,6 +410,8 @@ def item3(w, rep, a, mac):
         w.cmd(cmd='mpm_open_load'); w.wait(lambda: w.mpm().get('state') in ('pick_save', 'idle'), 'load list', 10)
         w.cmd(cmd='mpm_list', flip=1); time.sleep(1); sh('load')
         w.cmd(cmd='mpm_list', close=1); time.sleep(0.5)
+        if nohost:
+            w.stop(); continue
         w.join(f'{W.hub_host()}:{host}', wait=None)
         w.wait(lambda: w.cmd(cmd='mpm_hostmods').get('box'), "the host's mods box", 60)
         hm = w.mpm().get('box') or {}
@@ -400,7 +428,7 @@ def mac_host_with_extra(mac, a):
     # the host's save must have no load popup: the wiki Template save shows the stock "Lock Consecration" Yes/No popup on
     # load, and a host with that popup open never sends the join save (known join deadlock, fixed only in branch popupfix)
     work = os.path.join(os.path.dirname(MAC_CTL), 'save_in_host.json')
-    import shutil; shutil.copy2(a.save_host, work)
+    import shutil; shutil.copy2(fresh_world(a.save_host, 'Host'), work)
     mac.host(work)
     return mac.port()
 
@@ -478,7 +506,7 @@ def item5(w, rep, a, mac):
     I = '5'
     mac.start(BASE_MODS, {})
     work = os.path.join(os.path.dirname(MAC_CTL), 'save_in_dungeon.json')
-    import shutil; shutil.copy2(a.save_dungeon, work)
+    import shutil; shutil.copy2(fresh_world(a.save_dungeon, 'Dungeon'), work)
     mac.host(work)
     w.prepare(lang=0, active=BASE_MODS, settings={})
     w.start()
@@ -531,12 +559,17 @@ def item5(w, rep, a, mac):
         if cy > 1:
             # a fresh unit each dive, as ext/fogfix/fogfix_pair.py: the unit back from the last dive is not offered
             # again at once ("Choose at least one unit"); a free one is taken through Teams (left, then right click)
-            cols = tm('mac').get('columns', [])
-            free = next((col['model'] for col in cols if col.get('player') == -1), [])
-            own = next((col['model'] for col in cols if col.get('player') == 0), [])
-            f1 = next((g for g in free + own if g not in used), None)   # a free unit, else another of the host's own
-            if not f1:
-                raise W.GameError(f'no free unit left for entry {cy}')
+            def pick():
+                cols = tm('mac').get('columns', [])
+                fr = next((col['model'] for col in cols if col.get('player') == -1), [])
+                ow = next((col['model'] for col in cols if col.get('player') == 0), [])
+                g = next((g for g in fr + ow if g not in used), None)   # a free unit, else another of the host's own
+                return (g, ow) if g else None
+            try:
+                f1, own = w.wait(pick, f'a unit for entry {cy} on the host base', 90, 2)
+            except W.GameError:
+                raise W.GameError(f'no free or own unit on the host base for entry {cy} within 90 s; host columns '
+                                  + json.dumps([(col.get('player'), len(col.get('model', []))) for col in tm('mac').get('columns', [])]))
             used.add(f1)
             if f1 not in own:                                          # a click on an own unit would release it
                 tm('mac', action='open'); tm('vm', action='open'); time.sleep(2)
@@ -577,8 +610,29 @@ def item5(w, rep, a, mac):
             rep.check(I, 'the take-back message names the unit', name and name in said, f'{name}: {said[:200]}')
             alive('lend / take back')
         if cy < 3:
-            portal = c('mac', cmd='ui_buildings', map=1, subtype=2)['buildings'][0]['guid']
+            pb = c('mac', cmd='ui_buildings', map=1, subtype=2)['buildings'][0]; portal = pb['guid']
             pu = host_unit(1); used.add(pu)                            # the unit back through the portal is not picked next
+            # the party walks to the portal first: the stock return screen takes only the units at the portal; the
+            # others are "missing" (2nd confirm, ConfirmationStage.MissingUnits) and are left in the dungeon for good.
+            # ui_interact uses the portal from afar, so without this walk the return order had 0 units (46 bytes)
+            # and the base was empty for entry 2 (10-19 / 10-20 failures: host columns [[0, 0], [1, 0], [-1, 0]])
+            party = [u for u in c('mac', cmd='list_units', map=1)['units'] if u.get('faction') == 1 and not u.get('dead') and 'cell' in u]
+            claimed = [u['guid'] for u in party if c('mac', cmd='mp_owner', guid=u['guid']).get('owner') == -1]
+            for g_ in claimed:                                         # only to move them; given back at the portal
+                c('mac', cmd='mp_claim', guid=g_)
+            time.sleep(2)
+            for u in party:
+                c('mac', cmd='mp_move', guid=u['guid'], x=int(pb['x']), y=int(pb['y']))
+            def at_portal():
+                us = [u for u in c('mac', cmd='list_units', map=1)['units'] if u.get('faction') == 1 and not u.get('dead') and 'cell' in u]
+                return us and max(abs(u['x'] - pb['x']) + abs(u['y'] - pb['y']) for u in us) < 8
+            try:
+                w.wait(at_portal, f'the party at the portal (entry {cy})', 120, 3)
+            except W.GameError as e:
+                log('party not all at the portal, going on:', e)
+            for g_ in claimed:                                         # same owners as before the walk (units per player cap)
+                c('mac', cmd='mp_release', guid=g_)
+            w.wait(lambda: all(c('mac', cmd='mp_owner', guid=g_).get('owner') == -1 for g_ in claimed), 'walk claims given back', 30, 1)
             c('mac', cmd='ui_interact', unit=pu, building=portal, map=1)
             rs = w.wait(lambda: (lambda x, y: (x, y) if x.get('open') and y.get('open') else None)(c('mac', cmd='ui_result'), c('vm', cmd='ui_result')),
                         'return screen on both', 900, 1)
@@ -587,6 +641,26 @@ def item5(w, rep, a, mac):
             w.wait(lambda: c(P, cmd='ui_result', action='confirm') and not c(P, cmd='ui_result').get('open'), 'return confirmed', 60, 2)
             w.wait(lambda: all((lambda s: s.get('map') == 0 and not s.get('busy'))(st(x)) for x in ('mac', 'vm')), 'both on the base map', 900, 1)
             alive(f'back on the base after entry {cy}')
+            pg = {u['guid'] for u in party}
+            back = lambda: pg & {u['guid'] for u in c('mac', cmd='list_units', map=0)['units'] if u.get('faction') == 1 and not u.get('dead')}
+            try:
+                nb = len(w.wait(lambda: (lambda b: b if len(b) == len(pg) else None)(back()), f'the party on the base (entry {cy})', 30, 2))
+            except W.GameError:
+                nb = len(back())
+            rep.check(I, f'every unit back through the portal is on the base (entry {cy})', nb == len(pg), f'{nb} of {len(pg)}')
+            # a story event may open on the base after the return (boss_golem save: popup 22, game paused): answer it
+            # like a player (first choice) so the next proposal is not held behind it
+            try:
+                w.wait(lambda: c('mac', cmd='ui_story').get('active') or c('vm', cmd='ui_story').get('active'), 'a story event on the base', 10, 1)
+                for k in range(10):
+                    for side in ('mac', 'vm'):
+                        if c(side, cmd='ui_story').get('active'):
+                            c(side, cmd='ui_story', action='click', idx=0)
+                    time.sleep(2)
+                    if not (c('mac', cmd='ui_story').get('active') or c('vm', cmd='ui_story').get('active')):
+                        break
+            except W.GameError:
+                pass
     for side in ('mac', 'vm'):
         m = st(side).get('mp', {})
         rep.check(I, f'{side}: 0 desyncs', not m.get('desynced') and not m.get('desyncs'), m.get('desyncs'))
@@ -647,19 +721,26 @@ def itemS(w, rep, a):
         fresh_logs(w, rep, 'S')
 
 
-HTTP_PROBE = r'''$c=New-Object Net.Sockets.TcpClient('127.0.0.1',%d); $s=$c.GetStream(); $s.ReadTimeout=5000
-$b=[Text.Encoding]::ASCII.GetBytes("POST / HTTP/1.1`r`nHost: 127.0.0.1`r`n`r`n{""cmd"":""ping""}`n"); $s.Write($b,0,$b.Length)
+RAW_PROBE = r'''param([string]$f)
+$c=New-Object Net.Sockets.TcpClient('127.0.0.1',%d); $s=$c.GetStream(); $s.ReadTimeout=5000
+$b=[IO.File]::ReadAllBytes($f); $s.Write($b,0,$b.Length)
 $o=New-Object IO.MemoryStream; $buf=New-Object byte[] 4096; $closed='no'
 try { while ($true) { $n=$s.Read($buf,0,4096); if ($n -le 0) { $closed='yes'; break }; $o.Write($buf,0,$n) } } catch { $closed='timeout' }
 "closed=$closed"; [Text.Encoding]::UTF8.GetString($o.ToArray())'''
 
 
+def raw_probe(w, port, payload):
+    """one raw connection inside the guest: send payload bytes, read until the game closes it (or 5 s pass).
+    Output: "closed=yes|timeout" + whatever the game answered."""
+    w.write(W.WORK + r'\winbot\raw_probe.ps1', RAW_PROBE % port)
+    w.write(W.WORK + r'\winbot\raw_probe.bin', payload)
+    return w.a('run', exe=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe', wait_ms=20000, capture=True,
+               args='-NoProfile -ExecutionPolicy Bypass -File ' + w.expand(W.WORK + r'\winbot\raw_probe.ps1') + ' -f ' + w.expand(W.WORK + r'\winbot\raw_probe.bin'))['out']
+
+
 def http_probe(w, port):
-    """one connection: an HTTP request line, headers, then a valid ping as the body. Must be refused and closed:
-    a web page's POST to 127.0.0.1 would look like this"""
-    w.write(W.WORK + r'\winbot\http_probe.ps1', HTTP_PROBE % port)
-    return w.a('run', exe=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
-               args='-NoProfile -ExecutionPolicy Bypass -File ' + w.expand(W.WORK + r'\winbot\http_probe.ps1'), wait_ms=20000, capture=True)['out']
+    """an HTTP request line, headers, then a valid ping as the body (what a web page's POST to 127.0.0.1 would send)"""
+    return raw_probe(w, port, b'POST / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n{"cmd":"ping"}\n')
 
 
 def itemP(w, rep, a):
@@ -681,9 +762,15 @@ def itemP(w, rep, a):
     other = [k for k in genv if k.startswith(('DSL_', 'DSML')) and k not in pe]
     rep.check(I, 'player start: no DSRIG_* variable besides the starter\'s', not leak,
               ' '.join(sorted(pe)) + f' | inherited DSRIG_*: {leak}' + (f' | other test variables in the guest user environment (not gate variables): {other}' if other else ''))
-    r = w.a('run', exe=w.expand(W.GAME + r'\DungeonSettlers.exe'), args=w.expand(f'-logFile "{W.PROF}\\player.log"'),
-            cwd=w.expand(W.GAME), env=env, show=True, wait_ms=0)
-    w.pid = r['pid']; t = time.time()
+    if w.starter:                                                    # the REAL player starter (Steam on), only DSL_CLOUD=0 added
+        rep.check(I, 'player start through the real starter (its own environment + DSL_CLOUD=0)', True)
+        w.a('run', exe=w.expand(W.ROOT + r'\Dungeon Settlers Modded.exe'), args='', cwd=w.expand(W.ROOT), env=['DSL_CLOUD=0'], show=True, wait_ms=0)
+        w.pid = w.wait(lambda: (w.procs() or [{}])[0].get('pid'), 'the game started by the starter', 180, 1)
+    else:
+        r = w.a('run', exe=w.expand(W.GAME + r'\DungeonSettlers.exe'), args=w.expand(f'-logFile "{W.PROF}\\player.log"'),
+                cwd=w.expand(W.GAME), env=env, show=True, wait_ms=0)
+        w.pid = r['pid']
+    t = time.time()
     try:
         line = w.wait_log('dsload.log', ['fades its title in', 'ui: title font'], 180, since=m)   # a rotated (shorter) log is read from 0
         time.sleep(5)
@@ -702,6 +789,11 @@ def itemP(w, rep, a):
     rep.check(I, 'with the test variables: the tool connects', (w.ping() or {}).get('pid') == w.pid, w.pid)
     out = http_probe(w, w.port)
     refused = 'closed=yes' in out and '"pong"' not in out
+    nt = raw_probe(w, w.port, b'{"cmd":"ping"}\n')                  # no token first (v0.1.16 channel guard)
+    if (w.text(W.PROF + r'\ctl.token') or '').strip():
+        rep.check(I, 'test mode, no token: refused and closed, the ping not answered', 'closed=yes' in nt and '"pong"' not in nt, nt.strip()[-300:])
+    else:
+        rep.check(I, 'test mode, no token (build without ctl.token, recorded)', True, nt.strip()[-300:])
     if a.http_record:                                                # v0.1.15 has no HTTP refusal: record what happens
         rep.check(I, f'test mode, HTTP-looking connection (recorded): {"refused + closed" if refused else "NOT refused"}', True, out.strip()[-300:])
     else:
