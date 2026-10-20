@@ -1,10 +1,10 @@
 // mu_bring.h - Bring Units: the card window of Foreign Expedition and PvP (owner 2026-10-20: "port the Bring units card
-// window into the multiplayer mod"). From ds_custommodes units/mu_bring.h (removed there at 5454e03), saves only: units in a
-// multiplayer mode come only from the player's own saves (owner 2026-10-20), so there is no My Units tab and no Unit
-// Builder door. Left: the player's saves; right: Compact Plus cards (the game's own icons) with a tick each; a per-player cap.
-// Needs the loader's widget kit (mu_ui_init with a host that has one): without it mu_bring_open returns -1 and the caller
-// shows its text list. Everything runs on the game's main thread; `done` is called between frames, once, after the window
-// closed.
+// window into the multiplayer mod"). From ds_custommodes units/mu_bring.h (removed there at 5454e03). Left: the player's
+// saves; right: Compact Plus cards (the game's own icons) with a tick each; a per-player cap. With Units Laboratory
+// installed (E3, owner 2026-10-20) a Saves / My Units switch and a "Build a unit" button (Unit Builder) come in; without it
+// the window has saves only. Needs the loader's widget kit (mu_ui_init with a host that has one): without it mu_bring_open
+// returns -1 and the caller shows its text list. Everything runs on the game's main thread; `done` is called between
+// frames, once, after the window closed.
 #pragma once
 #include <stddef.h>
 
