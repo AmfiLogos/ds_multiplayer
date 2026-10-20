@@ -302,8 +302,6 @@
  "Friends outside your home join with this address (your router must forward port %s to this computer), or use Steam invite.": "집 밖의 친구는 이 주소로 참가합니다(공유기가 포트 %s을(를) 이 컴퓨터로 포워딩해야 합니다). 또는 Steam 초대를 사용하십시오.",
  "Friends outside your home join with this address (your router must forward port %s to this computer).": "집 밖의 친구는 이 주소로 참가합니다(공유기가 포트 %s을(를) 이 컴퓨터로 포워딩해야 합니다).",
  "Friends outside your home: open port %s on your router, or use Steam invite": "다른 네트워크의 친구: 공유기에서 포트 %s을(를) 열거나 Steam 초대를 사용하십시오",
- "Friends outside your home: open port %s on your router, or use Steam invite.": "다른 네트워크의 친구: 공유기에서 포트 %s을(를) 열거나 Steam 초대를 사용하십시오.",
- "Friends outside your home: open port %s on your router.": "다른 네트워크의 친구: 공유기에서 포트 %s을(를) 여십시오.",
  "Friends' units": "친구의 유닛",
  "From": "빌림",
  "Gear": "장비",

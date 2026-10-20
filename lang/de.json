@@ -307,8 +307,6 @@
  "Friends outside your home join with this address (your router must forward port %s to this computer), or use Steam invite.": "Freunde außerhalb deines Zuhauses treten mit dieser Adresse bei (dein Router muss Port %s an diesen Computer weiterleiten) oder nutzen die Steam-Einladung.",
  "Friends outside your home join with this address (your router must forward port %s to this computer).": "Freunde außerhalb deines Zuhauses treten mit dieser Adresse bei (dein Router muss Port %s an diesen Computer weiterleiten).",
  "Friends outside your home: open port %s on your router, or use Steam invite": "Freunde außerhalb deines Heimnetzwerks: Öffne Port %s an deinem Router oder nutze die Steam-Einladung",
- "Friends outside your home: open port %s on your router, or use Steam invite.": "Freunde außerhalb deines Heimnetzwerks: Öffne Port %s an deinem Router oder nutze die Steam-Einladung.",
- "Friends outside your home: open port %s on your router.": "Freunde außerhalb deines Heimnetzwerks: Öffne Port %s an deinem Router.",
  "Friends' units": "Einheiten von Freunden",
  "From": "Von",
  "Gear": "Ausrüstung",

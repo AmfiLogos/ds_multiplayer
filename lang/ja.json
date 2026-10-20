@@ -302,8 +302,6 @@
  "Friends outside your home join with this address (your router must forward port %s to this computer), or use Steam invite.": "自宅の外のフレンドはこのアドレスで参加します（ルーターでポート%sをこのコンピューターに転送する必要があります）。Steam招待も使えます。",
  "Friends outside your home join with this address (your router must forward port %s to this computer).": "自宅の外のフレンドはこのアドレスで参加します（ルーターでポート%sをこのコンピューターに転送する必要があります）。",
  "Friends outside your home: open port %s on your router, or use Steam invite": "自宅のネットワーク外のフレンド：ルーターでポート%sを開放するか、Steam招待を使ってください",
- "Friends outside your home: open port %s on your router, or use Steam invite.": "自宅のネットワーク外のフレンド：ルーターでポート%sを開放するか、Steam招待を使ってください。",
- "Friends outside your home: open port %s on your router.": "自宅のネットワーク外のフレンド：ルーターでポート%sを開放してください。",
  "Friends' units": "フレンドのユニット",
  "From": "借用元",
  "Gear": "装備",

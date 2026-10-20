@@ -302,8 +302,6 @@
  "Friends outside your home join with this address (your router must forward port %s to this computer), or use Steam invite.": "家以外的好友用這個位址加入（你的路由器必須把連接埠 %s 轉送到這台電腦），或使用 Steam 邀請。",
  "Friends outside your home join with this address (your router must forward port %s to this computer).": "家以外的好友用這個位址加入（你的路由器必須把連接埠 %s 轉送到這台電腦）。",
  "Friends outside your home: open port %s on your router, or use Steam invite": "家庭網路外的好友：請在路由器上開放連接埠 %s，或使用 Steam 邀請",
- "Friends outside your home: open port %s on your router, or use Steam invite.": "家庭網路外的好友：請在路由器上開放連接埠 %s，或使用 Steam 邀請。",
- "Friends outside your home: open port %s on your router.": "家庭網路外的好友：請在路由器上開放連接埠 %s。",
  "Friends' units": "好友的單位",
  "From": "來自",
  "Gear": "裝備",

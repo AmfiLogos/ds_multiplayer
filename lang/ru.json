@@ -312,8 +312,6 @@
  "Friends outside your home join with this address (your router must forward port %s to this computer), or use Steam invite.": "Друзья вне вашего дома подключаются по этому адресу (роутер должен перенаправлять порт %s на этот компьютер) или используют приглашение Steam.",
  "Friends outside your home join with this address (your router must forward port %s to this computer).": "Друзья вне вашего дома подключаются по этому адресу (роутер должен перенаправлять порт %s на этот компьютер).",
  "Friends outside your home: open port %s on your router, or use Steam invite": "Друзья вне вашего дома: откройте порт %s на роутере или используйте приглашение Steam",
- "Friends outside your home: open port %s on your router, or use Steam invite.": "Друзья вне вашего дома: откройте порт %s на роутере или используйте приглашение Steam.",
- "Friends outside your home: open port %s on your router.": "Друзья вне вашего дома: откройте порт %s на роутере.",
  "Friends' units": "Юниты друзей",
  "From": "От",
  "Gear": "Снаряжение",
