@@ -3400,7 +3400,7 @@ static void run_actions(int a, const mpm_obs *o) {
         char p[1200]; snprintf(p, sizeof p, "%s/mp.json", rig_dir);
         mp_config f; if (mp_config_load(p, &f) == 0) { snprintf(c.name, sizeof c.name, "%s", f.name); c.port = f.port; }
         c.host = 1; c.allow_speedup = M.set.speedup; c.allow_pause = M.set.pause_mode != MPM_PAUSE_NONE;
-        c.pause_mode = M.set.pause_mode; c.gear_mode = M.set.gear; c.port = MPM_DEFAULT_PORT;
+        c.pause_mode = M.set.pause_mode; c.gear_mode = M.set.gear; c.port = mpm_host_port();
         c.allow_spectators = M.set.spectators;
         if (my_name[0]) snprintf(c.name, sizeof c.name, "%s", my_name);
         else if (!in.steam) default_name(c.name, sizeof c.name);

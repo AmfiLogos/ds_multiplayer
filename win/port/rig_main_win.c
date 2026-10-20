@@ -341,9 +341,12 @@ static LONG WINAPI crash_note(EXCEPTION_POINTERS *e) {
     return EXCEPTION_CONTINUE_SEARCH;
 }
 
+extern int (*mp_setting_int_fn)(const char *id, int dflt);
+static int win_setting_int(const char *id, int dflt) { return dsl_get_int(DH, DME, id, dflt); }
 DSL_EXPORT int dsl_module_load(const DSLHost *host, DSLPlugin *self) {
     AddVectoredExceptionHandler(0, crash_note);
     DH = host; DME = self;
+    mp_setting_int_fn = win_setting_int;                                 /* mod settings (mpmenu.h mpm_host_port) */
     const char *d = getenv("DSRIG_DIR");
     if (!d || !*d) { host->log(self, "DSRIG_DIR not set: multiplayer inactive"); return 1; }
     snprintf(rig_dir, sizeof rig_dir, "%s", d);
