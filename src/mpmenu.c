@@ -965,6 +965,21 @@ static void field_text(uintptr_t h, char *out, size_t cap) {
     out[0] = 0; Obj f = u_gc_get(h);
     if (u_alive(f)) str_utf8((mm_is(f, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL) : NULL), out, cap);   /* TMP_InputField.text */
 }
+/* lane pvprules: a text field like the address field, for other windows of the menu (PvP Rules box "Save as preset...").
+   NULL when no stock TMP_InputField exists yet. Made inactive, 262 x 44: the caller places and shows it. */
+Obj mpmenu_field_new(Obj parent, const char *placeholder, const char *text) {
+    const char *from = ""; Obj src = field_source(&from);
+    Obj f = src ? field_make(src, parent, placeholder, text) : NULL;
+    rig_log("mpmenu: extra text field %s %s", f ? "cloned from" : "not made: no source", from);
+    return f;
+}
+void mpmenu_field_get(Obj f, char *out, size_t cap) {
+    if (cap) out[0] = 0;
+    if (u_alive(f)) str_utf8((mm_is(f, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL) : NULL), out, cap);   /* TMP_InputField.text */
+}
+void mpmenu_field_put(Obj f, const char *s) {
+    if (u_alive(f)) (mm_is(f, K_FIELD) ? F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str_ok(s), NULL) : (void)0);   /* SetTextWithoutNotify */
+}
 /* text-only line (labels, status): the button clone with every Image under it switched off (Behaviour.enabled), so
  * no frame shows (ux #16). Clicks on it reach our hook and do nothing. */
 static void images_off(Obj tr, int depth) {

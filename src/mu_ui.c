@@ -15,6 +15,7 @@ const DSLUi *mu_kit(void) {
     return U;
 }
 const DSLHost *mu_host(void) { return H; }
+DSLPlugin *mu_plugin(void) { return ME; }       /* pvp_rules.c: dsl_mod_data_dir(mu_host(), mu_plugin()) */
 void mu_log(const char *fmt, ...) {
     if (!H) return;
     char b[1200]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap);
