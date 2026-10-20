@@ -766,6 +766,15 @@ static const mp_game_api api = { NULL, g_ready, g_tick, g_scope, g_fp, g_move, g
 
 /* ---------------------------------------------------------------- entry points */
 static void mp_rig_log(const char *line) { rig_log("mp: %s", line); }
+/* dsnet lines ("steam: lobby N created", invite results, joins) into rig.log; at most 40 a second (a lagging link
+   logs per command), the rest counted. Called from the Steam pump thread too: rig_log has its own lock. */
+static void dsnet_rig_log(const char *line) {
+    static volatile long win_s, n_in_win, dropped;
+    long now = (long)time(NULL);
+    if (now != win_s) { if (dropped) rig_log("dsnet: %ld lines not logged (over 40/s)", (long)dropped); win_s = now; n_in_win = 0; dropped = 0; }
+    if (++n_in_win > 40) { dropped++; return; }
+    rig_log("dsnet: %s", line);
+}
 
 /* Quitting the app (stock Quit, Cmd-Q, window close) closes the session first: the socket is closed cleanly and the
    server issues PLAYER_LEAVE at once, instead of the others waiting until the process is gone. */
@@ -879,6 +888,7 @@ __attribute__((visibility("default"))) int mp_game_rejoin_line(uint64_t steam_hi
 void mp_game_install(void) {
     ui_color_resolver = color_of_slot;
     mp_set_log(mp_rig_log);
+    dsnet_set_log(dsnet_rig_log);
     install_hooks();
     sync_file_delete("left over from an earlier run");
     mp_moddata_init();                                       /* mod data sync files in the join point (mp_moddata.c) */
@@ -1282,8 +1292,43 @@ int mp_steam_host(const char *save, const mp_config *lobby_cfg) {
     return 0;
 }
 int mp_steam_invite(void) { return mp_game_steam_invite(); }
-int mp_steam_invite_friend(uint64_t id) { return steam_host ? dsnet_steam_host_invite_friend(steam_host, id) : -1; }
-int mp_steam_friends(dsnet_steam_friend *out, int max) { return steam_ready() ? dsnet_steam_friends(out, max) : 0; }
+int mp_steam_test_friends(void) {
+    static int t = -1;
+    if (t < 0) { const char *e = getenv("DSRIG_TEST_STEAMFRIENDS"); t = e && *e == '1' && (getenv("DSRIG_BATCH") || getenv("DSRIG_HIDEWIN") || getenv("DSMP_TEST")); }
+    return t;
+}
+/* fake friends for the test path: ids 1001.. (never real Steam ids), mixed states, unsorted */
+static const struct { const char *name; int state, in_game; } test_fr[] = {
+    { "Offline Olaf", 0, 0 }, { "Busy Bea", 2, 0 }, { "Playing Pia", 1, 1 }, { "Away Ana", 3, 0 }, { "zed online", 1, 0 },
+    { "Offline Bob", 0, 0 }, { "Fails Fred", 1, 0 }, { "Offline Cy", 0, 0 }, { "Online Al", 1, 0 }, { "Snooze Sam", 4, 0 },
+    { "Offline Dee", 0, 0 }, { "Offline Eve", 0, 0 }, { "Online Uli", 6, 0 }, { "Offline Gus", 0, 0 }, { "Offline Hal", 0, 0 },
+    { "Offline Ivy", 0, 0 }, { "Offline Jo", 0, 0 }, { "Offline Kit", 0, 0 }, { "Offline Lu", 0, 0 },
+    { "\xE5\xB1\xB1\xE7\x94\xB0 Long Name Friend Number Twenty", 1, 0 } };
+int mp_steam_invite_friend(uint64_t id) {
+    if (mp_steam_test_friends()) {                           /* test path: Steam is never called */
+        int rc = id == 1007 ? -1 : 0;
+        rig_log("mp: test invite to fake friend %llu: rc %d (Steam not called)", (unsigned long long)id, rc);
+        return rc;
+    }
+    int rc = steam_host ? dsnet_steam_host_invite_friend(steam_host, id) : -1;
+    rig_log("mp: Steam invite to a friend: rc %d%s", rc, steam_host ? "" : " (no Steam lobby)");
+    return rc;
+}
+int mp_steam_friends(dsnet_steam_friend *out, int max) {
+    if (mp_steam_test_friends()) {
+        int n = 0;
+        for (size_t i = 0; i < sizeof test_fr / sizeof *test_fr && n < max; i++, n++) {
+            memset(&out[n], 0, sizeof out[n]); out[n].steamid = 1001 + i; out[n].state = test_fr[i].state; out[n].in_game = test_fr[i].in_game;
+            snprintf(out[n].name, sizeof out[n].name, "%s", test_fr[i].name);
+        }
+        return n;
+    }
+    return steam_ready() ? dsnet_steam_friends(out, max) : 0;
+}
+int mp_steam_overlay_enabled(void) {
+    if (mp_steam_test_friends()) return 0;
+    return steam_ready() ? dsnet_steam_overlay_enabled() : -1;
+}
 int mp_steam_join(uint64_t lobby) {
     mp_config c; mp_config_defaults(&c);
     if (cfg_ok) c = cfg;
@@ -1310,7 +1355,7 @@ __attribute__((visibility("default"))) void mp_game_leave_to_title(void) {
 
 void mp_steam_state(mp_steam_info *o) {
     memset(o, 0, sizeof *o);
-    o->steam = steam_ok == 1; o->player = -1;
+    o->steam = steam_ok == 1 || (mp_steam_test_friends() && S && cfg.host); o->player = -1;   /* test path: a TCP host's lobby looks like Steam's */
     o->is_host = (S && cfg.host) || steam_host;
     o->lobby = steam_host ? dsnet_steam_host_lobby(steam_host) : join_lobby_id;
     if (o->lobby == ~0ull) o->lobby = 0;

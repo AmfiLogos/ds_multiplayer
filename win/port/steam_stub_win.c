@@ -40,3 +40,4 @@ int dsnet_steam_initialized(void) { return 0; }
 int dsnet_steam_host_invite_friend(dsnet_steam_host *h, uint64_t friend_id) { (void)h; (void)friend_id; return -1; }
 int dsnet_steam_friends(dsnet_steam_friend *out, int max) { (void)out; (void)max; return 0; }
 void dsnet_steam_feed_callback(int id, const void *param, int cub) { (void)id; (void)param; (void)cub; }
+int dsnet_steam_overlay_enabled(void) { return -1; }
