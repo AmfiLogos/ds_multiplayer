@@ -108,7 +108,7 @@ int main(void) {
     CHECK(pvp_load(&l, buf, n - 1) == -1 && l.phase == PVP_OFF);
     uint8_t c2[1024]; memcpy(c2, buf, n); c2[0] = 'X'; CHECK(pvp_load(&l, c2, n) == -1);
     memcpy(c2, buf, n); c2[4] = 9; CHECK(pvp_load(&l, c2, n) == -1);
-    memcpy(c2, buf, n); c2[n - 6] = 7; CHECK(pvp_load(&l, c2, n) == -1);         /* bad team */
+    memcpy(c2, buf, n); c2[n - 7] = 7; CHECK(pvp_load(&l, c2, n) == -1);         /* bad team (last unit: team at +16 of 23 bytes) */
     { pvp_state z; pvp_init(&z); uint8_t zb[256]; size_t zn = pvp_save(&z, zb, sizeof zb); pvp_state zl; CHECK(pvp_load(&zl, zb, zn) == 0 && pvp_hash(&zl) == pvp_hash(&z)); }
 
     /* end: hostility off, match count kept, setup allowed again */

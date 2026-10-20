@@ -176,7 +176,7 @@ def run(H, G, port):
             en = [v for v in al if v['team'] != u['team']]
             if en:
                 c0 = cl[u['guid']]['cell']; tg = min(en, key=lambda v: (cl[v['guid']]['cell'][0] - c0[0]) ** 2 + (cl[v['guid']]['cell'][1] - c0[1]) ** 2); tc = cl[tg['guid']]['cell']
-                c(owner[u['guid']], cmd='ord_run_attack', unit=u['guid'], target=tg['guid'], x=tc[0], y=tc[1], mp=1)
+                rig.send(owner[u['guid']], {'cmd': 'ord_run_attack', 'unit': u['guid'], 'target': tg['guid'], 'x': tc[0], 'y': tc[1], 'mp': 1}, timeout=60)
     while time.time() - t_run < 600:
         s = c(H, cmd='pvp_status')
         if s.get('active') and not s.get('ending') and not s.get('resetting') and s.get('fight_start') and not s.get('placing'): orders()

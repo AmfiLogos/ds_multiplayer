@@ -31,7 +31,7 @@ pvp_rules pvp_rules_default(void);   /* best of 3, 180 s, no pause, planning 7 s
 /* pvp_apply results */
 enum { PVP_OK = 0, PVP_ERR_NOT_HOST = -1, PVP_ERR_BAD = -2, PVP_ERR_PHASE = -3, PVP_ERR_EMPTY_TEAM = -4 };
 
-typedef struct pvp_unit { uint8_t guid[16]; uint8_t team, player; uint32_t out; } pvp_unit;   /* out: match tick + 1 when it went out, 0 = in */
+typedef struct pvp_unit { uint8_t guid[16]; uint8_t team, player; uint32_t out; uint8_t ordered; } pvp_unit;   /* out: match tick + 1 when it went out, 0 = in; ordered: its player gave it an order this round (E7) */
 
 typedef struct pvp_state {
     uint8_t phase, mode;
@@ -109,6 +109,7 @@ void pvp_on_tick(pvp_state *s);         /* once per world tick */
  * Returns 1 if this report marked it, 0 if already out / not a PvP unit / no match. */
 int  pvp_mark_out(pvp_state *s, const uint8_t guid[16]);
 int  pvp_out_tick(const pvp_state *s, const uint8_t guid[16]);   /* match tick it went out, -1 = still in */
+void pvp_mark_ordered(pvp_state *s, const uint8_t guid[16]);   /* E7: its player ordered it (glue, inside the step) */
 
 int  pvp_active(const pvp_state *s);    /* a match runs: the hostility hooks are on */
 int  pvp_arena(const pvp_state *s);     /* the arena rules are on (from ARENA until END) */

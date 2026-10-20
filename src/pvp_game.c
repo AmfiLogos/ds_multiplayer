@@ -511,10 +511,14 @@ static void find_base_ends(int map) {
     if (nroom < 2) { rig_log("pvp: base ends: %d roomy reachable cells near (%d,%d): teams stay where they are", nroom, cx, cy); return; }
     uint64_t seed = 1469598103934665603ULL; seed = fnv(seed, &g.matches, 4); for (int i = 0; i < g.nunits; i++) seed = fnv(seed, g.units[i].guid, 16);
     uint64_t r1 = mix64(seed), r2 = mix64(seed ^ 0xA5A5A5A5A5A5A5A5ull);
-    int bi = (int)(r1 % (uint64_t)nroom), ri = -1, nok = 0;
-    for (int i = 0; i < nroom; i++) {
-        int64_t dx = room[i][0] - room[bi][0], dy = room[i][1] - room[bi][1], d2 = dx * dx + dy * dy;
-        if (d2 >= BASE_MIN_D * BASE_MIN_D && d2 <= BASE_MAX_D * BASE_MAX_D) nok++;
+    int b0 = (int)(r1 % (uint64_t)nroom), bi = b0, ri = -1, nok = 0;
+    for (int k = 0; k < nroom; k++) {                                     /* Blue: the drawn cell, else the next one that has a Red cell in range */
+        int c2 = (b0 + k) % nroom, cnt = 0;
+        for (int i = 0; i < nroom; i++) {
+            int64_t dx = room[i][0] - room[c2][0], dy = room[i][1] - room[c2][1], d2 = dx * dx + dy * dy;
+            if (d2 >= BASE_MIN_D * BASE_MIN_D && d2 <= BASE_MAX_D * BASE_MAX_D) cnt++;
+        }
+        if (cnt) { bi = c2; nok = cnt; break; }
     }
     if (nok) {
         int want = (int)(r2 % (uint64_t)nok);
@@ -618,10 +622,17 @@ static void placing_step(int map) {
     /* E4 / E8 (owner 2026-10-20: "nobody starts a fight alone"): round 1 is the teams' preparation, with no time limit: the
        fight begins only after a proposal every team player agreed to, at the end of its countdown (pvp_core.c: PROPOSE /
        AGREE set countdown_at). Later rounds start again from the arena snapshot (teams at their ends): the 3 s countdown
-       follows at once, as before. In the preparation the units are sent to their ends only in its first 10 s (a settler
-       job took a unit off its walk), never later: the players place their units themselves then (E7: their orders win). */
+       follows at once, as before. A unit not at its end is sent there again every 2 s (a settler job took it off its walk),
+       except in the preparation once its player gave it an order (E7: the player's orders win; ord_game.c ord_apply). */
     int prep = g.round <= 1;
-    if (g.arena == PVP_WHERE_BASE && !arrived && g.ticks % 120 == 0 && (!prep || g.ticks < 600)) send_both_to_ends();
+    if (g.arena == PVP_WHERE_BASE && !arrived && g.ticks % 120 == 0) {   /* every 2 s: a unit not at its end and not ordered by its player walks on */
+        for (int i = 0; i < g.nunits; i++) {
+            int t = g.units[i].team; int32_t c[2];
+            if ((t != PVP_TEAM_BLUE && t != PVP_TEAM_RED) || g.units[i].out || (prep && g.units[i].ordered) || !unit_cell(map, g.units[i].guid, c)) continue;
+            int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1]; if (dx * dx + dy * dy <= 36) continue;
+            Guid gg; memcpy(&gg, g.units[i].guid, 16); rig_order_move(gg, g.end_cell[t][0], g.end_cell[t][1]);
+        }
+    }
     if (prep ? g.countdown_at != 0 : ((any && arrived && g.ticks >= 60) || g.ticks >= PLACE_MAX_TICKS || g.countdown_at)) {
         if (!pvp_place_done(&g)) return;            /* M4: 3 s countdown first (units hold where they are) */
         if (g.arena == PVP_WHERE_BASE) { Obj h = combat_of(map); if (h) pair_all(h, 1); }   /* enemies from now on */
@@ -951,6 +962,11 @@ static int enemy_unit(const uint8_t gd[16]) {
 int pvp_view_hide(const uint8_t gd[16], int what) {
     if (!enemy_unit(gd)) return 0;
     return what == 1 ? !pvp_rule_on("enemy_portraits") : what == 2 ? !pvp_rule_on("enemy_hpbars") : what == 3 ? !pvp_rule_on("enemy_status") : 0;
+}
+/* ord_game.c ord_apply (E7): units that got their player's order (inside the step, every peer) */
+void pvp_units_ordered(const uint8_t (*u)[16], int n) {
+    if (!pvp_active(&g) || !g.placing) return;
+    for (int i = 0; i < n; i++) pvp_mark_ordered(&g, u[i]);
 }
 /* ord_game.c (E7b): an interaction other than an attack (InteractionType 2) by a PvP unit on a unit of the other team
    (rescue, first aid, carry, give ...) is refused. Sim state only (the PvP table): the same answer on every peer. */

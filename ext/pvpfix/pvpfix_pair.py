@@ -40,16 +40,6 @@ def body(t):
     e = {x: t.c(x, cmd='pvp_status')['ends'] for x in (H, G)}
     d = ((e[H][0][0] - e[H][1][0]) ** 2 + (e[H][0][1] - e[H][1][1]) ** 2) ** 0.5
     t.check('E6 random team ends: same on both copies, two cells 12..30 apart', e[H] == e[G] and e[H][0] != e[H][1] and 12 <= d <= 30.5, (e, round(d, 1)))
-    # E7: hold position on one Blue unit (its owner's copy, the game's own event)
-    hold = next(u['guid'] for u in units if u['team'] == 1)
-    t.log('hold on', hold[:8], t.c(owner[hold], cmd='ord_inject', ev='ToggleBehaviourOption', **{'ent@16': hold, 'i32@24': 2, 'u8@28': 1, 'u8@29': 1}))
-    t.wait('hold option on both copies', lambda: all(next(u for u in t.c(x, cmd='pvp_status')['units'] if u['guid'] == hold).get('options', 0) & 2 for x in (H, G)), timeout=30, every=1)
-    # placing: walk to the ends (first 10 s)
-    time.sleep(14)
-    q = {x: t.c(x, cmd='mpm_pvp') for x in (H, G)}
-    for x in (H, G): t.shot(x, 'prep')
-    t.check('E8 preparation shown: HUD "Preparation", Propose fight button on both, no countdown', all('Preparation' in q[x].get('hud_text', '') and q[x].get('fight_btn') for x in (H, G))
-            and not t.c(H, cmd='pvp_status')['countdown_at'], {x: (q[x].get('hud_text'), q[x].get('fight_btn')) for x in (H, G)})
     # E5: each copy hides the enemy units it cannot see; fog per team; no opponent view
     f = {}
     for _ in range(25):                                                     # the teams walk apart: until each copy hides an enemy (max ~50 s)
@@ -62,6 +52,16 @@ def body(t):
             all(f[x].get('pvp_team') in (1, 2) and f[x].get('pvp_team') != f[H if x == G else G].get('pvp_team') and f[x].get('filtering') and f[x].get('eov') for x in (H, G))
             and all(len(f[x].get('enemies', [])) == 2 and all(e[0] == e[1] for e in f[x]['enemies']) for x in (H, G)), f)
     t.log('E5 enemies hidden now (outside the team vision):', {x: f[x].get('enemy_hidden') for x in (H, G)})
+    # E7: hold position on one Blue unit (its owner's copy, the game's own event)
+    hold = next(u['guid'] for u in units if u['team'] == 1)
+    t.log('hold on', hold[:8], t.c(owner[hold], cmd='ord_inject', ev='ToggleBehaviourOption', **{'ent@16': hold, 'i32@24': 2, 'u8@28': 1, 'u8@29': 1}))
+    t.wait('hold option on both copies', lambda: all(next(u for u in t.c(x, cmd='pvp_status')['units'] if u['guid'] == hold).get('options', 0) & 2 for x in (H, G)), timeout=30, every=1)
+    # placing: walk to the ends (first 10 s)
+    time.sleep(14)
+    q = {x: t.c(x, cmd='mpm_pvp') for x in (H, G)}
+    for x in (H, G): t.shot(x, 'prep')
+    t.check('E8 preparation shown: HUD "Preparation", Propose fight button on both, no countdown', all('Preparation' in q[x].get('hud_text', '') and q[x].get('fight_btn') for x in (H, G))
+            and not t.c(H, cmd='pvp_status')['countdown_at'], {x: (q[x].get('hud_text'), q[x].get('fight_btn')) for x in (H, G)})
     # E5b / E7b: a click on an enemy unit = the monster group; my own unit = player group
     mine_h = next(u['guid'] for u in units if owner[u['guid']] == H); enemy_h = next(u['guid'] for u in units if owner[u['guid']] == G)
     sg = {'enemy': t.c(H, cmd='pvp_selgroup', guid=enemy_h).get('group'), 'mine': t.c(H, cmd='pvp_selgroup', guid=mine_h).get('group')}
@@ -142,17 +142,18 @@ def body(t):
                     X = next((u for u in alive if owner[u['guid']] == G), None); Y = next((u for u in alive if owner[u['guid']] == H and u['guid'] != hold), None)
                     if X and Y:
                         yc = c4[Y['guid']]['cell']; t.c(G, cmd='ord_run_attack', unit=X['guid'], target=Y['guid'], x=yc[0], y=yc[1], mp=1)
+                        t.c(G, cmd='ord_inject', ev='ToggleBehaviourOption', **{'ent@16': X['guid'], 'i32@24': 2, 'u8@28': 1, 'u8@29': 1})   # its owner: hold ON
                         time.sleep(1.5)
                         before = {x: next(u for u in t.c(x, cmd='pvp_status')['units'] if u['guid'] == X['guid']) for x in (H, G)}
                         xc = c4[X['guid']]['cell']
                         t.c(H, cmd='ord_run_attack', unit=Y['guid'], target=X['guid'], x=xc[0], y=xc[1], type=21, mp=1)   # a non-attack interaction aimed at the enemy
                         t.c(H, cmd='ord_run_attack', unit=X['guid'], target=Y['guid'], x=yc[0], y=yc[1], mp=1)            # an order for the enemy unit itself
-                        t.c(H, cmd='ord_inject', ev='ToggleBehaviourOption', **{'ent@16': X['guid'], 'i32@24': 2, 'u8@28': 1, 'u8@29': 1})
+                        t.c(H, cmd='ord_inject', ev='ToggleBehaviourOption', **{'ent@16': X['guid'], 'i32@24': 2, 'u8@28': 1, 'u8@29': 0})   # me: hold OFF on the enemy
                         time.sleep(2)
                         after = {x: next(u for u in t.c(x, cmd='pvp_status')['units'] if u['guid'] == X['guid']) for x in (H, G)}
-                        keep = all(after[x].get('options') == before[x].get('options') and (after[x].get('target') == before[x].get('target') or after[x].get('out_tick', -1) >= 0
+                        keep = all((after[x].get('options', 0) & 2) and (before[x].get('options', 0) & 2) and (after[x].get('target') == before[x].get('target') or after[x].get('out_tick', -1) >= 0
                                    or before[x].get('target') == ZERO) for x in (H, G))
-                        t.check('E7b my orders on an enemy unit change nothing on it (its target and options stay, both copies)', keep,
+                        t.check('E7b my orders on an enemy unit change nothing on it (its hold position stays on, its target stays; both copies)', keep,
                                 {x: ((before[x].get('target', '')[:8], before[x].get('options')), (after[x].get('target', '')[:8], after[x].get('options'))) for x in (H, G)})
             if s['round'] not in rounds_seen and time.time() - last_order >= 4:
                 order_all(); last_order = time.time()

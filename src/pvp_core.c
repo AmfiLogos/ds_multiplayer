@@ -243,7 +243,7 @@ void pvp_next_round(const pvp_state *s, pvp_state *o) {
     *o = *s;
     o->round++; o->resetting = 0; o->ending = 0; o->vote_open = 0; o->agree_mask = 0; o->cd_ticks = 0; o->ticks = 0; o->placing = o->arena != 0; o->fight_start = o->arena ? 0 : 1; o->countdown_at = 0;
     o->planning = 0; o->ready_mask = 0;
-    for (int i = 0; i < o->nunits; i++) o->units[i].out = 0;
+    for (int i = 0; i < o->nunits; i++) { o->units[i].out = 0; o->units[i].ordered = 0; }
     flags_home(o);
 }
 void pvp_after_match(const pvp_state *s, pvp_state *o) {
@@ -290,6 +290,7 @@ int pvp_mark_out(pvp_state *s, const uint8_t guid[16]) {
     u->out = s->ticks + 1;
     return 1;
 }
+void pvp_mark_ordered(pvp_state *s, const uint8_t guid[16]) { pvp_unit *u = s->phase == PVP_MATCH ? find_mut(s, guid) : NULL; if (u) u->ordered = 1; }
 int pvp_out_tick(const pvp_state *s, const uint8_t guid[16]) {
     const pvp_unit *u = s->phase == PVP_MATCH ? find(s, guid) : NULL;
     return u && u->out ? (int)(u->out - 1) : -1;
@@ -311,7 +312,7 @@ int pvp_hostile(const pvp_state *s, const uint8_t a[16], const uint8_t b[16]) {
 #define ARENA_BYTES (2 + 12 + 24 + 4)
 #define ROUND_BYTES (7 + 1 + 3 + 1 + 1 + 1 + 1 + 1 + 4 + 4)
 #define CTF_BYTES (24 + 3 * 13 + 4 + 4 + 1 + 1 + 2 + 4 + 2)   /* + ending (E9), vote_open vote_by agree_mask cd_ticks (E4) */
-#define UNIT_BYTES 22
+#define UNIT_BYTES 23
 size_t pvp_save_size(const pvp_state *s) { return FIXED + (size_t)s->nunits * UNIT_BYTES; }
 static void put32(uint8_t *p, uint32_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); p[2] = (uint8_t)(v >> 16); p[3] = (uint8_t)(v >> 24); }
 static uint32_t get32(const uint8_t *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
@@ -338,7 +339,7 @@ size_t pvp_save(const pvp_state *s, uint8_t *out, size_t cap) {
     *p++ = s->hold; *p++ = s->ending;
     *p++ = s->vote_open; *p++ = s->vote_by; put32(p, s->agree_mask); p += 4; *p++ = (uint8_t)s->cd_ticks; *p++ = (uint8_t)(s->cd_ticks >> 8);
     *p++ = (uint8_t)s->nunits; *p++ = (uint8_t)(s->nunits >> 8);
-    for (int i = 0; i < s->nunits; i++) { memcpy(p, s->units[i].guid, 16); p[16] = s->units[i].team; p[17] = s->units[i].player; put32(p + 18, s->units[i].out); p += UNIT_BYTES; }
+    for (int i = 0; i < s->nunits; i++) { memcpy(p, s->units[i].guid, 16); p[16] = s->units[i].team; p[17] = s->units[i].player; put32(p + 18, s->units[i].out); p[22] = s->units[i].ordered; p += UNIT_BYTES; }
     return need;
 }
 int pvp_load(pvp_state *s, const uint8_t *p, size_t n) {
@@ -364,7 +365,7 @@ int pvp_load(pvp_state *s, const uint8_t *p, size_t n) {
     t.nunits = (uint16_t)(q[0] | q[1] << 8); q += 2;
     if (t.phase > PVP_MATCH || t.arena > PVP_WHERE_BASE || t.placing > 1 || t.ending > PVP_RESET_MATCH || t.vote_open > 1 || t.vote_by >= PVP_MAX_PLAYERS || t.nunits > PVP_MAX_UNITS || n != FIXED + (size_t)t.nunits * UNIT_BYTES) { pvp_init(s); return -1; }
     for (int i = 0; i < t.nunits; i++) {
-        memcpy(t.units[i].guid, q, 16); t.units[i].team = q[16]; t.units[i].player = q[17]; t.units[i].out = get32(q + 18); q += UNIT_BYTES;
+        memcpy(t.units[i].guid, q, 16); t.units[i].team = q[16]; t.units[i].player = q[17]; t.units[i].out = get32(q + 18); t.units[i].ordered = q[22] ? 1 : 0; q += UNIT_BYTES;
         if (t.units[i].team < PVP_TEAM_BLUE || t.units[i].team > PVP_TEAM_RED) { pvp_init(s); return -1; }
         if (i && memcmp(t.units[i - 1].guid, t.units[i].guid, 16) >= 0) { pvp_init(s); return -1; }
     }

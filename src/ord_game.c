@@ -22,6 +22,7 @@
 /* PvP (E7b, owner 2026-10-20: a click on an enemy unit must never act on it): an interaction aimed at an enemy PvP unit
    other than an attack (rescue, first aid, carry, give...) is refused here, on every peer alike (the same order data). */
 int pvp_act_refused(int interaction_type, const uint8_t actor[16], const uint8_t target[16]) __attribute__((weak_import));
+void pvp_units_ordered(const uint8_t (*units)[16], int n) __attribute__((weak_import));
 
 /* ---------------------------------------------------------------- RVAs (dump.cs, build 25846389) */
 #define VA_B8_0            0xD3BAA4   /* InputDispatcher.<Update>b__8_0(IEventData) */
@@ -1302,6 +1303,11 @@ int ord_apply(int player, const uint8_t *payload, size_t len) {
     if (rc) rig_log("ord: bad order payload (%d, %zu bytes)", rc, len);
     else {
         if (ord_trace()) rig_log("ord trace: apply player %d kind %d %s nsel %d", player, m->kind, m->ev ? m->ev->name : "-", m->ctx.nsel);
+        if (pvp_units_ordered) {                                          /* PvP (E7): these units got their player's order (every peer, same step) */
+            pvp_units_ordered((const uint8_t (*)[16])m->ctx.sel, m->ctx.nsel);
+            for (int i = 0; i < m->nact; i++) pvp_units_ordered((const uint8_t (*)[16])&m->act[i].unit, 1);
+            ord_guid ow; memset(&ow, 0, sizeof ow); ord_owner(&genv, m, &ow); pvp_units_ordered((const uint8_t (*)[16])&ow, 1);   /* e.g. hold position on that unit */
+        }
         rc = apply_msg(m, player);
     }
     executing = 0;

@@ -116,7 +116,7 @@ def run(port):
             en = [y for y in alive if y['team'] != x['team'] and 'cell' in cells.get(y['guid'], {})]
             if en and 'cell' in cells.get(x['guid'], {}):
                 tg = en[0]; tc = cells[tg['guid']]['cell']
-                c(owner[x['guid']], cmd='ord_run_attack', unit=x['guid'], target=tg['guid'], x=tc[0], y=tc[1], mp=1)
+                lrig.send(owner[x['guid']], {'cmd': 'ord_run_attack', 'unit': x['guid'], 'target': tg['guid'], 'x': tc[0], 'y': tc[1], 'mp': 1}, timeout=60)
         time.sleep(4)
     mh, mg = st(H)['mp'], st(G)['mp']
     check('E3 match with Units Laboratory units, guest without it: 0 desyncs', seg and seg[0] >= 200 and seg[1] is None and not mh.get('desyncs') and not mg.get('desyncs'), (seg, mh.get('desyncs'), mg.get('desyncs')))
