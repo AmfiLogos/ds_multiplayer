@@ -572,6 +572,7 @@ int mp_is_spectator(mp_session *s) { return s && s->c && dsnet_is_spectator(s->c
 int mp_set_spectators(mp_session *s, int allow) { return s && s->c ? dsnet_set_spectators(s->c, allow) : -1; }
 int mp_server_stats(mp_session *s, dsnet_server_stats *out) { if (!s || !s->srv) return -1; dsnet_server_get_stats(s->srv, out); return 0; }
 uint16_t mp_server_port(mp_session *s) { return s->srv ? dsnet_server_port(s->srv) : 0; }
+dsnet_server *mp_server(mp_session *s) { return s ? s->srv : NULL; }
 
 void mp_get_stats(mp_session *s, mp_stats *o) {
     *o = s->st;

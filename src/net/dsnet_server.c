@@ -31,6 +31,7 @@ typedef struct sconn {
     int rule; char modset[65], mods[200];         /* from the HELLO (proto 2); mods = "id@version, ..." for the words */
     char lines[DSNET_MODLINES_MAX];               /* the launcher's modset_lines, '\n'-joined */
     char release[16];                             /* loader release after the name's NUL ("" = older peer) */
+    uint32_t peer_ip; uint16_t peer_port;         /* TCP peer (host order; 0 = local socket pair or unknown): dsnet_server_peer */
     dsnet_blob_rx rx;
 } sconn;
 
@@ -45,6 +46,7 @@ struct dsnet_server {
     dsnet_server_stats stats;
 
     sconn *conn[MAX_CONNS];
+    struct { uint8_t via; uint32_t ip; uint16_t port; } peer[DSNET_MAX_PLAYERS];   /* by player id, under mu (dsnet_server_peer) */
     uint32_t timer, sent_snapshot, held;
     int started, jp_pending, max_behind_seen, patch_pending;
     int has_world; uint8_t world[48];          /* host's world: id[16] + name[32] (P_WORLD), in every WELCOME */
@@ -648,6 +650,8 @@ static void add_conn(dsnet_server *s, int fd, int local) {
         sconn *c = calloc(1, sizeof *c);
         dsnet_link_init(&c->link, dsnet_fd_transport(fd));
         c->local = local; c->id = -1; c->last_rx = c->born = dsnet_now_ms();
+        if (!local) { struct sockaddr_in a; socklen_t al = sizeof a; memset(&a, 0, sizeof a);
+                      if (!getpeername(fd, (struct sockaddr *)&a, &al) && a.sin_family == AF_INET) { c->peer_ip = ntohl(a.sin_addr.s_addr); c->peer_port = ntohs(a.sin_port); } }
         s->conn[i] = c;
         return;
     }
@@ -689,8 +693,16 @@ static void advance_timer(dsnet_server *s, double *real) {
 }
 
 /* player list for the UI: state, ping, ticks behind; pings once a second */
+/* enum dsnet_via: the host's own socket pair, a Steam bridge (loopback from a marked port) or direct TCP */
+static int conn_via(const sconn *c) {
+    if (c->local) return DSNET_VIA_HOST;
+    if (!c->peer_port) return DSNET_VIA_UNKNOWN;
+    return (c->peer_ip >> 24) == 127 && dsnet_relay_port_is(c->peer_port) ? DSNET_VIA_STEAM : DSNET_VIA_DIRECT;
+}
+
 static void send_players(dsnet_server *s, int ping) {
-    uint8_t b[2 + MAX_CONNS * 6], *p = b + 2; int cnt = 0;
+    uint8_t b[2 + MAX_CONNS * 7], *p = b + 2; int cnt = 0;
+    uint8_t via[MAX_CONNS];                                         /* appended after the 6-byte entries (older clients stop at 2 + 6 n) */
     uint8_t sb[4 + MAX_CONNS * 36], *q = sb + 4; int scnt = 0;      /* spectators: their own list (never "players") */
     uint8_t pg[5]; put8(pg, P_PING); put32(pg + 1, ms32());
     for (int i = 0; i < MAX_CONNS; i++) {
@@ -711,8 +723,10 @@ static void send_players(dsnet_server *s, int ping) {
         if (tb < 0) tb = 0;
         if (tb > 65535) tb = 65535;
         p = put8(p, c->id); p = put8(p, st); p = put16(p, c->ping_ms > 65535 ? 65535 : c->ping_ms); p = put16(p, tb);
+        via[cnt] = (uint8_t)conn_via(c);
         cnt++;
     }
+    memcpy(p, via, (size_t)cnt); p += cnt;
     b[0] = P_PLAYERS; b[1] = cnt;
     send_all_live(s, b, p - b, -1);
     sb[0] = P_SPECT; sb[1] = s->cfg.allow_spectators != 0; sb[2] = (uint8_t)s->cfg.max_spectators; sb[3] = (uint8_t)scnt;
@@ -813,6 +827,9 @@ static void *server_main(void *arg) {
         pthread_mutex_lock(&s->mu);
         int np2 = 0, ns2 = 0;
         for (int i = 0; i < MAX_CONNS; i++) if (s->conn[i] && s->conn[i]->id >= 0) { if (s->conn[i]->spectator) ns2++; else np2++; }
+        memset(s->peer, 0, sizeof s->peer);
+        for (int i = 0; i < MAX_CONNS; i++) { sconn *c = s->conn[i];
+            if (c && c->id >= 0 && c->id < DSNET_MAX_PLAYERS && !c->spectator) { s->peer[c->id].via = (uint8_t)conn_via(c); s->peer[c->id].ip = c->peer_ip; s->peer[c->id].port = c->peer_port; } }
         s->stats = (dsnet_server_stats){ s->timer, s->log_n, np2, s->held, s->tpt, s->max_behind_seen, s->log_base, ns2, s->spect_saves, s->spect_jps };
         pthread_mutex_unlock(&s->mu);
     }
@@ -877,6 +894,17 @@ uint16_t dsnet_server_port(dsnet_server *s) { return s->port; }
 
 void dsnet_server_get_stats(dsnet_server *s, dsnet_server_stats *out) {
     pthread_mutex_lock(&s->mu); *out = s->stats; pthread_mutex_unlock(&s->mu);
+}
+
+int dsnet_server_peer(dsnet_server *s, int player, char *out, size_t n) {
+    if (out && n) out[0] = 0;
+    if (!s || player < 0 || player >= DSNET_MAX_PLAYERS) return DSNET_VIA_UNKNOWN;
+    pthread_mutex_lock(&s->mu);
+    int via = s->peer[player].via; uint32_t ip = s->peer[player].ip; uint16_t port = s->peer[player].port;
+    pthread_mutex_unlock(&s->mu);
+    if (out && n && port && (via == DSNET_VIA_DIRECT || via == DSNET_VIA_STEAM))
+        snprintf(out, n, "%u.%u.%u.%u:%u", ip >> 24, ip >> 16 & 255, ip >> 8 & 255, ip & 255, port);
+    return via;
 }
 
 /* used by dsnet_client_connect_local */

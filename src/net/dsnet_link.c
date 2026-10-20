@@ -283,3 +283,17 @@ int dsnet_blob_feed(dsnet_blob_rx *rx, const uint8_t *p, uint32_t n) {
     rx->got += dlen;
     return rx->got == rx->total;
 }
+
+/* ---- relay ports (dsnet.h: dsnet_relay_port_mark): loopback source ports of the Steam bridges ---- */
+static uint16_t relay_ports[64];
+void dsnet_relay_port_mark(uint16_t port, int on) {
+    if (!port) return;
+    if (!on) { for (int i = 0; i < 64; i++) { uint16_t v = port; __atomic_compare_exchange_n(&relay_ports[i], &v, 0, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE); } return; }
+    if (dsnet_relay_port_is(port)) return;
+    for (int i = 0; i < 64; i++) { uint16_t z = 0; if (__atomic_compare_exchange_n(&relay_ports[i], &z, port, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return; }
+}
+int dsnet_relay_port_is(uint16_t port) {
+    if (!port) return 0;
+    for (int i = 0; i < 64; i++) if (__atomic_load_n(&relay_ports[i], __ATOMIC_ACQUIRE) == port) return 1;
+    return 0;
+}

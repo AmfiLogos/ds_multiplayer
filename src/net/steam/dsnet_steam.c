@@ -362,6 +362,7 @@ typedef struct bridge {
     bq to_steam, to_fd;
     struct dsnet_steam_host *host;
     struct dsnet_steam_join *join;
+    uint16_t relay_port;                /* host side: loopback source port, marked for the server (dsnet_relay_port_mark) */
 } bridge;
 
 struct dsnet_steam_host {
@@ -411,6 +412,7 @@ static void bridge_close(bridge *b) {
     if (!b->used) return;
     if (b->fd >= 0) close(b->fd);
     if (b->listen_fd >= 0) close(b->listen_fd);
+    if (b->relay_port) dsnet_relay_port_mark(b->relay_port, 0);
     b->tr.close(b->tr.t);
     free(b->to_steam.b); free(b->to_fd.b);
     if (b->join) {
@@ -510,6 +512,8 @@ static int host_bridge(dsnet_steam_host *h, uint32_t conn) {
     bridge *b = fd >= 0 ? bridge_new(conn, fd, -1) : NULL;
     if (!b) { if (fd >= 0) close(fd); return -1; }
     b->host = h;
+    struct sockaddr_in a; socklen_t al = sizeof a;              /* the players rows say "Steam" for this guest (conninfo) */
+    if (!getsockname(fd, (struct sockaddr *)&a, &al)) { b->relay_port = ntohs(a.sin_port); dsnet_relay_port_mark(b->relay_port, 1); }
     return 0;
 }
 

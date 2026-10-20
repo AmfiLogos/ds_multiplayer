@@ -118,6 +118,7 @@ mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject);
 void        mp_stop(mp_session *s);
 dsnet_client *mp_client(mp_session *s);
 uint16_t      mp_server_port(mp_session *s);   /* host: the port it listens on; 0 on a client */
+dsnet_server *mp_server(mp_session *s);          /* host: its dsnet server (dsnet_server_peer); NULL on a client */
 
 /* ---- game thread, once per MainFlow.Update while locked ----
  * mp_frame = mp_ticks_to_run_now + per step { mp_apply_cmds, mp_step_ticks x sim_tick, fingerprint }.
