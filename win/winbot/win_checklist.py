@@ -396,7 +396,8 @@ def _item2(w, rep, a, I):
 def item3(w, rep, a, mac):
     """German + Russian shots (screen checks: kept as pictures)"""
     I = '3'
-    host = mac_host_with_extra(mac, a)
+    nohost = os.environ.get('WINBOT_ITEM3_NOHOST') == '1'               # Mac copies busy: language shots only, the host's-mods box later
+    host = None if nohost else mac_host_with_extra(mac, a)
     for lang in ('de', 'ru'):
         w.prepare(lang=LANG[lang], active=BASE_MODS, settings={})
         w.start()
@@ -409,6 +410,8 @@ def item3(w, rep, a, mac):
         w.cmd(cmd='mpm_open_load'); w.wait(lambda: w.mpm().get('state') in ('pick_save', 'idle'), 'load list', 10)
         w.cmd(cmd='mpm_list', flip=1); time.sleep(1); sh('load')
         w.cmd(cmd='mpm_list', close=1); time.sleep(0.5)
+        if nohost:
+            w.stop(); continue
         w.join(f'{W.hub_host()}:{host}', wait=None)
         w.wait(lambda: w.cmd(cmd='mpm_hostmods').get('box'), "the host's mods box", 60)
         hm = w.mpm().get('box') or {}
