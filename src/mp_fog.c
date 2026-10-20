@@ -66,6 +66,8 @@ enum { CTX_NONE, CTX_LOAD, CTX_REDRAW, CTX_REFRESH, CTX_IMPL };
 
 typedef struct {
     uint64_t *vis, *seen;            /* lazily allocated */
+    uint64_t *evis;                  /* E5c: tiles the enemy PvP team sees (rule "Enemy vision range" On) */
+    int32_t *evis_list; int evis_n, evis_cap;
     int32_t *vis_list; int vis_n, vis_cap;   /* tiles set in vis (cleared one by one at the next rebuild) */
     uintptr_t presenter_h;           /* weak gchandle (pointer-sized in this il2cpp, like ui_game.c u_gc_new; uint32 crashed) to this map's FogOfWarPresenter */
     int presenter_epoch;
@@ -109,7 +111,17 @@ static dsnet_client *client(int *me) {
     return id >= 0 ? c : NULL;
 }
 static int tracking(void) { return !g_bad && client(NULL) != NULL; }   /* keep masks up to date */
-static int filtering(void) { return !g_shared && tracking(); }         /* change what the view shows */
+/* E5 (owner v0.1.20 PvP session: "a player must see only their own units and their vision, never the opponent's"): while a
+   PvP match runs (pvp_game.c, weak), the per-player fog is on whatever the shared-fog rule says, a vision source counts
+   for me when its unit is on MY team, and an enemy PvP unit (faction Player like mine) is shown only on my visible tiles.
+   E5c rule "Enemy vision range" On: the tiles the enemy team sees are also shown visible (its units stay hidden there). */
+int pvp_vision_my_team(void) __attribute__((weak_import));
+int pvp_vision_team_of(const uint8_t g[16]) __attribute__((weak_import));
+int pvp_vision_enemy_range(void) __attribute__((weak_import));
+int pvp_vision_units(uint8_t (*g)[16], uint8_t *team, int max) __attribute__((weak_import));
+static int pvp_team(void) { return pvp_vision_my_team ? pvp_vision_my_team() : 0; }
+static int pvp_unit_team(const uint8_t g[16]) { return pvp_vision_team_of ? pvp_vision_team_of(g) : 0; }
+static int filtering(void) { return (!g_shared || pvp_team()) && tracking(); }         /* change what the view shows */
 /* A load or a map change frees the old RuntimeMapData: every cached VisionDataHandler is dropped and the view stays
    vanilla until a presenter call (SetDefaultVision / RefreshVision / OnRefreshHideVision) hands a live one again.
    (Loader lane 07:31: SIGBUS in rebuild <- decide <- EntityObjectView.SetVisible during the host's join-point reload.) */
@@ -124,6 +136,8 @@ static int world_changing(void) {
 }
 
 static int counts_for_me(dsnet_client *c, int me, const uint8_t g[16]) {
+    int pt = pvp_team(), ut = pt ? pvp_unit_team(g) : 0;
+    if (ut) return ut == pt;                   /* E5: PvP unit: my team's only */
     int o = dsnet_owner_of(c, g);
     if (o == me || o == -1) return 1;          /* mine, or free / not a unit (buildings ...) */
     return dsnet_lent_to(c, g) == me;          /* lent to me; another player's or reserved: no */
@@ -137,8 +151,8 @@ static void clrb(uint64_t *b, int i) { b[i >> 6] &= ~(1ULL << (i & 63)); }
 static MapFog *mapfog(int map) {
     if (map < 0 || map >= NMAP) return NULL;
     MapFog *m = &M[map];
-    if (!m->vis) { m->vis = calloc(WORDS, 8); m->seen = calloc(WORDS, 8); }
-    return (m->vis && m->seen) ? m : NULL;
+    if (!m->vis) { m->vis = calloc(WORDS, 8); m->seen = calloc(WORDS, 8); m->evis = calloc(WORDS, 8); }
+    return (m->vis && m->seen && m->evis) ? m : NULL;
 }
 static void range_note(V2I p) {
     if (!g_logged_range) { g_logged_range = 1; rig_log("fog: tile (%d,%d) outside the %d x %d mask: left vanilla", p.x, p.y, DIM, DIM); }
@@ -198,6 +212,18 @@ static void add_vis(MapFog *m, V2I p, int seen) {
     if (seen) setb(m->seen, i);
 }
 
+static void add_evis(MapFog *m, V2I p) {               /* E5c */
+    int i = idx(p);
+    if (i < 0 || bit(m->evis, i)) return;
+    setb(m->evis, i);
+    if (m->evis_n == m->evis_cap) {
+        int nc = m->evis_cap ? m->evis_cap * 2 : 4096; int32_t *nl = realloc(m->evis_list, (size_t)nc * 4);
+        if (!nl) return;
+        m->evis_list = nl; m->evis_cap = nc;
+    }
+    m->evis_list[m->evis_n++] = i;
+}
+static int evis_shown(const MapFog *m, int i) { return pvp_team() && pvp_vision_enemy_range && pvp_vision_enemy_range() && bit(m->evis, i); }
 /* rebuild my_vis of `map` from vh (read only). 0 ok, -1 not possible (caller stays vanilla for this call). */
 static void drop_vh(void) { for (int i = 0; i < NMAP; i++) gch_drop(&M[i].vh_h); if (filtering()) g_pending = 1; }   /* redraw after it */
 static Obj vh_get(MapFog *m) { return m && m->vh_epoch == g_epoch ? gch_get(m->vh_h) : NULL; }
@@ -210,7 +236,9 @@ static int rebuild(int map, Obj vh) {
     int me; dsnet_client *c = client(&me);
     if (!m || !c || g_bad || world_changing() || !vh_ok(vh, map)) return -1;
     for (int k = 0; k < m->vis_n; k++) clrb(m->vis, m->vis_list[k]);
-    m->vis_n = 0; vh_set(m, vh); m->built_frame = rig_frames;
+    m->vis_n = 0;
+    for (int k = 0; k < m->evis_n; k++) clrb(m->evis, m->evis_list[k]);
+    m->evis_n = 0; vh_set(m, vh); m->built_frame = rig_frames;
 
     Obj visions = AT(vh, 0x20, Obj), pvs = AT(vh, 0x28, Obj), tmp = AT(vh, 0x50, Obj);
     int nv = dict_live(visions, 0x20, "_visions Dictionary<Guid,VisionArea> stride 0x20"); if (nv < 0) return -1;
@@ -226,7 +254,8 @@ static int rebuild(int map, Obj vh) {
             if (*(int32_t *)e < 0) continue;
             const uint8_t *g = (const uint8_t *)(e + 8);
             memcpy(&pg[npg], g, 16); cnt[npg++] = (char)counts_for_me(c, me, g);
-            if (dsnet_owner_of(c, g) == me || dsnet_lent_to(c, g) == me) own++;
+            int pt = pvp_team(), ut = pt ? pvp_unit_team(g) : 0;
+            if (ut ? ut == pt : (dsnet_owner_of(c, g) == me || dsnet_lent_to(c, g) == me)) own++;
         }
     }
     int was = m->watcher;
@@ -258,7 +287,12 @@ static int rebuild(int map, Obj vh) {
             Obj items = AT(list, 0x10, Obj); int sz = AT(list, 0x18, int32_t);
             if (sz < 0 || (sz && (!items || sz > arr_len(items)))) return layout_fail("VisionArea.Positions List size", sz, (long)arr_len(items));
             nall += sz;
-            if (!cnt[k]) continue;
+            if (!cnt[k]) {                                  /* E5c: an enemy PvP source: its tiles in evis */
+                int pt = pvp_team();
+                if (pt && pvp_unit_team((const uint8_t *)&pg[k]) && pvp_unit_team((const uint8_t *)&pg[k]) != pt)
+                    for (int j = 0; j < sz; j++) add_evis(m, *(V2I *)((char *)items + 0x20 + (int64_t)j * 8));
+                continue;
+            }
             for (int j = 0; j < sz; j++) add_vis(m, *(V2I *)((char *)items + 0x20 + (int64_t)j * 8), 1);
             nsrc++; ntiles += sz;
         }
@@ -352,7 +386,7 @@ static void h_set_visible(Obj V, V2I p, void *mi) {
     MapFog *m = (g_ctx != CTX_NONE) ? mapfog(g_ctx_map) : NULL;
     int i = idx(p);
     if (!m || !filtering() || i < 0) { if (m && i < 0) range_note(p); o_set_visible(V, p, mi); return; }
-    if (bit(m->vis, i)) { o_set_visible(V, p, mi); return; }
+    if (bit(m->vis, i) || evis_shown(m, i)) { o_set_visible(V, p, mi); return; }
     if (g_ctx == CTX_IMPL) {                        /* vanilla: visited tile in the new area -> SetVisible */
         if (bit(m->seen, i)) o_set_visible(V, p, mi); else not_visited(V, p);
         return;
@@ -367,7 +401,7 @@ static void half_like(leaf_fn orig, Obj V, V2I p, void *mi) {
     if (!m || i < 0) { if (m) range_note(p); orig(V, p, mi); return; }
     if (g_ctx == CTX_LOAD) { setb(m->seen, i); orig(V, p, mi); return; }
     if (!filtering()) { orig(V, p, mi); return; }
-    if (bit(m->vis, i)) o_set_visible(V, p, NULL);  /* cannot happen in vanilla flows (half = shared stack 0); safe */
+    if (bit(m->vis, i) || evis_shown(m, i)) o_set_visible(V, p, NULL);  /* cannot happen in vanilla flows (half = shared stack 0); safe */
     else if (bit(m->seen, i)) orig(V, p, mi);
     else not_visited(V, p);
 }
@@ -401,6 +435,8 @@ static int unit_tile(int map, Guid g, V2I *t) {        /* VectorExtensions.ToLog
     return 1;
 }
 static int always_shown(Obj u) {                        /* UnitEntity.get_Faction == 1 || get_SubFaction == 2 (fields read) */
+    int pt = pvp_team();
+    if (pt) { Guid g = ent_guid(u); int ut = pvp_unit_team((const uint8_t *)&g); if (ut && ut != pt) return 0; }   /* E5: an enemy PvP unit */
     Obj a = AT(u, 0x40, Obj), b = a ? AT(a, 0x10, Obj) : NULL, s = AT(u, 0x50, Obj);
     int fac = b ? AT(b, 0x18, int32_t) : -1, sub = s ? AT(s, 0x34, int32_t) : -1;
     return fac == 1 || sub == 2 || fac < 0;            /* unreadable: leave vanilla */
@@ -560,14 +596,55 @@ void mp_fog_set_shared(int on) {
     want_redraw();
 }
 void mp_fog_owner_changed(void) { if (!g_shared && tracking()) want_redraw(); }
-void mp_fog_frame(void) { note_main(); epoch_sync(); if (g_pending) redraw_now(); blank_check(); }   /* main thread, once per frame (rig_frame) */
+/* E5: enemy PvP units are faction Player, which the presenter shows always and never re-decides on vision changes: every
+   frame each enemy PvP unit on this map is shown only on my visible tiles (view only: EntityObjectView.SetVisible of the
+   live presenter of this epoch). When the match ends, the units hidden here are shown again. */
+static int n_enemy_hidden, pvp_was, n_enemy_seen, n_enemy_novh, n_enemy_tile;
+static int n_erec; static struct { int invis, shown; } erec[32];   /* test: each enemy's tile in my vision / shown (mpm_fog) */
+static void pvp_enemy_pass(void) {
+    int pt = pvp_team(), map = cur_map();
+    if (!pt && !pvp_was) return;
+    if (map < 0 || busy() || mp_game_load_pending() || scene() != 2 || !tracking()) return;
+    Obj V = eov_of(map); if (!V) return;
+    if (!pt) {                                          /* the match is over: show what this pass hid */
+        pvp_was = 0;
+        for (int k = 0; k < NENT; k++) { EntRec *r = &E[k];
+            if (r->used && r->map == map && r->epoch == g_epoch && r->want == 2 && !r->shown && unit_of(map, r->g)) { o_eov_set_visible(V, r->g, true, NULL); r->shown = 1; } }
+        return;
+    }
+    pvp_was = 1;
+    uint8_t gl[32][16], tm[32]; int n = pvp_vision_units ? pvp_vision_units(gl, tm, 32) : 0, hid = 0;
+    n_enemy_seen = n_enemy_novh = n_enemy_tile = 0; n_erec = 0;
+    for (int i = 0; i < n; i++) {
+        if (tm[i] == pt) continue;
+        Guid g; memcpy(&g, gl[i], 16);
+        if (!unit_of(map, g)) continue;
+        { MapFog *mm = mapfog(map); V2I tt; n_enemy_seen++; if (!mm || !vh_get(mm)) n_enemy_novh++; if (!unit_tile(map, g, &tt)) n_enemy_tile++; }
+        int show = decide(map, g, 1);
+        if (n_erec < 32) { MapFog *mm = mapfog(map); V2I tt; int iv = mm && unit_tile(map, g, &tt) && idx(tt) >= 0 && bit(mm->vis, idx(tt)); erec[n_erec].invis = iv; erec[n_erec].shown = show; n_erec++; }
+        EntRec *r = ent_rec(g, 1);
+        if (r->map != map || r->epoch != g_epoch || r->want != 2 || r->shown != show) {
+            r->map = map; r->epoch = g_epoch; r->want = 2; r->shown = show;
+            Obj V2 = eov_of(map); if (!V2) return;           /* decide may start a new epoch */
+            o_eov_set_visible(V2, g, show ? true : false, NULL);
+        }
+        hid += !show;
+    }
+    n_enemy_hidden = hid;
+}
+void mp_fog_frame(void) { note_main(); epoch_sync(); if (g_pending) redraw_now(); pvp_enemy_pass(); blank_check(); }   /* main thread, once per frame (rig_frame) */
 char *mp_fog_state(int watch) {                        /* test (mpm_fog): watch 0/1 sets the watcher rule, -1 reads */
     if (watch >= 0 && watch != g_watch_rule) { g_watch_rule = watch; rig_log("fog: watcher rule %s (test)", watch ? "on" : "off"); g_pending = 1; }
     int map = cur_map(); MapFog *m = map >= 0 && map < NMAP ? &M[map] : NULL;
-    char b[400];
+    char b[1000];
     snprintf(b, sizeof b, "{\"ok\":true,\"watch_rule\":%d,\"shared\":%d,\"bad\":%d,\"map\":%d,\"watcher\":%d,\"own\":%d,\"visible\":%d,\"all\":%d,"
-             "\"blank_s\":%.0f,\"blank_logged\":%d}", g_watch_rule, g_shared, g_bad, map, m ? m->watcher : -1, m ? m->n_own : -1,
-             m ? m->n_vis : -1, m ? m->n_all : -1, b_since ? mono_s() - b_since : 0, b_logged);
+             "\"blank_s\":%.0f,\"blank_logged\":%d,\"pvp_team\":%d,\"enemy_hidden\":%d,\"enemy_vis_tiles\":%d,\"eov\":%d,\"enemy_seen\":%d,\"enemy_novh\":%d,\"enemy_notile\":%d,\"filtering\":%d}", g_watch_rule, g_shared, g_bad, map, m ? m->watcher : -1, m ? m->n_own : -1,
+             m ? m->n_vis : -1, m ? m->n_all : -1, b_since ? mono_s() - b_since : 0, b_logged, pvp_team(), n_enemy_hidden, m ? m->evis_n : -1, map >= 0 && eov_of(map) != NULL, n_enemy_seen, n_enemy_novh, n_enemy_tile, filtering());
+    size_t L = strlen(b); if (L && b[L - 1] == '}') {                 /* + "enemies":[[in my vision, shown], ...] */
+        int o = (int)L - 1; o += snprintf(b + o, sizeof b - (size_t)o, ",\"enemies\":[");
+        for (int i = 0; i < n_erec && o < (int)sizeof b - 20; i++) o += snprintf(b + o, sizeof b - (size_t)o, "%s[%d,%d]", i ? "," : "", erec[i].invis, erec[i].shown);
+        snprintf(b + o, sizeof b - (size_t)o, "]}");
+    }
     return strdup(b);
 }
 

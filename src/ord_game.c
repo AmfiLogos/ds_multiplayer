@@ -19,6 +19,9 @@
 #include <math.h>
 #include <dlfcn.h>
 #include <string.h>
+/* PvP (E7b, owner 2026-10-20: a click on an enemy unit must never act on it): an interaction aimed at an enemy PvP unit
+   other than an attack (rescue, first aid, carry, give...) is refused here, on every peer alike (the same order data). */
+int pvp_act_refused(int interaction_type, const uint8_t actor[16], const uint8_t target[16]) __attribute__((weak_import));
 
 /* ---------------------------------------------------------------- RVAs (dump.cs, build 25846389) */
 #define VA_B8_0            0xD3BAA4   /* InputDispatcher.<Update>b__8_0(IEventData) */
@@ -1231,6 +1234,9 @@ static int apply_msg(ord_msg *m, int player) {
             Obj u = g_ent_find(map, &m->act[i].unit);
             int skip = !u || !may_command(u, player);
             for (int k = 0; k < ndone && !skip; k++) if (done[k] == u) skip = 1;
+            if (!skip && pvp_act_refused && m->act[i].ia.has_target && pvp_act_refused(m->act[i].ia.type, (const uint8_t *)&m->act[i].unit, (const uint8_t *)&m->act[i].ia.target)) {
+                rig_log("ord: RUN by player %d: interaction %d on an enemy PvP unit refused (only an attack may target it)", player, m->act[i].ia.type); continue;
+            }
             if (skip) continue;
             uint8_t ia[ORD_IA_SIZE] __attribute__((aligned(8))) = { 0 };
             ord_ia_to_mem(&genv, &m->act[i].ia, map, ia);
@@ -1377,6 +1383,17 @@ int ord_debug_select(int map, const uint8_t (*g)[16], int n, int group) {
     SETREF(l, (char *)l + 0x10, a); AT(l, 0x18, int32_t) = k; AT(l, 0x1C, int32_t) = 1;
     AT(sc, 0x10, int32_t) = group; SETREF(sc, (char *)sc + 0x18, l);
     return k;
+}
+/* PvP test (E7b, rig pvp_selgroup): a left click's selection of one unit, through SelectProcessor.Select (hooked: the same
+   path as a click, ui_game.c + pvp_select_after); returns the selection group after it (3003 my units, 3001 enemy view) */
+int ord_debug_click_select(int map, const uint8_t g[16]) {
+    Obj ih = item_handler(); Obj sp = ih ? AT(ih, 0x38, Obj) : NULL; Obj sc = sel_container();
+    if (!is_cls(sp, "SelectProcessor") || !sc) return -1;
+    Obj e = g_ent_find(map, (const ord_guid *)g); if (!e) return -2;
+    Obj l = obj_new(TI_LIST_IENTITY); Obj a = arr_new(md(TI_IENTITY), 4);
+    SETREF(a, (char *)a + 0x20, e); SETREF(l, (char *)l + 0x10, a); AT(l, 0x18, int32_t) = 1; AT(l, 0x1C, int32_t) = 1;
+    F(0xD54B7C, void (*)(Obj, Obj, void *))(sp, l, NULL);                  /* SelectProcessor.Select */
+    return AT(sc, 0x10, int32_t);
 }
 int ord_debug_selection(uint8_t (*out)[16], int max, int *group) {
     ord_ctx c; ctx_capture(&c, NULL);
