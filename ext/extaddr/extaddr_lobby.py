@@ -106,10 +106,10 @@ def one(X, case):
             got = open(clip).read().strip() if os.path.exists(clip) else ''
             check('upnp: Copy puts the internet address on the clipboard', got == inet, 'same' if got == inet else 'differs')
     else:
-        unk = tr(lang, 'Internet address unknown. Friends outside your home: open port %s on your router.').split('%s')[0][:12]
+        unk = tr(lang, 'Your router did not open a port. Friends outside your home need you to forward port %s on your router.').split('%s')[0][:12]   # since upnpport (test copies: UPnP port off)
         check('fail: state unknown, no internet address', s.get('inet_state') == 4 and not inet, s.get('inet_state'))
         check('fail: the lobby box shows the local address', box == direct, (box, direct))
-        check('fail: the note says the internet address is unknown + same home', unk in note and same in note, note)
+        check('fail: the note says the router did not open a port + same home', unk in note and same in note, note)
     rig.stop(X)
 
 

@@ -773,7 +773,9 @@ static void mp_rig_log(const char *line) { rig_log("mp: %s", line); }
 #define VA_APP_QUIT_I  0x507B150    /* static void UnityEngine.Application.Quit(int exitCode) */
 static void (*o_app_quit)(void *);
 static void (*o_app_quit_i)(int, void *);
+void upnpport_quit(void);                                 /* upnpport.c: delete the router mapping this process added */
 static void leave_for_quit(const char *why) {
+    upnpport_quit();
     if (!S && !steam_join && !steam_host) return;
     rig_log("mp: %s: leaving the session first", why);
     mp_steam_leave();

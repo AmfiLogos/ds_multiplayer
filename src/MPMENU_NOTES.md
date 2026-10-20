@@ -80,7 +80,16 @@ Proof: `build_ux/fix_menu.py` on pair AB, hidden windows 1512x982, results `buil
   fail) and Copy copies it; the note says "your router must forward port N to this computer" + "Same home: <local>".
   Provider NAT (router address in 10/8, 172.16/12, 192.168/16, 100.64/10): no internet address shown, the note says why.
   Unknown: box = local address, "Internet address unknown ...". Test switches DSRIG_EXTADDR_UPNP=0 / _WEB=0 / _WEB_URL;
-  pair test ext/extaddr/extaddr_lobby.py, host test src/extaddr_test. The world waits in the lobby: dsnet hold reason DSNET_HOLD_LOBBY on at host start, off at Start (every pause mode).
+  pair test ext/extaddr/extaddr_lobby.py, host test src/extaddr_test.
+  Since upnpport (owner 2026-10-20, src/upnpport.c): the router port is opened by UPnP on a worker thread (host port =
+  the Host port setting, never changed by the router). Hosting: a listed mapping to this computer:port = "Friends outside
+  your home: <internet>:<external> (your router already forwards this port)"; else AddPortMapping ("Dungeon Settlers
+  host", lease 86400 s, renewed at half, deleted at session end / Application.Quit / Mac exit; only our own) = "...
+  (opened automatically on your router)"; no UPnP / refused = "Your router did not open a port. Friends outside your
+  home need Steam invite, or forward port N on your router." Provider NAT keeps its line. Windows adds "If Windows asks
+  to allow Dungeon Settlers on networks, click Allow." Box + Copy = <internet>:<external>. Test copies (DSRIG_CTL /
+  DSRIG_PORT) never touch the router unless DSRIG_UPNP=1; DSRIG_UPNP=0 off, _LEASE=<s>, _SKIP_EXISTING=1. Pair test
+  ext/upnpport/upnpport_lobby.py (real router), host test src/extaddr_test/upnpport_test.c. The world waits in the lobby: dsnet hold reason DSNET_HOLD_LOBBY on at host start, off at Start (every pause mode).
   Guest: new state MPM_GUEST_LOBBY while that hold is on: the Esc-menu panel in lobby mode with "In <Host>'s lobby / The game
   starts when <Host> presses Start. / Players: ..." and Leave multiplayer.
 - #16 Join / Host pages: text-only lines (title button clones with every Image under them disabled): MPB_LABEL_ADDR "Host
