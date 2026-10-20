@@ -17,7 +17,7 @@ LANE = f'pvprules-{os.getpid()}'
 rig.DYLIB = os.path.abspath(arg('--dylib', os.path.join(W, 'build', 'dsrig.dylib')))
 TAG = arg('--tag', time.strftime(f'{PHASE}_%H%M%S'))
 TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')        # the wiki base template (PvP world)
-HOME = os.path.join(W, 'ext', 'foreign_expedition', 'fixtures', 'home_Elven.json')        # each player's own save
+HOME = os.path.expanduser('~/ds_multiplayer/ext/foreign_expedition/fixtures/home_Elven.json')   # not in git (a save)        # each player's own save
 H_UNITS = ['477ad25a-7c22-43f5-be28-db055895297e', '137a4264-054d-4b21-81f2-a69d349a3bd0']
 G_UNITS = ['92be08ca-b7de-497a-a4ea-9aac4be0b603', 'acd20405-56c9-4360-80f6-b4c84e1a9ba4']
 OUT = os.path.join(W, 'ext', 'pvprules', 'out', TAG); os.makedirs(OUT, exist_ok=True)
@@ -218,12 +218,11 @@ def phase_match(H, G, B):
         fought = False
     log('fight began' if fought else 'fight did not begin in 7 min (placing time)')
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_fight.png'))
-    t_end = time.time() + 150
+    t_end = time.time() + 240
     while time.time() < t_end:
         s = c(H, cmd='pvp_status')
-        if not s.get('resetting'):
-            for x in (H, G): shutil.copy2(os.path.join(rig.idir(x), 'fp.log'), os.path.join(OUT, f'fp_match_{x}.log'))
-        if not s.get('active'): break
+        if not s.get('active') or s.get('resetting'): break          # the reload starts fp.log again: keep the match's lines
+        for x in (H, G): shutil.copy2(os.path.join(rig.idir(x), 'fp.log'), os.path.join(OUT, f'fp_match_{x}.log'))
         time.sleep(3)
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_later.png'))
     fh, fg = fp_read_file(os.path.join(OUT, f'fp_match_{H}.log'), t_match), fp_read_file(os.path.join(OUT, f'fp_match_{G}.log'), t_match)
