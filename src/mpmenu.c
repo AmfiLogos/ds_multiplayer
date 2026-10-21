@@ -67,6 +67,24 @@ int rect_of(Obj comp, float r[4]);
 static double mono_s(void);
 static const char *palette_color(int idx);
 static const char *cls_name(Obj o) { return o ? *(const char **)((char *)*(void **)o + 0x10) : ""; }
+/* DASText._useTextKey / _textKey by name: Mac 0x7C0 / 0x7C8, Windows 0x7C8 / 0x7D0 (MSVC puts no subclass field in the
+   base's tail padding). The Mac 0x7C0 on Windows cleared the low byte of TextMeshProUGUI.materialIndexPairs: v0.1.21 F1,
+   a guest crashed at the title load (Unity's asset GC walked a chat text of the chat canvas kept across scenes). */
+static int das_off(int k) {                                                 /* 0 _useTextKey, 1 _textKey; -1 = not found */
+    static int off[2] = { -2, -2 }; static const char *const nm[2] = { "_useTextKey", "_textKey" };
+    if (off[k] == -2) {
+        void *c = class_by_name("Refactor.UI", "DASText"); if (!c) return -1;   /* not loaded yet: again next time */
+        void *f = F(0x6F8C14, void *(*)(void *, const char *))(c, nm[k]);      /* il2cpp_class_get_field_from_name */
+        off[k] = f ? (int)F(0x6F949C, size_t (*)(void *))(f) : -1;            /* il2cpp_field_get_offset */
+        if (off[k] < 0) rig_log("mpmenu: DASText.%s not found: its text key is left as is", nm[k]);
+        else rig_log("mpmenu: DASText.%s at %#x", nm[k], off[k]);
+    }
+    return off[k];
+}
+static int das_at(Obj t, int k) { return t && !strcmp(cls_name(t), "DASText") ? das_off(k) : -1; }
+bool das_key_on(Obj t) { int o = das_at(t, 0); return o > 0 && AT(t, o, bool); }
+void das_key_set(Obj t, bool on) { int o = das_at(t, 0); if (o > 0) AT(t, o, bool) = on; }
+void das_key_clear(Obj t) { das_key_set(t, false); int o = das_at(t, 1); if (o > 0) AT(t, o, Obj) = NULL; }   /* our text, no key */
 /* TMP_Text.text: virtual slots 65 (get, +0x548) / 66 (set, +0x558) */
 static Obj tmp_get(Obj t) {
     if (!u_alive(t) || !mm_is(t, K_TMP)) return NULL;
@@ -89,7 +107,7 @@ static void fit_dirty(Obj t);
 static void fit_style(Obj t, float size, int wrap);
 void tmp_set(Obj t, const char *s) {
     if (!u_alive(t) || !mm_is(t, K_TMP)) return;
-    if (!strcmp(cls_name(t), "DASText")) AT(t, 0x7C0, bool) = false;     /* DASText._useTextKey: keep our raw text */
+    das_key_set(t, false);                                                  /* DASText._useTextKey: keep our raw text */
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str_ok(s), *(void **)((char *)k + 0x560));
     fit_text(t, s);
@@ -2792,8 +2810,8 @@ static void pick_frame(const mpm_obs *o) {
         Obj t = slv ? AT(slv, 0x48, Obj) : NULL, lb = slv ? AT(slv, 0xA0, Obj) : NULL, bt = u_alive(lb) ? tmp_below(u_tr(lb), 0) : NULL;
         if (!u_alive(t)) return;
         if (!pick_on) {
-            str_utf8(tmp_get(t), pick_title0, sizeof pick_title0); pick_key0[0] = !strcmp(cls_name(t), "DASText") && AT(t, 0x7C0, bool);
-            pick_btn0[0] = 0; if (bt) { str_utf8(tmp_get(bt), pick_btn0, sizeof pick_btn0); pick_key0[1] = !strcmp(cls_name(bt), "DASText") && AT(bt, 0x7C0, bool); }
+            str_utf8(tmp_get(t), pick_title0, sizeof pick_title0); pick_key0[0] = das_key_on(t);
+            pick_btn0[0] = 0; if (bt) { str_utf8(tmp_get(bt), pick_btn0, sizeof pick_btn0); pick_key0[1] = das_key_on(bt); }
             u_gc_free(h_pick_title); h_pick_title = u_gc_new(t); u_gc_free(h_pick_btn); h_pick_btn = bt ? u_gc_new(bt) : 0;
             pick_on = 1; rig_log("mpmenu: load list retitled (was \"%s\" / \"%s\")", pick_title0, pick_btn0);
         }
@@ -2801,8 +2819,8 @@ static void pick_frame(const mpm_obs *o) {
         if (bt) { str_utf8(tmp_get(bt), cur, sizeof cur); if (strcmp(cur, TRC("verb", "Host"))) tmp_set(bt, TRC("verb", "Host")); }
     } else if (!want && pick_on) {
         Obj t = u_gc_get(h_pick_title), bt = u_gc_get(h_pick_btn);
-        if (u_alive(t)) { tmp_set(t, pick_title0); if (pick_key0[0]) AT(t, 0x7C0, bool) = true; }
-        if (u_alive(bt)) { tmp_set(bt, pick_btn0); if (pick_key0[1]) AT(bt, 0x7C0, bool) = true; }
+        if (u_alive(t)) { tmp_set(t, pick_title0); if (pick_key0[0]) das_key_set(t, true); }
+        if (u_alive(bt)) { tmp_set(bt, pick_btn0); if (pick_key0[1]) das_key_set(bt, true); }
         u_gc_free(h_pick_title); u_gc_free(h_pick_btn); h_pick_title = h_pick_btn = 0; pick_on = 0;
         rig_log("mpmenu: load list titles restored");
     }
@@ -4166,7 +4184,7 @@ static void lf_toggle_sync(Obj slv) {
         if (!u_alive(low) || !u_alive(tt)) return;
         tog = mk_txt(tt, u_tr(low), 0, 16, 513, 0, 0, 0, 400, 36, C_SUB);    /* middle left */
         if (!tog) return;
-        if (!strcmp(cls_name(tog), "DASText")) AT(tog, 0x7C0, bool) = false;   /* our text, not a localisation key */
+        das_key_set(tog, false);                                            /* our text, not a localisation key */
         F(0x5260348, void (*)(Obj, bool, void *))(tog, true, NULL);         /* raycastTarget: the click is ours */
         u_gc_free(h_lf_tog); h_lf_tog = u_gc_new(tog);
         box = tpl_img ? mk_img(tpl_img, u_tr(low), S_CHK_N, C_WHITE, 0, 0, 20, 20) : NULL;   /* 2x the 10 x 10 box: whole pixels */

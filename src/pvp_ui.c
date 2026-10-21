@@ -603,7 +603,7 @@ static void hud_build(void) {
     Obj comp = ty && tr ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(tr, ty, NULL) : NULL;
     if (!u_alive(comp)) { rig_log("pvp ui: boss bar copy has no BossHUDView"); return; }
     Obj name = AT(comp, 0x30, Obj), head = AT(comp, 0x38, Obj), body = AT(comp, 0x40, Obj);
-    if (u_alive(name)) AT(name, 0x7C0, bool) = false;                    /* DASText._useTextKey off: our text stays */
+    if (u_alive(name)) das_key_set(name, false);                         /* DASText._useTextKey off: our text stays */
     if (mm_is(comp, K_BEH)) F(0x50ECEA0, void (*)(Obj, bool, void *))(comp, false, NULL);   /* the copy never runs the boss code */
     Obj aff = AT(comp, 0x48, Obj); if (u_alive(aff)) u_active(aff, false);
     u_gc_free(h_hud); h_hud = u_gc_new(cl); u_gc_free(h_hud_name); h_hud_name = u_alive(name) ? u_gc_new(name) : 0;
@@ -627,7 +627,7 @@ static void hud_build(void) {
         Obj bar = k ? body : head; if (!u_alive(bar)) continue;
         Obj l = u_instantiate(tpl_t, u_tr_parent(u_tr(bar)));
         if (!u_alive(l)) continue;
-        AT(l, 0x7C0, bool) = false; AT(l, 0x7C8, Obj) = NULL; txt_style(l, 1, 16, 516, 0); txt_color(l, k ? C_RED : C_BLUE); cmt_set(l, k ? TR("Red") : TR("Blue"));
+        das_key_clear(l); txt_style(l, 1, 16, 516, 0); txt_color(l, k ? C_RED : C_BLUE); cmt_set(l, k ? TR("Red") : TR("Blue"));
         u_gc_free(h_hud_lab[k]); h_hud_lab[k] = u_gc_new(l);
         Obj brt = u_tr(bar); V2 bp = mm_is(brt, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(brt, NULL) : (V2){ 0, 0 };
         place(l, bp.x - 52, bp.y, 90, 24);                                /* bp.x = the bar's left edge (pivot moved above) */
@@ -639,27 +639,27 @@ static void hud_build(void) {
         if (mm_is(hrt, K_RT)) { typedef struct { float x, y, w, h; } RectB; RectB rb = F(0x5106978, RectB (*)(Obj, void *))(hrt, NULL); hp.x += rb.w / 2; }   /* the bar's pivot is its left edge (above): centre under it */
         Obj b = mk_img(head, u_tr_parent(hrt), S_RECRUIT, C_WHITE, hp.x, hp.y - 44, 170, 38);   /* under the bars, centred */
         if (b) { Obj l = mk_txt(name, u_tr(b), 1, 18, 514, 0, 0, 0, 170, 38, C_START);
-                 if (l) { AT(l, 0x7C0, bool) = false; AT(l, 0x7C8, Obj) = NULL; cmt_set(l, TR("Ready")); u_gc_free(h_hud_rlab); h_hud_rlab = u_gc_new(l); } }
+                 if (l) { das_key_clear(l); cmt_set(l, TR("Ready")); u_gc_free(h_hud_rlab); h_hud_rlab = u_gc_new(l); } }
         u_gc_free(h_pvb[PVB_READY]); h_pvb[PVB_READY] = b ? u_gc_new(b) : 0; u_active(b, false);
         /* E4: Start fight (host) / Propose fight (guest) in the preparation: same place as Ready (never both shown) */
         Obj fb = mk_img(head, u_tr_parent(hrt), S_RECRUIT, C_WHITE, hp.x, hp.y - 44, 220, 38);
         if (fb) { Obj l = mk_txt(name, u_tr(fb), 1, 18, 514, 0, 0, 0, 220, 38, C_START);
-                  if (l) { AT(l, 0x7C0, bool) = false; AT(l, 0x7C8, Obj) = NULL; u_gc_free(h_hud_flab); h_hud_flab = u_gc_new(l); } }
+                  if (l) { das_key_clear(l); u_gc_free(h_hud_flab); h_hud_flab = u_gc_new(l); } }
         u_gc_free(h_pvb[PVB_FIGHT]); h_pvb[PVB_FIGHT] = fb ? u_gc_new(fb) : 0; u_active(fb, false);
         /* E2: Bring Units in the preparation, under it */
         Obj hb = mk_img(head, u_tr_parent(hrt), S_NBTN, C_WHITE, hp.x, hp.y - 88, 220, 34);
-        if (hb) { Obj l = mk_txt(name, u_tr(hb), 1, 16, 514, 0, 0, 0, 220, 34, C_MAIN); if (l) { AT(l, 0x7C0, bool) = false; AT(l, 0x7C8, Obj) = NULL; cmt_set(l, TR("Bring Units...")); u_gc_free(h_lab_bring); h_lab_bring = u_gc_new(l); } }
+        if (hb) { Obj l = mk_txt(name, u_tr(hb), 1, 16, 514, 0, 0, 0, 220, 34, C_MAIN); if (l) { das_key_clear(l); cmt_set(l, TR("Bring Units...")); u_gc_free(h_lab_bring); h_lab_bring = u_gc_new(l); } }
         u_gc_free(h_pvb[PVB_HUD_BRING]); h_pvb[PVB_HUD_BRING] = hb ? u_gc_new(hb) : 0; u_active(hb, false);
         /* E4: the host's box when a guest proposes the fight: "<name> proposes a fight" + Start / Not yet */
         if (!scan_done) assets_scan_now();
         Obj pb = mk_img(head, u_tr_parent(hrt), S_BOX, C_WHITE, hp.x, hp.y - 120, 440, 104);
         if (pb) {
             Obj t = mk_txt(name, u_tr(pb), 0, 18, 514, 1, 0, 22, 410, 40, C_MAIN);
-            if (t) { AT(t, 0x7C0, bool) = false; AT(t, 0x7C8, Obj) = NULL; u_gc_free(h_prop_txt); h_prop_txt = u_gc_new(t); }
+            if (t) { das_key_clear(t); u_gc_free(h_prop_txt); h_prop_txt = u_gc_new(t); }
             for (int k = 0; k < 2; k++) {
                 Obj bb = mk_img(head, u_tr(pb), k ? S_NBTN : S_RECRUIT, C_WHITE, k ? 100 : -100, -24, 170, 36);
                 Obj bl = bb ? mk_txt(name, u_tr(bb), 1, 17, 514, 0, 0, 0, 170, 36, k ? C_MAIN : C_START) : NULL;
-                if (bl) { AT(bl, 0x7C0, bool) = false; AT(bl, 0x7C8, Obj) = NULL; cmt_set(bl, k ? TR("Not yet") : TR("Agree")); uintptr_t *hl = k ? &h_lab_no : &h_lab_yes; u_gc_free(*hl); *hl = u_gc_new(bl); }
+                if (bl) { das_key_clear(bl); cmt_set(bl, k ? TR("Not yet") : TR("Agree")); uintptr_t *hl = k ? &h_lab_no : &h_lab_yes; u_gc_free(*hl); *hl = u_gc_new(bl); }
                 u_gc_free(h_pvb[k ? PVB_PROP_NO : PVB_PROP_YES]); h_pvb[k ? PVB_PROP_NO : PVB_PROP_YES] = bb ? u_gc_new(bb) : 0;
             }
         }
@@ -670,7 +670,7 @@ static void hud_build(void) {
             Obj t1 = mk_txt(name, u_tr(rs), 1, 34, 514, 0, 0, 52, 560, 52, C_MAIN), t2 = mk_txt(name, u_tr(rs), 1, 30, 514, 0, 0, -4, 560, 44, C_GOLD),
                 t3 = mk_txt(name, u_tr(rs), 0, 18, 514, 0, 0, -56, 560, 30, C_SUB);
             Obj tt[3] = { t1, t2, t3 }; uintptr_t *hh[3] = { &h_rs_title, &h_rs_score, &h_rs_sub };
-            for (int k = 0; k < 3; k++) if (tt[k]) { AT(tt[k], 0x7C0, bool) = false; AT(tt[k], 0x7C8, Obj) = NULL; u_gc_free(*hh[k]); *hh[k] = u_gc_new(tt[k]); }
+            for (int k = 0; k < 3; k++) if (tt[k]) { das_key_clear(tt[k]); u_gc_free(*hh[k]); *hh[k] = u_gc_new(tt[k]); }
         }
         u_gc_free(h_rs_root); h_rs_root = rs ? u_gc_new(rs) : 0; u_active(rs, false);
     }

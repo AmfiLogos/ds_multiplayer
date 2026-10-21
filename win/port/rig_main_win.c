@@ -320,6 +320,21 @@ static void crash_where(char *out, size_t n, uintptr_t a) {
         snprintf(out, n, "%s+%#llx", b ? b + 1 : nm, (unsigned long long)(a - (uintptr_t)m));
     } else out[0] = 0;
 }
+static int crash_readable(const void *p, size_t n) {
+    MEMORY_BASIC_INFORMATION mi;
+    if ((uintptr_t)p < 0x10000 || !VirtualQuery(p, &mi, sizeof mi) || mi.State != MEM_COMMIT || (mi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) return 0;
+    return (uintptr_t)p + n <= (uintptr_t)mi.BaseAddress + mi.RegionSize;
+}
+/* "Namespace.Class" of an il2cpp object (klass = first word, mark bit cleared; Il2CppClass name +0x10, namespace +0x18) */
+static void crash_cls(char *out, size_t n, uintptr_t o) {
+    out[0] = 0;
+    if (!crash_readable((void *)o, 8)) return;
+    uintptr_t k = *(uintptr_t *)o & ~(uintptr_t)1;
+    if (!crash_readable((void *)k, 0x20)) return;
+    const char *nm = *(const char **)(k + 0x10), *ns = *(const char **)(k + 0x18);
+    if (!crash_readable(nm, 1) || !crash_readable(ns, 1)) return;
+    snprintf(out, n, "%.60s%s%.60s", ns, *ns ? "." : "", nm);
+}
 static LONG WINAPI crash_note(EXCEPTION_POINTERS *e) {
     static volatile LONG once;
     DWORD c = e->ExceptionRecord->ExceptionCode;
@@ -327,6 +342,16 @@ static LONG WINAPI crash_note(EXCEPTION_POINTERS *e) {
     char w[300]; crash_where(w, sizeof w, (uintptr_t)e->ContextRecord->Rip);
     rig_log("CRASH %#lx at %p %s (access %llu to %p), thread %lu; stack:", (unsigned long)c, (void *)e->ContextRecord->Rip, w,
             (unsigned long long)e->ExceptionRecord->ExceptionInformation[0], (void *)e->ExceptionRecord->ExceptionInformation[1], GetCurrentThreadId());
+    { /* registers; one that points to an il2cpp object gets its class (GC traversal crashes: the parent object + field) */
+      CONTEXT *x = e->ContextRecord;
+      const struct { const char *n; DWORD64 v; } r[] = { {"rax", x->Rax}, {"rbx", x->Rbx}, {"rcx", x->Rcx}, {"rdx", x->Rdx}, {"rsi", x->Rsi}, {"rdi", x->Rdi},
+          {"rbp", x->Rbp}, {"r8", x->R8}, {"r9", x->R9}, {"r10", x->R10}, {"r11", x->R11}, {"r12", x->R12}, {"r13", x->R13}, {"r14", x->R14}, {"r15", x->R15} };
+      for (size_t i = 0; i < sizeof r / sizeof r[0]; i++) {
+          char cl[130], wh[300]; crash_cls(cl, sizeof cl, (uintptr_t)r[i].v); crash_where(wh, sizeof wh, (uintptr_t)r[i].v);
+          uintptr_t w0 = crash_readable((void *)(uintptr_t)r[i].v, 8) ? *(uintptr_t *)(uintptr_t)r[i].v : 0;
+          rig_log("  %s %016llx [0]=%016llx %s%s", r[i].n, (unsigned long long)r[i].v, (unsigned long long)w0, cl, wh);
+      }
+    }
     uintptr_t *sp = (uintptr_t *)e->ContextRecord->Rsp; int k = 0;
     for (int i = 0; i < 256 && k < 24; i++) {
         MEMORY_BASIC_INFORMATION mi; if (!VirtualQuery(sp + i, &mi, sizeof mi) || mi.State != MEM_COMMIT) break;

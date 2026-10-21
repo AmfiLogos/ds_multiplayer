@@ -55,6 +55,9 @@ Obj image_of(Obj comp);
 void str_utf8(Obj s, char *out, size_t cap);
 void utf16_to_utf8(Obj s, char *out, size_t cap);
 void tmp_set(Obj t, const char *s);
+bool das_key_on(Obj t);                          /* DASText._useTextKey (by name: the offset differs on Windows) */
+void das_key_set(Obj t, bool on);
+void das_key_clear(Obj t);                       /* _useTextKey off and _textKey null: our own text stays */
 void txt_style(Obj t, int cinzel, float size, int align, int wrap);
 void txt_color(Obj t, Col c);
 void img_set(Obj im, Obj sprite, Col c);
