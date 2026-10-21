@@ -2213,11 +2213,12 @@ static void tips_frame(void) {
 static void start_frame(void);
 /* unitsel B3 (owner feedback v0.1.20): a guest who arrives in a world with no unit gets the Teams window, once per
    session, with the hint "Pick your units" (it stays until he has a unit or closes the window). 3 s after the world
-   is ready, so the load's own windows are gone. */
+   is ready, so the load's own windows are gone. Not in the lobby: there the units come with Start (co-op) or Bring Units
+   (PvP: the window opened over the guest's card window and took its clicks); the 3 s count after the lobby closes. */
 static void first_open_frame(void) {
     int gen = (int)mp_game_session_gen();
     if (pick_done_gen == gen) return;
-    if (!mp_running() || me() <= 0 || spect() || !screen_ok() || !rig_det_mp_ready()) { pick_ready_t = 0; return; }
+    if (!mp_running() || me() <= 0 || spect() || !screen_ok() || !rig_det_mp_ready() || lobby_open()) { pick_ready_t = 0; return; }
     if (!pick_ready_t) { pick_ready_t = now_s(); return; }
     if (now_s() - pick_ready_t < 3) return;
     pick_done_gen = gen;
