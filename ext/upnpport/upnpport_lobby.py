@@ -201,8 +201,8 @@ def one(X, case, base):
         while MADE: e = MADE.pop(); del_mapping(e); log(case, 'deleted the test-made forward', e)   # before the off case compares the list
     else:
         check('off: state OFF', us == 5, us)
-        want = tr(lang, 'Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.') % port
-        want2 = tr(lang, 'Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.') % port
+        want = tr(lang, 'Your router did not open a port. For friends outside your home, use Steam invite, or forward port %s on your router to this computer (port forwarding).') % port
+        want2 = tr(lang, 'Your router did not open a port. For friends outside your home, forward port %s on your router to this computer (port forwarding).') % port
         check('off: the note says the router did not open a port (forward N / Steam invite)', want in note or want2 in note, note)
         check('off: the router list did not change', {key(m) for m in now} == {key(m) for m in base}, 'same')
     rig.stop(X)
