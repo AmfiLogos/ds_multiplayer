@@ -20,6 +20,7 @@ LOGF = open(os.path.join(OUT, 'run.log'), 'a')
 results, LANG, MASK = {}, {}, {}
 B = dict(MULTIPLAYER=1, HOST=2, LOAD_SAVE=7, LEAVE=12, LEAVE_CONFIRM=68)
 DESC = 'Dungeon Settlers host'
+MADE = []                                                   # mappings this test added itself (deleted at the end)
 
 
 def mask(t):
@@ -78,6 +79,17 @@ def mappings():
         out.append(dict(proto=f.get('NewProtocol'), ext=int(f.get('NewExternalPort') or 0), client=f.get('NewInternalClient'),
                         port=int(f.get('NewInternalPort') or 0), desc=f.get('NewPortMappingDescription'), lease=int(f.get('NewLeaseDuration') or 0)))
     return out
+
+
+def add_mapping(ext, port, desc, lease):                   # the already case's own forward (the router held none)
+    t = soap('AddPortMapping', f'<NewRemoteHost></NewRemoteHost><NewExternalPort>{ext}</NewExternalPort><NewProtocol>TCP</NewProtocol>'
+             f'<NewInternalPort>{port}</NewInternalPort><NewInternalClient>{router()["lan"]}</NewInternalClient><NewEnabled>1</NewEnabled>'
+             f'<NewPortMappingDescription>{desc}</NewPortMappingDescription><NewLeaseDuration>{lease}</NewLeaseDuration>')
+    return '<errorCode>' not in t
+
+
+def del_mapping(ext):
+    soap('DeletePortMapping', f'<NewRemoteHost></NewRemoteHost><NewExternalPort>{ext}</NewExternalPort><NewProtocol>TCP</NewProtocol>')
 
 
 def key(m): return (m['proto'], m['ext'], m['client'], m['port'], m['desc'])
@@ -141,6 +153,10 @@ def one(X, case, base):
         except OSError: return False
         finally: k.close()
     wait('port 47777 free', free47777, timeout=1800, every=10)
+    if case == 'already' and not any(m['proto'] == 'TCP' and m['client'] == router()['lan'] and m['port'] == 47777 for m in mappings()):
+        ok = add_mapping(47777, 47777, 'upnpport test (already case)', 900)   # no forward to this computer on the router: the test makes one
+        if ok: MADE.append(47777)
+        log(case, 'made a forward TCP 47777 -> this computer:47777 for this case', 'ok' if ok else 'REFUSED by the router')
     start(X, env)
     rig.wait_for(X, lambda s: s.get('scene') == 1 and not s.get('busy'), 'host title', timeout=1500)
     time.sleep(3)
@@ -175,13 +191,14 @@ def one(X, case, base):
         gone = wait('mapping deleted', lambda: not any(m['proto'] == 'TCP' and m['ext'] == ue for m in mappings()) or None, timeout=20, every=1)
         check('open: Leave deletes the mapping (router no longer lists it)', gone and len(re.findall(dx, rlog(X))) > d0, 'gone')
     elif case == 'already':
-        hit = [m for m in base if m['proto'] == 'TCP' and m['client'] == R['lan'] and m['port'] == port]
+        hit = [m for m in mappings() if m['proto'] == 'TCP' and m['client'] == R['lan'] and m['port'] == port]   # before the run, or made above
         check('already: state ALREADY with the listed external port', us == 3 and hit and ue == hit[0]['ext'], (us, ue, show(hit)))
         check('already: the lobby box shows internet:external', inet.endswith(f':{ue}') and box == inet, box)
         want = tr(lang, 'Friends outside your home: %s (your router already forwards this port).') % inet
         check('already: the note says the router already forwards it', want in note, note)
         leave(X); time.sleep(3)
         check('already: the listed mapping is untouched after Leave', {key(m) for m in hit} <= {key(m) for m in mappings()}, 'kept')
+        while MADE: e = MADE.pop(); del_mapping(e); log(case, 'deleted the test-made forward', e)   # before the off case compares the list
     else:
         check('off: state OFF', us == 5, us)
         want = tr(lang, 'Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.') % port
@@ -210,6 +227,7 @@ def main():
                 except Exception: pass
     finally:
         rig.release(pair, 'upnpport')
+        while MADE: e = MADE.pop(); del_mapping(e); log('deleted the test-made forward', e)
         end = mappings(); log('router after', show(end))
         check('router list at the end = before the run (no stray mapping)', {key(m) for m in end} == {key(m) for m in base},
               show([m for m in end if key(m) not in {key(b) for b in base}]))
