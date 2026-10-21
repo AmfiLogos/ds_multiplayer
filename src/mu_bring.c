@@ -413,8 +413,15 @@ static int build_ui(void) {
         snprintf(t1, sizeof t1, "%s%s%s", B.src == 1 ? "<color=#D9BE8F>" : "", TR("My Units"), B.src == 1 ? "</color>" : "");
         B.b_src[0] = mu_button(B.win, x, y + 2, 96, 36, t0, on_src, (void *)(intptr_t)0);
         B.b_src[1] = mu_button(B.win, x + 104, y + 2, 96, 36, t1, on_src, (void *)(intptr_t)1);
-    } else B.hdr = mu_text(B.win, x, y, 200, 40, TR("From a save"), 19, DSL_TXT_LEFT, MU_C_GOLD);
-    x += 210;
+        /* each tab as wide as its label at the design size (DE "Meine Einheiten" shrank and wrapped in 96), at least 96;
+           the message after them moves right. Both together never take more than half the window. */
+        float tw[2], sum = 8;
+        for (int k = 0; k < 2; k++) { float pw = B.b_src[k] ? cm_text_preferred_w(B.b_src[k]) : -1; tw[k] = pw > 0 && pw + 24 > 96 ? pw + 24 : 96; sum += tw[k]; }
+        float cap = (w - 40) / 2; if (sum > cap) { float k2 = (cap - 8) / (sum - 8); tw[0] *= k2; tw[1] *= k2; sum = cap; }
+        if (B.b_src[0]) U->place(B.b_src[0], x, y + 2, tw[0], 36);
+        if (B.b_src[1]) U->place(B.b_src[1], x + tw[0] + 8, y + 2, tw[1], 36);
+        x += sum > 200 ? sum + 10 : 210;
+    } else { B.hdr = mu_text(B.win, x, y, 200, 40, TR("From a save"), 19, DSL_TXT_LEFT, MU_C_GOLD); x += 210; }
     B.status = mu_text(B.win, x, y, w - 20 - x, 40, "", 14, DSL_TXT_LEFT, MU_C_SUB);
     B.ry = y + 50; B.rh = h - B.ry - 64; B.rx = 232; B.rw = w - B.rx - 20;
     float by = h - 54;                                                /* bottom: Picked n / max, pages, Cancel, Bring */
