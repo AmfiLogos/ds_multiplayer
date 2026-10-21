@@ -930,6 +930,18 @@ static Obj field_source(const char **from) {
     return u_alive(fld) ? fld : NULL;
 }
 Obj first_image(Obj tr, int depth);
+/* The text area (TMP_InputField.textViewport, "Text Area", stretched): the stock save-name field keeps 35.8 units on
+ * its left for the magnifier its "Search" sprite draws, 10 on its right (prefab: offset x 12.9, size -45.8, y -0.5 / -13;
+ * SaveLoadUI and RenameUnitUI). Our frames have no magnifier, so that gap only pushed the text right (the address hint cut
+ * at 216 of 262; the chat's typed text ~36 in). Here in_x on both sides; in_y < 0: the source's height and vertical place. */
+static void field_area(Obj f, float in_x, float in_y) {
+    Obj ta = tr_find(u_tr(f), "Text Area");
+    if (!mm_is(ta, K_RT)) return;
+    V2 sd = F(0x510701C, V2 (*)(Obj, void *))(ta, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(ta, NULL);   /* sizeDelta, anchoredPosition */
+    F(0x5106B64, void (*)(Obj, V2, void *))(ta, (V2){ 0, 0 }, NULL); F(0x5106D48, void (*)(Obj, V2, void *))(ta, (V2){ 1, 1 }, NULL);
+    F(0x5107110, void (*)(Obj, V2, void *))(ta, (V2){ -2 * in_x, in_y < 0 ? sd.y : -2 * in_y }, NULL);
+    F(0x5106F2C, void (*)(Obj, V2, void *))(ta, (V2){ 0, in_y < 0 ? ap.y : 0 }, NULL);
+}
 static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *text) {
     Obj f = u_instantiate(src, parent);
     if (!u_alive(f)) return NULL;
@@ -944,17 +956,7 @@ static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *
       }
       rig_log("mpmenu: field frame %s", u_alive(fim) && u_alive(spr) ? "= menu button frame (no magnifier)" : "unchanged (no image / sprite)"); }
     row_height(f, 262, 44);                                                 /* v2 §2a: input 262x44, Lora 18, centred vertically */
-    /* The text area (TMP_InputField.textViewport, "Text Area", stretched): the stock save-name field keeps 35.8 units on
-     * its left for the magnifier its "Search" sprite draws, 10 on its right (prefab: offset x 12.9, size -45.8; SaveLoadUI
-     * and RenameUnitUI). Our frame has no magnifier, so that gap only cut the address hint ("...:4777" at 216 of 262).
-     * Here the stock right inset on both sides; height and vertical place stay the source's. */
-    { Obj ta = tr_find(u_tr(f), "Text Area");
-      if (mm_is(ta, K_RT)) {
-          V2 sd = F(0x510701C, V2 (*)(Obj, void *))(ta, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(ta, NULL);   /* sizeDelta, anchoredPosition */
-          F(0x5106B64, void (*)(Obj, V2, void *))(ta, (V2){ 0, 0 }, NULL); F(0x5106D48, void (*)(Obj, V2, void *))(ta, (V2){ 1, 1 }, NULL);
-          F(0x5107110, void (*)(Obj, V2, void *))(ta, (V2){ -20, sd.y }, NULL);
-          F(0x5106F2C, void (*)(Obj, V2, void *))(ta, (V2){ 0, ap.y }, NULL);
-      } }
+    field_area(f, 10, -1);                                                  /* the stock right inset on both sides */
     { static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
       Obj tc = mtc && mm_is(f, K_FIELD) ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
       if (u_alive(tc)) { txt_body(tc); txt_style(tc, 0, 18, 513, 0); txt_color(tc, C_MAIN); } }
@@ -1711,6 +1713,7 @@ static int inet_state;                                   /* extaddr_get state fo
 static int up_state;                                     /* upnpport_get state for the lobby (direct_refresh) */
 static char lobby_addr[96];                              /* the address in the lobby box = what Copy copies */
 static float lw_h = 740;
+static float lw_k = 1;                                  /* the window's scale to fit the screen (lw_texts) */
 static float lw_note_h;                                 /* steaminv: height of the note under Steam invite (ui_friends.c) */
 static float lw_addr_h = 40 + 10 + 52;                  /* the address block (box + note) or its "Show address" button */
 int ui_friends_invite_click(void); float ui_friends_lobby_note(float x, float y, float w, int steam);
@@ -1747,7 +1750,7 @@ static void lw_build(Obj v, int host) {
     Obj src = AT(v, 0x70, Obj);                                             /* Report bug: button template */
     if (!u_alive(src)) return;
     Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x28, Obj);
-    lw_h = 740;                       /* layout space (top-based); the frame's real height follows the content (lw_texts) */
+    lw_h = 740; lw_k = 1;             /* layout space (top-based); the frame's real height follows the content (lw_texts) */
     Obj root = mk_img(tpl_img, u_tr(v), -1, (Col){ 0, 0, 0, 0 }, 0, 0, 880, lw_h);   /* invisible container */
     if (!root) { rig_log("mpmenu: lobby window: no frame"); return; }
     Obj R = u_tr(root);
@@ -1922,7 +1925,6 @@ static void lw_texts(void) {
         place(u_gc_get(h_lw_addrbox[0]), LX(32 + 146), LY(y2), 292, 40); place(u_gc_get(h_lw_addrbox[1]), LX(32 + 146), LY(y2), 290, 38);
         place(lwt(T_INV_ADDR), LX(32 + 12 + 134), LY(y2), 268, 30);
         Obj cb = u_gc_get(h_lwb[LW_COPY]); if (cb) place(cb, LX(428 - 48), LY(y2), 96, 40);
-        place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + 26), 396, 52);
         /* owner 2026-10-20: the box shows the INTERNET address (friends outside the home) with the router's external port
            (upnpport: opened automatically / already forwarded), the note says how friends outside reach it + the local one */
         { const char *port = strrchr(M.direct, ':'); const char *pn = port ? port + 1 : "47777";
@@ -1946,6 +1948,10 @@ static void lw_texts(void) {
           if (bl < sizeof b) snprintf(b + bl, sizeof b - bl, "\n%s", TR("If Windows asks to allow Dungeon Settlers on networks, click Allow."));
 #endif
           tmp_set(lwt(T_INV_NOTE), b); }
+        /* the note as tall as its text needs (3 to 5 lines: it ran over the address box and the bottom bar in Russian, and
+           on Windows with the Allow line); the window grows with it */
+        { float nh = addr_on ? txt_fit_h(lwt(T_INV_NOTE), 396, 52) : 52; if (addr_on) lw_addr_h = 40 + 10 + nh;
+          place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + nh / 2), 396, nh); }
         if (cb) tmp_set(AT(cb, 0x28, Obj), frames < copied_until ? TR("Copied") : TR("Copy"));
         Obj ib2 = u_gc_get(h_lwb[LW_INVITE]);                               /* both ways in one app: Steam invite + the address */
         if (ib2) { char iv[200]; if (in.steam) snprintf(iv, sizeof iv, "%s", TR("Steam invite"));
@@ -1973,7 +1979,20 @@ static void lw_texts(void) {
     Obj lb = u_gc_get(h_lwb[LW_LEAVE]); if (lb) place(lb, LX(LW_OFF_X + LW_OFF_W / 2), LY(H - 38), LW_OFF_W, 34);
     Obj sb = u_gc_get(h_lwb[LW_START]); if (sb) place(sb, LX(848 - 116), LY(H - 38), 232, 44);
     if (host) place(lwt(T_NOTE), LX(LW_MID_X), LY(H - 38), LW_MID_W, 30); else place(lwt(T_NOTE), 0, LY(H - 38), 300, 24);
-    place(u_gc_get(h_lw_root), 0, H / 2 - lw_h / 2, 880, lw_h);
+    /* UX pass 2026-10-21: the window fits the game window. The Esc view carries the user's UI scale (up to 1.75 on the
+       1080-high canvas): the lobby could be taller than the screen, Start cut off. Measured in pixels, scaled down about
+       the window's centre with 16 px free on each side, never up. Its buttons are Unity UI buttons: clicks follow. */
+    { Obj fr = u_gc_get(h_lw_frame), lr = u_gc_get(h_lw_root); float r[4];
+      float sw = (float)F(0x5092C94, int (*)(void *))(NULL), sh = (float)F(0x5092CD4, int (*)(void *))(NULL);   /* Screen.width / height */
+      if (fr && lr && sw > 0 && sh > 0 && rect_of(fr, r) && r[2] > r[0] && r[3] > r[1]) {
+          float fw = (r[2] - r[0]) / lw_k, fh = (r[3] - r[1]) / lw_k, k = (sw - 32) / fw;
+          if ((sh - 32) / fh < k) k = (sh - 32) / fh;
+          if (k > 1) k = 1; if (k < 0.3f) k = 0.3f;
+          if (k - lw_k > 0.002f || lw_k - k > 0.002f) {
+              lw_k = k; F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(lr), (V3){ k, k, 1 }, NULL);   /* localScale */
+              rig_log("mpmenu: lobby window %.0fx%.0f px at scale 1 on a %.0fx%.0f screen: scale %.3f", fw, fh, sw, sh, k);
+          } } }
+    place(u_gc_get(h_lw_root), 0, (H / 2 - lw_h / 2) * lw_k, 880, lw_h);
     { float top = host ? 123 : 127, bot = H - 77;                          /* inside the body: never over the title or Start */
       if (u_gc_get(rp_lobby.root)) place(u_gc_get(rp_lobby.root), 0, LY((top + bot) / 2), RP_WIDE_W, RP_WIDE_H);
       Obj sh = u_gc_get(h_lw_rshade); if (sh) { place(sh, 0, LY((top + bot) / 2), 876, bot - top); u_active(sh, host && M.lobby_settings_open); } }
@@ -3464,6 +3483,10 @@ static void chat_build(Obj parent) {
     if (box && mm_is(box, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(box, true, NULL);   /* the open box: UI clicks too */
     if (box) {
         Obj B = u_tr(box);
+        /* one plain colour under the history and one under the input line: the stock "Box" sprite has a darker footer of
+           its own (34 of its 104 px) that, stretched to this box, ended in the middle of the history (owner 2026-10-21) */
+        mk_img(tpl_img, B, -1, C_BAND, 0, (104 - 89) / 2.0f, 466, 104 + 89);
+        mk_img(tpl_img, B, -1, (Col){ 0.133f, 0.125f, 0.145f, 1 }, 0, (-89 - 132) / 2.0f, 466, 132 - 89);
         mk_img(tpl_img, B, -1, C_BAND, 0, 135 - 16, 466, 30);
         mk_img(tpl_img, B, -1, C_LINE, 0, 135 - 31, 466, 1);
         Obj ti = mk_txt(tpl_txt, B, 1, 15, 513, 0, -235 + 12 + 60, 135 - 16, 120, 26, C_MAIN); if (ti) tmp_set(ti, TR("Chat"));
@@ -3475,16 +3498,21 @@ static void chat_build(Obj parent) {
             u_gc_free(h_ch_lines[i]); h_ch_lines[i] = l ? u_gc_new(l) : 0;
         }
         mk_img(tpl_img, B, -1, C_LINE, 0, -135 + 46, 466, 1);
+        /* "Say:" 40 wide, or as wide as its text ("Сказать:"); the field from 7 after it to 15 before the box's right edge */
         Obj say = mk_txt(tpl_txt, B, 0, 14, 513, 0, -235 + 12 + 20, -135 + 23, 40, 24, C_GOLD); if (say) tmp_set(say, TR("Say:"));
-        mk_img(tpl_img, B, -1, C_LINE, 22, -135 + 23, 396, 30);
-        mk_img(tpl_img, B, -1, (Col){ 0.106f, 0.098f, 0.122f, 1 }, 22, -135 + 23, 394, 28);
-        Obj in = mk_txt(tpl_txt, B, 0, 15, 513, 0, 22, -135 + 23, 380, 26, C_MAIN);
+        float sw = say && fit_methods() ? fit_pref(say, 0).x + 2 : 0; sw = sw < 40 ? 40 : sw > 100 ? 100 : sw;
+        if (say) place(say, -235 + 12 + sw / 2, -135 + 23, sw, 24);
+        float fl = -235 + 12 + sw + 7, fw = 220 - fl, fx = (fl + 220) / 2;   /* English: 396 wide at x 22, as before */
+        mk_img(tpl_img, B, -1, C_LINE, fx, -135 + 23, fw, 30);
+        mk_img(tpl_img, B, -1, (Col){ 0.106f, 0.098f, 0.122f, 1 }, fx, -135 + 23, fw - 2, 28);
+        Obj in = mk_txt(tpl_txt, B, 0, 15, 513, 0, fx, -135 + 23, fw - 16, 26, C_MAIN);
         u_gc_free(h_ch_input); h_ch_input = in ? u_gc_new(in) : 0;
         /* the real text field (the game's own input handling: any keyboard layout, accents): the Rename popup's field */
         Obj rp = popup_prefab(19), fs = rp ? tr_find(u_tr(rp), "Input_SaveFileName") : NULL, fsrc = fs ? comp_of(fs, "TMPro", "TMP_InputField") : NULL;
         Obj f = fsrc ? u_instantiate(fsrc, B) : NULL;
         if (u_alive(f)) {
-            u_active(f, true); place(f, 22, -135 + 23, 394, 28);
+            u_active(f, true); place(f, fx, -135 + 23, fw - 2, 28);
+            field_area(f, 8, 2);                                            /* the typed text from 8 in, as tall as the field (stock: 36 in, 15 high) */
             Obj fim = image_of(f); if (fim) img_set(fim, NULL, (Col){ 0, 0, 0, 0 });   /* our own field plate shows */
             if (mm_is(fim, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(fim, true, NULL);
             F(0x4EFC2D8, void (*)(Obj, int, void *))(f, DSNET_CHAT_MAX, NULL);                 /* characterLimit */
@@ -3639,25 +3667,32 @@ static void chat_frame(const mpm_obs *o) {
     int sw = msw ? MCALL(msw, int, const void *)(msw) : 0, shh = msh ? MCALL(msh, int, const void *)(msh) : 0;
     float hw = sw > 0 && shh > 0 ? 540.0f * sw / shh : 831;
     float bx = -hw + 130 + 235 + chat_x, by = -540 + 130 + 135 + chat_y;
+    /* inside the screen (a place dragged on a wider window, or off the edge): 4 free on each side, 34 at the top for the
+       "is typing" line over the open box */
+    { float mx = hw - 235 - 4; if (bx > mx) bx = mx; if (bx < -mx) bx = -mx;
+      if (by > 540 - 135 - 34) by = 540 - 135 - 34; if (by < -540 + 135 + 4) by = -540 + 135 + 4; }
     Obj box = u_gc_get(h_ch_box);
     nchat_shown = 0;
     if (box) {
         u_active(box, chat_typing);
         place(box, bx, by, 470, 270);
         if (chat_typing) {
-            /* A1 / A2: the history from the bottom up, each line as high as its wrapped text (newest at the bottom), between
-               the title band (top 95) and the input line (bottom -85); only whole lines */
-            float y = -85, top = 95; int j = 0, k = nch - 1 - chat_scroll; ch_box_oldest = 0;
+            /* A1 / A2: the newest lines that fit whole between the title band (top 95) and the input line (bottom -85), each
+               as high as its wrapped text, newest at the bottom; placed from the top down (owner 2026-10-21: no empty band
+               above the rows; what is left over stays under the newest line). One line taller than the space: from the bottom. */
+            float used = 0, avail = 95 + 85, hs[CH_BOX_LINES]; int j = 0, k = nch - 1 - chat_scroll; ch_box_oldest = 0;
             for (; j < CH_BOX_LINES && k >= 0; j++, k--) {
                 Obj l = u_gc_get(h_ch_lines[j]); if (!l) break;
                 ch_prepare(k);
                 ch_slot_show(l, &ch_box_id[j], &ch_box_font[j], k);
                 if (chist[k].hb <= 0) { place(l, 0, 0, 446, 20); chist[k].hb = ch_measure(l, 446); }
                 float h = chist[k].hb;
-                if (y + h > top && j > 0) break;                              /* the next older line does not fit whole */
-                u_active(l, true); place(l, 0, y + h / 2, 446, h); y += h + 2;
+                if (used + h > avail && j > 0) break;                         /* the next older line does not fit whole */
+                u_active(l, true); hs[j] = h; used += h + 2;
                 if (nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_lines[j]; }
             }
+            { float y = used - 2 > avail ? -85 + used - 2 : 95;               /* top of the oldest shown line */
+              for (int i = j - 1; i >= 0; i--) { place(u_gc_get(h_ch_lines[i]), 0, y - hs[i] / 2, 446, hs[i]); y -= hs[i] + 2; } }
             if (k < 0) ch_box_oldest = 1;
             for (; j < CH_BOX_LINES; j++) { Obj l = u_gc_get(h_ch_lines[j]); if (l) u_active(l, false); }
             if (!u_alive(u_gc_get(h_ch_field))) {                           /* no field: draw the text + a caret ourselves */
@@ -3739,7 +3774,10 @@ static void chat_frame(const mpm_obs *o) {
         float sc = r[2] > r[0] ? (r[2] - r[0]) / (chat_typing ? 470 : 430) : 1;
         if (mb(1)) {
             if (!dragging && mp.x >= r[0] && mp.x <= r[2] && mp.y >= r[1] && mp.y <= r[3] && r[2] > r[0]) { dragging = 1; last = mp; }
-            else if (dragging && sc > 0) { chat_x += (mp.x - last.x) / sc; chat_y += (mp.y - last.y) / sc; last = mp; }
+            else if (dragging && sc > 0) { chat_x += (mp.x - last.x) / sc; chat_y += (mp.y - last.y) / sc; last = mp;
+                float mx = hw - 235 - 4;                                    /* the same limits as above: no drag past the edge */
+                if (chat_x > mx + hw - 365) chat_x = mx + hw - 365; if (chat_x < -mx + hw - 365) chat_x = -mx + hw - 365;
+                if (chat_y > 540 - 135 - 34 + 275) chat_y = 540 - 135 - 34 + 275; if (chat_y < -540 + 135 + 4 + 275) chat_y = -540 + 135 + 4 + 275; }
         } else if (dragging) { dragging = 0; prefs_save(); rig_log("mpmenu: chat moved to %.0f,%.0f", chat_x, chat_y); }
     }
 }
@@ -4344,6 +4382,7 @@ static void lang_poll(void) {
     if (!dsi_set_lang(v)) return;
     rig_log("mpmenu: i18n: game language %d = %s (%d texts, %d dropped as unsafe)", v, dsi_code(), dsi_loaded(), dsi_dropped());
     if (scene() == 1 && h_title_built) title_teardown();
+    if (!chat_typing) destroy_go(u_gc_get(h_ch_root));                     /* the chat (kept across scenes) is built again: "Chat", "Say:" */
 }
 
 void mpmenu_frame(void) {
