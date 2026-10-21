@@ -22,7 +22,9 @@ def body(t):
     r = t.c(owner[b0], cmd='ord_inject', ev='ToggleBehaviourOption', **{'ent@16': b0, 'i32@24': 2, 'u8@28': 1, 'u8@29': 1})
     t.log('hold position on', b0[:8], r)
     t.wait('hold option on the unit (both copies)', lambda: all((next(u for u in t.c(x, cmd='pvp_status')['units'] if u['guid'] == b0).get('options', 2) & 2) for x in (H, G)), timeout=30, every=1)
-    t.log('Start fight (host)', t.c(H, cmd='pvp_fight'))                   # v0.1.20: unknown command, the fight began on arrival
+    t.log('G propose', t.c(G, cmd='pvp_vote', op='propose'))               # v0.1.21: nobody starts alone: propose + all agree
+    t.wait('vote open', lambda: t.c(H, cmd='pvp_status')['vote_open'], timeout=30, every=0.5)
+    t.log('H agree', t.c(H, cmd='pvp_vote', op='agree'))
     t.wait('fight begins', lambda: (lambda q: q.get('fight_start', 0) > 0 and not q.get('placing'))(t.c(H, cmd='pvp_status')), timeout=300, every=1)
     s, cells = t.units(H); c0 = cells[b0].get('cell'); t.log('fight began; hold unit at', c0)
     # b) b1 attacks red[1]; red[0] keeps whatever it does (fights b1 or b0)
