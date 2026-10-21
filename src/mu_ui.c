@@ -191,6 +191,49 @@ DSLObj mu_card_draw(DSLObj parent, float x, float y, float w, const mu_card *c, 
     return card;
 }
 
+DSLObj mu_card_draw_compact(DSLObj parent, float x, float y, float w, const mu_card *c, const char *name, int level,
+                            const char *portrait_key, const char *const *bar, int nbar) {
+    if (!U || !c) return NULL;
+    DSLObj card = U->panel(parent, x, y, w, MU_CARD_CH, 0);
+    if (!card) return NULL;
+    cm_raycast(card, false);                                           /* a click goes to the row button under the card */
+    if (ncards < 256) { cards[ncards] = card; in_card = ncards++; }
+    const char *face = portrait_key && *portrait_key ? portrait_key : c->avatar;
+    char rn[96]; mu_name_of(c->race, rn, sizeof rn);
+    if (face && cm_icon(CM_ICON_PORTRAIT, face)) mu_icon(card, 6, 6, 46, CM_ICON_PORTRAIT, face, 0, NULL);
+    else mu_icon(card, 6, 6, 46, CM_ICON_AFFECTER, c->race, 0, rn);
+    /* texts: about 40 % of the card (at least 230), the rest for the icons */
+    float x0 = 60, tw = w * 0.4f - x0; if (tw < 230) tw = 230;
+    char nm[128];
+    if (name && *name) snprintf(nm, sizeof nm, "%s", name);
+    else snprintf(nm, sizeof nm, "%s", c->name[0] ? c->name : TR("Unit"));
+    mu_text(card, x0, 2, tw, 26, nm, 16, DSL_TXT_LEFT, MU_C_MAIN);
+    char lv[64]; snprintf(lv, sizeof lv, TR("Lv %d"), level > 0 ? level : c->lvl);
+    char line[400], bg[96] = ""; if (c->bg) mu_name_of(c->bg, bg, sizeof bg);
+    snprintf(line, sizeof line, "<color=#D9BE8F>%s</color>  %s%s%s%s%s", lv, rn, bg[0] ? "  \xC2\xB7  " : "", bg, c->weapon ? "  \xC2\xB7  " : "", c->weapon ? weapon_word(c->weapon) : "");
+    dsi_utf8_fix_end(line);
+    mu_text(card, x0, 30, tw, 24, line, 13, DSL_TXT_LEFT, MU_C_SUB);
+    float ix = x0 + tw + 10, right = w - 8;
+    IconRef ic[MUC_MAX * 6]; int gr[MUC_MAX * 6], n = 0;
+    /* row A: worn items | skill bar */
+    for (int i = 0; i < c->neq && n < MUC_MAX; i++) { ic[n] = (IconRef){ CM_ICON_ITEM, c->eq[i].item, 0 }; gr[n++] = 0; }
+    int nb = bar ? nbar : c->nbar;
+    for (int i = 0; i < nb && n < MUC_MAX * 2; i++) { const char *k = bar ? bar[i] : c->bar[i]; if (k && *k) { ic[n] = (IconRef){ CM_ICON_SKILL, k, 0 }; gr[n++] = 1; } }
+    icon_row(card, ix, 4, right, 24, ic, gr, n);
+    /* row B: branches ACTIVE | PASSIVE (dim = nothing learned) | milestones | passives | inscriptions | soul stones | traits */
+    n = 0;
+    for (int i = 0; i < c->nactive && n < MUC_MAX * 6; i++) { ic[n] = (IconRef){ CM_ICON_TREE, c->active[i].tree, !c->active[i].invested }; gr[n++] = 0; }
+    for (int i = 0; i < c->npassive && n < MUC_MAX * 6; i++) { ic[n] = (IconRef){ CM_ICON_TREE, c->passive[i].tree, !c->passive[i].invested }; gr[n++] = 1; }
+    for (int i = 0; i < c->nstacks && n < MUC_MAX * 6; i++) { ic[n] = (IconRef){ CM_ICON_SKILL, c->stacks[i].skill, !c->stacks[i].learned }; gr[n++] = 2; }
+    for (int i = 0; i < c->npass && n < MUC_MAX * 6; i++) { ic[n] = (IconRef){ CM_ICON_SKILL, c->pass[i].skill, 0 }; gr[n++] = 3; }
+    for (int i = 0; i < c->ninsc && n < MUC_MAX * 6; i++) { ic[n] = (IconRef){ CM_ICON_AFFECTER, c->insc[i], 0 }; gr[n++] = 4; }
+    for (int i = 0; i < c->nsouls && n < MUC_MAX * 6; i++) { ic[n] = (IconRef){ CM_ICON_AFFECTER, c->souls[i], 0 }; gr[n++] = 5; }
+    for (int i = 0; i < c->nacq && n < MUC_MAX * 6; i++) { ic[n] = (IconRef){ CM_ICON_AFFECTER, c->acq[i], 0 }; gr[n++] = 6; }
+    icon_row(card, ix, 30, right, 24, ic, gr, n);
+    in_card = -1;
+    return card;
+}
+
 /* ------------------------------------------------------------------ frame tick */
 #define TKMAX 8
 static void (*tks[TKMAX])(void); static int ntk, timer_on;
