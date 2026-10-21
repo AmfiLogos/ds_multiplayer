@@ -1721,7 +1721,7 @@ static void esc_sync(const mpm_obs *o) {
             for (int i = 0; i < NE; i++) if (u_on(eb(esc_ids[i]))) add += step;
             float rr[4]; if (in_session() && u_alive(rl) && rect_of(rl, rr)) add += rr[3] - rr[1] + 2;
         }
-        esc_shift_apply(lobby ? 0 : add + 2 * esc_up);                      /* the lobby hides the column: stock place */
+        esc_shift_apply(lobby ? 0 : add);   /* the lobby hides the column: stock place (the esc_up lift is off: at UI scale 1.5 it pushed the host menu logo off the top) */
     }
     if (!lobby) {
         /* the seed lines go right under the lowest visible button (stock ones and ours), keeping their own spacing */
@@ -1973,7 +1973,7 @@ static void lw_texts(void) {
                     break; } }
             { char cw[128] = ""; size_t rl = strlen(rowt); mpmenu_conn_words(id, cw, sizeof cw);
               if ((mode[0] || cw[0]) && rl < sizeof rowt)
-                  snprintf(rowt + rl, sizeof rowt - rl, "\n%s%s<size=%d%%><color=#A69085>%s</color></size>", mode, mode[0] && cw[0] ? "  " : "", lang_cjk() ? 88 : 75, cw); }   /* 12; ja / zh / ko 14 */
+                  snprintf(rowt + rl, sizeof rowt - rl, "\n%s%s<size=%d%%><color=#A69085>%s</color></size>", mode, mode[0] && cw[0] ? "  " : "", 75, cw); }   /* 75 % also for CJK: 88 % wrapped the PvP host row to 3 lines over the next row; was: 12; ja / zh / ko 14 */
             tmp_set(nm, rowt);
             { char d[48]; snprintf(d, sizeof d, "<color=%s>\xE2\x80\xA2</color>", ui_player_color(id)); tmp_set(dot, d); }   /* the player's colour */
             int ping = 0, behind = 0, state = DSNET_NET_IN_SYNC;
