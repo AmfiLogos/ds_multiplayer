@@ -2296,6 +2296,7 @@ static float pl_y0;
 static int pl_anchor_bar, pl_pop;                            /* pl_pop: the cog is pressed (settings rows shown) */
 static float pl_cur_L, pl_cur_Y; static int pl_shown, pl_hide_why, cog_has_icon;       /* where the panel is now (lan_v8 drag) */
 static float pl_k = 1;                                       /* the panel's drawn scale: Compact 0.75, less when it is taller than the screen */
+static int pl_in_band;                                       /* uxpass: drawn in the open Teams window's title band (no drag there) */
 static int row_player[19];                                   /* player of each row (connection tooltip; PL_MAXROWS + 1) */
 int mpmenu_conn_words(int player, char *out, size_t n);       /* mpmenu.c (conninfo): "Steam" / "Direct (ip:port)" */
 static int row_lvl[19];                                      /* its connection level (ui_conn_level; -2 = left, -3 = "Watching" divider) */
@@ -2921,6 +2922,23 @@ static void plist_frame(void) {
         if (ph * k > room && ph > 1) k = room / ph;
         layer_keep_in(PL_W * k, ph * k, &dl, &dy);
     }
+    /* uxpass (lead 2026-10-21): while the Teams window is open (not folded) the panel sits in the window's title band, left
+       of the title (it covered the "Your units" slots and hint, before-shot 25_teams_guest); a band too narrow even at
+       0.6: just above the window's top edge, else inside its top-left corner. The player's own place (pos_x / pos_y)
+       is untouched, so it comes back when Teams closes; no drag while it sits there. */
+    pl_in_band = 0;
+    { static int (*band)(float *); static unsigned tries; float b[5]; Obj top = layer_top();
+      if (!band && tries++ % 50 == 0) band = (int (*)(float *))dlsym(RTLD_DEFAULT, "ui_teams_band_rect");
+      if (band && top && band(b)) {
+          float bx0, by0, bx1, by1, wy, t_;
+          scr_to_layer(top, b[0], b[1], &bx0, &by0); scr_to_layer(top, b[0] + b[2], b[1] + b[3], &bx1, &by1); scr_to_layer(top, b[0], b[4], &t_, &wy);
+          float kb = k, hh = PL_HDR_H;
+          if (PL_W * kb > bx1 - bx0) kb = (bx1 - bx0) / PL_W;
+          if (kb >= 0.6f) { k = kb; dl = bx0; dy = (by0 + by1) / 2 + hh * k / 2; }
+          else if (wy + hh * k + 4 <= -2) { dl = bx0; dy = wy + hh * k + 4; }   /* above the window */
+          else { dl = bx0; dy = wy - 4; }                                       /* inside its top-left corner */
+          pl_in_band = 1;
+      } }
     pl_k = k;
     Obj g = layer_of_panel();                                /* the group scales around the layer's origin: shift it so the
                                                                 drawn top-left corner is (dl, dy) */
@@ -3095,7 +3113,7 @@ static void plist_mouse(void) {
     float mx = m3.x, my = m3.y;
     /* tooltips (connection bars, header): tips_frame, the game's tooltip window (lan_v9) */
     /* move the panel: RIGHT-click + drag on its header (owner, lan_v8); left click keeps its normal action */
-    if (!pl_drag_arm && F(0x51ACDD0, bool (*)(int, void *))(1, NULL) && (ui_hit(hdr, mx, my) || ui_hit(u_gc_get(h_hdrbg), mx, my))) {
+    if (!pl_drag_arm && !pl_in_band && F(0x51ACDD0, bool (*)(int, void *))(1, NULL) && (ui_hit(hdr, mx, my) || ui_hit(u_gc_get(h_hdrbg), mx, my))) {
         pl_drag_arm = 1; pl_dragging = 0; pl_drag_mx = mx; pl_drag_my = my; pl_drag_L = pl_cur_L; pl_drag_Y = pl_cur_Y;
         return;
     }
@@ -4949,6 +4967,9 @@ static void sees_draw(uint32_t who, ui_players *p) {
     vpos_load();
     int on_ = who && root && u_alive(t) && !(viewer_on && viewer_hidden)   /* mpoverlay: the viewer box's Hide hides this line too */
               && !popup_active(1) && !lobby_open();          /* uxpass: not over the Esc menu's windows (PvP Match subtitle, lobby), as the panel */
+    { static int (*teams_modal)(void); static unsigned tries;   /* uxpass (lead): nor while the Teams window is open (it sat on its left edge) */
+      if (!teams_modal && tries++ % 50 == 0) teams_modal = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_modal_open");
+      if (teams_modal && teams_modal()) on_ = 0; }
     show(bg, on_); show(t, on_); sees_shown = on_ ? who : 0;
     if (!on_) return;
     char tx[400], nm[40]; size_t n = 0; int k = 0, cnt = 0;
