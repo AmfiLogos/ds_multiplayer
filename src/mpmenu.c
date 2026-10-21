@@ -1855,7 +1855,9 @@ static void lw_texts(void) {
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
     char b[1024]; const char *hn = M.host[0] ? M.host : TR("the host");   /* the lobby note: 3 lines, up to ~500 bytes in Russian (a 256 cut the Windows Allow line) */
     if (host) tmp_set(lwt(T_TITLE), TR("Multiplayer Lobby")); else { snprintf(b, sizeof b, TR("%s's Lobby"), hn); tmp_set(lwt(T_TITLE), b); }
-    tmp_set(lwt(T_HINT), TR("Share your address, then press Start when everyone is in."));
+    if (host && lobby_err[0] && mono_s() < lobby_err_until) {                 /* a refused Start: 10 s in the hint line, red */
+        char e[600]; snprintf(e, sizeof e, "<color=" C_WARN_HEX ">%s</color>", lobby_err); tmp_set(lwt(T_HINT), e);
+    } else tmp_set(lwt(T_HINT), TR("Share your address, then press Start when everyone is in."));
     snprintf(b, sizeof b, TR("Waiting for %s to start"), hn); tmp_set(lwt(T_GUEST), b);
     if (!host && lwt(T_CONN)) {                                            /* conninfo: "Connected to <host> through Steam" / "... to <ip:port>" */
         char a[96]; int v = mp_game_conn(0, a, sizeof a);
@@ -1968,9 +1970,6 @@ static void lw_texts(void) {
     tmp_set(lwt(T_RULES_NOTE), host ? TR("Only the host can change the rules.") : TR("Set by the host."));
     if (loading[0]) snprintf(b, sizeof b, TR("%s is still loading"), loading); else b[0] = 0;
     tmp_set(lwt(T_NOTE), b);
-    { static int err_shown; int on = host && lobby_err[0] && mono_s() < lobby_err_until;   /* a refused Start: 10 s in the hint line */
-      if (on != err_shown) { char e[600]; snprintf(e, sizeof e, "<color=" C_WARN_HEX ">%s</color>", lobby_err);
-                             tmp_set(lwt(T_HINT), on ? e : TR("Share your address, then press Start when everyone is in.")); err_shown = on; } }
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
     /* height from the content: no empty band under the columns; the window stays centred */
