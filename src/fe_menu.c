@@ -129,11 +129,13 @@ static void few_open(int mode, const char *run) {
 }
 static int few_version_ok(const fe_save_info *s, const fe_mode_info *m) { return !m->version[0] || !strcmp(s->version, m->version); }
 /* ---- per frame */
+int pvp_ui_window_open(void);                                               /* pvp_ui.c */
 static void few_sync(void) {
     Obj root = u_gc_get(W.root);
     if (!u_alive(root)) return;
-    u_active(root, W.mode != FEW_NONE);
-    if (W.mode == FEW_NONE) return;
+    int hid = pvp_ui_window_open();                                         /* a PvP window on the same Esc menu: one window at a time */
+    u_active(root, W.mode != FEW_NONE && !hid);
+    if (W.mode == FEW_NONE || hid) return;
     few_hide_all();
     fe_mode_info m; fe_mode_get(&m);
     char b[2400], r[800], dy[64];
@@ -221,7 +223,7 @@ static void few_sync(void) {
             snprintf(b, sizeof b, "<size=130%%>%s</size>\n\n%s", TR("Brought home"), t);
             few_set(FT_MSG, b); few_show(MPB_FE_CANCEL, 0); few_label(MPB_FE_OK, TR("OK")); return;
         }
-        size_t o = (size_t)snprintf(b, sizeof b, "<color=#A69085>%s<pos=30%%>%s<pos=52%%>%s<pos=70%%>%s</color>", TR("Unit"), cmt_game("TEXTKEY_STATUS_Level_NAME", "Level"), TR("XP"), TR("Status"));
+        size_t o = (size_t)snprintf(b, sizeof b, "<color=#A69085>%s<pos=26%%>%s<pos=42%%>%s<pos=56%%>%s</color>", TR("Unit"), cmt_game("TEXTKEY_STATUS_Level_NAME", "Level"), TR("XP"), TR("Status"));
         char ap[1600] = ""; size_t ao = 0;
         for (int i = 0; i < n && o < sizeof b - 200; i++) {
             char nm[64]; few_txt(rows[i].name_key, nm, sizeof nm);
@@ -234,7 +236,7 @@ static void few_sync(void) {
             if (!rows[i].dead) snprintf(stt, sizeof stt, "<color=#8FD18F>%s</color>", TR("Alive"));
             else if (rows[i].removed) snprintf(stt, sizeof stt, "<color=#F16071>%s</color>", TR("Died \xC2\xB7 removed at home, with its gear"));
             else snprintf(stt, sizeof stt, "<color=#EA9F3D>%s</color>", TR("Died \xC2\xB7 home as at the last hub save"));
-            o += (size_t)snprintf(b + o, sizeof b - o, "\n%s<pos=30%%>%s<pos=52%%>%s<pos=70%%>%s", nm, lv, xp, stt);
+            o += (size_t)snprintf(b + o, sizeof b - o, "\n%s<pos=26%%>%s<pos=42%%>%s<pos=56%%>%s", nm, lv, xp, stt);   /* Status: the widest column (a death note wrapped under Unit) */
             if (ao < sizeof ap - 160) {
                 char one[400];
                 if (rows[i].removed) snprintf(one, sizeof one, TR("%s: removed from your save, with its gear."), nm);
@@ -248,7 +250,9 @@ static void few_sync(void) {
         few_set(FT_TABLE, b);
         { char t[160]; snprintf(t, sizeof t, TRN("Dungeon loot \xC2\xB7 %d item", "Dungeon loot \xC2\xB7 %d items", ni), ni);
           o = (size_t)snprintf(b, sizeof b, "<color=#D9BE8F>%s</color>  ", t); }
-        for (int i = 0; i < ni && o < sizeof b - 80; i++) { char in[64]; few_item_name(items[i].key, in, sizeof in); o += (size_t)snprintf(b + o, sizeof b - o, "%s%s%s", i ? ", " : "", in, items[i].amount > 1 ? "" : ""); if (items[i].amount > 1) o += (size_t)snprintf(b + o, sizeof b - o, " \xC3\x97%d", items[i].amount); }
+        /* at most 8 names, then "+N": a long list ran over the table and the next block (the box holds two lines) */
+        for (int i = 0; i < ni && i < 8 && o < sizeof b - 80; i++) { char in[64]; few_item_name(items[i].key, in, sizeof in); o += (size_t)snprintf(b + o, sizeof b - o, "%s%s%s", i ? ", " : "", in, items[i].amount > 1 ? "" : ""); if (items[i].amount > 1) o += (size_t)snprintf(b + o, sizeof b - o, " \xC3\x97%d", items[i].amount); }
+        if (ni > 8 && o < sizeof b) o += (size_t)snprintf(b + o, sizeof b - o, "  +%d", ni - 8);
         if (!ni) o += (size_t)snprintf(b + o, sizeof b - o, "%s", TR("none"));
         if (o < sizeof b) snprintf(b + o, sizeof b - o, "\n<color=#A69085>%s</color>", TR("Items made from hub stock stay in the hub."));
         few_set(FT_LOOT, b);
@@ -398,7 +402,7 @@ static char *few_status(void) {
 
 /* ---- menu hooks (mpmenu.c calls them where these windows were called before the split) */
 static int few_escape(void) {
-    if (W.mode == FEW_NONE) return 0;
+    if (W.mode == FEW_NONE || pvp_ui_window_open()) return 0;            /* hidden under a PvP window: Escape is that window's */
     rig_log("mpmenu: Escape closed the Foreign Expedition window");
     return MPB_FE_CANCEL;
 }
