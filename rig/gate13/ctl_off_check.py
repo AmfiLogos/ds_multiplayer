@@ -6,8 +6,9 @@ a player's game (gate check, v0.1.15). One line at the end: "CTL OFF PASS" or "C
     of instances/Z) runs the release dsload.dylib + mods/multiplayer from DIR (default ~/ds_launcher/loader/build), with
     DSRIG_DIR set as the player app sets it and NO DSRIG_CTL (every DSRIG_* of this shell removed). Pass: the module
     started, its logs say "control socket off (no DSRIG_CTL)" and no ctl.sock exists 15 s later. The copy is killed by
-    pid. Lease: one rig pair (rig.py lease ctloff), taken only while fewer than 2 pairs are leased; machine cap and load
-    <= 40 respected (lrig caps). Never the owner's game, saves or screen.
+    pid. Lease: one rig pair (rig.py lease ctloff) under the normal lease rule (DSRIG_MAX_PAIRS, default 4); machine cap
+    and load <= 40 respected (lrig caps). (Before v0.1.22 it also waited for "fewer than 2 pairs leased": with the gate's
+    own pair plus a lane's pair it waited 10 min and failed, 4 times in v0.1.21.) Never the owner's game, saves or screen.
 (b) Windows, static: each DLL (default the release kit's <loader build>/mods_all/win/multiplayer/multiplayer.dll)
     has no "47811" default and has the "no DSRIG_PORT" off line; win/port/rig_sock_tcp.inc returns before listening
     when the port is empty; every rig_sock_start call in win/port and the generated sources passes the DSRIG_PORT value.
@@ -66,12 +67,12 @@ def make_copy():
 
 
 def lease():
-    """one pair, only while fewer than 2 pairs are leased (waits 10 min at most)"""
+    """one pair under the normal lease rule (rig.py lease: DSRIG_MAX_PAIRS), load <= 40, copy cap (waits 10 min at most)"""
     t0 = time.time()
     while time.time() - t0 < 600:
         n = len(realrig._with_leases(lambda d: dict(d)))
         ld = os.getloadavg()[0]
-        if n < 2 and ld <= 40 and lrig.running_test_copies() + 1 <= lrig.CAP_COPIES:
+        if ld <= 40 and lrig.running_test_copies() + 1 <= lrig.CAP_COPIES:
             try:
                 p = realrig.lease('ctloff', os.getpid())
                 if p: return p

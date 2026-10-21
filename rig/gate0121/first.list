@@ -1,0 +1,15 @@
+# first.list - checks that run BEFORE all others (rig/gate13/lib.sh "first list"). Names only, # = comment, script order kept.
+# The release lane rewrites it for each release: (1) the newest release's own tests, (2) every check that ended red or was
+# dropped in the last release, (3) the checks those need first (builds, set-aside steps). WHY: in v0.1.21 the newest
+# tests ran last (5-7 h after the merges) and their faults cost a rerun round.
+# (3) needed first
+g021_hostmods          # makes $OUT/hm_build for ulnoblock / bringcards / bringcompact / e3cards
+g021_rulesaside1 g021_rulesaside2
+# (2) red or dropped in v0.1.21 (fin3R)
+g021_pvp_noul g021_fe_noul g021_upnpport g021_lonebring
+# dropped from the v0.1.21 final lists (could not run while the real Steam ran; fixed in ds_modloader 8fb8d4a)
+g021_steam_check
+# (1) v0.1.21 tests
+g021_mouse_build g021_pvpr_unit g021_ui_unit g021_autorejoin g021_lobbyquit g021_chat g021_glow g021_owner_sel
+g021_pause_orders g021_scroll_vote g021_lookclick g021_pvp_full g021_pvp_ctf g021_pvp_orders g021_pvp_rebring
+g021_pvp_mylib g021_pvpr_rules g021_pvpr_match g021_tutorial g021_bringcompact g021_e3cards g021_tickspeed g021_bugrep

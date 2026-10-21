@@ -28,8 +28,14 @@ DIVE_S = int(sys.argv[sys.argv.index('--dive') + 1]) if '--dive' in sys.argv els
 DEATH = int(sys.argv[sys.argv.index('--death') + 1]) if '--death' in sys.argv else 1     # rule: death permanent 1 / 0
 WEAK = '--weak' in sys.argv          # the guest's 2nd unit leaves home at 3 % health (test copy only): it should die
 RECRUIT = int(sys.argv[sys.argv.index('--recruit') + 1]) if '--recruit' in sys.argv else 0   # host rule Recruiting in the hub 0 Off / 1 On
+BUFF = '--no-buff' not in sys.argv   # test copies only: brought units get +BUFF_N Strength / Constitution / Agility. WHY: v0.1.20-21 every
+                                     # hub dive ended in the stock game over (3 level-1 units vs ~18 enemies, down ~40 s after the first fight,
+                                     # also after going home: the enemies follow to the portal), so XP / loot / return were never tested
+BUFF_N = float(sys.argv[sys.argv.index('--buff') + 1]) if '--buff' in sys.argv else 60.0   # +20 was not enough: 20 enemies took 290 of 474 hp in 5 s
 FEED = '--feed' in sys.argv          # test copies only: brought units leave home fed and rested (Hunger, Energy 1.0)
 LANE = f'fepvp-{os.getpid()}'
+STEP_S = 5                           # fight loop step (was 15 s: units went from 50 % to down between two looks)
+HURT = 0.5                           # a moved unit under this share of its max health (or down): no new fight, the run goes home
 SI = dict(HealthHead=12, HealthBody=13, Energy=14, Hunger=15, Level=17, Exp=18)   # fe_stats index (StatType - 1)
 
 
@@ -132,11 +138,18 @@ def run(H, G):
         ss = fe.comp(fe.ec_of(home)[gpick[1]], 0)['StateStats']; ss['HealthHead'] = ss['HealthBody'] = 0.03
     if FEED:
         for g in gpick: fe.comp(fe.ec_of(home)[g], 0)['StateStats'].update(Hunger=1.0, Energy=1.0)
-    if WEAK or FEED: json.dump(home, open(gsave, 'w'), indent=2)
+    def buff(sv, g):
+        gs = fe.comp(fe.ec_of(sv)[g], 0).setdefault('GeneratedStats', {})
+        for k in ('Strength', 'Constitution', 'Agility'): gs[k] = gs.get(k, 0.0) + BUFF_N
+    if BUFF:
+        for g in gpick: buff(home, g)
+    if WEAK or FEED or BUFF: json.dump(home, open(gsave, 'w'), indent=2)
     hpick = [fe.clan_units(fe.load(hsave))[0][0]]
+    if BUFF:
+        hs = fe.load(hsave); buff(hs, hpick[0]); json.dump(hs, open(hsave, 'w'), indent=2)
     if FEED:
         hs = fe.load(hsave); fe.comp(fe.ec_of(hs)[hpick[0]], 0)['StateStats'].update(Hunger=1.0, Energy=1.0); json.dump(hs, open(hsave, 'w'), indent=2)
-    log('args', dict(dive=DIVE_S, death=DEATH, weak=WEAK, recruit=RECRUIT, feed=FEED))
+    log('args', dict(dive=DIVE_S, death=DEATH, weak=WEAK, recruit=RECRUIT, feed=FEED, buff=BUFF))
 
     rig.start(H, fps=30, window=True); rig.start(G, fps=30, window=True)
     rig.wait_for(H, lambda s: s.get('scene') == 1 and not s.get('busy'), 'host title', timeout=1500)
@@ -253,9 +266,9 @@ def run(H, G):
     wait('both in the dungeon', lambda: all(st(x).get('map', 0) != 0 and not st(x).get('busy') for x in (H, G)), timeout=600, every=3)
     check('dive: both peers in the dungeon with the moved units', True, f"map {st(H).get('map')}")
     c(H, cmd='ui_capture', path=os.path.join(OUT, 'dungeon_host.png'))
-    t_end = time.time() + DIVE_S; picked = set(); exp0 = [s_hub0[g][18] for g in mine[G]]
+    t_end = time.time() + DIVE_S; picked = set(); exp0 = [s_hub0[g][18] for g in mine[G]]; hp0 = {}
     while time.time() < t_end:
-        time.sleep(15)
+        time.sleep(STEP_S)
         dmap = st(G).get('map', 1)
         if dmap == 0 or c(H, cmd='ui_result').get('open'): break
         f = c(H, cmd='fe_status')
@@ -265,11 +278,13 @@ def run(H, G):
         us = c(H, cmd='list_units')['units']
         enemies = [u for u in us if u['faction'] == 3 and not u['dead'] and 'cell' in u]
         d2 = lambda a, b: (a['cell'][0] - b['cell'][0]) ** 2 + (a['cell'][1] - b['cell'][1]) ** 2
-        for x in (H, G):                                        # each side sends its own idle units to the nearest enemy
+        hurt = [g[:8] for g in mine[H] + mine[G] if g in alive and not alive[g]['dead'] and (alive[g].get('downed') or
+                alive[g].get('hp', 0) < HURT * max(alive[g].get('max_hp') or 0, hp0.setdefault(g, alive[g].get('hp', 0))))]
+        for x in (H, G):                                        # each side sends its own idle, healthy units to the nearest enemy
             lv = live(x)
             for g in mine[x]:
                 u = lv.get(g)
-                if u and enemies and u.get('task') == 0:
+                if u and enemies and u.get('task') == 0 and g[:8] not in hurt:
                     e = min(enemies, key=lambda e: d2(u, e)); log('fight:', x, g[:8], '->', e['cell'], order_move(x, g, e['cell']))
         if up and items:                                        # the guest's unit picks up a dungeon item (PickUpItemRequested, mp order)
             it = items[0]; picked.add(it['guid'])
@@ -280,6 +295,7 @@ def run(H, G):
             alive.get(g, {}).get('task'), 'hunger %.2f energy %.2f' % (fs[g][SI['Hunger']], fs[g][SI['Energy']])) for g in mine[H] + mine[G]],
             '| guest exp', exp, '| enemies', sum(1 for u in c(H, cmd='list_units')['units'] if u['faction'] not in (1,) and not u['dead']))
         if not WEAK and f.get('loot', 0) > 0 and any(e > e0 for e, e0 in zip(exp, exp0)): log('XP and loot: going home'); break
+        if not WEAK and hurt: log('moved unit(s) hurt or down', hurt, ': going home before the stock game over'); break
     c(H, cmd='ui_capture', path=os.path.join(OUT, 'dungeon_host_end.png'))
     # back to the base: portal -> Return screen -> Return -> confirm
     if st(G).get('map', 1) != 0:
@@ -292,22 +308,24 @@ def run(H, G):
             for x in (G, H):
                 for g in mine[x]:
                     if g in live(x): log(x, 'to portal', g[:8], order_move(x, g, pc))
-            t9 = time.time()
-            while time.time() - t9 < 180:
-                time.sleep(10)
-                allu = {u['guid']: u for x in (G, H) for u in c(x, cmd='list_units')['units']}
-                far = [(g[:8], allu.get(g, {}).get('cell')) for x in (G, H) for g in mine[x]
-                       if g in allu and not allu[g]['dead'] and (not allu[g].get('cell') or abs(allu[g]['cell'][0] - pc[0]) + abs(allu[g]['cell'][1] - pc[1]) > 3)]
-                log('gathering at the portal', pc, 'still away', far)
+            t9 = time.time(); near = lambda cl: cl and max(abs(cl[0] - pc[0]), abs(cl[1] - pc[1])) <= 4
+            while time.time() - t9 < 90:
+                time.sleep(5)
+                if c(H, cmd='ui_result').get('open'): game_over = True; log('game over while going to the portal (every unit down)'); break
+                lv = {x: live(x) for x in (G, H)}
+                far = [(g[:8], lv[x][g].get('cell')) for x in (G, H) for g in mine[x] if g in lv[x] and not near(lv[x][g].get('cell'))]
+                log('gathering at the portal', pc, 'live units still away', far)
                 if not far: break
-                for x in (G, H):
-                    for g, u in live(x).items():
-                        if g in mine[x] and u.get('task') == 0 and abs(u['cell'][0] - pc[0]) + abs(u['cell'][1] - pc[1]) > 3: order_move(x, g, pc)
+                for x in (G, H):                                # a player clicks again: units in a fight get the move again
+                    for g, u in lv[x].items():
+                        if g in mine[x] and not near(u.get('cell')): order_move(x, g, pc)
+            alive_end = [] if game_over else [g for x in (G, H) for g in mine[x] if g in live(x)]
+            log('live at the portal use', [g[:8] for g in alive_end])
             c(H, cmd='ui_capture', path=os.path.join(OUT, 'dungeon_at_portal_host.png'))
         # ONE live unit uses the portal (two at the same step open nothing); sometimes the use opens nothing (unit busy in
         # a fight?): try again every 20 s with the next unit
         tries = [(x, g) for x in (H, G) for g in mine[x]]
-        for k in range(0 if game_over else 12):
+        for k in range(0 if game_over or not alive_end else 12):
             x, g = tries[k % len(tries)]
             if g not in live(x) or not pc: continue
             log(x, 'portal use', g[:8], c(x, cmd='ui_interact', unit=g, building=bl['buildings'][0]['guid'], map=st(x).get('map', 1)))
@@ -331,8 +349,10 @@ def run(H, G):
     c(H, cmd='ui_capture', path=os.path.join(OUT, 'base_after_return_host.png'))
     if 'alive_end' in dir() or True:
         ae = locals().get('alive_end', [])
-        if not locals().get('game_over'):
-            check('return: every moved unit alive at the portal is on the base', ae and all(g in lu and not lu[g]['dead'] for g in ae), f'{len(ae)} alive at the end')
+        if locals().get('game_over') or not ae:                # the run's own setup failed: say it, never pass silently
+            check('dive: a moved unit is still up when the run goes home (test setup: retreat earlier / stronger units)', False, 'every moved unit down, stock game over')
+        else:
+            check('return: every moved unit alive at the portal is on the base', all(g in lu and not lu[g]['dead'] for g in ae), f'{len(ae)} alive at the portal use')
     n, first = fp_equal_from(tick0)
     check('dive: fingerprints equal over the whole run', n >= 100 and first is None and not mp(G).get('desyncs'), f'{n} common, first diff {first}')
     s_hub1 = {g: c(H, cmd='fe_stats', guid=g).get('stats') for g in mine[G]}

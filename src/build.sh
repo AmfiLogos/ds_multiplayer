@@ -35,3 +35,17 @@ echo built $OUT/dsrig.dylib
 CM=${CM_REPO:-$HOME/ds_custommodes}
 [[ -f $CM/build_module.sh ]] || { echo "Custom Modes checkout not found: $CM (git clone https://github.com/AmfiLogos/ds_custommodes, or set CM_REPO)" >&2; exit 1; }
 MP_DYLIB=${OUT:A}/dsrig.dylib OUT=${OUT:A} SDK=${PWD:h}/sdk MP_SRC=$PWD zsh $CM/build_module.sh
+# build/lang next to the rig dylib (the rig reads lang/<code>.json beside it): the multiplayer table, then the Units
+# Laboratory table over it (as rig/gate024/i18n/rebuild_testtrees.sh). Without it every rig test runs in English
+# (v0.1.20 + v0.1.21 gates: g0NN_extaddr failed its translated-line checks; was fixed only in a release-folder script).
+mkdir -p $OUT/lang
+python3 - ../lang $CM/lang $OUT/lang <<'E'
+import json, os, sys
+mp, cm, out = sys.argv[1:4]
+n = 0
+for f in sorted(os.listdir(mp)):
+    if not f.endswith('.json'): continue
+    m = json.load(open(os.path.join(mp, f))); p = os.path.join(cm, f); c = json.load(open(p)) if os.path.exists(p) else {}
+    t = os.path.join(out, f + '.tmp'); open(t, 'w').write(json.dumps({**m, **c}, ensure_ascii=False, indent=1)); os.replace(t, os.path.join(out, f)); n += 1
+print(f'built {out}: {n} language tables')
+E
