@@ -120,7 +120,7 @@ def run(H, G):
             if os.path.exists(d): os.replace(d, d + '_' + time.strftime('%Y%m%d-%H%M%S'))
     gdir = os.path.join(OUT, 'game_saves'); os.makedirs(gdir)       # DSRIG_FE_GAME_SAVES: what the Bring window lists as "Game folder"
     os.environ['DSRIG_FE_GAME_SAVES'] = gdir
-    gsave = os.path.join(gdir, 'guest_home_Elven.json'); shutil.copy2(os.path.join(ROOT, 'fixtures', 'home_Elven.json'), gsave)
+    gsave = os.path.join(gdir, 'guest_home_base.json'); shutil.copy2(TPL, gsave)   # owner rule 2026-10-21: dives bring the wiki BASE save's units (buffed, cannot die)
     hsave = os.path.join(gdir, 'host_home_Moonlight.json'); shutil.copy2(os.path.join(ROOT, 'fixtures', 'hub_Moonlight_mp.json'), hsave)
     cache = os.path.join(rig.idir(H), 'data', 'Mods', 'custom-modes', 'wiki', 'saves'); os.makedirs(cache, exist_ok=True)
     shutil.copy2(TPL, os.path.join(cache, os.path.basename(TPL)))          # the wiki cache (the game downloads it once)
