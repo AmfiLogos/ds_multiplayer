@@ -171,7 +171,12 @@ static void h_setresult(Obj self, int ok, int32_t req, int32_t used, int fallbac
 int trn_flow_busy(void) {
     if (busy()) return 1;
     Obj eq = mf ? AT(mf, 0x48, Obj) : NULL;
-    return eq && AT(eq, 0x40, uint8_t);                                 /* EventQueue._isProcessiningAsync */
+    if (!eq) return 0;
+    /* an async event (a map change) queued inside a sim tick starts at the next EventQueue.Update, a frame later: hold
+       from the tick that queued it, or each peer ran as many more old-map ticks as steps were left in its frame (v0.1.21
+       F4: agreed Return scroll, the guest changed map 1 tick after the host = DESYNC). IsAsyncEventAvailable = these two. */
+    Obj aq = AT(eq, 0x20, Obj);                                         /* EventQueue._asyncEvents (Queue: _size +0x20) */
+    return AT(eq, 0x40, uint8_t) || (aq && AT(aq, 0x20, int32_t) > 0);  /* EventQueue._isProcessiningAsync */
 }
 /* held by a window: the EventQueue waits (a stock Yes/No box such as "Lock Consecration Results" after a load)
    and no transition / load runs. Only the player can end it by closing the box (we never answer it for him). */
