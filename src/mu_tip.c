@@ -26,8 +26,8 @@ static int shown = -1;                         /* index in tips of the card show
 static uintptr_t h_view, h_shown_rt;
 static int state = 0;                          /* 0 not set up, 1 ok, -1 off (a method is missing) */
 static cm_m m_show, m_hide, m_mouse, m_contains, m_inparent, m_root, m_mode, m_cam, m_override, m_order, m_active, m_addcomp,
-            m_corners, m_w2s, m_finds, m_tid, m_nohold;
-static void *k_view, *k_canvas, *k_raycaster, *k_ctx, *k_v3, *k_tb;
+            m_corners, m_w2s, m_finds, m_tid, m_nohold, m_rc_get;
+static void *k_view, *k_canvas, *k_raycaster, *k_ctx, *k_v3, *k_tb, *k_mask2d, *k_graphic;
 static int32_t ctx_size, f_hidehold, f_canhold;
 static Obj (*array_new)(void *klass, uintptr_t n);
 static Obj (*invoke)(const void *mi, void *obj, void **params, Obj *exc);
@@ -64,6 +64,8 @@ static int setup(void) {
     m_order = cm_il_method(UE, "Canvas", "set_sortingOrder", 1, NULL);
     m_active = cm_il_method(UE, "GameObject", "get_activeInHierarchy", 0, NULL);
     m_addcomp = cm_il_method(UE, "GameObject", "AddComponent", 1, "System.Type");
+    k_mask2d = cm_il_class("UnityEngine.UI", "RectMask2D"); k_graphic = cm_il_class("UnityEngine.UI", "Graphic");
+    m_rc_get = cm_il_method("UnityEngine.UI", "Graphic", "get_raycastTarget", 0, NULL);
     int32_t o = k_ctx ? cm_il_field(k_ctx, "<HideHoldLayout>k__BackingField") : -1;
     f_hidehold = o >= 0x10 ? o - 0x10 : -1;                            /* value type: minus the object header */
     ctx_size = k_ctx && value_size ? value_size(k_ctx, NULL) : 0;
@@ -182,6 +184,26 @@ static void fit(void) {
     { Obj v = view(); Guidt g = TIP_ID; void *a[1] = { &g }; if (v) call(m_hide, v, a, "HideToolTip"); }   /* a show with a live id keeps its place */
     show_at(shown, p);
 }
+/* the mouse really sees the icon there: inside every RectMask2D above it (a scrolled list's viewport: an icon scrolled out
+   of sight showed its card) and under no later sibling of its parents that takes clicks there (the Unit Builder or the
+   Gallery opened over My Units: the hidden card's icon won). Stops at the canvas. Same check as fights/cm_gtip.c. */
+static int in_r(const float r[4], V3t m) { return m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]; }
+static int covers(Obj c, V3t m) {
+    Obj g = cm_go(c); float r[4];
+    if (!g || !CM_CALL(m_active, bool, Obj, const void *)(g, m_active.mi) || screen_rect(c, r) || !in_r(r, m)) return 0;
+    Obj gr = k_graphic ? cm_comp(c, k_graphic) : NULL;                /* a window / panel takes clicks; a text or icon does not */
+    return gr && (!m_rc_get.fn || CM_CALL(m_rc_get, bool, Obj, const void *)(gr, m_rc_get.mi));
+}
+static int visible_at(Obj t, V3t m) {
+    for (Obj a = t; cm_alive(a) && !(k_canvas && cm_comp(a, k_canvas)); ) {
+        Obj p = cm_parent(a); float r[4];
+        if (!p) break;
+        if (k_mask2d && cm_comp(p, k_mask2d) && !screen_rect(p, r) && !in_r(r, m)) return 0;
+        for (int i = cm_sibling(a) + 1, n = cm_child_count(p); i < n; i++) if (covers(cm_child(p, i), m)) return 0;
+        a = p;
+    }
+    return 1;
+}
 static Obj cam_of(Obj rt) {
     Obj cv = CM_CALL(m_inparent, Obj, Obj, Obj, const void *)(rt, cm_il_type_obj(k_canvas), m_inparent.mi);
     if (!cm_alive(cv)) return NULL;
@@ -206,7 +228,7 @@ static void tick(void) {
         Obj rt = cm_il_hget(tips[i].h), g = cm_go(rt);
         if (!g || !CM_CALL(m_active, bool, Obj, const void *)(g, m_active.mi)) continue;
         if (!cam_done) { cam = cam_of(rt); cam_done = 1; }
-        if (CM_CALL(m_contains, bool, Obj, V2t, Obj, const void *)(rt, (V2t){ m.x, m.y }, cam, m_contains.mi)) hit = i;
+        if (CM_CALL(m_contains, bool, Obj, V2t, Obj, const void *)(rt, (V2t){ m.x, m.y }, cam, m_contains.mi) && visible_at(rt, m)) hit = i;
     }
     if (hit >= 0 && hit != shown) show(hit);
     else if (hit < 0 && shown >= 0) hide();

@@ -96,7 +96,7 @@ static char pv_col_names[16][64]; static int pv_ncol;                 /* names s
 #define PV_BLOCK 100                                                     /* one player: name button 32 + portraits 46 + names 16 */
 #define PV_TEAM_ROWS 2                                                   /* 4 units in total: at most 2 players per team bring units */
 #define PV_RULES_TOP (PV_TEAM_TOP + PV_TEAM_ROWS * PV_BLOCK + 40)
-#define PV_H (PV_RULES_TOP + 40 + 38 * PVR_N + 26 + 130)                  /* window height; 26 = the Vanilla check line */
+#define PV_H (PV_RULES_TOP + 40 + 38 * PVR_N + 26 + 154)                  /* window height; 26 = the Vanilla check line */
 static uintptr_t h_pv_vsub, h_pv_root, h_pv_view, h_pv_area, h_pv_title, h_pv_hint, h_pv_teamh[3], h_pv_units[3], h_pv_rlab[PVR_N], h_pv_rval[PVR_N], h_pv_rrow[PVR_N], h_pv_note;
 static uintptr_t h_pr_root, h_pr_title, h_pr_score, h_pr_rounds;          /* result window */
 static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab;                        /* boss bar copy */
@@ -114,6 +114,8 @@ static int vote_view(const pvp_state *s) {
     return s->countdown_at ? 4 : 1;
 }
 static int pv_open, pr_open, pv_click = -1;
+static int br_open;
+int pvp_ui_window_open(void) { return pv_open || pr_open || br_open; }   /* fe_menu.c: its window steps aside meanwhile */
 static uint32_t pr_shown_match;
 static int pr_hist[16], pr_nhist; static uint32_t pr_hist_match, pr_hist_round;
 static const Col C_BLUE = { 0.498f, 0.659f, 1.0f, 1 }, C_RED = { 1.0f, 0.498f, 0.498f, 1 };
@@ -212,8 +214,9 @@ static void pv_build(Obj v) {
             KEEP(h_pvb[PVB_ARROW0 + 2 * r + a], b);
         }
     }
-    KEEP(h_pv_vsub, mk_txt(tpl_txt, R, 0, 13, 514, 0, 0, PY(PV_RULES_TOP + 56 + 38 * PVR_N - 6), W - 60, 22, C_SUB));
-    KEEP(h_pv_note, mk_txt(tpl_txt, R, 0, 13, 514, 1, 0, PY(H - 90), W - 60, 34, C_ORANGE));
+    /* the Vanilla check line (a guest's list of mods to turn off can be long: two lines) and the note (a refusal: three) */
+    KEEP(h_pv_vsub, mk_txt(tpl_txt, R, 0, 13, 514, 1, 0, PY(PV_RULES_TOP + 56 + 38 * PVR_N + 4), W - 60, 40, C_SUB));
+    KEEP(h_pv_note, mk_txt(tpl_txt, R, 0, 13, 514, 1, 0, PY(H - 100), W - 60, 56, C_ORANGE));
     mk_img(tpl_img, R, -1, C_BAND, 0, PY(H - 32), W - 4, 60);
     mk_img(tpl_img, R, -1, C_COPPER, 0, PY(H - 62), W - 4, 1);
     KEEP(h_pvb[PVB_CLOSE], mk_button(src, R, 1, S_NBTN, C_WHITE, PX(24 + 90), PY(H - 32), 180, 34, 16, cmt_game("TEXTKEY_Common_Close", "Close"), C_MAIN));
@@ -307,7 +310,7 @@ static void pv_refresh(void) {
     const char *refused = pvp_mods_last ? pvp_mods_last() : "";
     if (!busy_match && pv_err[0]) note = pv_err;                                        /* host: Start Match was refused */
     else if (!host && !busy_match && refused && refused[0]) note = refused;            /* guest: the host's refusal */
-    else if (host && !busy_match && (!units[1] || !units[2])) note = TR("Each team needs at least one unit (claim units with right-click on their portraits).");
+    else if (host && !busy_match && (!units[1] || !units[2])) note = TR("Each team needs at least one unit. Right-click a unit's portrait to take it.");
     else if (host && !busy_match) note = TR("Nothing that happens in the match stays: the world comes back as it was before.");
     { char vs[400] = ""; if (pvp_mods_summary) pvp_mods_summary(pv_vanilla_shown(s, host), host, vs, sizeof vs); cmt_set(pvt(h_pv_vsub), vs); }
     u_active(pvb(PVB_START), host && !busy_match);
@@ -408,7 +411,7 @@ static void pv_click_do(int k) {
 #include <sys/stat.h>
 int mu_save_files(const char *dir, char (*out)[1024], int max);   /* mu_save.c */
 static uintptr_t h_br_root, h_br_title, h_br_hint, h_br_status, h_br_por[12], h_br_lv[12];
-static int br_open, br_nsaves, br_save = -1, br_nunits, br_pick[12];
+static int br_nsaves, br_save = -1, br_nunits, br_pick[12];
 static char br_files[8][300], br_stems[8][96], br_unit_guid[12][40], br_unit_name[12][48], br_unit_port[12][64], br_sent[600];
 static int br_unit_lvl[12];
 static int br_share(void) {                                              /* 4 units in total, split between the players */
@@ -621,7 +624,9 @@ static void hud_build(void) {
         ap.x -= r.w * pv.x; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, ap, NULL);
         img_set(bar, NULL, k ? (Col){ 0.86f, 0.30f, 0.30f, 1 } : (Col){ 0.33f, 0.52f, 0.95f, 1 });
     }
-    { Obj rt = tr; if (mm_is(rt, K_RT)) { V2 p = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); p.y -= 215; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, p, NULL); } }   /* under the unit portraits */
+    /* under the unit portraits; 140 to the right: the Players panel (ui_game.c, top left, right edge 222 left of the centre)
+       covered the bar's left end and its Blue / Red labels */
+    { Obj rt = tr; if (mm_is(rt, K_RT)) { V2 p = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); p.y -= 215; p.x += 140; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, p, NULL); } }
     Obj tpl_t = u_alive(name) ? name : NULL;
     for (int k = 0; k < 2 && tpl_t; k++) {                               /* "Blue" left of the top bar, "Red" left of the bottom one */
         Obj bar = k ? body : head; if (!u_alive(bar)) continue;
@@ -846,7 +851,9 @@ static void pvp_ui_frame(const mpm_obs *o) {
         if (pv_open && frames % 15 == 0) pv_refresh();
     } else { pv_open = 0; pr_open = 0; br_open = 0; br_lobby = 0; }
     if (pv_click >= 0) { int k = pv_click; pv_click = -1; pv_click_do(k); }
-    if (o->escape && br_open) br_show(0); else if (o->escape && pv_open) pv_show(0);
+    /* Escape over the Bring Units card window closes only that window (its own key check, between frames: this frame or the last) */
+    static int mb_prev; int mb = mu_bring_is_open(), esc = o->escape && !mb && !mb_prev; mb_prev = mb;
+    if (esc && br_open) br_show(0); else if (esc && pv_open) pv_show(0);
     Obj lw = u_gc_get(h_lw_root);                                       /* the lobby steps aside while Bring Units is open over it */
     if (br_open && br_lobby && u_alive(lw)) u_active(lw, false);
 }
