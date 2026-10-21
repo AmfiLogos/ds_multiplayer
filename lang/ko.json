@@ -1271,5 +1271,6 @@
  "your version is older": "내 버전이 더 오래됨",
  "‹ Newer": "‹ 더 최근",
  "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "공유기가 포트를 열지 않았습니다. 집 밖의 친구는 Steam 초대를 사용하거나, 공유기에서 포트 %s을(를) 이 컴퓨터로 여십시오(포트 포워딩이라고도 합니다).",
- "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "공유기가 포트를 열지 않았습니다. 집 밖의 친구를 위해 공유기에서 포트 %s을(를) 이 컴퓨터로 여십시오(포트 포워딩이라고도 합니다)."
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "공유기가 포트를 열지 않았습니다. 집 밖의 친구를 위해 공유기에서 포트 %s을(를) 이 컴퓨터로 여십시오(포트 포워딩이라고도 합니다).",
+ "Connection lost, rejoining...": "연결이 끊겼습니다. 다시 참가하는 중..."
 }

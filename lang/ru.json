@@ -1319,5 +1319,6 @@
  "your version is older": "ваша версия старее",
  "‹ Newer": "‹ Новые",
  "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "Роутер не открыл порт. Друзьям вне вашего дома нужно приглашение Steam, или откройте на роутере порт %s (это также называют перенаправлением портов) на этот компьютер.",
- "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "Роутер не открыл порт. Для друзей вне вашего дома откройте на роутере порт %s (это также называют перенаправлением портов) на этот компьютер."
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "Роутер не открыл порт. Для друзей вне вашего дома откройте на роутере порт %s (это также называют перенаправлением портов) на этот компьютер.",
+ "Connection lost, rejoining...": "Соединение потеряно, повторное подключение..."
 }

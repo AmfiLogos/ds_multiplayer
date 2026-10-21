@@ -1307,6 +1307,40 @@ static void test_identity(void) {
            "admin release/take; duplicate id refused; export -> new session, owners restored; colours follow the uid (%.1fs)\n", ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
 }
 
+/* ---- 18b. autorejoin (2026-10-20): the leaver is back before the host's HOLD runs -> no hold (the world ran on) ----
+   A host stall: the old link drops and the auto rejoin's HELLO lands in one step; mp_core's HOLD for the leaver is a
+   command, so it runs after his PLAYER_JOIN. Before the fix it stayed on: 0 ticks for everyone, "<name> disconnected". */
+static void test_hold_late(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_cfg cfg = test_cfg(3); cfg.pause_mode = DSNET_PAUSE_NONE;   /* only a hold can stop the world */
+    dsnet_server *srv = dsnet_server_start(&cfg);
+    peer *h = peer_new("host", connect_as(srv, "host", 0xC0, 1), 300);  dsnet_wait_welcome(h->c, 2000);
+    peer *c1 = peer_new("c1", connect_as(srv, "c1", 0xC1, 0), 300);       dsnet_wait_welcome(c1->c, 2000);
+    peer *c2 = peer_new("c2", connect_as(srv, "c2", 0xC2, 0), 300);       dsnet_wait_welcome(c2->c, 2000);
+    uint8_t uid2[16]; memset(uid2, 0xC2, 16);
+    peer_go(h); peer_go(c1); peer_go(c2);
+    peer *c2b = NULL; int step = 0; uint32_t t_hold = 0;
+    while (!(h->done && c1->done && c2b && c2b->done)) {
+        uint32_t t = h->timer;
+        if (step == 0 && t >= 100) {
+            peer_drop(c2); c2 = NULL;
+            c2b = peer_new("c2b", connect_as(srv, "c2", 0xC2, 0), 300); dsnet_wait_welcome(c2b->c, 2000); peer_go(c2b); step = 1;
+        }
+        if (step == 1 && dsnet_player_name(h->c, dsnet_player_id(c2b->c)) && dsnet_present_mask(h->c) == 7) {
+            dsnet_hold(h->c, 1, DSNET_HOLD_PLAYER_LEFT, uid2); t_hold = t; step = 2;   /* the late HOLD */
+        }
+        sleep_ms(2);
+        if (now_ms() - t0 > 20000) { CHECK(0, "timeout: the late hold stopped the world (holds %d)", dsnet_hold_count(h->c)); break; }
+    }
+    CHECK(step == 2, "the rejoin never showed on the host");
+    CHECK(dsnet_hold_count(h->c) == 0 && dsnet_hold_count(c1->c) == 0 && (!c2b || dsnet_hold_count(c2b->c) == 0), "a hold is on for a player who is back");
+    int common;
+    CHECK(c2b && compare(h, c2b, &common) && common > 50, "c2 diverged after rejoin");
+    peer *ps[3] = { h, c1, c2b };
+    stop_all(ps, c2b ? 3 : 2, srv);
+    printf("%s hold_late: c2 back before the host's HOLD (sent at %u): no hold, the world ran on (%.1fs)\n", ok ? "PASS" : "FAIL", t_hold, (now_ms() - t0) / 1000);
+}
+
 /* ---- 17. owner-table split is a desync (reason OWNERS), recovered by resync ---- */
 static void test_owner_split(void) {
     int ok = 1; double t0 = now_ms();
@@ -2578,6 +2612,7 @@ int main(int argc, char **argv) {
     RUN("join_window", test_join_host_window());
     RUN("identity", test_identity());
     RUN("hold", test_hold());
+    RUN("hold_late", test_hold_late());
     RUN("ownersplit", test_owner_split());
     RUN("fe_mail", test_fe_mail());
     RUN("fe_start", test_fe_start());

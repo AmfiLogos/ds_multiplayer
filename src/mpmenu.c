@@ -859,6 +859,8 @@ static void observe(mpm_obs *o) {
     if (load_pending && load_pending()) o->loading = 1;                    /* never tear the session down during it */
     Obj ev = o->scene == 2 ? esc_view() : NULL;
     o->esc_open = ev && u_on(ev);
+    { static int (*ar)(void); static int looked; if (!looked) { looked = 1; ar = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_autorejoin"); }
+      o->rejoining = ar && ar(); }
     mp_steam_info in; mp_steam_state(&in);
     if (in.state == MP_STEAM_ENDED) { o->failed = 1; snprintf(o->msg, sizeof o->msg, "%s", mp_steam_end_text()); o->end = mp_steam_end_code(); modset_notice(); }   /* Steam join refused for mods */
     else if (in.is_host) o->role = 1;
@@ -2385,7 +2387,7 @@ static void notice_frame(const mpm_obs *o) {
  * actions; _txtConfirm +0x40 primary right "End for everyone", _txtCancle +0x50 "Cancel"). The ui lane's
  * OnClick_Confirm / OnClick_Cancle hooks hand clicks on a box that is not theirs to mpmenu_notice_click (dlsym). If
  * another box takes the view (its text changes) or it closes another way, it counts as Cancel. */
-enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK, BX_HOSTMODS, BX_HOSTMODS_INFO };   /* HOSTMODS: the host's mods + "Get the host's mods"; _INFO: its progress / failure */   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
+enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK, BX_HOSTMODS, BX_HOSTMODS_INFO, BX_REJOIN };   /* REJOIN: "Connection lost, rejoining..." + Cancel (mp_game_autorejoin) */   /* HOSTMODS: the host's mods + "Get the host's mods"; _INFO: its progress / failure */   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
 static char lbox_text[2048]; static int lbox_up;                             /* lbox_up = BX_* */
 static Obj lbox_view(void) { return find_view_x(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }
 static Obj lbox_view_now(void) { return find_view_now(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }   /* showing a box */
@@ -2610,6 +2612,8 @@ static void invite_click(int confirm) {
     if (k == BX_INVITE) invite_answer(confirm ? 2 : 0);
     else if (k == BX_NOSAVE) invite_answer(confirm ? 1 : 0);
     else if (k == BX_JOINING) { join_box_on = 0; mp_steam_leave(); rig_log("mpmenu: joining cancelled (box)"); }
+    else if (k == BX_REJOIN) { static void (*cn)(void); if (!cn) cn = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_autorejoin_cancel");
+                               rig_log("mpmenu: rejoining cancelled (box)"); if (cn) cn(); }
     else if (k == BX_SPECT_OFF) { if (confirm) spect_apply(0); else rig_log("mpmenu: spectators stay (box: Cancel)"); }
     else if (k == BX_UNTAG) tag_answer(confirm);
     else if (k == BX_LANBLOCK && confirm) lanblock_open_settings();
@@ -2642,6 +2646,25 @@ static void invite_frame(const mpm_obs *o) {
         snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", hd, bd, TR("Your progress here is saved first, then this world closes."));
         box_show(BX_INVITE, t, TR("Save and join"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     }
+    /* "Connection lost, rejoining..." (mp_game.c auto rejoin): one Cancel button, instead of the Joining box */
+    static int (*ar_state)(void); static int ar_looked, ar_shown;
+    if (!ar_looked) { ar_looked = 1; ar_state = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_autorejoin"); }
+    int ar = ar_state ? ar_state() : 0;
+    if (lbox_up == BX_REJOIN && !lbox_ours(v)) { lbox_up = BX_NONE; ar_shown = 0; }   /* closed another way: shown again below */
+    if (ar) {
+        join_box_on = 0; join_phase_shown = -1;
+        if (lbox_up == BX_JOINING) box_close();
+        int free_view = lbox_up == BX_NONE && !M.confirm_leave && !(u_alive(v) && u_on(v)) && frames % 15 == 0;   /* never over another box */
+        if (o->scene == 2 && ar != ar_shown && (lbox_up == BX_REJOIN || free_view)) {
+            char t[300]; snprintf(t, sizeof t, "<size=150%%>%s</size>\n<size=88%%><color=#a69085>%s</color></size>", TR("Connection lost, rejoining..."),
+                                  ar == 2 ? TR("Loading the world") : TR("Connecting"));
+            box_show(BX_REJOIN, t, mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")), NULL);
+            ar_shown = lbox_up == BX_REJOIN ? ar : 0;
+        }
+        return;
+    }
+    if (lbox_up == BX_REJOIN) box_close();
+    ar_shown = 0;
     /* "Joining <host>'s game..." in the world (a join started from the player's own world) */
     mp_steam_info in; mp_steam_state(&in);
     static int prev_role; int role = o->role;

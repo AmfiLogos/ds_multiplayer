@@ -998,14 +998,22 @@ static int steam_ready(void) {
     return ok;
 }
 
-static void end_session_c(int code, const char *why) {
-    rig_log("mp: session ended (%d): %s", code, why);
-    snprintf(ended_msg, sizeof ended_msg, "%s", why); dsi_utf8_fix_end(ended_msg); ended = 1; ended_code = code;
+static void ar_off(void);
+static int ar_on(void);
+/* keep_world 1 (auto rejoin): det stays locked, so the world on screen stands still until the rejoin's save comes */
+static void session_teardown(int keep_world) {
     if (S) { ord_mp_attach(NULL); mp_bridge_attach(NULL); mp_stop(S); S = NULL; }
-    trn_clear_role(); rig_det_disarm();                    /* fully off: the world (if one stays) runs as single player */
+    trn_clear_role();
+    if (!keep_world) rig_det_disarm();                    /* fully off: the world (if one stays) runs as single player */
     if (steam_join) { dsnet_steam_join_close(steam_join); steam_join = NULL; }
     if (steam_host) { dsnet_steam_host_stop(steam_host); steam_host = NULL; }
     cfg_ok = 0; start_failed = 0; host_reload = 0; join_lobby_id = 0; played = 0; owners_restored = 0;
+}
+static void end_session_c(int code, const char *why) {
+    rig_log("mp: session ended (%d): %s", code, why);
+    snprintf(ended_msg, sizeof ended_msg, "%s", why); dsi_utf8_fix_end(ended_msg); ended = 1; ended_code = code;
+    if (ar_on()) ar_off();                                 /* an auto rejoin (below) ends with it */
+    session_teardown(0);
 }
 
 static void end_session(const char *why) { end_session_c(MPM_END_OTHER, why); }
@@ -1195,6 +1203,7 @@ __attribute__((visibility("default"))) void mp_game_expect_world(const char *cam
 __attribute__((visibility("default"))) const char *mp_game_other_world(void) { return mp_last_other_world(); }
 int mp_game_join(const mp_config *c) {
     if (S || steam_join) return -1;
+    if (ar_on()) { rig_log("mp: a join replaces the auto rejoin"); ar_off(); rig_det_disarm(); }
     cfg = *c; cfg.host = 0; cfg_ok = 1; start_failed = 0;
     if (expect_next[0]) { snprintf(cfg.expect_world, sizeof cfg.expect_world, "%s", expect_next); expect_next[0] = 0; }
     cfg.need_save = 1;                                       /* a lobby joiner is on the title screen: no campaign */
@@ -1265,6 +1274,144 @@ __attribute__((visibility("default"))) int mp_game_invite_answer(int choice) {
     int rc = mp_game_join(&invite_cfg);
     rig_log("mp: joining %s (%s): rc %d", invite_host, invite_cfg.host_addr, rc);
     return rc;
+}
+
+/* ---------------------------------------------------------------- auto rejoin (owner 2026-10-20, lane autorejoin)
+   A guest's own link drops (receive silence DSNET_RX_TIMEOUT_MS, a TCP reset, the Steam link; no BYE from the host)
+   while it plays: no title. The world on screen stands still (det stays locked, no session) under "Connection lost,
+   rejoining..." with Cancel (mpmenu, mp_game_autorejoin / _cancel), and this copy joins the same host again the way it
+   joined (TCP address + port, or the Steam lobby), for the same world (expect_world = the running campaign), the same uid
+   (its RESERVED units come back; the host's hold ends). Tries every 2 s for DSMP_AUTOREJOIN_MS (60000; 0 = off). Never
+   waits on the game thread: the TCP connect runs on dsnet's helper thread, the HELLO / WELCOME through mp_start_poll.
+   A refusal other than "already in this game" (the host has not seen the old link close yet) ends it at once (mods,
+   full, other world...). Out of time: the old way, title + "Connection to the host lost" (Recent worlds rejoin stays).
+   Not for a BYE (host Leave / quit: "The host left the game"), the guest's own Leave, a save failure, spectators-off. */
+enum { AR_OFF, AR_WAIT, AR_CONNECT, AR_STEAM, AR_HELLO, AR_LOADING };
+static struct {
+    int phase, tries, done, failed;
+    double t0, next, att_t0;
+    mp_config cfg;                  /* the join to repeat (host_addr "steam:<lobby>" or an address) */
+    dsnet_connector *k;
+    dsnet_steam_join *sj;
+    mp_session *ps;                 /* HELLO sent, WELCOME not yet */
+} AR;
+static int ar_on(void) { return AR.phase != AR_OFF; }
+static int ar_budget_ms(void) {
+    const char *e = getenv("DSMP_AUTOREJOIN_MS");
+    return e && *e ? atoi(e) : 60000;
+}
+static void ar_attempt_free(void) {
+    if (AR.k) { dsnet_connect_free(AR.k); AR.k = NULL; }
+    if (AR.sj) { dsnet_steam_join_close(AR.sj); AR.sj = NULL; }
+    if (AR.ps) { mp_stop(AR.ps); AR.ps = NULL; }
+}
+static void ar_off(void) { ar_attempt_free(); AR.phase = AR_OFF; }
+/* in a running world this copy received (or still loading the host's world during an auto rejoin) */
+static int ar_wanted(void) { return !cfg.host && scene() == 2 && (played || ar_on()) && ar_budget_ms() > 0; }
+static void ar_start(void) {
+    double now = mono_ms();
+    mp_config c = cfg;
+    c.need_save = 1;                                     /* the host's world comes as a join point (resync) */
+    Obj cd = cdc(); Obj clan = cd ? AT(cd, 0x50, Obj) : NULL;
+    if (clan) { Guid g = AT(clan, 0x10, Guid); if (g.lo || g.hi) guid_str(g, c.expect_world); }
+    if (!ar_on()) { AR.t0 = now; AR.tries = 0; }
+    ar_attempt_free();
+    AR.cfg = c; AR.phase = AR_WAIT; AR.next = now + 1000;
+    rig_log("mp: connection to the host lost: rejoining by itself (%s, world %s, %.0f s left)",
+            c.host_addr, c.expect_world[0] ? c.expect_world : "any", (ar_budget_ms() - (now - AR.t0)) / 1000);
+    session_teardown(1);
+    ended = 0; quit_pending = 0;
+}
+static void ar_retry(const char *why) {
+    rig_log("mp: rejoin try %d failed (%s)", AR.tries, why);
+    ar_attempt_free();
+    AR.phase = AR_WAIT; AR.next = mono_ms() + 2000;
+}
+static void ar_give_up(int code, const char *why) {
+    rig_log("mp: rejoin: gave up after %.1f s, %d tries: %s", (mono_ms() - AR.t0) / 1000, AR.tries, why);
+    ar_off(); AR.failed++;
+    rig_det_disarm();
+    snprintf(ended_msg, sizeof ended_msg, "%s", why); dsi_utf8_fix_end(ended_msg); ended = 1; ended_code = code;
+    quit_pending = 1;                                    /* the title, as before this feature */
+}
+static void ar_hello(const char *addr, uint16_t port) {
+    mp_config c = AR.cfg;
+    snprintf(c.host_addr, sizeof c.host_addr, "%s", addr); c.port = port;
+    set_uid();                                           /* the same uid as before: RESERVED units back */
+    AR.ps = mp_start_begin(&c, &api);
+    if (!AR.ps) { ar_retry("no connection"); return; }
+    AR.phase = AR_HELLO;
+}
+static int ar_final_reject(int why) { return why && why != DSNET_REJ_DUP_ID; }
+static void ar_frame(void) {
+    if (!ar_on()) return;
+    double now = mono_ms();
+    if (AR.phase == AR_LOADING) {                        /* rejoined: until the host's world runs here */
+        if (S && rig_det_mp_ready() && !dsnet_needs_state(mp_client(S))) {
+            rig_log("mp: rejoined by itself after %.1f s (%d tries)", (now - AR.t0) / 1000, AR.tries);
+            AR.phase = AR_OFF; AR.done++;
+        } else if (!S) AR.phase = AR_OFF;               /* ended another way (end_session_c said why) */
+        return;
+    }
+    if (now - AR.t0 > ar_budget_ms()) { ar_give_up(MPM_END_LINK_LOST, TR("Connection to the host lost")); return; }
+    if (AR.phase == AR_WAIT) {
+        if (now < AR.next) return;
+        AR.tries++; AR.att_t0 = now;
+        if (!strncmp(AR.cfg.host_addr, "steam:", 6)) {
+            if (!steam_ready()) { AR.next = now + 2000; AR.tries--; return; }
+            uint64_t lobby = strtoull(AR.cfg.host_addr + 6, NULL, 10);
+            AR.sj = lobby ? dsnet_steam_join_lobby(lobby, MP_BUILD_ID, MP_MOD_VERSION) : NULL;
+            if (!AR.sj) { ar_retry("Steam lobby join did not start"); return; }
+            AR.phase = AR_STEAM;
+        } else {
+            AR.k = dsnet_connect_start(AR.cfg.host_addr, AR.cfg.port, 4000);
+            if (!AR.k) { ar_retry("connect did not start"); return; }
+            AR.phase = AR_CONNECT;
+        }
+        rig_log("mp: rejoin try %d (%s:%u)", AR.tries, AR.cfg.host_addr, (unsigned)AR.cfg.port);
+        return;
+    }
+    if (AR.phase == AR_CONNECT) {
+        int r = dsnet_connect_poll(AR.k);
+        if (!r) return;
+        if (r != 1) { char w[32]; snprintf(w, sizeof w, "connect %d", r); ar_retry(w); return; }
+        dsnet_connect_adopt(AR.k); dsnet_connect_free(AR.k); AR.k = NULL;
+        ar_hello(AR.cfg.host_addr, AR.cfg.port);
+        return;
+    }
+    if (AR.phase == AR_STEAM) {
+        uint16_t port = 0;
+        int r = dsnet_steam_join_poll(AR.sj, &port);
+        if (!r) { if (now - AR.att_t0 > 20000) ar_retry("Steam lobby: no answer in 20 s"); return; }
+        if (r < 0) { char e[160]; ar_retry(dsnet_steam_join_error_text(AR.sj, e, sizeof e)); return; }
+        ar_hello("127.0.0.1", port);
+        return;
+    }
+    if (AR.phase == AR_HELLO) {
+        int why = 0, r = mp_start_poll(&AR.ps, &why);
+        if (!r) { if (now - AR.att_t0 > 20000) ar_retry("no WELCOME in 20 s"); return; }
+        if (r < 0) {
+            if (ar_final_reject(why)) { ar_give_up(MPM_END_REFUSED, reject_text(why)); return; }
+            char w[48]; snprintf(w, sizeof w, "no WELCOME (reject reason %d)", why); ar_retry(w); return;
+        }
+        rig_det_disarm();                               /* then armed again: lock, the host's join point loads */
+        S = AR.ps; AR.ps = NULL;
+        cfg = AR.cfg; cfg_ok = 1; start_failed = 0; last_reject = 0; modset_unshown = 0; ended = 0;
+        if (AR.sj) { steam_join = AR.sj; AR.sj = NULL; join_lobby_id = strtoull(cfg.host_addr + 6, NULL, 10); }
+        S_gen++; ord_mp_attach(S); mp_bridge_attach(S); trn_set_role(0); rig_det_arm();
+        AR.phase = AR_LOADING;
+        rig_log("mp: rejoin try %d: in (player %d), waiting for the host's world", AR.tries, dsnet_player_id(mp_client(S)));
+    }
+}
+/* mpmenu (dlsym): 0 none, 1 trying to rejoin, 2 rejoined, loading the host's world */
+__attribute__((visibility("default"))) int mp_game_autorejoin(void) { return !ar_on() ? 0 : AR.phase == AR_LOADING ? 2 : 1; }
+/* mpmenu (dlsym): the Cancel of "Connection lost, rejoining...": the title at once, no notice */
+__attribute__((visibility("default"))) void mp_game_autorejoin_cancel(void) {
+    if (!ar_on()) return;
+    rig_log("mp: rejoin cancelled by the player (try %d, %.1f s)", AR.tries, (mono_ms() - AR.t0) / 1000);
+    ar_off();
+    if (S || steam_join) mp_steam_leave();
+    rig_det_disarm(); ended = 0; quit_pending = 1;
 }
 
 /* Every frame, title screen too (rig_frame): Steam bridge for a joiner, accepted Steam invites. */
@@ -1338,12 +1485,14 @@ void mp_game_poll(void) {
         int sf = dsnet_save_failed(mp_client(S));
         int code = sf ? MPM_END_OTHER : dsnet_bye_reason(mp_client(S)) == DSNET_BYE_SPECTATORS_OFF ? MPM_END_SPECT_OFF
                  : dsnet_host_left(mp_client(S)) ? MPM_END_HOST_LEFT : MPM_END_LINK_LOST;
-        end_session_c(code, sf == DSNET_SAVE_FAIL_HOST ? TR("The host's game could not save the world for you. Try to join again")
+        if (code == MPM_END_LINK_LOST && ar_wanted()) ar_start();   /* owner 2026-10-20: rejoin by itself, no title */
+        else { end_session_c(code, sf == DSNET_SAVE_FAIL_HOST ? TR("The host's game could not save the world for you. Try to join again")
                     : sf == DSNET_SAVE_FAIL_TIMEOUT ? TR("The host's world did not arrive. Try to join again")
                     : code == MPM_END_SPECT_OFF ? TR("The host turned spectators off")
                     : code == MPM_END_HOST_LEFT ? TR("The host left the game") : TR("Connection to the host lost"));
-        quit_pending = 1;
+        quit_pending = 1; }
     }
+    ar_frame();
     /* host gone: back to the title as soon as the game is not mid-load (a load in progress is finished first) */
     if (quit_pending) {
         int sc = scene();
@@ -1486,7 +1635,7 @@ void mp_steam_state(mp_steam_info *o) {
     }
 }
 
-int mp_game_active(void) { return cfg_ok || S; }
+int mp_game_active(void) { return cfg_ok || S || ar_on(); }
 
 int mp_game_frame(void) {
     if (!cfg_ok) return 0;
@@ -1562,8 +1711,10 @@ static char *merr(const char *m) { Buf b = {0}; bput(&b, "{\"ok\":false,\"error\
 static char *mok(int rc) { Buf b = {0}; bput(&b, "{\"ok\":%s,\"rc\":%d}", rc == 0 ? "true" : "false", rc); return b.p; }
 
 void mp_game_status(Buf *b) {
-    if (!cfg_ok) return;
-    if (!S) { bput(b, ",\"mp\":{\"started\":false,\"failed\":%s}", start_failed ? "true" : "false"); return; }
+    if (!cfg_ok && !ar_on() && !AR.done && !AR.failed) return;
+    if (!S) { bput(b, ",\"mp\":{\"started\":false,\"failed\":%s,\"autorejoin\":%d,\"ar_tries\":%d,\"ar_done\":%d,\"ar_failed\":%d}",
+                   start_failed ? "true" : "false", mp_game_autorejoin(), AR.tries, AR.done, AR.failed); return; }
+    bput(b, ",\"ar\":{\"autorejoin\":%d,\"tries\":%d,\"done\":%d,\"failed\":%d}", mp_game_autorejoin(), AR.tries, AR.done, AR.failed);
     mp_stats st; mp_get_stats(S, &st);
     bput(b, ",\"mp\":{\"started\":true,\"host\":%s,\"player\":%d,\"timer\":%u,\"ticks\":%llu,\"speed\":\"%s\",\"paused\":%s,"
             "\"desynced\":%s,\"needs_state\":%s,\"loading\":%s,\"orders\":%u,\"orders_dropped_owner\":%u,\"orders_bad\":%u,"

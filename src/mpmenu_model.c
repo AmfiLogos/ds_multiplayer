@@ -382,6 +382,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (c == MPB_LEAVE && o->role == 1 && !m->confirm_leave) { m->confirm_leave = 1; return MPA_CONFIRM_LEAVE | MPA_REFRESH; }   /* host: ask first (F7) */
         if (c == MPB_LEAVE_CANCEL && m->confirm_leave) { m->confirm_leave = 0; return MPA_LEAVE_BOX_CLOSE | MPA_REFRESH; }
         if ((c == MPB_LEAVE && o->role != 1) || (c == MPB_LEAVE_CONFIRM && m->confirm_leave)) { m->msg[0] = 0; return go(m, MPM_IDLE) | MPA_LEAVE; }
+        if (o->rejoining) break;                                             /* auto rejoin: not ended yet (its box, mpmenu.c) */
         if (o->role == 0 && m->confirm_leave) a |= MPA_LEAVE_BOX_CLOSE;    /* the session ended under the box */
         if (o->role == 0) {                                                  /* steamnet's reason ("The host left the game"); own quit: none */
             if (!o->msg[0]) { m->msg[0] = 0; return go(m, MPM_IDLE) | a; }

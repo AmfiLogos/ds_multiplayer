@@ -1295,5 +1295,6 @@
  "your version is older": "votre version est plus ancienne",
  "‹ Newer": "‹ Plus récents",
  "Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.": "Votre routeur n'a pas ouvert de port. Les amis hors de chez vous doivent passer par l'invitation Steam, ou ouvrez le port %s sur votre routeur (on parle aussi de redirection de port) vers cet ordinateur.",
- "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "Votre routeur n'a pas ouvert de port. Pour les amis hors de chez vous, ouvrez le port %s sur votre routeur (on parle aussi de redirection de port) vers cet ordinateur."
+ "Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer.": "Votre routeur n'a pas ouvert de port. Pour les amis hors de chez vous, ouvrez le port %s sur votre routeur (on parle aussi de redirection de port) vers cet ordinateur.",
+ "Connection lost, rejoining...": "Connexion perdue, reconnexion..."
 }

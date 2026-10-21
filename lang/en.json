@@ -275,6 +275,7 @@
  "Connecting to %s to watch...": "Connecting to %s to watch...",
  "Connecting to %s...": "Connecting to %s...",
  "Connecting to host...": "Connecting to host...",
+ "Connection lost, rejoining...": "Connection lost, rejoining...",
  "Connection to %s lost": "Connection to %s lost",
  "Connection to host lost": "Connection to host lost",
  "Connection to the host lost": "Connection to the host lost",
