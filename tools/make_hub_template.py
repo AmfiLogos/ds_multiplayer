@@ -12,6 +12,7 @@ Never changes the input file. What it does:
   - leftovers of units that are no longer in the save (animation states, recreation performers: the stock load logs
     "RecreationContainer Deserialize Failed: Performer Not Found" for those) go too;
   - top-level sections the stock template does not have (other mods' data, e.g. "DelversCore", "...10Slots...") go;
+  - the player's crafting orders (they would use up the dungeon loot in the hub);
   - every research done, every region open (fe_hub.c does it again at hub build);
   - clan / save names neutral (fe_hub.c rewrites them anyway; the player's names never reach the published file);
   - adds "MPHubTemplate" {spawn: the cells where the clan's units stood, difficulty: their difficulty affecter keys}.
@@ -123,6 +124,12 @@ def main():
     for ev in (s.get('EventSaveData', {}).get('EventSourceData', {}).get('EventInstanceSaveData') or {}).values():
         if isinstance(ev, dict) and isinstance(ev.get('TargetUnits'), list):
             ev['TargetUnits'] = [g for g in ev['TargetUnits'] if g in alive]
+
+    # 2b. the player's crafting orders go: in the hub the brought units would carry out the repeat orders and use up the
+    #     dungeon loot (Leather from RawHide, powder from mana stones: pair test 2026-10-21, the loot never came home)
+    tc = s.get('TaskContainerSaveData', {})
+    if isinstance(tc.get('AllTasks'), list):
+        tc['AllTasks'] = [t for t in tc['AllTasks'] if not str(t.get('$type', '')).startswith('Refactor.CraftingTaskSaveData')]
 
     # 3. other mods' sections
     extra = [k for k in s if k not in sections]
