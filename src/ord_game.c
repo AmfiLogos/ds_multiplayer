@@ -1304,9 +1304,12 @@ int ord_apply(int player, const uint8_t *payload, size_t len) {
     else {
         if (ord_trace()) rig_log("ord trace: apply player %d kind %d %s nsel %d", player, m->kind, m->ev ? m->ev->name : "-", m->ctx.nsel);
         if (pvp_units_ordered) {                                          /* PvP (E7): these units got their player's order (every peer, same step) */
-            pvp_units_ordered((const uint8_t (*)[16])m->ctx.sel, m->ctx.nsel);
-            for (int i = 0; i < m->nact; i++) pvp_units_ordered((const uint8_t (*)[16])&m->act[i].unit, 1);
-            ord_guid ow; memset(&ow, 0, sizeof ow); ord_owner(&genv, m, &ow); pvp_units_ordered((const uint8_t (*)[16])&ow, 1);   /* e.g. hold position on that unit */
+            int cmd = m->kind >= ORD_K_MOVE_ALL && m->kind <= ORD_K_USE_SKILL;   /* move / waypoint / run / action / skill: a unit command */
+            if (cmd) pvp_units_ordered((const uint8_t (*)[16])m->ctx.sel, m->ctx.nsel);
+            for (int i = 0; cmd && i < m->nact; i++) pvp_units_ordered((const uint8_t (*)[16])&m->act[i].unit, 1);
+            if (m->kind == ORD_K_EVENT && m->ev && !strcmp(m->ev->name, "ToggleBehaviourOption")) {   /* hold position on that unit */
+                ord_guid ow; memset(&ow, 0, sizeof ow); ord_owner(&genv, m, &ow); pvp_units_ordered((const uint8_t (*)[16])&ow, 1);
+            }
         }
         rc = apply_msg(m, player);
     }

@@ -608,6 +608,7 @@ static void fight_kick_idle(int map, int only_idle) {
         rig_log("pvp: fight %s unit %d -> %d (%s): rc %d", only_idle ? "re-kick" : "kick", i, best, why, rc);
     }
 }
+static uint32_t n_walk_resend;
 #define PLACE_MAX_TICKS 3600         /* placing ends after 60 s of game time even if Red is not there */
 static void placing_step(int map) {
     int arrived = 1, any = 0;
@@ -630,7 +631,7 @@ static void placing_step(int map) {
             int t = g.units[i].team; int32_t c[2];
             if ((t != PVP_TEAM_BLUE && t != PVP_TEAM_RED) || g.units[i].out || (prep && g.units[i].ordered) || !unit_cell(map, g.units[i].guid, c)) continue;
             int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1]; if (dx * dx + dy * dy <= 36) continue;
-            Guid gg; memcpy(&gg, g.units[i].guid, 16); rig_order_move(gg, g.end_cell[t][0], g.end_cell[t][1]);
+            Guid gg; memcpy(&gg, g.units[i].guid, 16); rig_order_move(gg, g.end_cell[t][0], g.end_cell[t][1]); n_walk_resend++;
         }
     }
     if (prep ? g.countdown_at != 0 : ((any && arrived && g.ticks >= 60) || g.ticks >= PLACE_MAX_TICKS || g.countdown_at)) {
@@ -1250,6 +1251,12 @@ char *pvp_exec(const char *cmd, const char *line) {
         char err[300] = ""; int rc = pvp_bring_picks(pk, n, err, sizeof err);
         Buf r = {0}; bput(&r, "{\"ok\":%s,\"rc\":%d,\"ul\":%d,\"error\":", rc ? "false" : "true", rc, mu_ul_present()); bstr(&r, err); bput(&r, "}"); return okj(&r);
     }
+    if (!strcmp(cmd, "pvp_hudcheck")) {                /* E5b test: per PvP unit [team, enemy, head health bar shown (-1 no HUD)] on this copy */
+        int ui_hud_bars_on(const uint8_t g[16]);
+        Buf r = {0}; bput(&r, "{\"ok\":true,\"units\":[");
+        for (int i = 0; i < g.nunits; i++) bput(&r, "%s[%d,%d,%d]", i ? "," : "", g.units[i].team, enemy_unit(g.units[i].guid), ui_hud_bars_on(g.units[i].guid));
+        bput(&r, "]}"); return okj(&r);
+    }
     if (!strcmp(cmd, "pvp_selgroup")) {                /* E7b test: a click's selection of this unit (SelectProcessor.Select, hooked like a
                                                           click); the group after it: 3003 = my units, 3001 = enemy (monster view) */
         char gs[64]; Guid gg; if (!jstr(line, "guid", gs, sizeof gs) || !guid_parse(gs, &gg)) return errj("need guid");
@@ -1371,9 +1378,9 @@ char *pvp_exec(const char *cmd, const char *line) {
     if (!strcmp(cmd, "pvp_status")) {
         int map = cur_map(); Obj h = combat_of(map);
         Buf r = {0};
-        bput(&r, "{\"ok\":true,\"ending\":%d,\"vote_open\":%d,\"vote_by\":%d,\"agree_mask\":%u,\"cd_ticks\":%u,\"countdown_at\":%u,\"kicks\":%d,\"selgroup_enemy\":%u,\"act_refused\":%u,\"round\":%d,\"score\":[%d,%d],\"draws\":%d,\"resetting\":%d,\"last_winner\":%d,\"match_winner\":%d,\"planning\":%d,\"plans\":%u,\"rules\":[%d,%d,%d,%d,%d],\"vanilla\":%d,\"snaps\":[%d,%d],\"resyncs\":%d,\"overrides\":%d,\"arena\":%d,\"placing\":%d,\"fight_start\":%u,\"ends\":[[%d,%d],[%d,%d]],\"frozen\":%d,\"freeze_at\":%lld,\"world_tick\":%lld,\"phase\":%d,\"mode\":%d,\"active\":%d,\"ticks\":%u,\"matches\":%u,\"hash\":\"%016llx\",\"last_rc\":%d,"
+        bput(&r, "{\"ok\":true,\"ending\":%d,\"vote_open\":%d,\"vote_by\":%d,\"agree_mask\":%u,\"cd_ticks\":%u,\"countdown_at\":%u,\"kicks\":%d,\"walk_resend\":%u,\"selgroup_enemy\":%u,\"act_refused\":%u,\"round\":%d,\"score\":[%d,%d],\"draws\":%d,\"resetting\":%d,\"last_winner\":%d,\"match_winner\":%d,\"planning\":%d,\"plans\":%u,\"rules\":[%d,%d,%d,%d,%d],\"vanilla\":%d,\"snaps\":[%d,%d],\"resyncs\":%d,\"overrides\":%d,\"arena\":%d,\"placing\":%d,\"fight_start\":%u,\"ends\":[[%d,%d],[%d,%d]],\"frozen\":%d,\"freeze_at\":%lld,\"world_tick\":%lld,\"phase\":%d,\"mode\":%d,\"active\":%d,\"ticks\":%u,\"matches\":%u,\"hash\":\"%016llx\",\"last_rc\":%d,"
                  "\"counts\":{\"rel\":%u,\"ishostile\":%u,\"add\":%u,\"refresh\":%u,\"remove\":%u,\"aggro\":%u,\"rejected\":%u,\"isrel\":%u},\"handler\":%d,\"teams\":[",
-             g.ending, g.vote_open, g.vote_by, g.agree_mask, g.cd_ticks, g.countdown_at, kicks, n_selgroup_enemy, n_act_refused, g.round, g.score[1], g.score[2], g.draws, g.resetting, g.last_winner, g.match_winner, g.planning, g.plans,
+             g.ending, g.vote_open, g.vote_by, g.agree_mask, g.cd_ticks, g.countdown_at, kicks, n_walk_resend, n_selgroup_enemy, n_act_refused, g.round, g.score[1], g.score[2], g.draws, g.resetting, g.last_winner, g.match_winner, g.planning, g.plans,
              g.rules.best_of, g.rules.round_secs, g.rules.pause_rule, g.rules.plan_every_s, g.rules.plan_len_s, g.rules.vanilla, snap_world.tick_at, snap_arena.tick_at, n_resync, n_override,
              g.arena, g.placing, g.fight_start, g.end_cell[1][0], g.end_cell[1][1], g.end_cell[2][0], g.end_cell[2][1],
              pvp_freeze_now(), (long long)freeze_at, (long long)tick(), g.phase, g.mode, pvp_active(&g), g.ticks, g.matches, (unsigned long long)pvp_hash(&g), last_rc,
@@ -1400,7 +1407,7 @@ char *pvp_exec(const char *cmd, const char *line) {
                 bput(&r, ",\"options\":%d", ec ? AT(ec, 0x20, int32_t) : -1);
                 bput(&r, ",\"dead\":%d,\"hp\":%.2f,\"task\":%d,\"combat\":%d,\"target\":\"%s\",\"task_target\":\"%s\"", unit_dead(u), unit_stat(u, 9), unit_task(u), cs, cg, tg);
             }
-            bput(&r, ",\"hed\":%d,\"hostile_entries\":%d,\"enemies_listed\":%d,\"out_tick\":%d}", d != NULL, nh, enemies, pvp_out_tick(&g, g.units[i].guid));
+            bput(&r, ",\"hed\":%d,\"hostile_entries\":%d,\"enemies_listed\":%d,\"out_tick\":%d,\"ordered\":%d}", d != NULL, nh, enemies, pvp_out_tick(&g, g.units[i].guid), g.units[i].ordered);
         }
         bput(&r, "]}");
         return okj(&r);

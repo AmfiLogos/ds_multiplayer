@@ -759,6 +759,14 @@ static void pvp_view_pass(void) {
     }
 }
 
+int ui_hud_bars_on(const uint8_t g[16]) {                    /* test (pvp_hudcheck): this unit's head health bar shown, -1 = no HUD tracked */
+    for (int i = 0; i < MAX_HUD; i++) {
+        Obj h = u_gc_get(hud[i].hud); if (!u_alive(h) || memcmp(hud[i].guid, g, 16)) continue;
+        Obj r = AT(h, 0x88, Obj); return u_alive(r) ? F(0x509E968, bool (*)(Obj, void *))(r, NULL) : -1;   /* Renderer.get_enabled */
+    }
+    return -1;
+}
+
 /* re-tag everything when the ownership table changes */
 static uint64_t own_sig;
 unsigned mp_game_session_gen(void);

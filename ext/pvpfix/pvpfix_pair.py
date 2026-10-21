@@ -135,6 +135,9 @@ def body(t):
                 if hc and hc2 and abs(hc2[0] - hc[0]) + abs(hc2[1] - hc[1]) > 1: hold_ok = False
                 first_order = False
                 for x in (H, G): t.shot(x, 'fight')
+                if 'E5b' not in done:
+                    done.add('E5b'); hc5 = {x: t.c(x, cmd='pvp_hudcheck').get('units', []) for x in (H, G)}
+                    t.check('E5b enemy units: no health bar on my screen (my own units keep theirs)', all(all(u[2] != 1 for u in hc5[x] if u[1] == 1) and any(u[2] == 1 for u in hc5[x] if u[1] == 0) for x in (H, G)), hc5)
                 if s['round'] == 1 and 'E7b' not in done:                  # E7b: my clicks / orders on an enemy unit change nothing on it
                     done.add('E7b')
                     s4, c4 = t.units(H)

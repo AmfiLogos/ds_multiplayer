@@ -201,15 +201,13 @@ def run(H, G, port):
     check('5 match end: same winner + score on both; the world is back (template units, no brought unit)',
           pe[H]['match_winner'] == pe[G]['match_winner'] and pe[H]['score'] == pe[G]['score'] and back[H] == back[G] == tpl_units,
           f"winner {pe[H]['match_winner']} score {pe[H]['score']}, units back {len(back[H])}/{len(tpl_units)}")
-    for x in (H, G): c(x, cmd='mp_pause', on=1)
-    wait('both paused at one tick', lambda: (lambda a, b: a['tick'] == b['tick'] and a.get('mp', {}).get('paused') and b.get('mp', {}).get('paused'))(c(H, cmd='status'), c(G, cmd='status')), timeout=120)
+    # (no pause: a host whose saved rules say "no pause" refuses it; the match's fingerprint logs were copied during the match)
     fh, fg = fp_read_file(os.path.join(OUT, f'fp_match_{H}.log'), t_match), fp_read_file(os.path.join(OUT, f'fp_match_{G}.log'), t_match)
     com = sorted(set(fh) & set(fg)); first = next((t for t in com if fh[t] != fg[t]), None)
     mh, mg = c(H, cmd='status')['mp'], c(G, cmd='status')['mp']
     check('6 fingerprints equal on both for 500+ common ticks from the match start, no desync',
           len(com) >= 500 and first is None and not mh.get('desyncs') and not mg.get('desyncs'),
           f'{len(com)} common ticks ({com[0] if com else None}..{com[-1] if com else None}), first diff {first}, desyncs {mh.get("desyncs")}/{mg.get("desyncs")}')
-    for x in (H, G): c(x, cmd='mp_pause', on=0)
     wait('result window on both', lambda: all(c(x, cmd='mpm_pvp').get('result') for x in (H, G)), timeout=120, every=2)
     for x in (H, G): c(x, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, f'ui_{x}_result.png'))
     log('H result OK (Back to the Title)', c(H, cmd='mpm_pvp', action='press_ok'))
