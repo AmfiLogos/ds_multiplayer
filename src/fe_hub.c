@@ -1,13 +1,13 @@
-/* fe_hub.c - the world a Foreign Expedition hub or a PvP v1 match starts in (owner 2026-10-15: "a neutral hub ... some
- * kind of a basic map. We have everything unlocked"; v12 #13: "PvP v1, very simple: a map (the starting map for now)").
- * Both come from map files shipped inside the Multiplayer mod (fe_world_template): the hub = hub_<build>.json (a full
- * player base without units, made by tools/make_hub_template.py; base_<build>.json if it is missing), the PvP world =
- * base_<build>.json (the day-0 starting base, the wiki's base template). The map files are not in git (maps/, see
- * maps/README.md); the mod build copies them next to the module.
- * The hub is then unlocked: every research done, every region open. The PvP world is the template as it is.
+/* fe_hub.c - the Foreign Expedition hub world (owner 2026-10-15: "a neutral hub ... some kind of a basic map. We have
+ * everything unlocked"). The one multiplayer mode world (owner 2026-10-21: "keep only the Hub: Co-op or PvP"): players go
+ * on co-op expeditions from it, or start PvP matches in it (Esc > PvP Match, pvp_ui.c).
+ * It comes from a map file shipped inside the Multiplayer mod (fe_world_template): hub_<build>.json (a full player base
+ * without units, made by tools/make_hub_template.py; base_<build>.json, the day-0 starting base, if it is missing). The
+ * map files are not in git (maps/, see maps/README.md); the mod build copies them next to the module.
+ * The hub is then unlocked: every research done, every region open.
  * The host writes it as a new save (data/Saves/<name>.json) and loads it; the multiplayer menu then opens the lobby as
  * for "Your save". The template's own clan units (the base template has 4, the hub file none) stay until the start: the
- * expedition / PvP start replaces the clan with the brought units (fe_build_hub). */
+ * expedition start replaces the clan with the brought units (fe_build_hub). */
 #include "rig.h"
 #include "mp_modes_text.h"
 #include "fe_json.h"
@@ -22,30 +22,15 @@
 #include <time.h>
 #include <unistd.h>
 
-enum { FE_WORLD_HUB = 0, FE_WORLD_PVP = 1 };
-/* a PvP v1 world's campaign guid starts with this (every peer can tell it plays in one: lobby Bring Units, the match on
-   the settlement, the result window's way back to the title). Kept through the brought-units build (pvp_units.c). */
-#define PVP_V1_PREFIX "b45e0"
+enum { FE_WORLD_HUB = 0 };
 /* a neutral hub world before its expedition starts: campaign guid prefix (every peer); the start (fe_join_point_save)
    gives the hub its run prefix fe5ea00x, so the stock below comes once */
 #define FE_HUB_TPL_PREFIX "fe5eb"
-static int world_prefix(const char *pre) {
-    Obj c = cdc(); Obj clan = c ? AT(c, 0x50, Obj) : NULL;
-    if (!clan) return 0;
-    char gs[40]; guid_str(AT(clan, 0x10, Guid), gs);
-    return !strncmp(gs, pre, 5);
-}
-int pvp_v1_world(void) {
-    Obj c = cdc(); Obj clan = c ? AT(c, 0x50, Obj) : NULL;
-    if (!clan) return 0;
-    char gs[40]; guid_str(AT(clan, 0x10, Guid), gs);
-    return !strncmp(gs, PVP_V1_PREFIX, 5);
-}
 
 /* the world's map file, shipped in the Multiplayer mod (owner 2026-10-21: the maps go inside the mod, no download), one
    per Steam build, next to multiplayer.dylib / .dll (DSMP_MAPS_DIR overrides, tests):
      hub_<build>.json   the hub: a full player base, everything built, no units (tools/make_hub_template.py)
-     base_<build>.json  the PvP v1 world, and the hub's fallback: the day-0 starting base (the wiki's base template)
+     base_<build>.json  the hub's fallback: the day-0 starting base (the wiki's base template)
    *is_hub = the hub file was used. A build without a map file = a clear message, no world. */
 static char *slurp(const char *path, size_t *n) {
     FILE *f = fopen(path, "rb"); if (!f) return NULL;
@@ -132,10 +117,10 @@ static jv *fe_world_build(int kind, char *out_name, size_t on, char *err, size_t
     if (kind == FE_WORLD_HUB) unlock_all(w, &nres, &nreg);
     char cg[37], ver[80], stem[64], ts[32];
     fe_new_guid(cg);
-    memcpy(cg, kind == FE_WORLD_PVP ? PVP_V1_PREFIX : FE_HUB_TPL_PREFIX, 5);
+    memcpy(cg, FE_HUB_TPL_PREFIX, 5);
     game_version(ver, sizeof ver);
-    snprintf(stem, sizeof stem, "%s_%.8s", kind == FE_WORLD_HUB ? "MPHub" : "MPPvP", cg);
-    const char *disp = kind == FE_WORLD_HUB ? "Foreign Expedition Hub" : "PvP Base";
+    snprintf(stem, sizeof stem, "MPHub_%.8s", cg);
+    const char *disp = "Foreign Expedition Hub";
     time_t t = time(NULL); struct tm tm; localtime_r(&t, &tm); strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", &tm);
     jset(h, "CampaignGuid", jstrv(cg)); jset(h, "SaveName", jstrv(stem)); jset(h, "DisplayName", jstrv(disp));
     jset(h, "ClanName", jstrv(disp)); jset(h, "SaveTime", jstrv(ts)); jset(h, "Version", jstrv(ver));
@@ -152,7 +137,7 @@ static jv *fe_world_build(int kind, char *out_name, size_t on, char *err, size_t
     }
     jv *cl = jget(w, "ClanSaveData"); jset(cl, "CampaignGuid", jstrv(cg)); jset(cl, "ClanName", jstrv(disp));
     snprintf(out_name, on, "%s", stem);
-    rig_log("fe hub: %s world %s built from the %s (%s): %d research done, %d regions open", kind == FE_WORLD_HUB ? "hub" : "PvP", stem, is_hub ? "hub map" : "base map", ver, nres, nreg);
+    rig_log("fe hub: hub world %s built from the %s (%s): %d research done, %d regions open", stem, is_hub ? "hub map" : "base map", ver, nres, nreg);
     return w;
 }
 
@@ -163,7 +148,6 @@ static void queue_load(const char *name) {
     F(0xCCFAD4, void (*)(Obj, Obj, void *))(AT(mf, 0x48, Obj), ev, NULL);
 }
 
-static char pvp_file[1300];                                                /* host: the PvP v1 world file it made */
 /* build the world and write it into data/Saves; name = its SaveName, path (optional) = the file. 0 ok. */
 int fe_world_write(int kind, char *name, size_t nn, char *path, size_t pn, char *err, size_t errn) {
     jv *w = fe_world_build(kind, name, nn, err, errn);
@@ -174,16 +158,8 @@ int fe_world_write(int kind, char *name, size_t nn, char *path, size_t pn, char 
     int rc = jsave_new(w, p); jfree(w);
     if (rc) { snprintf(err, errn, "%s", TR("The hub map could not be written into the Saves folder.")); rig_log("fe hub: write %s failed (%s)", p, strerror(errno)); return -1; }
     if (path) snprintf(path, pn, "%s", p);
-    if (kind == FE_WORLD_PVP) snprintf(pvp_file, sizeof pvp_file, "%s", p);
     rig_log("fe hub: %s written", p);
     return 0;
-}
-/* host, leaving a PvP v1 world for the title: its save file goes (the world was made only for the match) */
-void pvp_v1_forget_world(void) {
-    if (!pvp_file[0]) return;
-    int rc = unlink(pvp_file);
-    rig_log("pvp v1: the PvP world file %s %s", pvp_file, rc ? "was already gone" : "is deleted (it was only for the match)");
-    pvp_file[0] = 0;
 }
 /* host, at the title: build the world, write it into data/Saves and load it. 0 = the load is queued. */
 int fe_world_start(int kind, char *err, size_t errn) {
@@ -195,37 +171,6 @@ int fe_world_start(int kind, char *err, size_t errn) {
     return 0;
 }
 
-/* the brought-units build (pvp_units.c, fe_build_hub) gives the world a new campaign guid: a PvP v1 world keeps its
-   prefix (host, join point, right after that build); its fighters are fed and rested. 0 ok. */
-int pvp_v1_keep_prefix(const char *path) {
-    char err[300]; jv *w = jload(path, err, sizeof err);
-    if (!w) { rig_log("pvp v1: %s: %s", path, err); return -1; }
-    jv *h = jget(w, "CampaignSaveHeader"), *cl = jget(w, "ClanSaveData"), *g = h ? jget(h, "CampaignGuid") : NULL;
-    if (!g || g->t != JN_STR || g->n != 36 || !cl) { jfree(w); return -1; }
-    char cg[37]; memcpy(cg, g->s, 36); cg[36] = 0; memcpy(cg, PVP_V1_PREFIX, 5);
-    jset(h, "CampaignGuid", jstrv(cg)); jset(cl, "CampaignGuid", jstrv(cg));
-    /* the fighters arrive fed and rested: a hungry settler left its walk to the team's end for the food (pair test v1_d);
-       they are copies in a world made only for the match, nothing goes home */
-    jv *pl = jpath(w, "EntityContainerSaveData.UnitContainerSaveData.Base.PlayerGuidList"), *ec = jpath(w, "EntityComponentSaveData.EntityComponents");
-    int fed = 0;
-    for (size_t i = 0; pl && ec && i < pl->cnt; i++) {
-        jv *u = pl->v[i]; if (!jis(u, JN_STR)) continue;
-        char gk[40]; snprintf(gk, sizeof gk, "%.*s", (int)u->n, u->s);
-        jv *st = fe_comp(jget(ec, gk), 0), *ss = st ? jget(st, "StateStats") : NULL;
-        if (!jis(ss, JN_OBJ)) continue;
-        jset(ss, "Hunger", jnum_d(1.0)); jset(ss, "Energy", jnum_d(1.0)); jset(ss, "Stress", jnum_d(0.0)); fed++;
-        /* no settler jobs: they hauled the template's ground items instead of walking / fighting (v1_e, task 15) */
-        jv *tp = jget(jget(jpath(w, "PlayerUnitsSaveData.TaskPriorities"), gk), "Priority");
-        for (size_t k = 0; jis(tp, JN_OBJ) && k < tp->cnt; k++) { jfree(tp->v[k]); tp->v[k] = jnum_i(0); }
-    }
-    rig_log("pvp v1: %d fighter(s) fed and rested, settler jobs off", fed);
-    char tmp[1400]; snprintf(tmp, sizeof tmp, "%s.v1", path);
-    unlink(tmp);
-    int rc = jsave_new(w, tmp) || rename(tmp, path) ? -1 : 0;
-    jfree(w);
-    rig_log("pvp v1: world with the brought units keeps the PvP v1 campaign prefix (%s): rc %d", cg, rc);
-    return rc;
-}
 
 /* the hub's stock (brief "storage stocked"; owner earlier: no food in the hub), put into the hub save by the host while it
    builds the hub (fe_join_point_save; every peer loads that file). Each stack is a copy of one of the template's own ground

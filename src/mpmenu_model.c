@@ -164,8 +164,7 @@ int mpm_choice_of_btn(int b) { return b == MPB_HOST_FE ? 0 : b >= MPB_HOST_C1 &&
    Fight or Capture the Flag (pvp/pvp_ui.c). Another mod's choice: no line. */
 const char *mpm_choice_note(const char *id) {
     if (!id) return NULL;
-    if (!strcmp(id, "foreign-expedition")) return TR("Co-op: your units in a shared hub");
-    if (!strcmp(id, "pvp")) return TR("Team battle or Capture the Flag");
+    if (!strcmp(id, "foreign-expedition")) return TR("Co-op expeditions or PvP matches");
     return NULL;
 }
 int mpm_choice_register(mpm_choices *l, const char *id, const char *label, const char *tip, const mpm_choice *fn, int check_len) {
@@ -464,9 +463,10 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
         break;
     case MPB_LABEL_ADDR: snprintf(out, cap, "%s", TR("Host address")); break;
     case MPB_HEADER:
+        if (m->state == MPM_TITLE_HOST && cur_v2(m) && m->choice == 1) { snprintf(out, cap, "%s", TR("Host the Hub")); break; }   /* choice 1 = the hub (mp_modes.c) */
         if (m->state == MPM_TITLE_HOST && cur_v2(m)) { snprintf(out, cap, TR("Host: %s"), m->choice_label[m->choice - 1]); break; }
         snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? TR("Join a multiplayer world") : m->state == MPM_TITLE_FRIENDS ? TR("Join a friend on Steam")
-                                          : m->set.fe ? TR("Host a Foreign Expedition") : m->host_new ? TR("Host a new save") : TR("Host your save")); break;
+                                          : m->set.fe ? TR("Host the Hub") : m->host_new ? TR("Host a new save") : TR("Host your save")); break;
     case MPB_JOIN_FRIEND:
         if (m->steam) snprintf(out, cap, "%s", TR("Join a friend on Steam"));
         else {                                                              /* the small line in points: 65% of the auto-sized label was ~9.6 */
@@ -510,7 +510,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_HOST_SAVE: snprintf(out, cap, "%s", TR("Your save")); break;
     case MPB_HOST_NEW: snprintf(out, cap, "%s", TR("New save")); break;
     /* host choices: the registering mod's own text (Custom Modes registers it translated, again on a language change) */
-    case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : TR("Foreign Expedition")); break;
+    case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : TR("Hub: Co-op or PvP")); break;
     case MPB_HOST_C1: case MPB_HOST_C2: case MPB_HOST_C3: snprintf(out, cap, "%s", m->choice_label[mpm_choice_of_btn(b)]); break;
     case MPB_HOST_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start"))); break;
     case MPB_FE_RESLIST: snprintf(out, cap, "%s", TR("Expedition results")); break;

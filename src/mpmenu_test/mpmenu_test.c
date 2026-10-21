@@ -279,7 +279,7 @@ int main(void) {
         CHECK(mpm_is_visible(&h, &t, MPB_HOST_SAVE) && mpm_is_visible(&h, &t, MPB_HOST_NEW) && mpm_is_visible(&h, &t, MPB_HOST_FE));
         mpm_label(&h, MPB_HOST_SAVE, s, sizeof s); CHECK(!strcmp(s, "Your save"));
         mpm_label(&h, MPB_HOST_NEW, s, sizeof s); CHECK(!strcmp(s, "New save"));
-        mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Foreign Expedition"));
+        mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Hub: Co-op or PvP"));
         mpm_model k = h; mpm_step(&k, &t, MPB_HOST_SAVE); uint64_t v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)) && !mpm_is_visible(&k, &t, MPB_HOST_SAVE));
         mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host your save"));
@@ -290,7 +290,7 @@ int main(void) {
         CHECK(mpm_step(&k, &t, MPB_NEW_CAMPAIGN) & MPA_OPEN_NEW);
         k = h; mpm_step(&k, &t, MPB_HOST_FE); v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && k.set.fe == 1 && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)));
-        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a Foreign Expedition"));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host the Hub"));
         mpm_step(&k, &t, MPB_BACK); mpm_step(&k, &t, MPB_HOST); CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && !k.host_new);   /* the old path: Your save */
     }
     {   /* Foreign Expedition (ext lane, board FESettingsA): chosen on the Multiplayer page, FE rules, summary, Start builds the hub first */

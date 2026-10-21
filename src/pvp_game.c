@@ -44,7 +44,6 @@ static int pvp_untouched(void) {
     size_t n = pvp_save(&g, b, sizeof b);
     return n == zn && !memcmp(b, zb, n);
 }
-int pvp_v1_world(void);                                  /* fe/fe_hub.c */
 int fe_world_is_hub(void);                               /* fe/fe_game.c */
 
 static uint32_t n_rel_hostile, n_ishostile, n_add, n_refresh, n_remove, n_aggro, n_rejected;
@@ -352,7 +351,7 @@ static void h_preg(Obj self, Obj ent, Obj key, bool init, void *mi) {
     char k[96] = "", st[64];
     int len = key ? AT(key, 0x10, int32_t) : 0;
     for (int i = 0; i < len && i < 95; i++) k[i] = (char)AT(key, 0x14 + 2 * i, uint16_t);
-    if (ent && k[0] && (pvp_v1_world() || fe_world_is_hub() || pvp_hold_events(&g)) && mu_folded_skill(k, st, sizeof st)) {
+    if (ent && k[0] && (fe_world_is_hub() || pvp_hold_events(&g)) && mu_folded_skill(k, st, sizeof st)) {
         int id = rig_stat_id(st);
         if (id > 0 && perm_has(ent, id)) { n_passive_skipped++; rig_log("pvp: %s not registered on a builder unit (its bonus is folded in its permanent stats)", k); return; }
     }

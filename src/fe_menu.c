@@ -439,7 +439,7 @@ static int fe_bring_open(void) {
 }
 static void few_action(int a) {
     fe_mode_info fm;
-    if ((a & MPA_FE_BRING) && fe_mode_get(&fm) && fe_bring_open()) few_open(FEW_BRING, NULL);   /* an expedition lobby (PvP v1 has its own): units from this player's own saves */
+    if ((a & MPA_FE_BRING) && fe_mode_get(&fm) && fe_bring_open()) few_open(FEW_BRING, NULL);   /* the hub lobby: units from this player's own saves */
     if (a & MPA_FE_RESULTS) few_open(FEW_LIST, NULL);
 }
 static int few_lobby_bring(void) { fe_mode_info fm; return fe_mode_get(&fm) && W.mode == FEW_NONE; }
