@@ -377,14 +377,16 @@ int main(void) {
         CHECK(simple(&b, 2, PVP_OP_NOTYET, NULL, 0) == PVP_OK && !pvp_vote_open(&b) && !b.countdown_at);
         CHECK(simple(&b, 0, PVP_OP_AGREE, NULL, 0) == PVP_ERR_PHASE);
         CHECK(simple(&b, 0, PVP_OP_PROPOSE, NULL, 0) == PVP_OK && simple(&b, 1, PVP_OP_AGREE, NULL, 0) == PVP_OK && !b.countdown_at);
-        CHECK(simple(&b, 2, PVP_OP_AGREE, NULL, 0) == PVP_OK && !pvp_vote_open(&b) && b.countdown_at == b.ticks + 1 && b.cd_ticks == PVP_AGREE_COUNTDOWN_TICKS);
+        CHECK(simple(&b, 2, PVP_OP_AGREE, NULL, 0) == PVP_OK && !pvp_vote_open(&b) && b.countdown_at == b.ticks + 1 && b.cd_ticks == PVP_CD_TAKING_PLACES);   /* F6: taking places first */
         { uint8_t vb[2048]; size_t vn = pvp_save(&b, vb, sizeof vb); pvp_state vl; CHECK(pvp_load(&vl, vb, vn) == 0 && !memcmp(&vl, &b, sizeof vl)); }
         for (int t = 0; t < 100; t++) { pvp_on_tick(&b); CHECK(pvp_place_done(&b) == 0); }
         CHECK(simple(&b, 2, PVP_OP_CANCEL, NULL, 0) == PVP_OK && !b.countdown_at);
         for (int t = 0; t < PVP_AGREE_COUNTDOWN_TICKS + 5; t++) pvp_on_tick(&b);
         CHECK(!b.countdown_at && !pvp_fighting(&b));                                   /* no countdown without agreement (the glue calls place_done only with one) */
         CHECK(simple(&b, 2, PVP_OP_PROPOSE, NULL, 0) == PVP_OK && simple(&b, 0, PVP_OP_AGREE, NULL, 0) == PVP_OK && simple(&b, 1, PVP_OP_AGREE, NULL, 0) == PVP_OK && b.countdown_at);
-        { int t = 0; for (; t < PVP_AGREE_COUNTDOWN_TICKS + 2 && !pvp_fighting(&b); t++) { pvp_on_tick(&b); pvp_place_done(&b); } CHECK(pvp_fighting(&b) && t == PVP_AGREE_COUNTDOWN_TICKS); }
+        /* F6: while taking places the fight never begins; at most PVP_TAKE_PLACES_MAX_TICKS, then the 10 s countdown */
+        { int t = 0; for (; t < PVP_TAKE_PLACES_MAX_TICKS + PVP_AGREE_COUNTDOWN_TICKS + 2 && !pvp_fighting(&b); t++) { pvp_on_tick(&b); pvp_places_taken(&b, 0); pvp_place_done(&b); }
+          CHECK(pvp_fighting(&b) && t == PVP_TAKE_PLACES_MAX_TICKS + PVP_AGREE_COUNTDOWN_TICKS); }
         CHECK(simple(&b, 0, PVP_OP_PROPOSE, NULL, 0) == PVP_ERR_PHASE);
         for (int t = 0; t < PVP_COUNTDOWN_TICKS + 2 && !pvp_fighting(&b); t++) { pvp_on_tick(&b); pvp_place_done(&b); }
         CHECK(pvp_fighting(&b) && b.fight_start);

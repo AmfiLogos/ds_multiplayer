@@ -725,7 +725,6 @@
  "Ping lines in chat": "聊天中的标记消息",
  "Ping sound": "标记声音",
  "Pink": "粉色",
- "Places": "就位",
  "Planning": "计划",
  "Planning pause every 7 s": "每 7 秒计划暂停一次",
  "Planning pause: give your orders, then press Ready": "计划暂停：下达指令，然后按“准备”",
@@ -1346,5 +1345,6 @@
  "The Return scroll could not be used": "无法使用回城卷轴",
  "Use a Return scroll?": "使用回城卷轴？",
  "use a Return scroll": "使用回城卷轴",
- "using the Return scroll": "正在使用回城卷轴"
+ "using the Return scroll": "正在使用回城卷轴",
+ "Taking places...": "正在就位..."
 }

@@ -125,7 +125,7 @@ int pvp_apply(pvp_state *s, int issuer, const uint8_t *p, size_t n, const pvp_ow
             s->countdown_at = 0; s->cd_ticks = 0; s->agree_mask = 0;
             return PVP_OK;
         }
-        if ((s->agree_mask & need) == need) { s->vote_open = 0; s->countdown_at = s->ticks + 1; s->cd_ticks = PVP_AGREE_COUNTDOWN_TICKS; }
+        if ((s->agree_mask & need) == need) { s->vote_open = 0; s->countdown_at = s->ticks + 1; s->cd_ticks = PVP_CD_TAKING_PLACES; }   /* F6: taking places first */
         return PVP_OK;
     }
     case PVP_OP_NEXT:                            /* E9: the round result screen is over: reset now */
@@ -259,6 +259,14 @@ int pvp_ending(const pvp_state *s) { return pvp_active(s) && s->ending && !s->re
 int pvp_vote_open(const pvp_state *s) { return pvp_active(s) && s->vote_open; }
 void pvp_set_ends(pvp_state *s, const int32_t blue[2], const int32_t red[2]) {
     memcpy(s->end_cell[PVP_TEAM_BLUE], blue, 8); memcpy(s->end_cell[PVP_TEAM_RED], red, 8);
+}
+int pvp_places_taken(pvp_state *s, int in_place) {
+    if (!pvp_active(s) || !s->placing || !s->countdown_at) return 0;
+    if (s->cd_ticks != PVP_CD_TAKING_PLACES) return 1;
+    uint32_t el = s->ticks - (s->countdown_at - 1);
+    if (!in_place && el < PVP_TAKE_PLACES_MAX_TICKS) return 0;
+    s->cd_ticks = (uint16_t)(el + PVP_AGREE_COUNTDOWN_TICKS);              /* the 10 s countdown from now */
+    return 1;
 }
 int pvp_place_done(pvp_state *s) {
     if (!pvp_active(s) || !s->placing) return 0;

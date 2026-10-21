@@ -739,7 +739,6 @@
  "Ping lines in chat": "Ping-Zeilen im Chat",
  "Ping sound": "Ping-Ton",
  "Pink": "Pink",
- "Places": "Aufstellen",
  "Planning": "Planung",
  "Planning pause every 7 s": "Planungspause alle 7 s",
  "Planning pause: give your orders, then press Ready": "Planungspause: Gib deine Befehle und drücke dann Bereit",
@@ -1370,5 +1369,6 @@
  "The Return scroll could not be used": "Die Rückkehr Schriftrolle konnte nicht benutzt werden",
  "Use a Return scroll?": "Eine Rückkehr Schriftrolle benutzen?",
  "use a Return scroll": "eine Rückkehr Schriftrolle benutzen",
- "using the Return scroll": "Rückkehr Schriftrolle wird benutzt"
+ "using the Return scroll": "Rückkehr Schriftrolle wird benutzt",
+ "Taking places...": "Aufstellung..."
 }

@@ -608,39 +608,61 @@ static void fight_kick_idle(int map, int only_idle) {
         rig_log("pvp: fight %s unit %d -> %d (%s): rc %d", only_idle ? "re-kick" : "kick", i, best, why, rc);
     }
 }
-static uint32_t n_walk_resend;
-#define PLACE_MAX_TICKS 3600         /* placing ends after 60 s of game time even if Red is not there */
+static uint32_t n_walk_resend, n_hold_stop;
+static int unit_xy(int map, const uint8_t g16[16], float *x, float *y) {   /* sim position (pos_dict), read only */
+    Obj pd = pos_dict(map); if (!pd) return 0;
+    Obj ent = AT(pd, 0x18, Obj); int n = AT(pd, 0x20, int32_t);
+    for (int i = 0; ent && i < n; i++) {
+        char *e = (char *)ent + 0x20 + i * 0x20;
+        if (*(int32_t *)e >= 0 && !memcmp(e + 8, g16, 16)) { *x = *(float *)(e + 0x18); *y = *(float *)(e + 0x1C); return 1; }
+    }
+    return 0;
+}
+static int unit_held(int map, const uint8_t g16[16]) {    /* G: BehaviourOption WaitForOrder (EntityInfoComponent._behaviourOption bit 2) */
+    Guid gg; memcpy(&gg, g16, 16); Obj u = find_unit(map, gg);
+    Obj ei = u ? AT(u, 0x40, Obj) : NULL, ec = ei ? AT(ei, 0x10, Obj) : NULL;
+    return ec && (AT(ec, 0x20, int32_t) & 2);
+}
+static int64_t d2(const int32_t a[2], const int32_t b[2]) { int64_t dx = a[0] - b[0], dy = a[1] - b[1]; return dx * dx + dy * dy; }
+static int own_half(int t, const int32_t c[2]) { return d2(c, g.end_cell[t]) <= d2(c, g.end_cell[3 - t]); }   /* nearer its own end */
+/* E4 / E8 (owner 2026-10-20: "nobody starts a fight alone"): round 1 is the teams' preparation, with no time limit: the fight
+   begins only after a proposal every team player agreed to. F6 (lead 2026-10-21): then "Taking places...": the countdown waits
+   until every team's walkers are at their end, or G-held inside their own half, at most 20 s (pvp_places_taken), then 10 s.
+   Later rounds start again from the arena snapshot and wait the same way (at most 20 s), then 3 s.
+   Walk: a walker not at its end is sent there again every 2 s (a settler job took it off its walk; dungeon too: F5), except
+   in the preparation once its player gave it an order (E7: the player's orders win; ord_game.c ord_apply).
+   G = hold now (F6): a G-held unit inside its own half stops where it is (an order to its own cell while it still moves,
+   every 0.5 s) and stays; G-held outside its own half, it walks on to its end until it is inside, then stops (fairness).
+   All in the step on every peer (game state only: positions, the unit's own option bits). */
 static void placing_step(int map) {
-    int arrived = 1, any = 0;
-    for (int i = 0; i < g.nunits; i++) {                  /* dungeon: Red walks, Blue holds; base: both walk */
-        int t = g.units[i].team;
-        if ((t != PVP_TEAM_RED && !(g.arena == PVP_WHERE_BASE && t == PVP_TEAM_BLUE)) || g.units[i].out) continue;
-        int32_t c[2]; if (!unit_cell(map, g.units[i].guid, c)) continue;
-        any = 1;
-        int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1];
-        if (dx * dx + dy * dy > (g.arena == PVP_WHERE_BASE ? 36 : 16)) arrived = 0;   /* base: two walkers share one end cell */
-    }
-    /* E4 / E8 (owner 2026-10-20: "nobody starts a fight alone"): round 1 is the teams' preparation, with no time limit: the
-       fight begins only after a proposal every team player agreed to, at the end of its countdown (pvp_core.c: PROPOSE /
-       AGREE set countdown_at). Later rounds start again from the arena snapshot (teams at their ends): the 3 s countdown
-       follows at once, as before. A unit not at its end is sent there again every 2 s (a settler job took it off its walk),
-       except in the preparation once its player gave it an order (E7: the player's orders win; ord_game.c ord_apply). */
-    int prep = g.round <= 1;
-    /* every 2 s: a unit not at its end and not ordered by its player walks on. Dungeon too (Red only), v0.1.21 F5: a far Red
-       end (the farthest portal of a big floor, 56-62 cells) was not reached before round 1's fight; the arena snapshot then
-       kept Red mid-walk with no order, so every later round waited the 60 s placing time out */
-    if (!arrived && g.ticks % 120 == 0) {
-        for (int i = 0; i < g.nunits; i++) {
-            int t = g.units[i].team; int32_t c[2];
-            if ((t != PVP_TEAM_RED && !(g.arena == PVP_WHERE_BASE && t == PVP_TEAM_BLUE)) || g.units[i].out || (prep && g.units[i].ordered) || !unit_cell(map, g.units[i].guid, c)) continue;
-            int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1]; if (dx * dx + dy * dy <= (g.arena == PVP_WHERE_BASE ? 36 : 16)) continue;
-            Guid gg; memcpy(&gg, g.units[i].guid, 16); rig_order_move(gg, g.end_cell[t][0], g.end_cell[t][1]); n_walk_resend++;
+    int arrived = 1, in_place = 1, any = 0, prep = g.round <= 1;
+    int near_d2 = g.arena == PVP_WHERE_BASE ? 36 : 16;        /* base: two walkers share one end cell */
+    for (int i = 0; i < g.nunits; i++) {
+        int t = g.units[i].team; int32_t c[2];
+        if ((t != PVP_TEAM_BLUE && t != PVP_TEAM_RED) || g.units[i].out || !unit_cell(map, g.units[i].guid, c)) continue;
+        int walker = t == PVP_TEAM_RED || g.arena == PVP_WHERE_BASE;   /* dungeon: Red walks, Blue holds; base: both walk */
+        int held = unit_held(map, g.units[i].guid), home = own_half(t, c), at_end = d2(c, g.end_cell[t]) <= near_d2;
+        Guid gg; memcpy(&gg, g.units[i].guid, 16);
+        if (walker) { any = 1; if (!at_end) arrived = 0; if (!at_end && !(held && home)) in_place = 0; }
+        if (held && home) {                                    /* G = hold now */
+            float x, y;
+            if (g.ticks % 30 == 0 && unit_xy(map, g.units[i].guid, &x, &y) && (fabsf(x - (float)c[0] - 0.5f) > 0.02f || fabsf(y - (float)c[1] - 0.5f) > 0.02f)) {
+                rig_order_move(gg, c[0], c[1]); n_hold_stop++;
+            }
+            continue;
         }
+        if (!walker || at_end || g.ticks % 120 != 0) continue;
+        if (prep && g.units[i].ordered && !held) continue;     /* the player's own order wins (G-held outside its half walks on) */
+        rig_order_move(gg, g.end_cell[t][0], g.end_cell[t][1]); n_walk_resend++;
     }
-    if (prep ? g.countdown_at != 0 : ((any && arrived && g.ticks >= 60) || g.ticks >= PLACE_MAX_TICKS || g.countdown_at)) {
-        if (!pvp_place_done(&g)) return;            /* M4: 3 s countdown first (units hold where they are) */
+    if (!any) in_place = 1;
+    if (prep && g.countdown_at && !pvp_places_taken(&g, in_place)) return;    /* "Taking places..." */
+    if (prep ? g.countdown_at != 0 : ((in_place && g.ticks >= 60) || g.ticks >= PVP_TAKE_PLACES_MAX_TICKS || g.countdown_at)) {
+        if (!pvp_place_done(&g)) return;            /* the countdown first (units hold where they are) */
         if (g.arena == PVP_WHERE_BASE) { Obj h = combat_of(map); if (h) pair_all(h, 1); }   /* enemies from now on */
-        rig_log("pvp: fight begins at match tick %u (%s)", g.ticks, arrived ? (g.arena == PVP_WHERE_BASE ? "teams at their ends" : "Red at its end") : "placing time out");
+        rig_log("pvp: fight begins at match tick %u (%s; walk resends %u, G stops %u)", g.ticks,
+                arrived ? (g.arena == PVP_WHERE_BASE ? "teams at their ends" : "Red at its end") : in_place ? "in place, G-held units in their half" : "taking places time out",
+                n_walk_resend, n_hold_stop);
         fight_kick(map);
     }
 }

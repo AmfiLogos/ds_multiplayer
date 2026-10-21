@@ -725,7 +725,6 @@
  "Ping lines in chat": "聊天中的標記訊息",
  "Ping sound": "標記音效",
  "Pink": "粉紅色",
- "Places": "就位",
  "Planning": "規劃",
  "Planning pause every 7 s": "每 7 秒規劃暫停",
  "Planning pause: give your orders, then press Ready": "規劃暫停：下達指令，然後按「準備」",
@@ -1346,5 +1345,6 @@
  "The Return scroll could not be used": "無法使用返回卷軸",
  "Use a Return scroll?": "使用返回卷軸？",
  "use a Return scroll": "使用返回卷軸",
- "using the Return scroll": "正在使用返回卷軸"
+ "using the Return scroll": "正在使用返回卷軸",
+ "Taking places...": "正在就位..."
 }

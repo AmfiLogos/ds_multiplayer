@@ -725,7 +725,6 @@
  "Ping lines in chat": "채팅에 핑 알림",
  "Ping sound": "핑 소리",
  "Pink": "분홍색",
- "Places": "배치",
  "Planning": "계획",
  "Planning pause every 7 s": "7초마다 계획 일시정지",
  "Planning pause: give your orders, then press Ready": "계획 일시정지: 명령을 내린 뒤 준비를 누르십시오",
@@ -1346,5 +1345,6 @@
  "The Return scroll could not be used": "귀환 스크롤을 사용할 수 없습니다",
  "Use a Return scroll?": "귀환 스크롤을 사용할까요?",
  "use a Return scroll": "귀환 스크롤 사용",
- "using the Return scroll": "귀환 스크롤 사용 중"
+ "using the Return scroll": "귀환 스크롤 사용 중",
+ "Taking places...": "배치 중..."
 }

@@ -739,7 +739,6 @@
  "Ping lines in chat": "Messages de signal dans le chat",
  "Ping sound": "Son des signaux",
  "Pink": "Rose",
- "Places": "Lieux",
  "Planning": "Planification",
  "Planning pause every 7 s": "Pause de planification toutes les 7 s",
  "Planning pause: give your orders, then press Ready": "Pause de planification : donnez vos ordres, puis cliquez sur Prêt",
@@ -1370,5 +1369,6 @@
  "The Return scroll could not be used": "Le Parchemin de retour n'a pas pu être utilisé",
  "Use a Return scroll?": "Utiliser un Parchemin de retour ?",
  "use a Return scroll": "utiliser un Parchemin de retour",
- "using the Return scroll": "utilisation du Parchemin de retour"
+ "using the Return scroll": "utilisation du Parchemin de retour",
+ "Taking places...": "Mise en place..."
 }

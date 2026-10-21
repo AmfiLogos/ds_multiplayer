@@ -725,7 +725,6 @@
  "Ping lines in chat": "チャットのピン通知",
  "Ping sound": "ピンの音",
  "Pink": "ピンク",
- "Places": "配置",
  "Planning": "作戦",
  "Planning pause every 7 s": "7秒ごとに作戦時間の一時停止",
  "Planning pause: give your orders, then press Ready": "作戦時間の一時停止：指示を出してから、準備完了を押してください。",
@@ -1346,5 +1345,6 @@
  "The Return scroll could not be used": "帰還の巻物を使えませんでした",
  "Use a Return scroll?": "帰還の巻物を使いますか？",
  "use a Return scroll": "帰還の巻物を使う",
- "using the Return scroll": "帰還の巻物を使用中"
+ "using the Return scroll": "帰還の巻物を使用中",
+ "Taking places...": "配置中..."
 }

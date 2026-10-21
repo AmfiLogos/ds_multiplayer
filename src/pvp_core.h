@@ -126,6 +126,12 @@ int  pvp_place_done(pvp_state *s);
 int  pvp_round_check(pvp_state *s, const uint32_t hp_permille[3]);
 int  pvp_ending(const pvp_state *s);    /* E9: a round just ended, the result screen shows, the world stands still */
 #define PVP_AGREE_COUNTDOWN_TICKS 600   /* E4/E8: 10 s at 1x from "everyone agreed" to the fight (round 1) */
+/* F6 (lead 2026-10-21): after everyone agreed, "Taking places...": the countdown waits until every team's units are at
+   their start cells (or G-held inside their own half), at most PVP_TAKE_PLACES_MAX_TICKS; cd_ticks = PVP_CD_TAKING_PLACES
+   meanwhile. Later rounds wait the same way (at most that long) before their 3 s countdown. */
+#define PVP_TAKE_PLACES_MAX_TICKS 1200  /* 20 s at 1x */
+#define PVP_CD_TAKING_PLACES 0xFFFF
+int  pvp_places_taken(pvp_state *s, int in_place);   /* glue, every tick while taking places: 1 = the countdown runs */
 int  pvp_vote_open(const pvp_state *s);   /* E4: a fight proposal waits for answers: the world stands still */
 /* The state every peer gets with the reload (the glue writes it into the snapshot it sends): */
 void pvp_next_round(const pvp_state *s, pvp_state *out);   /* same match, round + 1, units back in, placing again */

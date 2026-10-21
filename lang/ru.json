@@ -753,7 +753,6 @@
  "Ping lines in chat": "Строки меток в чате",
  "Ping sound": "Звук меток",
  "Pink": "Розовый",
- "Places": "На места",
  "Planning": "Планирование",
  "Planning pause every 7 s": "Пауза на планирование каждые 7 с",
  "Planning pause: give your orders, then press Ready": "Пауза на планирование: отдайте приказы, затем нажмите «Готов»",
@@ -1394,5 +1393,6 @@
  "The Return scroll could not be used": "Не удалось использовать Свиток возвращения",
  "Use a Return scroll?": "Использовать Свиток возвращения?",
  "use a Return scroll": "использовать Свиток возвращения",
- "using the Return scroll": "используем Свиток возвращения"
+ "using the Return scroll": "используем Свиток возвращения",
+ "Taking places...": "Расстановка..."
 }

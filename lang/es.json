@@ -739,7 +739,6 @@
  "Ping lines in chat": "Líneas de señales en el chat",
  "Ping sound": "Sonido de señal",
  "Pink": "Rosa",
- "Places": "Colocación",
  "Planning": "Planificación",
  "Planning pause every 7 s": "Pausa de planificación cada 7 s",
  "Planning pause: give your orders, then press Ready": "Pausa de planificación: da tus órdenes y luego pulsa Listo",
@@ -1370,5 +1369,6 @@
  "The Return scroll could not be used": "No se pudo usar el Pergamino de regreso",
  "Use a Return scroll?": "¿Usar un Pergamino de regreso?",
  "use a Return scroll": "usar un Pergamino de regreso",
- "using the Return scroll": "usando el Pergamino de regreso"
+ "using the Return scroll": "usando el Pergamino de regreso",
+ "Taking places...": "Tomando posiciones..."
 }

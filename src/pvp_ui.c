@@ -686,12 +686,13 @@ static void hud_frame(const pvp_state *s) {
     if (!on || frames % 6) return;
     uint32_t pm[3] = { 0, 1000, 1000 }; if (pvp_ui_team_hp) pvp_ui_team_hp(pm);
     char t[400], clock[64] = "";
-    if (s->placing && s->countdown_at) {                                 /* E8: the countdown to the fight, in seconds */
+    if (s->placing && s->countdown_at && s->cd_ticks == PVP_CD_TAKING_PLACES) snprintf(clock, sizeof clock, "%s", TR("Taking places..."));   /* F6 */
+    else if (s->placing && s->countdown_at) {                            /* E8: the countdown to the fight, in seconds */
         int len = s->cd_ticks ? s->cd_ticks : PVP_COUNTDOWN_TICKS, left = (len - (int)(s->ticks - (s->countdown_at - 1)) + 59) / 60; if (left < 1) left = 1;
         snprintf(clock, sizeof clock, TR("Fight in %d"), left);
     } else if (s->placing && s->vote_open) snprintf(clock, sizeof clock, "%s", TR("Fight proposed"));
     else if (s->placing && s->round <= 1) snprintf(clock, sizeof clock, "%s", TR("Preparation"));
-    else if (s->placing) snprintf(clock, sizeof clock, "%s", TR("Places"));
+    else if (s->placing) snprintf(clock, sizeof clock, "%s", TR("Taking places..."));   /* later rounds: F6, at most 20 s */
     else if (s->fight_start) { int left = (int)s->rules.round_secs - (int)((s->ticks - (s->fight_start - 1)) / 60); if (left < 0) left = 0; snprintf(clock, sizeof clock, "%d:%02d", left / 60, left % 60); }
     if (s->planning) snprintf(clock, sizeof clock, "%s", TR("Planning"));
     dsi_utf8_fix_end(clock);
