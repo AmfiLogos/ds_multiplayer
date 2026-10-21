@@ -70,8 +70,8 @@ static const char *cls_name(Obj o) { return o ? *(const char **)((char *)*(void 
 /* DASText._useTextKey / _textKey by name: Mac 0x7C0 / 0x7C8, Windows 0x7C8 / 0x7D0 (MSVC puts no subclass field in the
    base's tail padding). The Mac 0x7C0 on Windows cleared the low byte of TextMeshProUGUI.materialIndexPairs: v0.1.21 F1,
    a guest crashed at the title load (Unity's asset GC walked a chat text of the chat canvas kept across scenes). */
-static int das_off(int k) {                                                 /* 0 _useTextKey, 1 _textKey; -1 = not found */
-    static int off[2] = { -2, -2 }; static const char *const nm[2] = { "_useTextKey", "_textKey" };
+static int das_off(int k) {                                                 /* 0 _useTextKey, 1 _textKey, 2 _text; -1 = not found */
+    static int off[3] = { -2, -2, -2 }; static const char *const nm[3] = { "_useTextKey", "_textKey", "_text" };
     if (off[k] == -2) {
         void *c = class_by_name("Refactor.UI", "DASText"); if (!c) return -1;   /* not loaded yet: again next time */
         void *f = F(0x6F8C14, void *(*)(void *, const char *))(c, nm[k]);      /* il2cpp_class_get_field_from_name */
@@ -85,6 +85,7 @@ static int das_at(Obj t, int k) { return t && !strcmp(cls_name(t), "DASText") ? 
 bool das_key_on(Obj t) { int o = das_at(t, 0); return o > 0 && AT(t, o, bool); }
 void das_key_set(Obj t, bool on) { int o = das_at(t, 0); if (o > 0) AT(t, o, bool) = on; }
 void das_key_clear(Obj t) { das_key_set(t, false); int o = das_at(t, 1); if (o > 0) AT(t, o, Obj) = NULL; }   /* our text, no key */
+void das_text_keep(Obj t, Obj s) { int o = das_at(t, 2); if (o > 0) F(0x6F95C8, void (*)(Obj, void **, Obj))(t, (void **)((char *)t + o), s); }   /* _text = s (write barrier) */
 /* TMP_Text.text: virtual slots 65 (get, +0x548) / 66 (set, +0x558) */
 static Obj tmp_get(Obj t) {
     if (!u_alive(t) || !mm_is(t, K_TMP)) return NULL;

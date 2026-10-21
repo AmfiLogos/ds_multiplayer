@@ -2347,15 +2347,16 @@ static float tmp_pref_w(Obj t) {                             /* TMP_Text.preferr
     void *k = *(void **)t;
     return (*(float (**)(Obj, void *))((char *)k + 0x678))(t, *(void **)((char *)k + 0x680));
 }
+void das_text_keep(Obj t, Obj s);                             /* mpmenu.c */
 static void plist_set(int i, const char *txt) {
     Obj t = u_gc_get(h_pl[i]); char cur[3000];
     if (!u_alive(t)) return;
     str_utf8(tmp_get(t), cur, sizeof cur);
     if (strcmp(cur, txt) || !pl_written[i]) {
         tmp_set(t, txt); pl_written[i] = 1;
-        /* the rows are clones of the clock's DASText: its Awake (first activation) re-applies _text (+0x7D0, "12:34")
-           over ours (runs 54-58: settings rows read "12:34"); keep _text = ours */
-        if (!strcmp(cls_name(t), "DASText")) F(0x6F95C8, void (*)(Obj, void **, Obj))(t, (void **)((char *)t + 0x7D0), u_str(txt));
+        /* the rows are clones of the clock's DASText: its Awake (first activation) re-applies _text ("12:34") over ours
+           (runs 54-58: settings rows read "12:34"); keep _text = ours. By name (mpmenu.c): Mac +0x7D0, Windows +0x7D8 */
+        das_text_keep(t, u_str(txt));
     }
 }
 static void show(Obj o, int v) { if (u_alive(o) && u_go_active_self(u_go(o)) != v) u_go_active(u_go(o), v); }

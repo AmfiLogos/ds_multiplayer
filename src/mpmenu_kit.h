@@ -58,6 +58,7 @@ void tmp_set(Obj t, const char *s);
 bool das_key_on(Obj t);                          /* DASText._useTextKey (by name: the offset differs on Windows) */
 void das_key_set(Obj t, bool on);
 void das_key_clear(Obj t);                       /* _useTextKey off and _textKey null: our own text stays */
+void das_text_keep(Obj t, Obj s);                /* DASText._text = s: its Awake re-applies _text over ours */
 void txt_style(Obj t, int cinzel, float size, int align, int wrap);
 void txt_color(Obj t, Col c);
 void img_set(Obj im, Obj sprite, Col c);
