@@ -1155,6 +1155,7 @@ static void prompt_show(void) {
    floor 3? Waiting for Ben (1 of 2 agree) · 52 s" and a stock BottomButton "Cancel" (120x30) */
 static uintptr_t h_strip_bg, h_strip_txt, h_strip_btn, h_strip_btxt;
 static char strip_shown[300];
+static void strip_place(float w, float h, float *x, float *y);
 static void strip_frame(void) {
     ui_players p; players(&p);
     char wl[200], line[300], q[64];
@@ -1194,7 +1195,7 @@ static void strip_frame(void) {
     int left = ui_map_timeout_s(mapv.kind) - (int)(now_s() - map_open_t); if (left < 0) left = 0;
     snprintf(line, sizeof line, TR("<color=#ccbeb8>%s %s · %d s</color>"), ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), wl, left);
     if (strcmp(line, strip_shown)) { snprintf(strip_shown, sizeof strip_shown, "%s", line); tmp_set(tx, line); }
-    float y = -150, x0 = -380;                               /* under the pause banner, top centre */
+    float y, x0; strip_place(760, 40, &x0, &y);              /* under the pause banner, top centre (uxpass: measured) */
     if (u_alive(bg)) u_rt_set_pos(u_tr(bg), x0, y);
     if (u_alive(tx)) { u_rt_set_pos(u_tr(tx), x0 + 16, y); u_rt_set_size(u_tr(tx), 600, 40); }
     if (u_alive(bt)) u_rt_set_pos(u_tr(bt), x0 + 760 - 130, y - 5);
@@ -2241,6 +2242,11 @@ static void pause_frame(void) {
             if (u_alive(line)) {
                 V2 pos = u_rt_pos(u_tr(src)), sz = u_rt_size(u_tr(src));
                 u_rt_set_pos(u_tr(line), pos.x, pos.y - 2.0f * sz.y - 22.0f);   /* owner 2026-10-13: right under the banner strip */
+                /* uxpass: a long line (DE / ES / FR / PT "Waiting for <name> · 1:05 · press Play ...", 600+ units) wraps
+                   under the banner (420 wide, centred) instead of running left under the Players panel, which hid its start */
+                V2 pv = ui_is(u_tr(line), K_RT) ? F(0x5107200, V2 (*)(Obj, void *))(u_tr(line), NULL) : (V2){ 0, 0 };   /* RectTransform.pivot */
+                if (pv.x > 0.49f && pv.x < 0.51f) u_rt_set_size(u_tr(line), 420, sz.y);
+                (ui_is(line, K_TMP) ? F(0x4F0BAB4, void (*)(Obj, bool, void *))(line, true, NULL) : (void)0);   /* enableWordWrapping */
                 u_gc_free(h_pause_line); h_pause_line = u_gc_new(line);
                 rig_log("ui: pause line created from %s", cls_name(src));
             }
@@ -2289,6 +2295,7 @@ static void chat_get(int *fade, int *join, int *en); static void chat_step(int r
 static float pl_y0;
 static int pl_anchor_bar, pl_pop;                            /* pl_pop: the cog is pressed (settings rows shown) */
 static float pl_cur_L, pl_cur_Y; static int pl_shown, pl_hide_why, cog_has_icon;       /* where the panel is now (lan_v8 drag) */
+static float pl_k = 1;                                       /* the panel's drawn scale: Compact 0.75, less when it is taller than the screen */
 static int row_player[19];                                   /* player of each row (connection tooltip; PL_MAXROWS + 1) */
 int mpmenu_conn_words(int player, char *out, size_t n);       /* mpmenu.c (conninfo): "Steam" / "Direct (ip:port)" */
 static int row_lvl[19];                                      /* its connection level (ui_conn_level; -2 = left, -3 = "Watching" divider) */
@@ -2316,6 +2323,25 @@ static float bar_bottom_y(Obj root) {                       /* y just under the 
 #define PL_ROW_H 32.0f
 #define PL_SET_H 28.0f
 #define PL_MAXROWS 18                                        /* players (8), left players, "Watching (n)" + spectators (8) */
+static void scr_to_layer(Obj layer, float sx, float sy, float *ux, float *uy);
+static int scr_w(void); static int scr_h(void);
+static Obj layer_top(void);
+/* uxpass: the game window in units of our top layer (x0 left, x1 right, yb bottom; the top is 0). 0 = not known yet */
+static int layer_screen(float *x0, float *x1, float *yb) {
+    Obj top = layer_top(); float t;
+    if (!top || scr_w() < 100 || scr_h() < 100) return 0;
+    scr_to_layer(top, 0, 0, x0, yb); scr_to_layer(top, (float)scr_w(), 0, x1, &t);
+    return *x1 - *x0 > 100;
+}
+/* uxpass: a box of w x h layer units with its top-left at (*x, *y) kept inside the game window (8 units in) */
+static void layer_keep_in(float w, float h, float *x, float *y) {
+    float x0, x1, yb;
+    if (!layer_screen(&x0, &x1, &yb)) return;
+    if (*x + w > x1 - 8) *x = x1 - 8 - w;
+    if (*x < x0 + 8) *x = x0 + 8;
+    if (*y - h < yb + 8) *y = yb + 8 + h;
+    if (*y > -2) *y = -2;
+}
 static int lobby_open(void) {                                /* review #30: hidden behind mpmenu's lobby panel */
     static int (*fn)(void); static unsigned tries;
     if (!fn && tries++ % 50 == 0) fn = (int (*)(void))dlsym(RTLD_DEFAULT, "mpmenu_lobby_open");
@@ -2640,10 +2666,7 @@ static void plist_frame(void) {
     int hide = !on() || lobby_open() || popup_active(1) || left_prompt   /* Esc menu: design #3 */
                || busy();
     pl_hide_why = !on() | lobby_open() << 1 | popup_active(1) << 2 | (left_prompt != 0) << 3 | busy() << 5;                                    /* lan_v9: not on the loading screen (v2_v9_changing_map_guest.png) */
-    { Obj g = layer_of_panel(); if (g) { float k = uiset.compact ? 0.75f : 1.0f; V3 cur = F(0x510AEFC, V3 (*)(Obj, void *))(g, NULL);
-        if (cur.x != k) F(0x510AFF8, void (*)(Obj, V3, void *))(g, (V3){ k, k, 1 }, NULL); } }
-    /* the group scales around the layer's origin: shift it so the panel's top-left corner stays where it is (pos_x / pos_y
-       stay in layer units, so drag, saved place and ui_panel_anchor mean the same in Normal and Compact) */
+    /* the group's scale ("Panel size", and smaller when the panel is taller than the game window) and place: at the end */
     int styled = hide ? 0 : plist_style();
     if (hide || !styled) {
         pl_shown = 0;
@@ -2802,8 +2825,7 @@ static void plist_frame(void) {
     }
     /* lan_v8: the player may drag the panel; its place is saved in mp_ui.json (pos_*), else the default place */
     float L = uiset.pos_set ? (float)uiset.pos_x : PL_LEFT, Y0 = uiset.pos_set ? (float)uiset.pos_y : pl_y0;
-    pl_cur_L = L; pl_cur_Y = Y0; pl_shown = 1;
-    { Obj g = layer_of_panel(); float k = uiset.compact ? 0.75f : 1.0f; if (g) u_rt_set_pos(g, (1 - k) * L, (1 - k) * Y0); }
+    pl_shown = 1;
     float x = L + PL_PAD, inner = PL_W - 2 * PL_PAD, y = Y0 - 2;
     int open_ = uiset.list_open;
     /* header */
@@ -2829,7 +2851,8 @@ static void plist_frame(void) {
     /* status row (lan_v9 owner: collapsed = the header line only) */
     Obj ts = u_gc_get(h_pl[PL_STATUS]);
     int vs = open_ && status_text[0] != 0;
-    show(ts, vs); if (vs) { place(ts, x, y - 2, inner, 26); y -= 28; }
+    /* uxpass: a long line ("Waiting for Ben · 1:05 · press Play ...", DE / RU) takes the lines it needs, never over the rows */
+    show(ts, vs); if (vs) { float sh = txt_fit_h(ts, inner, 26); place(ts, x, y - 2, inner, sh); y -= sh + 2; }
     /* player rows, or the settings rows (cog) */
     Obj tb = u_gc_get(h_pl[PL_BODY]), tbr = u_gc_get(h_pl[PL_BODYR]);
     int show_rows = open_ && !pl_pop;
@@ -2840,7 +2863,11 @@ static void plist_frame(void) {
             place(u_gc_get(h_rowbg[r]), L + 2, y - PL_ROW_H * (float)r, PL_W - 4, PL_ROW_H);
             if (lvl[r] >= 0) bars_put(r, lvl[r], L + PL_W - PL_PAD - 18, y - PL_ROW_H * (float)r - 9);
         }
-        place(tb, x, y + 1, inner - 60, PL_ROW_H * (float)rows);
+        /* uxpass: the names end before the right column ("Direct (192.168.1.20:47777)", DE "Direkt (...)" ran under the
+           names): a long name shrinks (text fit) instead of running under the connection words */
+        float wr = tmp_pref_w(tbr), wn = wr > 60 ? inner - wr - 8 : inner - 60;
+        if (wn < 100) wn = 100;
+        place(tb, x, y + 1, wn, PL_ROW_H * (float)rows);
         place(tbr, x, y + 1, inner, PL_ROW_H * (float)rows);
         y -= PL_ROW_H * (float)rows;
     }
@@ -2855,24 +2882,87 @@ static void plist_frame(void) {
         if (!in) show(u_gc_get(h_pl[i]), 0);
     }
     for (int k = nset; k < PL_SETMAX; k++) { show(u_gc_get(h_set_arrow[2 * k]), 0); show(u_gc_get(h_set_arrow[2 * k + 1]), 0); }
+    /* uxpass: a label or value too long even at 0.75 (DE "Freunde außerhalb des Bildschirms anzeigen", ES, FR, RU)
+       wraps: its row grows to the lines it needs (it ran over the next row); the arrows stay centred on the row */
+    float ry = y - 6;
     for (int k = 0; k < nset; k++) {
         int vis = 1;
-        show(u_gc_get(h_pl[lab[k]]), vis); show(u_gc_get(h_pl[val[k]]), vis);
+        Obj tl = u_gc_get(h_pl[lab[k]]), tv = u_gc_get(h_pl[val[k]]);
+        show(tl, vis); show(tv, vis);
         show(u_gc_get(h_set_arrow[2 * k]), vis); show(u_gc_get(h_set_arrow[2 * k + 1]), vis);
-        float ry = y - 6 - PL_SET_H * (float)k;
-        place(u_gc_get(h_pl[lab[k]]), x, ry, 160, PL_SET_H);
-        place(u_gc_get(h_set_arrow[2 * k]), L + PL_W - PL_PAD - 22 - 72 - 22, ry - 4, 20, 20);
-        place(u_gc_get(h_pl[val[k]]), L + PL_W - PL_PAD - 22 - 72, ry, 72, PL_SET_H);
-        place(u_gc_get(h_set_arrow[2 * k + 1]), L + PL_W - PL_PAD - 22, ry - 4, 20, 20);
+        float rh = txt_fit_h(tl, 160, PL_SET_H), hv = txt_fit_h(tv, 72, PL_SET_H);
+        if (hv > rh) rh = hv;
+        if (rh < PL_SET_H) rh = PL_SET_H;
+        place(tl, x, ry, 160, rh);
+        place(u_gc_get(h_set_arrow[2 * k]), L + PL_W - PL_PAD - 22 - 72 - 22, ry - (rh - 20) / 2, 20, 20);
+        place(tv, L + PL_W - PL_PAD - 22 - 72, ry, 72, rh);
+        place(u_gc_get(h_set_arrow[2 * k + 1]), L + PL_W - PL_PAD - 22, ry - (rh - 20) / 2, 20, 20);
+        ry -= rh;
     }
     Obj th2 = u_gc_get(h_pl[PL_HINT]);
     show(th2, nset > 0);
-    if (nset) { y -= 6 + PL_SET_H * (float)nset; place(th2, x, y - 2, inner, 20); y -= 26; }
+    if (nset) { y = ry; float hh = txt_fit_h(th2, inner, 20); place(th2, x, y - 2, inner, hh); y -= hh + 6; }   /* wraps when too long */
     Obj tn = u_gc_get(h_pl[PL_NOTE]);
     show(tn, open_ && note[0] != 0);
-    if (open_ && note[0]) { int nlines = 1 + (strchr(note, '\n') != NULL); place(tn, x, y - 4, inner, 20.0f * (float)nlines); y -= 20.0f * (float)nlines + 6; }
+    if (open_ && note[0]) {                                  /* one line per absent player, each may wrap */
+        int nlines = 1; for (const char *q = note; *q; q++) nlines += *q == '\n';
+        float nh = txt_fit_h(tn, inner, 20.0f * (float)nlines);
+        place(tn, x, y - 4, inner, nh); y -= nh + 6;
+    }
     Obj fr = u_gc_get(h_plate);
-    show(fr, 1); place(fr, L, Y0, PL_W, Y0 - y + 4);
+    float ph = Y0 - y + 4;
+    show(fr, 1); place(fr, L, Y0, PL_W, ph);
+    /* uxpass: the panel stays inside the game window at every size: a place saved on a wider window (or dragged past an
+       edge) is drawn inside it, and a panel taller than the window (all settings rows, long texts) is drawn smaller.
+       pos_x / pos_y keep the player's place; pl_cur_* is where it is drawn (drag, Teams button, viewer box use it). */
+    float k = uiset.compact ? 0.75f : 1.0f, dl = L, dy = Y0, sx0, sx1, syb;
+    if (layer_screen(&sx0, &sx1, &syb)) {
+        float room = -2 - (syb + 8);
+        if (ph * k > room && ph > 1) k = room / ph;
+        layer_keep_in(PL_W * k, ph * k, &dl, &dy);
+    }
+    pl_k = k;
+    Obj g = layer_of_panel();                                /* the group scales around the layer's origin: shift it so the
+                                                                drawn top-left corner is (dl, dy) */
+    if (g) {
+        V3 cur = F(0x510AEFC, V3 (*)(Obj, void *))(g, NULL);
+        if (cur.x != k) F(0x510AFF8, void (*)(Obj, V3, void *))(g, (V3){ k, k, 1 }, NULL);
+        u_rt_set_pos(g, dl - k * L, dy - k * Y0);
+    }
+    pl_cur_L = dl; pl_cur_Y = dy;
+}
+/* uxpass: the map vote strip of the proposer (6, w x h layer units, top-left out): under the pause banner's line (it sat at
+   y -150, over the bottom of the portrait cards), under the portrait bar, and never under the Players panel (the panel's
+   layer draws above it: the start of the line was hidden). Kept inside the game window. */
+static float rect_bottom_layer(Obj top, Obj t) {             /* bottom edge of a shown RectTransform in top-layer units; 1 = none */
+    if (!u_alive(t) || !ui_is(u_tr(t), K_RT) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(t), NULL)) return 1;
+    Obj rt = u_tr(t); RectF4 q = F(0x5106978, RectF4 (*)(Obj, void *))(rt, NULL);
+    V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ q.x, q.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ q.x + q.w, q.y + q.h, 0 }, NULL);
+    float ux, uy; scr_to_layer(top, a.x, a.y < b.y ? a.y : b.y, &ux, &uy);   /* overlay canvases: world = screen pixels */
+    return uy;
+}
+static void strip_place(float w, float h, float *x, float *y) {
+    Obj top = layer_top();
+    *x = -w / 2; *y = pl_anchor_bar && pl_y0 < -150 ? pl_y0 - 4 : -150;
+    if (!top) return;
+    float yb = rect_bottom_layer(top, u_gc_get(h_pause_line));
+    if (yb > 0) {                                            /* no pause line yet: the banner's own text */
+        Obj pv = pause_view(), pgo = pv ? AT(pv, 0x30, Obj) : NULL, tt = type_of("TMPro", "TMP_Text");
+        Obj ptx = u_alive(pgo) && tt ? F(0x50EDDF4, Obj (*)(Obj, Obj, bool, void *))(F(0x50F300C, Obj (*)(Obj, void *))(pgo, NULL), tt, false, NULL) : NULL;
+        yb = rect_bottom_layer(top, ptx);
+    }
+    if (yb <= 0 && yb - 8 < *y) *y = yb - 8;
+    Obj pl = u_gc_get(h_plate);
+    if (pl_shown && u_alive(pl)) {
+        float pw = PL_W * pl_k, ph = u_rt_size(u_tr(pl)).y * pl_k, sx0, sx1, syb;
+        int over = *x < pl_cur_L + pw && *x + w > pl_cur_L && *y > pl_cur_Y - ph && *y - h < pl_cur_Y;
+        if (over && layer_screen(&sx0, &sx1, &syb)) {
+            if (pl_cur_L + pw + 12 + w <= sx1 - 8) *x = pl_cur_L + pw + 12;   /* right of the panel */
+            else if (pl_cur_L - 12 - w >= sx0 + 8) *x = pl_cur_L - 12 - w;   /* left of it */
+            else *y = pl_cur_Y - ph - 10;                                  /* under it */
+        }
+    }
+    layer_keep_in(w, h, x, y);
 }
 /* clicks: header / collapse button (open / shut), cog (settings rows), the settings arrows */
 static int force_world;
@@ -2982,7 +3072,8 @@ void ui_tooltip(const char *text) {
     V3 rls = F(0x510F4F8, V3 (*)(Obj, void *))(root, NULL); float sc = rls.x > 0.01f ? rls.x : 1;   /* the top layer (not compact) */
     float ux = (m3.x - (rp.x + (rr.x + rr.w / 2) * sc)) / sc, uy = (m3.y - (rp.y + (rr.y + rr.h) * sc)) / sc;
     show(box, 1); show(tx, 1);
-    place(box, ux + 14, uy - 14, w, 30); place(tx, ux + 24, uy - 17, w - 10, 24);
+    float bx = ux + 14, by = uy - 14; layer_keep_in(w, 30, &bx, &by);   /* uxpass: near the right / bottom edge it went off screen */
+    place(box, bx, by, w, 30); place(tx, bx + 10, by - 3, w - 10, 24);
     u_set_sibling(u_tr(box), 1 << 20); u_set_sibling(u_tr(tx), 1 << 20);
     tip_until = now_s() + 0.2;
 }
@@ -2991,7 +3082,7 @@ static void tooltip_frame(void) {
 }
 /* lan_v8: the panel's header rect for the Teams HUD button (it sits right of it). 1 = the panel shows */
 int ui_panel_anchor(float *x, float *y, float *w, float *h) {   /* the header AS DRAWN (Compact: the corner stays, size x 0.75) */
-    float k = uiset.compact ? 0.75f : 1.0f;
+    float k = pl_k;                                          /* uxpass: as drawn (Compact, or smaller to fit the window) */
     if (x) *x = pl_cur_L; if (y) *y = pl_cur_Y; if (w) *w = PL_W * k; if (h) *h = PL_HDR_H * k;
     return pl_shown;
 }
@@ -3639,6 +3730,18 @@ static int lmenu_build(void) {                               /* the menu frame +
     }
     return u_alive(u_gc_get(h_lmenu));
 }
+/* uxpass: the menu as wide as its longest row (at least 240: "Give back <long unit name>", long names, DE / RU) and
+   inside the game window (a panel dragged to the right edge opened the player menu past it). x: the left edge, or the
+   centre when centred. The rows' texts are set first (lmenu_draw). */
+static void lmenu_place(float x, float y, int centred) {
+    float w = 240, h = 26.0f * (float)lmenu_n + 12;
+    for (int i = 0; i < lmenu_n; i++) { float pw = tmp_pref_w(u_gc_get(h_lrow[i])) + 24; if (pw > w) w = pw; }
+    if (centred) x -= w / 2;
+    layer_keep_in(w, h, &x, &y);
+    Obj fr = u_gc_get(h_lmenu);
+    show(fr, 1); place(fr, x, y, w, h); u_set_sibling(u_tr(fr), 1 << 20);
+    for (int i = 0; i < lmenu_n; i++) { Obj t = u_gc_get(h_lrow[i]); show(t, 1); place(t, x + 12, y - 6 - 26.0f * (float)i, w - 24, 26); u_set_sibling(u_tr(t), 1 << 20); }
+}
 /* open the menu under a portrait; 1 = opened (the right-click is ours) */
 static int lmenu_open(Obj parts, Obj unit) {
     dsnet_client *c = cli();
@@ -3657,12 +3760,8 @@ static int lmenu_open(Obj parts, Obj unit) {
     if (!lmenu_build()) return 0;
     memcpy(lmenu_unit, g, 16); lmenu_n = n; lmenu_hover = -1; lmenu_player = -1;
     float cx, bot; card_anchor(parts, &cx, &bot);
-    float w = 240, x = cx - w / 2, y = bot - 6;
-    Obj fr = u_gc_get(h_lmenu);
-    show(fr, 1); place(fr, x, y, w, 26.0f * (float)n + 12);
-    u_set_sibling(u_tr(fr), 1 << 20);
-    for (int i = 0; i < n; i++) { Obj t = u_gc_get(h_lrow[i]); show(t, 1); place(t, x + 12, y - 6 - 26.0f * (float)i, w - 24, 26); u_set_sibling(u_tr(t), 1 << 20); }
     lmenu_draw();
+    lmenu_place(cx, bot - 6, 1);
     rig_log("ui: lend menu opened (%d rows)", n);
     return 1;
 }
@@ -3730,6 +3829,11 @@ static void lend_frame(void) {
             if (act == LA_TAKE) snprintf(t1, sizeof t1, TR("<color=#d9be8f>Lent to %s</color>"), pname(&p, ctl, nm, sizeof nm));
             else snprintf(t1, sizeof t1, TR("<color=#d9be8f>From %s</color>"), pname(&p, owner >= 0 ? owner : 0, nm, sizeof nm));
             line_text(lb, t1);
+            /* uxpass: "Lent to <name>" too long for the 76-wide plate even at 0.75 (DE / ES / KO / PT / RU with an 8-letter
+               name) wraps: the plate grows up over the portrait to the lines it needs (it ran out of the plate) */
+            float lh = txt_fit_h(lb, 76, 18);
+            if (u_alive(bg)) u_rt_set_size(u_tr(bg), 76, lh);
+            if (u_alive(lb)) { u_rt_set_size(u_tr(lb), 76, lh); u_rt_set_pos(u_tr(lb), 0, -lh / 2); }
             line_text(btx, act == LA_TAKE ? ui_col("#ccbeb8", TR("Take back")) : ui_col("#ccbeb8", TR("Give back")));
         }
     }
@@ -3870,7 +3974,7 @@ static void viewer_move_test(const char *line, int reset) {
     vpos_load(); vpos_set = !reset; vpos_x = (float)x; vpos_y = (float)(y > -2 ? -2 : y); vpos_save(); viewer_frame();
 }
 static void viewer_geom(float *g) {
-    Obj pl = u_gc_get(h_plate), bx = u_gc_get(h_vbox); float k = uiset.compact ? 0.75f : 1.0f;
+    Obj pl = u_gc_get(h_plate), bx = u_gc_get(h_vbox); float k = pl_k;
     g[0] = vb_cur_x; g[1] = vb_cur_y; g[2] = u_alive(bx) ? u_rt_size(u_tr(bx)).y : 0;
     g[3] = pl_cur_L; g[4] = pl_cur_Y; g[5] = u_alive(pl) ? u_rt_size(u_tr(pl)).x * k : 0; g[6] = u_alive(pl) && pl_shown ? u_rt_size(u_tr(pl)).y * k : 0;
     g[7] = pl_y0 + 6; g[8] = vpos_set;
@@ -3973,7 +4077,7 @@ static void viewer_frame(void) {
            with it, unless the player dragged it (right-click drag, own place in mp_ui_viewer.json) */
         vpos_load();
         hid = viewer_hidden; full = !viewer_min && !hid;
-        Obj pl = u_gc_get(h_plate); float k = uiset.compact ? 0.75f : 1.0f;
+        Obj pl = u_gc_get(h_plate); float k = pl_k;
         float ph = u_alive(pl) && pl_shown ? u_rt_size(u_tr(pl)).y * k : 0;
         if (vpos_set) { X0 = vpos_x; Y0 = vpos_y; }
         else { X0 = pl_shown ? pl_cur_L : PL_LEFT; Y0 = (pl_shown ? pl_cur_Y : pl_y0) - ph - 10; }
@@ -3997,6 +4101,7 @@ static void viewer_frame(void) {
     show(box, vis); show(tt, vis); show(lk, vis); show(u_gc_get(h_vtext), vis && full);
     for (int k = 0; k < 3; k++) { show(u_gc_get(h_vbtn_b[k]), vis && full); show(u_gc_get(h_vbtn_bg[k]), vis && full); show(u_gc_get(h_vbtn_t[k]), vis && full); }
     if (!vis) return;
+    layer_keep_in(bw, full ? 112 : 48, &X0, &Y0);           /* uxpass: a saved place from a wider window, or under a tall panel */
     vb_cur_x = X0; vb_cur_y = Y0;
     place(box, X0, Y0, bw, full ? 70 : 48);
     place(tt, X0 + 18, Y0 - 10, tw + 8, 28);
@@ -4842,7 +4947,8 @@ static void sees_draw(uint32_t who, ui_players *p) {
     }
     Obj bg = u_gc_get(h_sees_bg), t = u_gc_get(h_sees_t);
     vpos_load();
-    int on_ = who && root && u_alive(t) && !(viewer_on && viewer_hidden);   /* mpoverlay: the viewer box's Hide hides this line too */
+    int on_ = who && root && u_alive(t) && !(viewer_on && viewer_hidden)   /* mpoverlay: the viewer box's Hide hides this line too */
+              && !popup_active(1) && !lobby_open();          /* uxpass: not over the Esc menu's windows (PvP Match subtitle, lobby), as the panel */
     show(bg, on_); show(t, on_); sees_shown = on_ ? who : 0;
     if (!on_) return;
     char tx[400], nm[40]; size_t n = 0; int k = 0, cnt = 0;
@@ -4864,7 +4970,7 @@ static void sees_draw(uint32_t who, ui_players *p) {
                                       characters) with a long translation grew the line left onto the button label */
     { float ax, ay, aw, ah; if (ui_panel_anchor(&ax, &ay, &aw, &ah)) { float r = ax + aw + 8 + (uiset.compact ? 88.0f : 112.0f) + 8; if (L < r && r - L < 400) L = r; } }
     /* mpoverlay: never over the open Teams window (a free spot clear of the Players panel and the viewer box, else hidden) */
-    { float av[2][4]; int na = 0; Obj pl = u_gc_get(h_plate), vb = u_gc_get(h_vbox); float k = uiset.compact ? 0.75f : 1.0f;
+    { float av[2][4]; int na = 0; Obj pl = u_gc_get(h_plate), vb = u_gc_get(h_vbox); float k = pl_k;
       if (pl_shown && u_alive(pl)) { V2 s = u_rt_size(u_tr(pl)); av[na][0] = pl_cur_L; av[na][1] = pl_cur_L + s.x * k; av[na][2] = pl_cur_Y - s.y * k; av[na][3] = pl_cur_Y; na++; }
       if (viewer_on && u_alive(vb) && u_go_active_self(u_go(vb))) { V2 s = u_rt_size(u_tr(vb)); av[na][0] = vb_cur_x; av[na][1] = vb_cur_x + s.x; av[na][2] = vb_cur_y - s.y - (viewer_min || viewer_hidden ? 0 : 42); av[na][3] = vb_cur_y; na++; }
       if (!teams_free_spot(root, w, 26, &L, &cy, (const float (*)[4])av, na)) { show(bg, 0); show(t, 0); sees_shown = 0; return; } }
@@ -5129,10 +5235,8 @@ static int pmenu_open(int pl, float x, float y) {
     lrow_act[n] = coop_follow == pl ? LA_UNFOLLOW : LA_FOLLOW; lrow_arg[n++] = pl;
     lrow_act[n] = (ping_mute >> (pl & 31) & 1u) ? LA_UNMUTE : LA_MUTE; lrow_arg[n++] = pl;
     memset(lmenu_unit, 0, 16); lmenu_n = n; lmenu_hover = -1; lmenu_player = pl;
-    float w = 240; Obj fr = u_gc_get(h_lmenu);
-    show(fr, 1); place(fr, x, y, w, 26.0f * (float)n + 12); u_set_sibling(u_tr(fr), 1 << 20);
-    for (int i = 0; i < n; i++) { Obj t = u_gc_get(h_lrow[i]); show(t, 1); place(t, x + 12, y - 6 - 26.0f * (float)i, w - 24, 26); u_set_sibling(u_tr(t), 1 << 20); }
     lmenu_draw();
+    lmenu_place(x, y, 0);
     rig_log("ui: player menu for %d", pl);
     return 1;
 }
@@ -5456,8 +5560,12 @@ static void recruit_frame(void) {
     }
     Obj l = u_gc_get(h_recruit_line);
     if (!u_alive(l)) {
-        Obj box = tr_find(u_tr(v), "Img_BackGroundBox");
-        l = line_clone(box ? box : u_tr(v), 1, 600, 24, -46);
+        /* uxpass: the line sat on the window's title ("RECRUITMENT", 46 under the box top: v2_v8_recruit_host). It now sits
+           in the free band above the candidate's detail card (stock dump: Img_BackGroundBox/CandidateDetailPanel/
+           Img_FirstSection, 592 wide), under the title's rule; two lines at the smaller size when it is long (FR / JA) */
+        Obj box = tr_find(u_tr(v), "Img_BackGroundBox"), sec = box ? tr_find(box, "CandidateDetailPanel/Img_FirstSection") : NULL;
+        if (sec) l = line_clone(sec, 0, 592, 36, 4);
+        else l = line_clone(box ? box : u_tr(v), 1, 600, 24, -46);
         if (ui_is(l, K_TMP)) tmp_style(l, u_gc_get(h_lora), 16, 514);
         u_gc_free(h_recruit_line); h_recruit_line = u_gc_new(l);
     }
