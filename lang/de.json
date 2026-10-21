@@ -378,7 +378,6 @@
  ],
  "Each player can recruit up to the full clan limit": "Jeder Spieler kann bis zum vollen Clan-Limit rekrutieren",
  "Each result can be brought home once.": "Jedes Ergebnis kann nur einmal nach Hause gebracht werden.",
- "Each team needs at least one unit (claim units with right-click on their portraits).": "Jedes Team braucht mindestens eine Einheit (Einheiten per Rechtsklick auf ihre Porträts beanspruchen).",
  "Each team needs brought units: Blue has %d, Red has %d.": "Jedes Team braucht mitgebrachte Einheiten: Blau hat %d, Rot hat %d.",
  "End for everyone": "Für alle beenden",
  "End the game for everyone?": "Das Spiel für alle beenden?",
@@ -619,7 +618,6 @@
  "Next Player": "Nächster Spieler",
  "Next player ›": "Nächster Spieler ›",
  "Next round in %d": "Nächste Runde in %d s",
- "Next: take a free unit (left-click).": "Weiter: Nimm eine freie Einheit (Linksklick).",
  "No Steam friend is hosting right now. Ask them to host, or use Join by address.": "Gerade hostet kein Steam-Freund. Bitte einen Freund zu hosten, oder nutze „Per Adresse beitreten“.",
  "No Steam friends found.": "Keine Steam-Freunde gefunden.",
  "No answer from %s. Check the address, and ask the host to open port %u on the router.": "Keine Antwort von %s. Prüfe die Adresse und bitte den Host, Port %u am Router zu öffnen.",
@@ -1361,8 +1359,6 @@
  "your version is older": "deine Version ist älter",
  "‹ Newer": "‹ Neuer",
  "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s will eine Rückkehr Schriftrolle benutzen.\nAlle kehren zur Siedlung zurück.\n<size=88%%><color=#a69085>%s      noch %d s (keine Antwort = Zustimmung)</color></size>",
- "In a dungeon a friend can lend you one (Lend on his portrait).": "In einem Dungeon kann dir ein Freund eine leihen (Leihen auf seinem Porträt).",
- "Left-click a free unit to take it.": "Linksklick auf eine freie Einheit, um sie zu nehmen.",
  "Paused while everyone votes": "Pausiert, während alle abstimmen",
  "Pick your units.": "Wähle deine Einheiten.",
  "Refuse": "Ablehnen",
@@ -1370,5 +1366,8 @@
  "Use a Return scroll?": "Eine Rückkehr Schriftrolle benutzen?",
  "use a Return scroll": "eine Rückkehr Schriftrolle benutzen",
  "using the Return scroll": "Rückkehr Schriftrolle wird benutzt",
- "Taking places...": "Aufstellung..."
+ "Taking places...": "Aufstellung...",
+ "Each team needs at least one unit. Right-click a unit's portrait to take it.": "Jedes Team braucht mindestens eine Einheit. Rechtsklick auf das Porträt einer Einheit, um sie zu übernehmen.",
+ "In a dungeon, a friend can lend you a unit (Lend on their unit).": "Im Dungeon kann dir ein Freund eine Einheit leihen (Leihen auf seiner Einheit).",
+ "Take your places": "Auf die Plätze"
 }

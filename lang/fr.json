@@ -378,7 +378,6 @@
  ],
  "Each player can recruit up to the full clan limit": "Chaque joueur peut recruter jusqu'à la limite complète du clan",
  "Each result can be brought home once.": "Chaque résultat ne peut être ramené chez vous qu'une fois.",
- "Each team needs at least one unit (claim units with right-click on their portraits).": "Chaque équipe a besoin d'au moins une unité (prenez des unités avec un clic droit sur leur portrait).",
  "Each team needs brought units: Blue has %d, Red has %d.": "Chaque équipe a besoin d'unités amenées : l'équipe bleue en a %d, l'équipe rouge en a %d.",
  "End for everyone": "Terminer pour tout le monde",
  "End the game for everyone?": "Terminer la partie pour tout le monde ?",
@@ -619,7 +618,6 @@
  "Next Player": "Joueur suivant",
  "Next player ›": "Joueur suivant ›",
  "Next round in %d": "Manche suivante dans %d s",
- "Next: take a free unit (left-click).": "Suivant : prenez une unité libre (clic gauche).",
  "No Steam friend is hosting right now. Ask them to host, or use Join by address.": "Aucun ami Steam n'héberge pour le moment. Demandez à un ami d'héberger, ou utilisez Rejoindre par adresse.",
  "No Steam friends found.": "Aucun ami Steam trouvé.",
  "No answer from %s. Check the address, and ask the host to open port %u on the router.": "Pas de réponse de %s. Vérifiez l'adresse, et demandez à l'hôte d'ouvrir le port %u sur le routeur.",
@@ -1361,8 +1359,6 @@
  "your version is older": "votre version est plus ancienne",
  "‹ Newer": "‹ Plus récents",
  "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s veut utiliser un Parchemin de retour.\nTout le monde retourne à la colonie.\n<size=88%%><color=#a69085>%s      %d s restantes (sans réponse = accord)</color></size>",
- "In a dungeon a friend can lend you one (Lend on his portrait).": "Dans un donjon, un ami peut vous en prêter une (Prêter sur son portrait).",
- "Left-click a free unit to take it.": "Clic gauche sur une unité libre pour la prendre.",
  "Paused while everyone votes": "En pause pendant le vote",
  "Pick your units.": "Choisissez vos unités.",
  "Refuse": "Refuser",
@@ -1370,5 +1366,8 @@
  "Use a Return scroll?": "Utiliser un Parchemin de retour ?",
  "use a Return scroll": "utiliser un Parchemin de retour",
  "using the Return scroll": "utilisation du Parchemin de retour",
- "Taking places...": "Mise en place..."
+ "Taking places...": "Mise en place...",
+ "Each team needs at least one unit. Right-click a unit's portrait to take it.": "Chaque équipe a besoin d'au moins une unité. Clic droit sur le portrait d'une unité pour la prendre.",
+ "In a dungeon, a friend can lend you a unit (Lend on their unit).": "Dans un donjon, un ami peut te prêter une unité (Prêter sur son unité).",
+ "Take your places": "En place"
 }
