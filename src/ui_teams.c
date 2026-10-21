@@ -1644,7 +1644,9 @@ static void hud_place(void) {
     static int (*btn_on)(void); static unsigned btn_tries;   /* viewui: the player panel's "Teams button" setting */
     if (!btn_on && btn_tries++ % 60 == 0) btn_on = (int (*)(void))dl("ui_teams_button_on");
     int want = hud_show && !sysmenu_open()                   /* lan_v9: hidden while the Esc menu is open (it covered "Load Campaign") */
-               && !prop_shown                                /* and while the proposal is (lead 2026-10-14); viewui: it stays while Teams is open */
+               && !prop_shown                                /* and while the proposal is (lead 2026-10-14) */
+               && !(opened && !folded())                     /* uxpass: and while the window is open (it only opens Teams; it covered the
+                                                                "Your units" slots); a folded window keeps it (its click = Show) */
                && (!btn_on || btn_on())
                && !busy();                                   /* and on the loading screen (map change, load): gamelane 2026-10-14 */
     if (u_go_active_self(u_go(hr)) != want) u_go_active(u_go(hr), want);
@@ -2043,6 +2045,28 @@ __attribute__((visibility("default"))) int ui_teams_modal_open(void) { return (o
 __attribute__((visibility("default"))) int ui_teams_window_px(float out[4]) {
     if (!opened) return 0;
     return folded() ? scr_rect(u_gc_get(h_fbar), out) : scr_rect(win(), out);
+}
+/* uxpass (lead 2026-10-21): the free part of the open window's title band, left of the centred title and right of the info
+   icon, in screen pixels (x, y = bottom-left, y up). out[4] = the window's top edge (screen px). For ui_game (dlsym): the
+   collapsed Players panel sits there while the window is open (before, it covered the "Your units" slots and hint).
+   0 = no open, unfolded window. */
+__attribute__((visibility("default"))) int ui_teams_band_rect(float out[5]) {
+    float wr[4], ir[4], tr[4];
+    if (!opened || folded() || !scr_rect(win(), wr)) return 0;
+    Obj ti = u_gc_get(h_title);
+    int has_i = scr_rect(u_gc_get(h_info), ir), has_t = scr_rect(ti, tr);
+    float x0 = has_i ? ir[0] + ir[2] * 1.4f : wr[0] + wr[2] * 0.02f, x1 = wr[0] + wr[2] * 0.4f, cy, h;
+    if (has_t) {                                              /* the title's drawn text, not its rect (TMP preferredWidth, slot 84) */
+        R4 r = rt_rect(u_tr(ti)); void *k = *(void **)ti;
+        float pw = tm_is(ti, K_TMP) ? (*(float (**)(Obj, void *))((char *)k + 0x678))(ti, *(void **)((char *)k + 0x680)) : 0;
+        float s = r.w > 1 ? tr[2] / r.w : 1;
+        if (pw > 1) x1 = tr[0] + tr[2] / 2 - pw * s / 2 - (has_i ? ir[2] * 0.4f : 12);
+    }
+    if (has_i) { cy = ir[1] + ir[3] / 2; h = ir[3]; }
+    else if (has_t) { cy = tr[1] + tr[3] / 2; h = tr[3]; }
+    else return 0;
+    out[0] = x0; out[1] = cy - h / 2; out[2] = x1 - x0; out[3] = h; out[4] = wr[1] + wr[3];
+    return 1;
 }
 /* viewui: the player panel draws above the open window; its clicks and tooltips are ui_game's (ui_panel_hit, dlsym) */
 static int panel_hit(V2 m) {
