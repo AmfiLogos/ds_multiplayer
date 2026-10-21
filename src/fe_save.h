@@ -26,6 +26,9 @@ int   fe_retarget_difficulty(jv *comps, const jv *want);
 /* maps: one object per entry {old guid: new guid} (unit + items) made before the build, or NULL = fresh guids.
    fe_hub_maps makes them (the host needs the new guids before the build, for the owner table). */
 jv   *fe_hub_maps(const jv *entries);
+/* a hub template with no units of its own (the wiki hub file, fe_hub.c): where the brought units stand and the difficulty
+   keys they get, used by fe_build_hub only when the host save has no clan unit. Copies are kept; NULL, NULL clears. */
+void  fe_hub_hints(const jv *spawn, const jv *difficulty);
 jv   *fe_build_hub(const jv *host, const jv *entries, const char *run_id, const jv *maps, jv **run_out, char *err, size_t errn);
 /* last_alive: {hub guid: closure} kept by the host from its saves during the run (death not permanent) */
 jv   *fe_extract_results(const jv *hub_end, const jv *run, fe_rules r, const char *player_uid, const jv *loot,

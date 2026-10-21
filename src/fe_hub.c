@@ -1,17 +1,18 @@
 /* fe_hub.c - the world a Foreign Expedition hub or a PvP v1 match starts in (owner 2026-10-15: "a neutral hub ... some
  * kind of a basic map. We have everything unlocked"; v12 #13: "PvP v1, very simple: a map (the starting map for now)").
- * Both are the wiki's base template (the day-0 starting base, dungeonsettlers.wiki /assets/saves/base_<build>.json),
- * downloaded once and kept in the game's data folder (never shipped, never in the repo):
- *   <data>/Mods/multiplayer/wiki/saves/base_<build>.json (fe_http.c)
+ * Both come from map files shipped inside the Multiplayer mod (fe_world_template): the hub = hub_<build>.json (a full
+ * player base without units, made by tools/make_hub_template.py; base_<build>.json if it is missing), the PvP world =
+ * base_<build>.json (the day-0 starting base, the wiki's base template). The map files are not in git (maps/, see
+ * maps/README.md); the mod build copies them next to the module.
  * The hub is then unlocked: every research done, every region open. The PvP world is the template as it is.
  * The host writes it as a new save (data/Saves/<name>.json) and loads it; the multiplayer menu then opens the lobby as
- * for "Your save". The template's own clan units stay until the start: the expedition / PvP start replaces the clan with
- * the brought units (fe_build_hub). */
+ * for "Your save". The template's own clan units (the base template has 4, the hub file none) stay until the start: the
+ * expedition / PvP start replaces the clan with the brought units (fe_build_hub). */
 #include "rig.h"
 #include "mp_modes_text.h"
 #include "fe_json.h"
 #include "fe_save.h"
-#include "fe_http.h"
+#include <dlfcn.h>
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,15 +42,53 @@ int pvp_v1_world(void) {
     return !strncmp(gs, PVP_V1_PREFIX, 5);
 }
 
-/* the wiki's base template (fe_http.c): cached in <data>/Mods/multiplayer/wiki/saves/, downloaded from dungeonsettlers.wiki once */
-static int fe_world_template(char **text, size_t *len, char *err, size_t errn) {
-    char pdp[1100], file[64];
-    snprintf(pdp, sizeof pdp, "%s/data", rig_dir);                       /* the game's persistentDataPath (rig_main.c) */
-    snprintf(file, sizeof file, "base_%s.json", RIG_BUILD);
-    if (!fe_wiki_template(pdp, file, text, len, err, errn)) return 0;
-    rig_log("fe hub: wiki cache: %s", err);
-    snprintf(err, errn, "%s", TR("The hub map could not be downloaded from dungeonsettlers.wiki (needed once). Check the internet connection and try again."));
+/* the world's map file, shipped in the Multiplayer mod (owner 2026-10-21: the maps go inside the mod, no download), one
+   per Steam build, next to multiplayer.dylib / .dll (DSMP_MAPS_DIR overrides, tests):
+     hub_<build>.json   the hub: a full player base, everything built, no units (tools/make_hub_template.py)
+     base_<build>.json  the PvP v1 world, and the hub's fallback: the day-0 starting base (the wiki's base template)
+   *is_hub = the hub file was used. A build without a map file = a clear message, no world. */
+static char *slurp(const char *path, size_t *n) {
+    FILE *f = fopen(path, "rb"); if (!f) return NULL;
+    fseek(f, 0, SEEK_END); long L = ftell(f); fseek(f, 0, SEEK_SET);
+    char *b = L > 0 ? malloc((size_t)L + 1) : NULL;
+    if (b && fread(b, 1, (size_t)L, f) != (size_t)L) { free(b); b = NULL; }
+    if (b) { b[L] = 0; *n = (size_t)L; }
+    fclose(f);
+    return b;
+}
+static void map_path(char *o, size_t n, const char *stem) {
+    char d[1100] = ""; const char *env = getenv("DSMP_MAPS_DIR");
+    if (env && *env) snprintf(d, sizeof d, "%s", env);
+    else { Dl_info di; if (dladdr((void *)map_path, &di) && di.dli_fname) { snprintf(d, sizeof d, "%s", di.dli_fname); char *sl = strrchr(d, '/'); if (sl) *sl = 0; else d[0] = 0; } }
+    snprintf(o, n, "%s/%s_%s.json", d[0] ? d : ".", stem, RIG_BUILD);
+}
+static int fe_world_template(int kind, char **text, size_t *len, int *is_hub, char *err, size_t errn) {
+    char p[1300];
+    *is_hub = 0;
+    if (kind == FE_WORLD_HUB) {
+        map_path(p, sizeof p, "hub");
+        if ((*text = slurp(p, len))) { *is_hub = 1; rig_log("fe hub: map %s", p); return 0; }
+        rig_log("fe hub: no hub map %s: the base map is used", p);
+    }
+    map_path(p, sizeof p, "base");
+    if ((*text = slurp(p, len))) { rig_log("fe hub: map %s", p); return 0; }
+    rig_log("fe hub: no map file %s", p);
+    snprintf(err, errn, TR("The Multiplayer mod has no map for this game version (build %s). Update the Multiplayer mod."), RIG_BUILD);
     return -1;
+}
+
+/* the hub file's "MPHubTemplate" {spawn, difficulty} (the hub has no units: where the brought units stand, their
+   difficulty). Taken out of the world at build (the stock game never sees it), kept here for the start (fe_game.c). */
+static jv *hub_hint;
+void fe_hub_use_hints(void) {
+    if (!hub_hint) {                                                       /* host restarted since the build: read the map again */
+        char p[1300], err[200]; size_t n = 0; map_path(p, sizeof p, "hub");
+        char *t = slurp(p, &n);
+        jv *w = t ? jparse(t, n, err, sizeof err) : NULL; free(t);
+        if (w) { hub_hint = jtake(w, "MPHubTemplate"); jfree(w); }
+    }
+    fe_hub_hints(jget(hub_hint, "spawn"), jget(hub_hint, "difficulty"));
+    if (hub_hint) rig_log("fe hub: hub map hints: %d spawn cell(s), %d difficulty key(s)", jget(hub_hint, "spawn") ? (int)jget(hub_hint, "spawn")->cnt : 0, jget(hub_hint, "difficulty") ? (int)jget(hub_hint, "difficulty")->cnt : 0);
 }
 
 /* "DS_B." + Application.version, the Version the game writes into its saves (a different one makes the game ask) */
@@ -81,10 +120,12 @@ static void unlock_all(jv *save, int *nres, int *nreg) {
 
 /* the world as a new save; out_name = its SaveName. kind FE_WORLD_*. NULL on error (err). */
 static jv *fe_world_build(int kind, char *out_name, size_t on, char *err, size_t errn) {
-    char *text = NULL; size_t len = 0;
-    if (fe_world_template(&text, &len, err, errn)) return NULL;
+    char *text = NULL; size_t len = 0; int is_hub = 0;
+    if (fe_world_template(kind, &text, &len, &is_hub, err, errn)) return NULL;
     jv *w = jparse(text, len, err, errn); free(text);
     if (!w) return NULL;
+    jv *hint = jtake(w, "MPHubTemplate");                                  /* never in a world the game loads */
+    if (kind == FE_WORLD_HUB) { jfree(hub_hint); hub_hint = hint; } else jfree(hint);
     jv *h = jget(w, "CampaignSaveHeader");
     if (!h || !jget(w, "ClanSaveData") || jnumv(jget(h, "CurrentMap")) != 0) { jfree(w); snprintf(err, errn, "%s", TR("The hub map file is not a base save.")); return NULL; }
     int nres = 0, nreg = 0;
@@ -111,7 +152,7 @@ static jv *fe_world_build(int kind, char *out_name, size_t on, char *err, size_t
     }
     jv *cl = jget(w, "ClanSaveData"); jset(cl, "CampaignGuid", jstrv(cg)); jset(cl, "ClanName", jstrv(disp));
     snprintf(out_name, on, "%s", stem);
-    rig_log("fe hub: %s world %s built from the base template (%s): %d research done, %d regions open", kind == FE_WORLD_HUB ? "hub" : "PvP", stem, ver, nres, nreg);
+    rig_log("fe hub: %s world %s built from the %s (%s): %d research done, %d regions open", kind == FE_WORLD_HUB ? "hub" : "PvP", stem, is_hub ? "hub map" : "base map", ver, nres, nreg);
     return w;
 }
 

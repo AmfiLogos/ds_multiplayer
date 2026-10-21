@@ -79,3 +79,7 @@ fixtures/
 src/ui_test/test_ui
 src/ui_test/teams_test
 rig/gate0*/i18n/7/
+# map files shipped in the mod (game saves: never in git): only the README of maps/ is in git
+!/maps/
+/maps/*
+!/maps/README.md

@@ -32,6 +32,8 @@ BUFF = '--no-buff' not in sys.argv   # test copies only: brought units get +BUFF
                                      # hub dive ended in the stock game over (3 level-1 units vs ~18 enemies, down ~40 s after the first fight,
                                      # also after going home: the enemies follow to the portal), so XP / loot / return were never tested
 BUFF_N = float(sys.argv[sys.argv.index('--buff') + 1]) if '--buff' in sys.argv else 60.0   # +20 was not enough: 20 enemies took 290 of 474 hp in 5 s
+HUBMAP = '--base-map' not in sys.argv   # the hub map (maps/hub_<build>.json next to the dylib: a full base, no units); --base-map = without it
+SHOT = sys.argv[sys.argv.index('--shot') + 1] if '--shot' in sys.argv else None   # copy of the in-game hub frame (after the start)
 FEED = '--feed' in sys.argv          # test copies only: brought units leave home fed and rested (Hunger, Energy 1.0)
 LANE = f'fepvp-{os.getpid()}'
 STEP_S = 5                           # fight loop step (was 15 s: units went from 50 % to down between two looks)
@@ -172,7 +174,26 @@ def run(H, G):
     check('hub: no load list / new campaign screen (Start builds the neutral hub)', c(H, cmd='mpm_status').get('state') in ('pick_save', 'host_loading', 'lobby'), c(H, cmd='mpm_status').get('state'))
     wait('host session + lock', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('started'))(st(H)))
     port = c(H, cmd='mpm_status').get('port')
+    hub_pre = None
+    if HUBMAP:   # owner 2026-10-21: the hub = a player's full base, no units before the start, everything unlocked
+        rl = open(os.path.join(rig.idir(H), 'rig.log'), errors='replace').read()
+        check('hub map: the hub was built from the shipped hub map', f'map ' in rl and 'hub_25846389.json' in rl and 'built from the hub map' in rl,
+              next((l for l in rl.splitlines()[::-1] if 'fe hub:' in l and 'built from' in l), '')[:200])
+        sv = max(glob.glob(os.path.join(rig.idir(H), 'data', 'Saves', 'MPHub_*.json')), key=os.path.getmtime)
+        w0 = json.load(open(sv)); hub_pre = w0
+        rd = w0['ResearchSaveData']['ResearchDatas']
+        check('hub map: every research done, every region open, no units in the hub file',
+              all(r['Workload'] >= r['RequiredWorkload'] and not r['IsLocked'] for r in rd.values())
+              and all(not r['IsLocked'] for r in w0['ClanSaveData']['ExpeditionMapData'] if r.get('Region', -1) >= 0)
+              and not w0['EntityContainerSaveData']['UnitContainerSaveData']['Base']['UnitSaveDataDictionary'] and 'MPHubTemplate' not in w0,
+              f"{len(rd)} research, {len(w0['EntityContainerSaveData']['BuildingContainerSaveData']['Base']['BuildingSaveData'])} buildings")
+        lu0 = [u for u in c(H, cmd='list_units', map=0)['units'] if u['faction'] == 1]
+        check('hub map: 0 player units in the hub before the start', len(lu0) == 0, str(len(lu0)))
     join_guest(port)
+    if HUBMAP:
+        time.sleep(20)
+        go = {x: (st(x).get('scene'), bool(c(x, cmd='ui_result').get('open'))) for x in (H, G)}
+        check('hub map: no game over in the empty hub (both peers still in the world 20 s after the join)', all(v == (2, False) for v in go.values()), str(go))
     # F4 Bring units window (board FEBringA), driven like a player: lobby button, pick the save, click unit cards, Bring
     try: wait('guest knows the FE mode (host mail)', lambda: c(G, cmd='mpm_fewin').get('fe_mode') == 1, timeout=60, every=1)
     except RuntimeError:
@@ -210,13 +231,22 @@ def run(H, G):
     check('F4: Start in the Foreign Expedition lobby built the hub with the host page rules', bool(run_id) and len(hub_units) == 3, fh.get('msg'))
     its = {x: c(x, cmd='ui_items', map=0).get('items', []) for x in (H, G)}
     ht = {x: sum(i.get('amount', 1) for i in its[x] if i.get('key') == 'ITEM_Hardtack') for x in (H, G)}
-    check('hub: the storage stock is in the hub on both peers (Hardtack 100+ on the ground)', all(v >= 100 for v in ht.values()) and len(its[H]) == len(its[G]), f'{ht}, items {len(its[H])}/{len(its[G])}')
+    if HUBMAP:   # the hub map's own storage (the player's base), no added stock
+        check('hub map: the same ground items in the hub on both peers', len(its[H]) == len(its[G]), f'items {len(its[H])}/{len(its[G])}')   # ui_items = ground items only; storage is in the buildings
+        hint = [(int(p_['x']), int(p_['y'])) for p_ in json.load(open(os.path.join(os.path.dirname(rig.DYLIB), 'hub_25846389.json')))['MPHubTemplate']['spawn']]
+        cells = [u['cell'] for u in c(H, cmd='list_units', map=0)['units'] if u['faction'] == 1 and 'cell' in u]
+        check('hub map: the brought units stand where the map\'s units stood (spawn cells)', len(cells) == 3 and all(min(abs(cl[0] - h_[0]) + abs(cl[1] - h_[1]) for h_ in hint) <= 8 for cl in cells), f'{cells} vs {hint}')
+    else:
+        check('hub: the storage stock is in the hub on both peers (Hardtack 100+ on the ground)', all(v >= 100 for v in ht.values()) and len(its[H]) == len(its[G]), f'{ht}, items {len(its[H])}/{len(its[G])}')
     gu = c(G, cmd='fe_status')['uid']
     mine = {H: [h['hub'] for h in hub_units if h['player'] != gu], G: [h['hub'] for h in hub_units if h['player'] == gu]}
     own = {h['hub'][:8]: (c(H, cmd='mp_owner', guid=h['hub']).get('owner'), c(G, cmd='mp_owner', guid=h['hub']).get('owner'), 'guest' if h['player'] == gu else 'host') for h in hub_units}
     check('F5 (menu Start): owners = the players who brought them, same on both peers',
           all(a == b and a == (1 if who == 'guest' else 0) for a, b, who in own.values()), str(own))
     wait('both running', lambda: not mp(H).get('paused') and not mp(G).get('paused'), timeout=180)
+    if HUBMAP and SHOT:                                         # the hub in game, after the reload, with the brought units
+        time.sleep(5); c(H, cmd='ui_capture', path=os.path.join(OUT, 'hub_ingame.png')); time.sleep(2)
+        if os.path.exists(os.path.join(OUT, 'hub_ingame.png')): shutil.copy2(os.path.join(OUT, 'hub_ingame.png'), SHOT); log('hub shot', SHOT)
     tick0 = st(H)['tick']
     # recruiting in the hub (host option): Off = the recruitment window never opens and a replayed recruit order is refused
     # on every peer; On = allowed like a normal multiplayer world

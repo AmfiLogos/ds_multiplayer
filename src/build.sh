@@ -49,3 +49,5 @@ for f in sorted(os.listdir(mp)):
     t = os.path.join(out, f + '.tmp'); open(t, 'w').write(json.dumps({**m, **c}, ensure_ascii=False, indent=1)); os.replace(t, os.path.join(out, f)); n += 1
 print(f'built {out}: {n} language tables')
 E
+# the map files (maps/README.md, not in git) next to the rig dylib, as the mod build puts them next to the module
+for m in ../maps/hub_*.json(N) ../maps/base_*.json(N); do cp -c $m $OUT/ 2>/dev/null || cp $m $OUT/; done

@@ -288,6 +288,7 @@ static void snapshot_alive(const jv *save) {                  /* death not perma
 }
 int fe_hub_template_save(const jv *save);
 int fe_hub_stock_json(jv *hub);
+void fe_hub_use_hints(void);
 /* mp_game g_save, host, right after the join-point save was written to `path` (Saves/mp_sync.json). Armed: that file
    becomes the hub (same SaveName, so the reload and every guest load it). A running hub: keep the last-alive states. */
 int fe_join_point_save(const char *path, const char *save_name) {
@@ -300,8 +301,9 @@ int fe_join_point_save(const char *path, const char *save_name) {
     jv *live = jload(path, err, sizeof err);
     if (!live) { say("hub build: cannot read the join-point save: %s", err); return -1; }
     jv *run = NULL;
-    if (fe_hub_template_save(live)) fe_hub_stock_json(live);              /* a neutral hub: its stock, before the build counts the start items */
+    if (fe_hub_template_save(live)) { fe_hub_stock_json(live); fe_hub_use_hints(); }   /* a neutral hub: its stock, before the build counts the start items; the hub file's spawn cells / difficulty */
     jv *hub = fe_build_hub(live, jget(pending_start, "entries"), jget(pending_start, "run_id")->s, jget(pending_start, "maps"), &run, err, sizeof err);
+    fe_hub_hints(NULL, NULL);
     jfree(live);
     if (!hub) { say("hub build REFUSED: %s", err); return -1; }
     /* hub campaign guid: recognisable prefix (fe_world_is_hub on every peer), same id in header and clan record */
