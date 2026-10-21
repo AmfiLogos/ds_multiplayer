@@ -180,3 +180,4 @@ UnityEngine.Input$$GetMouseButtonDown	0x3a0e4b0	0x51acdd0	mac_callers=12	win_cal
 UnityEngine.Input$$GetMouseButtonUp	0x3a0e4f0	0x51ace20	mac_callers=12	win_callers=11
 UnityEngine.Input$$GetMouseButton	0x3a0e530	0x51acd80	mac_callers=23	win_callers=25
 UnityEngine.Input$$get_mousePosition	0x3a0e930	0x51ad4dc	mac_callers=62	win_callers=62
+UnityEngine.Input$$get_mouseScrollDelta	0x3a0ea20	0x51ad584	mac_callers=7	win_callers=7

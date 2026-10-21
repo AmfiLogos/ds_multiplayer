@@ -48,6 +48,20 @@ int jstr(const char *j, const char *key, char *out, size_t n) {
     const char *p = jfind(j, key); if (!p || *p != '"') return 0;
     p++; size_t i = 0;
     while (*p && *p != '"' && i + 1 < n) {
+        if (*p == '\\' && p[1] == 'u') {                                   /* \uXXXX (+ a surrogate pair) -> UTF-8 (tests send json.dumps text) */
+            unsigned u = 0, ok = 1; for (int k = 0; k < 4; k++) { char h = p[2 + k]; u = u * 16 + (h >= '0' && h <= '9' ? h - '0' : h >= 'a' && h <= 'f' ? h - 'a' + 10 : h >= 'A' && h <= 'F' ? h - 'A' + 10 : (ok = 0)); if (!ok) break; }
+            if (ok) {
+                p += 6;
+                if (u >= 0xD800 && u < 0xDC00 && p[0] == '\\' && p[1] == 'u') { unsigned l = 0; int ok2 = 1; for (int k = 0; k < 4; k++) { char h = p[2 + k]; l = l * 16 + (h >= '0' && h <= '9' ? h - '0' : h >= 'a' && h <= 'f' ? h - 'a' + 10 : h >= 'A' && h <= 'F' ? h - 'A' + 10 : (ok2 = 0)); if (!ok2) break; }
+                    if (ok2 && l >= 0xDC00 && l < 0xE000) { u = 0x10000 + ((u - 0xD800) << 10) + (l - 0xDC00); p += 6; } }
+                char b[4]; int m = u < 0x80 ? (b[0] = (char)u, 1) : u < 0x800 ? (b[0] = (char)(0xC0 | u >> 6), b[1] = (char)(0x80 | (u & 63)), 2)
+                         : u < 0x10000 ? (b[0] = (char)(0xE0 | u >> 12), b[1] = (char)(0x80 | (u >> 6 & 63)), b[2] = (char)(0x80 | (u & 63)), 3)
+                         : (b[0] = (char)(0xF0 | u >> 18), b[1] = (char)(0x80 | (u >> 12 & 63)), b[2] = (char)(0x80 | (u >> 6 & 63)), b[3] = (char)(0x80 | (u & 63)), 4);
+                if (i + (size_t)m + 1 >= n) break;
+                for (int k = 0; k < m; k++) out[i++] = b[k];
+                continue;
+            }
+        }
         if (*p == '\\' && p[1]) { p++; out[i++] = *p == 'n' ? '\n' : *p == 't' ? '\t' : *p; p++; continue; }
         out[i++] = *p++;
     }
