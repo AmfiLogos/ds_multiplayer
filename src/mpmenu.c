@@ -565,8 +565,10 @@ static void txt_body(Obj t) {                                             /* the
     static void *ms; if (!ms) ms = mth("TMPro", "TMP_Text", "set_fontSharedMaterial", 1);
     if (ms) MCALL(ms, void, Obj, Obj, const void *)(t, m, ms);
 }
+static int lang_cjk(void) { const char *c = dsi_code(); return c && (!strncmp(c, "ja", 2) || !strncmp(c, "zh", 2) || !strncmp(c, "ko", 2)); }   /* see fit_min */
 void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
     if (!mm_is(t, K_TMP)) return;
+    if (size < 14 && lang_cjk()) size = 14;                                 /* CJK floor (fit_min) */
     Obj f = cinzel ? title_font() : NULL;                                  /* titles: the language's title font (Cinzel in Latin languages) */
     if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);   /* TMP takes the font's own material (other atlas) */
     F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, false, NULL);
@@ -594,7 +596,13 @@ typedef struct { float x, y, w, h; } fit_rect;
 static fit_e fit_tab[FIT_N];
 static int fit_count;
 static void *m_fit_pw, *m_fit_ph, *m_fit_rect, *m_fit_live, *m_fit_pv;
-static float fit_min(float size) { float m = size * 0.75f; m = (float)(int)(m + 0.5f); return m < 8 ? (size < 8 ? size : 8) : m; }   /* the game's 0.75 */
+/* ja / zh / ko (UX pass 2026-10-21, lead's rule): CJK below ~14 at the design size is unreadable at 960 x 540 (kanji become
+   blobs), so the fit never shrinks them below 14 (it wraps or the box grows instead) and txt_style draws them at 14 at least */
+static float fit_min(float size) {                                           /* the game's 0.75 */
+    float m = size * 0.75f; m = (float)(int)(m + 0.5f); m = m < 8 ? (size < 8 ? size : 8) : m;
+    if (lang_cjk() && m < 14) m = size < 14 ? size : 14;
+    return m;
+}
 static int fit_methods(void) {
     if (!m_fit_pw) { m_fit_pw = mth("TMPro", "TMP_Text", "get_preferredWidth", 0); m_fit_ph = mth("TMPro", "TMP_Text", "get_preferredHeight", 0);
                      m_fit_rect = mth("UnityEngine", "RectTransform", "get_rect", 0); m_fit_live = mth("UnityEngine", "GameObject", "get_activeInHierarchy", 0);
@@ -1037,7 +1045,8 @@ Obj mk_button(Obj src, Obj parent, int esc, int sprite, Col tint, float x, float
     else if (bg) img_set(bg, sprite >= 0 ? spr(sprite) : NULL, sprite >= 0 && !spr(sprite) ? spr_fallback(sprite) : tint);
     if (bg) { stretch(bg); if (mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL); }
     Obj l = AT(b, esc ? 0x28 : 0x130, Obj);
-    if (u_alive(l)) { txt_body(l); txt_style(l, 0, fs, 514, 0); txt_color(l, tc); stretch(l); tmp_set(l, label); }
+    if (u_alive(l)) { txt_body(l); txt_style(l, 0, fs, 514, 0); txt_color(l, tc); stretch(l); tmp_set(l, label);
+                      if (w >= 40 && mm_is(u_tr(l), K_RT)) F(0x5107110, void (*)(Obj, V2, void *))(u_tr(l), (V2){ -16, 0 }, NULL); }   /* 8 free each side: a long label fits inside the frame, never edge to edge */
     place(b, x, y, w, h);
     return b;
 }
@@ -1075,11 +1084,13 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
         float yc = PY(RTOP(i) + rh / 2), x0 = RX(i);
         Obj rb = mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, PX(x0 + 197), yc, 394, rh);
         u_gc_free(p->row[i]); p->row[i] = rb ? u_gc_new(rb) : 0;
-        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(x0 + 77), yc, 130, 40, C_SUB); tmp_set(lb, mpm_rule_label(i));   /* "Units per player" fits */
-        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(x0 + 261), yc, 186, 40, C_MAIN);
+        /* label 12..124, arrows at 142 and 378, value 160..356 between them: 28 high, so the fit keeps each on one line
+           (shrinks to 0.75) instead of wrapping (ru "Любой может ставить на паузу", "Режим администратора") */
+        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(x0 + 68), yc, 112, 28, C_SUB); tmp_set(lb, mpm_rule_label(i));
+        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(x0 + 258), yc, 196, 28, C_MAIN);
         u_gc_free(p->val[i]); p->val[i] = v ? u_gc_new(v) : 0;
         for (int a = 0; a < 2; a++) {
-            Obj b = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(x0 + (a ? 368 : 154)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
+            Obj b = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(x0 + (a ? 378 : 142)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
             int id = arrow_ids[2 * i + a];
             if (reg) { u_gc_free(reg[id]); reg[id] = b ? u_gc_new(b) : 0; }
         }
@@ -1146,13 +1157,13 @@ static void fe_build(fepanel *p, Obj parent, Obj src, Obj tpl_img, Obj tpl_txt, 
         float top = 62 + step * i, yc = PY(top + rh / 2);
         Obj rb = mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, PX(18 + 197), yc, 394, rh);
         u_gc_free(p->row[i]); p->row[i] = rb ? u_gc_new(rb) : 0;
-        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(18 + 77), yc, 130, 40, C_SUB); tmp_set(lb, mpm_fe_label(i));
-        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(18 + 261), yc, 186, 40, i == 4 ? C_SUB : C_MAIN);
+        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(18 + 68), yc, 112, 28, C_SUB); tmp_set(lb, mpm_fe_label(i));   /* as the Rules rows */
+        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(18 + 258), yc, 196, 28, i == 4 ? C_SUB : C_MAIN);
         u_gc_free(p->val[i]); p->val[i] = v ? u_gc_new(v) : 0;
         Obj ds = mk_txt(tpl_txt, R, 0, 12, 513, 0, PX(18 + 197), PY(top + rh + 11), 390, 20, C_SUB);
         u_gc_free(p->desc[i]); p->desc[i] = ds ? u_gc_new(ds) : 0;
         for (int a = 0; a < 2 && fe_arrows[i][0]; a++) {
-            Obj b = mk_button(src, R, 0, S_NBTN, C_WHITE, PX(18 + (a ? 368 : 154)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
+            Obj b = mk_button(src, R, 0, S_NBTN, C_WHITE, PX(18 + (a ? 378 : 142)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
             int id = fe_arrows[i][a]; u_gc_free(h_tb[id]); h_tb[id] = b ? u_gc_new(b) : 0;
         }
     }
@@ -1232,7 +1243,7 @@ static void title_build(Obj v) {
         if (plain) images_off(u_tr(b), 0);
         if (plain || id == MPB_SETTINGS) txt_body(l);                      /* text rows: the stock body material, no outline */
         /* approved mockup "Host page A": subtitle, Your name, field, Rules box, line, Host from a save (primary), ... Back */
-        if (id == MPB_HEADER) { row_height(b, 262, 20); txt_style(l, 0, 12, 514, 0); txt_color(l, C_SUB); }
+        if (id == MPB_HEADER) { row_height(b, 262, 30); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB); }   /* the page title: as "Host a game" / "Join a game" */
         if (id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME) { row_height(b, 262, 18); txt_style(l, 0, 14, 513, 0); txt_color(l, C_SUB); }
         if (id == MPB_INFO) { row_height(b, 262, 40); txt_style(l, 0, 14, 514, 1); }
         if (id == MPB_DIVIDER) { row_height(b, 262, 17); mk_img(tpl_img, u_tr(b), -1, C_LINE, 0, 0, 262, 1); }
@@ -1269,12 +1280,14 @@ static void title_build(Obj v) {
             Obj sm = mk_txt(tpl_txt, u_tr(b), 0, 12, 513, 1, 0, -18, 238, 60, C_SUB);   /* up to 4 lines inside the box (owner lan_v8: it spilled) */
             u_gc_free(h_title_sum); h_title_sum = sm ? u_gc_new(sm) : 0;
         }
+        /* the label 12 inside each side of the frame: a long label (de "Aus einem Spielstand hosten") fits inside it */
+        if (id != MPB_SETTINGS && mm_is(u_tr(l), K_RT)) { V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(l), NULL); sd.x -= 24; F(0x5107110, void (*)(Obj, V2, void *))(u_tr(l), sd, NULL); }
         trow_note(id, b);
         { int k = mpm_choice_of_btn(id);                                    /* host choice: its small second line (hidden until it has one) */
           if (k >= 0) {
               Obj lr = u_tr(l);
               cnote_ap0[k] = mm_is(lr, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(lr, NULL) : (V2){ 0, 0 };   /* anchoredPosition */
-              cnote_x[k] = (trow_lw[id] > 64 ? trow_lw[id] : 262) - 24;        /* the label's width (the row's 262) inside the frame */
+              cnote_x[k] = trow_lw[id] > 40 ? trow_lw[id] : 238;                 /* the label's width (12 in from each side of the row's 262) */
               /* the game's small text: the language's body font (LanguageSetting.GetFont EasyRead, plain material), 12, the
                  secondary colour; one line, auto size down to 0.75 when too long (txt_style) */
               Obj nt = mk_txt(tpl_txt, u_tr(b), 0, 12, 514, 0, 0, -14, cnote_x[k], CN_H, C_SUB);
@@ -1323,7 +1336,7 @@ static void title_build(Obj v) {
                 u_gc_free(h_rw_ul[i]); h_rw_ul[i] = ul ? u_gc_new(ul) : 0; u_gc_free(h_rw_u[i]); h_rw_u[i] = un ? u_gc_new(un) : 0;
                 Obj x = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 22, 15, 26, 26, 15, "x", C_SUB);   /* remove: a small framed "x", own click */
                 if (x) { u_gc_free(h_tb[MPB_HISTX0 + i]); h_tb[MPB_HISTX0 + i] = u_gc_new(x); }
-                Obj w = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 40, -16, 62, 26, 14, TR("Watch"), C_MAIN);   /* spectator rejoin (owner 2026-10-14) */
+                Obj w = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 10 - 40, -16, 80, 26, 14, TR("Watch"), C_MAIN);   /* spectator rejoin (owner 2026-10-14) */
                 if (w) { u_gc_free(h_tb[MPB_HISTW0 + i]); h_tb[MPB_HISTW0 + i] = u_gc_new(w); }
             }
             Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 0, -380 + 16 + 250, RY(rw_h - 20), 500, 20, C_SUB);
@@ -1551,6 +1564,13 @@ static void esc_shift_apply(float add_world) {
         if (p.y - want > 0.25f || want - p.y > 0.25f) { p.y = want; F(0x5107724, void (*)(Obj, V3, void *))(t, p, NULL); }
     }
 }
+/* an Esc-menu button clone: its label 8 in from each side, shrinking to fit (ru "Выйти из мультиплеера" ran past the frame) */
+static void esc_label_fit(Obj b) {
+    Obj l = u_alive(b) ? AT(b, 0x28, Obj) : NULL; if (!mm_is(l, K_TMP)) return;
+    float fs = F(0x4F0B338, float (*)(Obj, void *))(l, NULL);              /* TMP_Text.fontSize: the stock size */
+    if (fs >= 4) txt_fit(l, fs, 0);
+    if (mm_is(u_tr(l), K_RT)) { V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(l), NULL); sd.x -= 16; F(0x5107110, void (*)(Obj, V2, void *))(u_tr(l), sd, NULL); }
+}
 static void esc_build(Obj v) {
     Obj src = AT(v, 0x70, Obj), before = AT(v, 0x78, Obj), ver = AT(v, 0x80, Obj);   /* clone "Report bug", place before "Quit" */
     if (!u_alive(src) || !u_alive(before)) { rig_log("mpmenu: Esc-menu buttons not found"); return; }
@@ -1561,6 +1581,7 @@ static void esc_build(Obj v) {
         if (!u_alive(b)) { rig_log("mpmenu: Esc clone failed"); return; }
         (mm_is(b, K_SMB) ? F(0xF2DB60, void (*)(Obj, Obj, void *))(b, NULL, NULL) : (void)0);            /* Init(null): adds the clone's own onClick listener */
         AT(b, 0x30, Obj) = NULL;                                            /* (runtime listeners are not cloned) */
+        esc_label_fit(b);
         u_set_sibling(u_tr(b), at + i);
         u_active(b, false);
         u_gc_free(h_eb[esc_ids[i]]); h_eb[esc_ids[i]] = u_gc_new(b);
@@ -1616,7 +1637,12 @@ static void esc_build(Obj v) {
     Obj seed = AT(v, 0x88, Obj);                                            /* design #7: why Load is off, a seed-style line */
     if (u_alive(seed)) {
         Obj r = u_instantiate(seed, u_tr_parent(u_tr(seed)));
-        if (u_alive(r)) { { char lr[200]; snprintf(lr, sizeof lr, "<color=#A69085>%s</color>", TR("Leave multiplayer to load another world")); tmp_set(r, lr); } u_active(r, false); }
+        if (u_alive(r)) { { char lr[200]; snprintf(lr, sizeof lr, "<color=#A69085>%s</color>", TR("Leave multiplayer to load another world")); tmp_set(r, lr); }
+            /* one line: as wide as its text (the seed line's width wrapped de "zu laden" alone onto a second line, onto the seed) */
+            if (mm_is(r, K_TMP) && fit_methods() && mm_is(u_tr(r), K_RT)) {
+                V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(r), NULL); float pw = fit_pref(r, 0).x + 8;
+                if (pw > sd.x) { sd.x = pw > 640 ? 640 : pw; F(0x5107110, void (*)(Obj, V2, void *))(u_tr(r), sd, NULL); } }
+            u_active(r, false); }
         u_gc_free(h_ereason); h_ereason = u_alive(r) ? u_gc_new(r) : 0;
     }
     ph_sibling = -1;
@@ -1671,7 +1697,7 @@ static void esc_sync(const mpm_obs *o) {
             if (rect_of(rl, rr)) {
                 float d = cursor - rr[3];
                 if (d < -0.5f || d > 0.5f) { V3 p = (mm_is(u_tr(rl), K_TR) ? F(0x5109A08, V3 (*)(Obj, void *))(u_tr(rl), NULL) : (V3){0, 0, 0}); p.y += d; (mm_is(u_tr(rl), K_TR) ? F(0x5109B04, void (*)(Obj, V3, void *))(u_tr(rl), p, NULL) : (void)0); }
-                cursor = rr[1] + d - 2;
+                cursor = rr[1] + d - 4;                                    /* a small gap before the seed lines */
             }
         }
         if (low < 1e8f && u_alive(l0) && rect_of(l0, s0)) {
@@ -1823,7 +1849,7 @@ static void lw_build(Obj v, int host) {
     KEEP(h_lw_bbar, mk_img(tpl_img, R, -1, C_BAND, 0, LY(lw_h - 38), 876, 74));
     KEEP(h_lw_bline, mk_img(tpl_img, R, -1, C_COPPER, 0, LY(lw_h - 76), 876, 1));
     /* owner 2026-10-20: Quit (end the session, back to the title) left; host: Turn off multiplayer (keep playing alone) beside it */
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(lw_h - 38), LW_QUIT_W, 34, 16, TR("Quit"), C_MAIN); KEEP(h_lwb[LW_QUIT], b);
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(lw_h - 38), LW_QUIT_W, 34, 16, host ? TR("Quit to title") : TR("Leave"), C_MAIN); KEEP(h_lwb[LW_QUIT], b);   /* guest: leaves the host's game (to the title) */
     if (host) { b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_OFF_X + LW_OFF_W / 2), LY(lw_h - 38), LW_OFF_W, 34, 16, TR("Turn off multiplayer"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b); }
     else { u_gc_free(h_lwb[LW_LEAVE]); h_lwb[LW_LEAVE] = 0; }
     if (host) { b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, LX(848 - 116), LY(lw_h - 38), 232, 44, 18, mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), C_START); KEEP(h_lwb[LW_START], b); }
@@ -1849,8 +1875,9 @@ static void lw_header_lines(int k0, Obj t, float x0, float w, float y, float rig
     place(t, LX(cx), y, tw + 4, 28);
 }
 static Col hexcol(const char *h) { unsigned r = 0, g = 0, b = 0; sscanf(h[0] == '#' ? h + 1 : h, "%02x%02x%02x", &r, &g, &b); return (Col){ r / 255.f, g / 255.f, b / 255.f, 1 }; }
+int pvp_v1_world(void);                                  /* fe_hub.c: this world is a PvP match world (host and guests) */
 static void lw_texts(void) {
-    int host = M.state == MPM_LOBBY;
+    int host = M.state == MPM_LOBBY, pvp = pvp_v1_world();
     mp_steam_info in; mp_steam_state(&in);
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
     char b[1024]; const char *hn = M.host[0] ? M.host : TR("the host");   /* the lobby note: 3 lines, up to ~500 bytes in Russian (a 256 cut the Windows Allow line) */
@@ -1883,10 +1910,18 @@ static void lw_texts(void) {
             int id = in.nplayers > 0 ? in.players[i].id : 0, me = in.nplayers > 0 ? in.player : 0;
             const char *nmn = in.nplayers > 0 && in.players[i].name[0] && strcmp(in.players[i].name, "player") ? in.players[i].name : in.nplayers > 0 ? TR("Player") : my_name;
             char rowt[400]; snprintf(rowt, sizeof rowt, "%s", nmn); snprintf(lw_rowname[i], sizeof lw_rowname[i], "%s", nmn);
+            /* line 1 the name; line 2 what a mode says ("Choosing units...": it wrapped the name over 3 lines) and how the
+               player is connected */
+            char mode[160] = "";
             for (int k = 0; k < nhooks; k++) { char t2[160];                /* Custom Modes (Foreign Expedition): "2 units brought" / "Choosing units..." */
-                if (hooks[k].lobby_name && hooks[k].lobby_name(id, nmn, t2, sizeof t2)) { snprintf(rowt, sizeof rowt, "%s", t2); break; } }
-            { char cw[128]; size_t rl = strlen(rowt);                      /* conninfo: how this player is connected, under the name */
-              if (mpmenu_conn_words(id, cw, sizeof cw) && rl < sizeof rowt) snprintf(rowt + rl, sizeof rowt - rl, "\n<size=75%%><color=#A69085>%s</color></size>", cw); }
+                if (hooks[k].lobby_name && hooks[k].lobby_name(id, nmn, t2, sizeof t2)) {
+                    size_t ln = strlen(nmn);
+                    if (!strncmp(t2, nmn, ln)) { const char *r2 = t2 + ln; while (*r2 == ' ') r2++; snprintf(mode, sizeof mode, "%s", r2); }
+                    else snprintf(rowt, sizeof rowt, "%s", t2);
+                    break; } }
+            { char cw[128] = ""; size_t rl = strlen(rowt); mpmenu_conn_words(id, cw, sizeof cw);
+              if ((mode[0] || cw[0]) && rl < sizeof rowt)
+                  snprintf(rowt + rl, sizeof rowt - rl, "\n%s%s<size=75%%><color=#A69085>%s</color></size>", mode, mode[0] && cw[0] ? "  " : "", cw); }
             tmp_set(nm, rowt);
             { char d[48]; snprintf(d, sizeof d, "<color=%s>\xE2\x80\xA2</color>", ui_player_color(id)); tmp_set(dot, d); }   /* the player's colour */
             int ping = 0, behind = 0, state = DSNET_NET_IN_SYNC;
@@ -1897,10 +1932,12 @@ static void lw_texts(void) {
             if (id != me) lvl = state == DSNET_NET_ABSENT ? 0 : ui_conn_level(ping, behind, cs);
             tmp_set(st, tag == 1 ? TR("Host") : tag == 2 ? TR("You") : "");
             float right = 428 - 14 - (lvl >= 0 ? 18 + 12 : 0);              /* tag left of the bars */
-            place(st, LX(right - 20), y, 40, 20);
-            place(tb0, LX(right - 20), y, 42, 20); place(tb1, LX(right - 20), y, 40, 18);
+            place(st, LX(right - 24), y, 48, 20);                          /* 48: "ホスト" / "あなた" at 14 */
+            place(tb0, LX(right - 24), y, 50, 20); place(tb1, LX(right - 24), y, 48, 18);
+            float nr = (tag ? right - 49 : right) - 6;                     /* the name up to 6 before the tag / the bars */
+            place(nm, LX((68 + nr) / 2), y, nr - 68, 40);
         }
-        u_active(tb0, shown && tag == 1); u_active(tb1, shown && tag == 1);
+        u_active(tb0, shown && tag); u_active(tb1, shown && tag);         /* "Host" and "You" both boxed */
         for (int k = 0; k < 3; k++) {
             Obj bar = u_gc_get(h_lw_bar[i][k]);
             u_active(bar, shown && lvl >= 1);
@@ -1913,7 +1950,8 @@ static void lw_texts(void) {
     float rows_end = 182 + 44 * (n < LW_ROWS ? n : LW_ROWS);
     lw_header_lines(0, lwt(T_PLAYERS), 32, 396, LY(159), 0);
     if (!host && lwt(T_CONN)) place(lwt(T_CONN), LX(32 + 198), LY(rows_end + 20), 396, 24);
-    lw_header_lines(2, lwt(T_RULES), 452, 396, LY(159), host ? 42 : 0);
+    lw_header_lines(2, lwt(T_RULES), 452, 396, LY(159), host && !pvp ? 42 : 0);
+    u_active(u_gc_get(h_lwb[LW_GEAR]), host && !pvp);                     /* PvP: these co-op rules are not the match's (below) */
     if (host) {
         float hy = rows_end + 18 + 13;
         lw_header_lines(4, lwt(T_INV), 32, 396, LY(hy), 0);
@@ -1954,7 +1992,8 @@ static void lw_texts(void) {
           tmp_set(lwt(T_INV_NOTE), b); }
         /* the note as tall as its text needs (3 to 5 lines: it ran over the address box and the bottom bar in Russian, and
            on Windows with the Allow line); the window grows with it */
-        { float nh = addr_on ? txt_fit_h(lwt(T_INV_NOTE), 396, 52) : 52; if (addr_on) lw_addr_h = 40 + 10 + nh;
+        { float th = addr_on ? txt_text_h(lwt(T_INV_NOTE), 396) : 0, nh = th > 1 ? (float)(int)(th + 2.99f) : 52;   /* its design size: auto-sized it was unreadable at 960 x 540 */
+          if (addr_on) lw_addr_h = 40 + 10 + nh;
           place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + nh / 2), 396, nh); }
         if (cb) tmp_set(AT(cb, 0x28, Obj), frames < copied_until ? TR("Copied") : TR("Copy"));
         Obj ib2 = u_gc_get(h_lwb[LW_INVITE]);                               /* both ways in one app: Steam invite + the address */
@@ -1966,14 +2005,28 @@ static void lw_texts(void) {
     mpm_settings ss = M.set;
     if (c) { dsnet_rules r; dsnet_rules_get(c, &r); if (!host) { ss.pause_mode = r.pause_mode; ss.speedup = r.allow_speedup; ss.gear = r.gear_mode; ss.units = r.units_per_player; ss.events = r.event_choice; ss.population = r.population; ss.fog = r.shared_fog; }
              ss.admin = dsnet_admin_mode(c); ss.spectators = dsnet_spectators_allowed(c); ss.watching = __builtin_popcount(dsnet_spectator_mask(c)); }
-    for (int i = 0; i < MPM_RULE_ROWS; i++) { char v[64]; mpm_rule_value(&ss, i, v, sizeof v); tmp_set(lwt(T_R0L + i), mpm_rule_label(i)); tmp_set(lwt(T_R0V + i), v); }
-    tmp_set(lwt(T_RULES_NOTE), host ? TR("Only the host can change the rules.") : TR("Set by the host."));
+    /* PvP lobby (review 2026-10-21: the PvP page said "No pause", the lobby "Anyone can pause"): the match uses the host's
+       PvP rules (pvp_rules.c, sent at Start; pvp_game.c turns player pauses off for the match, Bring Units sets the units),
+       so only Spectators (dsnet, the same in a match) stays; the note says where the match rules are */
+    int nrow = 0;
+    for (int i = 0; i < MPM_RULE_ROWS; i++) {
+        int on = !pvp || i == MPM_RULE_ROWS - 1;
+        u_active(u_gc_get(h_lw_rrow[i]), on); u_active(lwt(T_R0L + i), on); u_active(lwt(T_R0V + i), on);
+        if (!on) continue;
+        char v[64]; mpm_rule_value(&ss, i, v, sizeof v); tmp_set(lwt(T_R0L + i), mpm_rule_label(i)); tmp_set(lwt(T_R0V + i), v);
+        float y = LY(188 + 40 * nrow + 20);
+        place(u_gc_get(h_lw_rrow[i]), LX(452 + 198), y, 396, 40); place(lwt(T_R0L + i), LX(452 + 14 + 100), y, 200, 30); place(lwt(T_R0V + i), LX(848 - 14 - 110), y, 220, 30);
+        Obj rb = u_gc_get(h_lw_rrow[i]); if (rb) img_set(rb, NULL, nrow % 2 ? C_ROW2 : C_ROW1);
+        nrow++;
+    }
+    tmp_set(lwt(T_RULES_NOTE), pvp ? TR("The match uses the host's PvP rules (PvP page).") : host ? TR("Only the host can change the rules.") : TR("Set by the host."));
+    place(lwt(T_RULES_NOTE), LX(452 + 198), LY(188 + 40 * nrow + 16), 396, 20);
     if (loading[0]) snprintf(b, sizeof b, TR("%s is still loading"), loading); else b[0] = 0;
     tmp_set(lwt(T_NOTE), b);
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
     /* height from the content: no empty band under the columns; the window stays centred */
-    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + lw_addr_h + lw_note_h : rows_end + 36, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
+    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + lw_addr_h + lw_note_h : rows_end + 36, right = 188 + 40 * nrow + 8 + 20;
     float H = (left > right ? left : right) + 24 + 76;
     place(u_gc_get(h_lw_frame), 0, LY(H / 2), 880, H);
     { float top = host ? 123 : 127, bot = H - 77; place(u_gc_get(h_lw_body), 0, LY((top + bot) / 2), 876, bot - top); }
@@ -4324,7 +4377,7 @@ static void escb_frame(const mpm_obs *o) {
         if (!b && eb(MPB_LEAVE)) {
             Obj src = AT(v, 0x70, Obj);
             b = u_alive(src) ? u_instantiate(src, u_tr_parent(u_tr(src))) : NULL;
-            if (u_alive(b)) { if (mm_is(b, K_SMB)) F(0xF2DB60, void (*)(Obj, Obj, void *))(b, NULL, NULL); AT(b, 0x30, Obj) = NULL;
+            if (u_alive(b)) { if (mm_is(b, K_SMB)) F(0xF2DB60, void (*)(Obj, Obj, void *))(b, NULL, NULL); AT(b, 0x30, Obj) = NULL; esc_label_fit(b);
                               u_set_sibling(u_tr(b), u_sibling(u_tr(eb(MPB_LEAVE)))); u_gc_free(escb[i].h); escb[i].h = u_gc_new(b); }
             else b = NULL;
         }
