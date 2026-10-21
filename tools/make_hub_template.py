@@ -6,8 +6,8 @@ the base with everything unlocked").
   python3 tools/make_hub_template.py <base save.json> <out hub_<build>.json> [--stock-template base_<build>.json]
 
 Never changes the input file. What it does:
-  - every unit goes (clan units, the Guild Merchant and any other NPC: the stock day-0 base template has none), with
-    the gear they hold (item slots, carried items, recursively), their positions, animation states, skill trees /
+  - every player unit goes (the clan's units; NPCs such as the Guild Merchant stay with their shop: owner 2026-10-21
+    "you could keep the guild merchant"), with the gear they hold (item slots, carried items, recursively), their positions, animation states, skill trees /
     quick slots / task priorities / ..., bed and grave owners, recreation slots, event targets, prayer / exp stamps;
   - leftovers of units that are no longer in the save (animation states, recreation performers: the stock load logs
     "RecreationContainer Deserialize Failed: Performer Not Found" for those) go too;
@@ -74,8 +74,8 @@ def main():
             ah = (comp(ec.get(g), 3) or {}).get('AffecterHolders') or []
             k = sorted(h['Key'] for h in ah if str(h.get('Key', '')).startswith(('AFFECTER_PlayerDifficulty', 'AFFECTER_PlayerManagementDifficulty')))
             if k and diff is None: diff = k
-    for side, uc in ucs.items():                               # every unit's own name (checked below: none may stay)
-        for g in uc.get('UnitSaveDataDictionary') or {}:
+    for side, uc in ucs.items():                               # every player unit's own name (checked below: none may stay)
+        for g in uc.get('PlayerGuidList') or []:
             pr = comp(ec.get(g), 10) or {}
             for f in ('UnitNameTextKey', 'DefaultUnitNameTextKey'):
                 v = pr.get(f)
@@ -86,7 +86,9 @@ def main():
     # 1. the units and their gear
     gone, unit_set = set(), set()
     for side, uc in ucs.items():
-        for g in list((uc.get('UnitSaveDataDictionary') or {}).keys()) + list(uc.get('PlayerGuidList') or []) + list(uc.get('AllyGuidList') or []):
+        reg = uc.get('UnitSaveDataDictionary') or {}
+        npc = {g for g, r in reg.items() if r.get('Key') != 'UNIT_PlayerUnit' and g not in (uc.get('PlayerGuidList') or []) and g not in (uc.get('AllyGuidList') or [])}
+        for g in [g for g in reg if g not in npc] + list(uc.get('PlayerGuidList') or []) + list(uc.get('AllyGuidList') or []):
             if g in gone: continue
             gone.add(g); unit_set.add(g)
             todo = item_guids(ec.get(g))
@@ -94,7 +96,8 @@ def main():
                 ig = todo.pop()
                 if ig in gone: continue
                 gone.add(ig); todo += item_guids(ec.get(ig))
-        uc['UnitSaveDataDictionary'] = {}; uc['PlayerGuidList'] = []; uc['AllyGuidList'] = []; uc['UnitSummonerDictionary'] = {}
+        uc['UnitSaveDataDictionary'] = {g: r for g, r in reg.items() if g in npc}   # NPCs stay (the Guild Merchant: owner 2026-10-21)
+        uc['PlayerGuidList'] = []; uc['AllyGuidList'] = []; uc['UnitSummonerDictionary'] = {}
     n_units = len(unit_set)
     for g in gone: ec.pop(g, None)
     for ic in ecd['ItemContainerSaveData'].values():
