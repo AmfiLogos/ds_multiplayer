@@ -1384,5 +1384,15 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "ваши игровые моды отличаются от модов хоста: запустите игру из лаунчера с модами хоста",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "версия ваших модов отличается от версии хоста: обоим игрокам нужна одна и та же версия Dungeon Settlers Modded",
  "your version is older": "ваша версия старее",
- "‹ Newer": "‹ Новые"
+ "‹ Newer": "‹ Новые",
+ "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s хочет использовать Свиток возвращения.\nВсе возвращаются в поселение.\n<size=88%%><color=#a69085>%s      осталось %d с (нет ответа = согласие)</color></size>",
+ "In a dungeon a friend can lend you one (Lend on his portrait).": "В подземелье друг может одолжить вам юнит (Одолжить на его портрете).",
+ "Left-click a free unit to take it.": "Щёлкните левой кнопкой по свободному юниту, чтобы взять его.",
+ "Paused while everyone votes": "Пауза, пока все голосуют",
+ "Pick your units.": "Выберите своих юнитов.",
+ "Refuse": "Отказаться",
+ "The Return scroll could not be used": "Не удалось использовать Свиток возвращения",
+ "Use a Return scroll?": "Использовать Свиток возвращения?",
+ "use a Return scroll": "использовать Свиток возвращения",
+ "using the Return scroll": "используем Свиток возвращения"
 }

@@ -1360,5 +1360,15 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "vos mods de jeu sont différents de ceux de l'hôte : lancez le jeu depuis le lanceur avec les mods de l'hôte",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "vos mods n'ont pas la même version que ceux de l'hôte : les deux joueurs ont besoin de la même version de Dungeon Settlers Modded",
  "your version is older": "votre version est plus ancienne",
- "‹ Newer": "‹ Plus récents"
+ "‹ Newer": "‹ Plus récents",
+ "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s veut utiliser un Parchemin de retour.\nTout le monde retourne à la colonie.\n<size=88%%><color=#a69085>%s      %d s restantes (sans réponse = accord)</color></size>",
+ "In a dungeon a friend can lend you one (Lend on his portrait).": "Dans un donjon, un ami peut vous en prêter une (Prêter sur son portrait).",
+ "Left-click a free unit to take it.": "Clic gauche sur une unité libre pour la prendre.",
+ "Paused while everyone votes": "En pause pendant le vote",
+ "Pick your units.": "Choisissez vos unités.",
+ "Refuse": "Refuser",
+ "The Return scroll could not be used": "Le Parchemin de retour n'a pas pu être utilisé",
+ "Use a Return scroll?": "Utiliser un Parchemin de retour ?",
+ "use a Return scroll": "utiliser un Parchemin de retour",
+ "using the Return scroll": "utilisation du Parchemin de retour"
 }

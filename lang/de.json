@@ -1360,5 +1360,15 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "deine Gameplay-Mods unterscheiden sich von denen des Hosts: Starte das Spiel über den Launcher mit den Mods des Hosts",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "deine Mods haben eine andere Version als die des Hosts: Beide Spieler brauchen dieselbe Version von Dungeon Settlers Modded",
  "your version is older": "deine Version ist älter",
- "‹ Newer": "‹ Neuer"
+ "‹ Newer": "‹ Neuer",
+ "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s will eine Rückkehr Schriftrolle benutzen.\nAlle kehren zur Siedlung zurück.\n<size=88%%><color=#a69085>%s      noch %d s (keine Antwort = Zustimmung)</color></size>",
+ "In a dungeon a friend can lend you one (Lend on his portrait).": "In einem Dungeon kann dir ein Freund eine leihen (Leihen auf seinem Porträt).",
+ "Left-click a free unit to take it.": "Linksklick auf eine freie Einheit, um sie zu nehmen.",
+ "Paused while everyone votes": "Pausiert, während alle abstimmen",
+ "Pick your units.": "Wähle deine Einheiten.",
+ "Refuse": "Ablehnen",
+ "The Return scroll could not be used": "Die Rückkehr Schriftrolle konnte nicht benutzt werden",
+ "Use a Return scroll?": "Eine Rückkehr Schriftrolle benutzen?",
+ "use a Return scroll": "eine Rückkehr Schriftrolle benutzen",
+ "using the Return scroll": "Rückkehr Schriftrolle wird benutzt"
 }

@@ -1360,5 +1360,15 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "seus mods de jogabilidade são diferentes dos do anfitrião: inicie o jogo pelo launcher com os mods do anfitrião",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "seus mods são uma versão diferente da do anfitrião: os dois jogadores precisam da mesma versão do Dungeon Settlers Modded",
  "your version is older": "sua versão é mais antiga",
- "‹ Newer": "‹ Mais novos"
+ "‹ Newer": "‹ Mais novos",
+ "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s quer usar um Pergaminho de retorno.\nTodos voltam ao assentamento.\n<size=88%%><color=#a69085>%s      restam %d s (sem resposta = concordar)</color></size>",
+ "In a dungeon a friend can lend you one (Lend on his portrait).": "Em uma masmorra, um amigo pode te emprestar uma (Emprestar no retrato dele).",
+ "Left-click a free unit to take it.": "Clique com o botão esquerdo em uma unidade livre para pegá-la.",
+ "Paused while everyone votes": "Pausado enquanto todos votam",
+ "Pick your units.": "Escolha suas unidades.",
+ "Refuse": "Recusar",
+ "The Return scroll could not be used": "Não foi possível usar o Pergaminho de retorno",
+ "Use a Return scroll?": "Usar um Pergaminho de retorno?",
+ "use a Return scroll": "usar um Pergaminho de retorno",
+ "using the Return scroll": "usando o Pergaminho de retorno"
 }

@@ -1336,5 +1336,15 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "게임플레이 모드가 호스트와 다릅니다: 런처에서 호스트의 모드로 게임을 시작하십시오",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "모드 버전이 호스트와 다릅니다: 두 플레이어 모두 같은 Dungeon Settlers Modded 버전이 필요합니다",
  "your version is older": "내 버전이 더 오래됨",
- "‹ Newer": "‹ 더 최근"
+ "‹ Newer": "‹ 더 최근",
+ "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s 님이 귀환 스크롤을 사용하려고 합니다.\n모두 정착지로 돌아갑니다.\n<size=88%%><color=#a69085>%s      %d초 남음 (응답 없음 = 동의)</color></size>",
+ "In a dungeon a friend can lend you one (Lend on his portrait).": "던전에서는 친구가 유닛을 빌려줄 수 있습니다 (친구 초상화의 빌려주기).",
+ "Left-click a free unit to take it.": "빈 유닛을 왼쪽 클릭하여 가져오세요.",
+ "Paused while everyone votes": "모두 투표하는 동안 일시정지",
+ "Pick your units.": "유닛을 고르세요.",
+ "Refuse": "거절",
+ "The Return scroll could not be used": "귀환 스크롤을 사용할 수 없습니다",
+ "Use a Return scroll?": "귀환 스크롤을 사용할까요?",
+ "use a Return scroll": "귀환 스크롤 사용",
+ "using the Return scroll": "귀환 스크롤 사용 중"
 }

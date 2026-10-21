@@ -1336,5 +1336,15 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "你的遊戲玩法模組與房主不同：請從啟動器以房主的模組啟動遊戲",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "你的模組版本與房主不同：兩位玩家都需要相同的 Dungeon Settlers Modded 版本",
  "your version is older": "你的版本較舊",
- "‹ Newer": "‹ 較新"
+ "‹ Newer": "‹ 較新",
+ "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s 想要使用返回卷軸。\n所有人都會返回定居點。\n<size=88%%><color=#a69085>%s      剩餘 %d 秒（無回覆 = 同意）</color></size>",
+ "In a dungeon a friend can lend you one (Lend on his portrait).": "在地城中，好友可以借給你一個單位（點他頭像上的借出）。",
+ "Left-click a free unit to take it.": "左鍵點擊一個空閒單位即可接手。",
+ "Paused while everyone votes": "所有人投票期間已暫停",
+ "Pick your units.": "選擇你的單位。",
+ "Refuse": "拒絕",
+ "The Return scroll could not be used": "無法使用返回卷軸",
+ "Use a Return scroll?": "使用返回卷軸？",
+ "use a Return scroll": "使用返回卷軸",
+ "using the Return scroll": "正在使用返回卷軸"
 }

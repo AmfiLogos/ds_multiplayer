@@ -1336,5 +1336,15 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "あなたのゲームプレイMODはホストと異なります：ホストのMODを使ってランチャーからゲームを起動してください",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "あなたのMODはホストと異なるバージョンです：両プレイヤーが同じDungeon Settlers Moddedのバージョンを使う必要があります",
  "your version is older": "あなたのバージョンが古い",
- "‹ Newer": "‹ 新しい順"
+ "‹ Newer": "‹ 新しい順",
+ "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s が帰還の巻物を使おうとしています。\n全員が入植地に戻ります。\n<size=88%%><color=#a69085>%s      残り %d 秒（応答なし = 同意）</color></size>",
+ "In a dungeon a friend can lend you one (Lend on his portrait).": "ダンジョンでは、フレンドが1体貸してくれます（フレンドの肖像の「貸す」）。",
+ "Left-click a free unit to take it.": "空いているユニットを左クリックして受け取ります。",
+ "Paused while everyone votes": "全員の投票中は一時停止",
+ "Pick your units.": "ユニットを選んでください。",
+ "Refuse": "拒否",
+ "The Return scroll could not be used": "帰還の巻物を使えませんでした",
+ "Use a Return scroll?": "帰還の巻物を使いますか？",
+ "use a Return scroll": "帰還の巻物を使う",
+ "using the Return scroll": "帰還の巻物を使用中"
 }
