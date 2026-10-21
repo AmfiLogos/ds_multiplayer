@@ -601,6 +601,7 @@ static void *m_fit_pw, *m_fit_ph, *m_fit_rect, *m_fit_live, *m_fit_pv;
 static float fit_min(float size) {                                           /* the game's 0.75 */
     float m = size * 0.75f; m = (float)(int)(m + 0.5f); m = m < 8 ? (size < 8 ? size : 8) : m;
     if (lang_cjk() && m < 14) m = size < 14 ? size : 14;
+    else if (m < 12) m = size < 12 ? size : 12;                                /* Latin / Cyrillic: never below 12 (~5 px at 960 x 540) */
     return m;
 }
 static int fit_methods(void) {
@@ -1046,7 +1047,7 @@ Obj mk_button(Obj src, Obj parent, int esc, int sprite, Col tint, float x, float
     if (bg) { stretch(bg); if (mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL); }
     Obj l = AT(b, esc ? 0x28 : 0x130, Obj);
     if (u_alive(l)) { txt_body(l); txt_style(l, 0, fs, 514, 0); txt_color(l, tc); stretch(l); tmp_set(l, label);
-                      if (w >= 40 && mm_is(u_tr(l), K_RT)) F(0x5107110, void (*)(Obj, V2, void *))(u_tr(l), (V2){ -16, 0 }, NULL); }   /* 8 free each side: a long label fits inside the frame, never edge to edge */
+                      if (w >= 40 && mm_is(u_tr(l), K_RT)) F(0x5107110, void (*)(Obj, V2, void *))(u_tr(l), (V2){ w >= 120 ? -24 : -16, 0 }, NULL); }   /* 12 (small: 8) free each side: a long label fits inside the frame, never edge to edge */
     place(b, x, y, w, h);
     return b;
 }
@@ -1084,13 +1085,13 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
         float yc = PY(RTOP(i) + rh / 2), x0 = RX(i);
         Obj rb = mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, PX(x0 + 197), yc, 394, rh);
         u_gc_free(p->row[i]); p->row[i] = rb ? u_gc_new(rb) : 0;
-        /* label 12..124, arrows at 142 and 378, value 160..356 between them: 28 high, so the fit keeps each on one line
-           (shrinks to 0.75) instead of wrapping (ru "Любой может ставить на паузу", "Режим администратора") */
-        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(x0 + 68), yc, 112, 28, C_SUB); tmp_set(lb, mpm_rule_label(i));
-        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(x0 + 258), yc, 196, 28, C_MAIN);
+        /* label 12..140 (the longest word, ru "администратора", fits: no break inside a word), arrows at 158 and 378, value
+           176..356 between them (8 from each); both 40 high: a long label or value takes 2 lines at its size, not 1 shrunk */
+        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(x0 + 76), yc, 128, 40, C_SUB); tmp_set(lb, mpm_rule_label(i));
+        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(x0 + 266), yc, 180, 40, C_MAIN);
         u_gc_free(p->val[i]); p->val[i] = v ? u_gc_new(v) : 0;
         for (int a = 0; a < 2; a++) {
-            Obj b = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(x0 + (a ? 378 : 142)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
+            Obj b = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(x0 + (a ? 378 : 158)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
             int id = arrow_ids[2 * i + a];
             if (reg) { u_gc_free(reg[id]); reg[id] = b ? u_gc_new(b) : 0; }
         }
@@ -1157,13 +1158,13 @@ static void fe_build(fepanel *p, Obj parent, Obj src, Obj tpl_img, Obj tpl_txt, 
         float top = 62 + step * i, yc = PY(top + rh / 2);
         Obj rb = mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, PX(18 + 197), yc, 394, rh);
         u_gc_free(p->row[i]); p->row[i] = rb ? u_gc_new(rb) : 0;
-        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(18 + 68), yc, 112, 28, C_SUB); tmp_set(lb, mpm_fe_label(i));   /* as the Rules rows */
-        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(18 + 258), yc, 196, 28, i == 4 ? C_SUB : C_MAIN);
+        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(18 + 76), yc, 128, 40, C_SUB); tmp_set(lb, mpm_fe_label(i));   /* as the Rules rows */
+        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(18 + 266), yc, 180, 40, i == 4 ? C_SUB : C_MAIN);
         u_gc_free(p->val[i]); p->val[i] = v ? u_gc_new(v) : 0;
         Obj ds = mk_txt(tpl_txt, R, 0, 12, 513, 0, PX(18 + 197), PY(top + rh + 11), 390, 20, C_SUB);
         u_gc_free(p->desc[i]); p->desc[i] = ds ? u_gc_new(ds) : 0;
         for (int a = 0; a < 2 && fe_arrows[i][0]; a++) {
-            Obj b = mk_button(src, R, 0, S_NBTN, C_WHITE, PX(18 + (a ? 378 : 142)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
+            Obj b = mk_button(src, R, 0, S_NBTN, C_WHITE, PX(18 + (a ? 378 : 158)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
             int id = fe_arrows[i][a]; u_gc_free(h_tb[id]); h_tb[id] = b ? u_gc_new(b) : 0;
         }
     }
@@ -1281,13 +1282,15 @@ static void title_build(Obj v) {
             u_gc_free(h_title_sum); h_title_sum = sm ? u_gc_new(sm) : 0;
         }
         /* the label 12 inside each side of the frame: a long label (de "Aus einem Spielstand hosten") fits inside it */
-        if (id != MPB_SETTINGS && mm_is(u_tr(l), K_RT)) { V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(l), NULL); sd.x -= 24; F(0x5107110, void (*)(Obj, V2, void *))(u_tr(l), sd, NULL); }
+        /* as TMP margins: a smaller rect did not hold (round 2 shots: the label still 262 wide) */
+        if (id != MPB_SETTINGS && mm_is(l, K_TMP)) { typedef struct { float x, y, z, w; } mg4; static void *mmg; if (!mmg) mmg = mth("TMPro", "TMP_Text", "set_margin", 1);
+                                                   if (mmg) MCALL(mmg, void, Obj, mg4, const void *)(l, (mg4){ 12, 0, 12, 0 }, mmg); }
         trow_note(id, b);
         { int k = mpm_choice_of_btn(id);                                    /* host choice: its small second line (hidden until it has one) */
           if (k >= 0) {
               Obj lr = u_tr(l);
               cnote_ap0[k] = mm_is(lr, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(lr, NULL) : (V2){ 0, 0 };   /* anchoredPosition */
-              cnote_x[k] = trow_lw[id] > 40 ? trow_lw[id] : 238;                 /* the label's width (12 in from each side of the row's 262) */
+              cnote_x[k] = (trow_lw[id] > 64 ? trow_lw[id] : 262) - 24;        /* the label's width inside its margins */
               /* the game's small text: the language's body font (LanguageSetting.GetFont EasyRead, plain material), 12, the
                  secondary colour; one line, auto size down to 0.75 when too long (txt_style) */
               Obj nt = mk_txt(tpl_txt, u_tr(b), 0, 12, 514, 0, 0, -14, cnote_x[k], CN_H, C_SUB);
@@ -1475,15 +1478,36 @@ static void title_sync(const mpm_obs *o) {
         }
         for (int i = 0; i < 6; i++) if (M.hist_page * 6 + i >= nhist) u_active(tb(MPB_HISTW0 + i), false);
         u_active(tb(MPB_HIST_PREV), M.hist_page > 0); u_active(tb(MPB_HIST_NEXT), (M.hist_page + 1) * 6 < nhist);
-        /* the panel's height follows the rows shown */
-        float H = 56 + 12 + (shown ? shown : 1) * 72 + 40;
+        /* the panel's height follows the rows shown; a row grows by what its players line needs beyond one line, the footer
+           by what its note needs (ja at its 14 floor: both wrapped onto the borders) */
+        float rh[6], h2[6], rows = 0;
+        for (int i = 0; i < 6; i++) {
+            Obj l2 = u_gc_get(h_rw_l2[i]); h2[i] = i < shown && l2 ? txt_fit_h(l2, 380, 22) : 22; if (h2[i] < 22) h2[i] = 22;
+            rh[i] = 66 + h2[i] - 22; if (i < shown) rows += rh[i] + 6;
+        }
+        if (!shown) rows = 72;
+        Obj rnt = u_gc_get(h_rw_note); float nh = rnt ? txt_fit_h(rnt, 500, 20) : 20; if (nh < 20) nh = 20;
+        float fh = 40 + nh - 20, H = 56 + 12 + rows + fh;
         place(rw, 103, 397 - H / 2, 760, H);
         place(u_gc_get(h_rw_band), 0, H / 2 - 28, 756, 54); place(u_gc_get(h_rw_line), 0, H / 2 - 56, 756, 1);
         Obj tt = u_gc_get(h_rw_title); if (tt) { place(tt, 0, H / 2 - 28, 700, 44); tmp_set(tt, TR("Recent Worlds")); }
-        for (int i = 0; i < 6; i++) { Obj b = tb(MPB_HIST0 + i); if (b) place(b, 0, H / 2 - (68 + 72 * i + 33), 736, 66); }
-        place(u_gc_get(h_rw_note), -380 + 16 + 250, -H / 2 + 20, 500, 20);
-        if (tb(MPB_HIST_PREV)) place(tb(MPB_HIST_PREV), 380 - 16 - 160, -H / 2 + 20, 100, 26);
-        if (tb(MPB_HIST_NEXT)) place(tb(MPB_HIST_NEXT), 380 - 16 - 52, -H / 2 + 20, 100, 26);
+        { float y = 68;
+          for (int i = 0; i < 6; i++) {                                     /* row parts from the row's top (as built for 66) */
+              Obj b = tb(MPB_HIST0 + i); if (!b) continue;
+              float T = rh[i] / 2;
+              place(b, 0, H / 2 - (y + T), 736, rh[i]); y += rh[i] + 6;
+              place(u_gc_get(h_rw_l1[i]), -368 + 14 + 230, T - 21, 460, 28);
+              place(u_gc_get(h_rw_l2[i]), -368 + 14 + 190, T - 36 - h2[i] / 2, 380, h2[i]);
+              place(u_gc_get(h_rw_ul[i]), 368 - 80 - 110, T - 23, 220, 20);   /* 2 lower than built: off the frame's top (ja) */
+              place(u_gc_get(h_rw_u[i]), 368 - 80 - 110, T - 45, 220, 22);
+              for (int k = 0; k < 6; k++) { float px = 368 - 90 - 15 - 96 * (5 - k) - 66;
+                  place(u_gc_get(h_rw_pf[i][k]), px, T - 45, 30, 30); place(u_gc_get(h_rw_pn[i][k]), px + 15 + 4 + 31, T - 45, 62, 20); }
+              if (tb(MPB_HISTX0 + i)) place(tb(MPB_HISTX0 + i), 368 - 22, T - 18, 26, 26);
+              if (tb(MPB_HISTW0 + i)) place(tb(MPB_HISTW0 + i), 368 - 10 - 40, T - 49, 80, 26);
+          } }
+        place(rnt, -380 + 16 + 250, -H / 2 + fh / 2, 500, nh);
+        if (tb(MPB_HIST_PREV)) place(tb(MPB_HIST_PREV), 380 - 16 - 160, -H / 2 + fh / 2, 100, 26);
+        if (tb(MPB_HIST_NEXT)) place(tb(MPB_HIST_NEXT), 380 - 16 - 52, -H / 2 + fh / 2, 100, 26);
     }
     int join = M.state == MPM_TITLE_JOIN, hostp = M.state == MPM_TITLE_HOST;
     if ((join || hostp) && tb(MPB_MULTIPLAYER)) fields_find(u_tr_parent(u_tr(tb(MPB_MULTIPLAYER))));
@@ -1933,7 +1957,7 @@ static void lw_texts(void) {
             tmp_set(st, tag == 1 ? TR("Host") : tag == 2 ? TR("You") : "");
             float right = 428 - 14 - (lvl >= 0 ? 18 + 12 : 0);              /* tag left of the bars */
             place(st, LX(right - 24), y, 48, 20);                          /* 48: "ホスト" / "あなた" at 14 */
-            place(tb0, LX(right - 24), y, 50, 20); place(tb1, LX(right - 24), y, 48, 18);
+            place(tb0, LX(right - 24), y, 50, 20); place(tb1, LX(right - 24), y, 46, 16);   /* a 2-unit edge: 1 was lost at 960 x 540 */
             float nr = (tag ? right - 49 : right) - 6;                     /* the name up to 6 before the tag / the bars */
             place(nm, LX((68 + nr) / 2), y, nr - 68, 40);
         }

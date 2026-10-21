@@ -102,9 +102,9 @@ static uintptr_t h_pr_root, h_pr_title, h_pr_score, h_pr_rounds;          /* res
 static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab;                        /* boss bar copy */
 static uintptr_t h_lab_yes, h_lab_no, h_lab_bring, h_hud_flab, h_prop_root, h_prop_txt, h_rs_root, h_rs_title, h_rs_score, h_rs_sub;    /* E4 fight button + proposal box, E9 round screen */
 static double rs_t0; static uint32_t rs_key; static char hud_last[400];
-#define HUD_INSET 40.0f                                                  /* the bars start this far right of the copy's own bar start */
+#define HUD_INSET 72.0f                                                  /* the bars start this far right of the copy's own bar start (its end-cap stays there) */
 #define PROP_W 520.0f                                                    /* the fight vote box */
-static float hud_k = 1, prop_x, prop_y;                                                        /* E9: when this round screen showed (local clock) */
+static float hud_k = 1, prop_x, prop_y, bl_x, bl_w, bl_y; static Obj bl_par;                                                        /* E9: when this round screen showed (local clock) */
 int  mu_bring_is_open(void);                                         /* mu_bring.c */
 int  pvp_ui_vote(int op) __attribute__((weak_import));
 int  pvp_ui_my_slot(void) __attribute__((weak_import));
@@ -627,6 +627,7 @@ static void hud_build(void) {
     if (u_alive(name)) txt_style(name, 1, 22, 514, 0);                    /* one line, Cinzel */
     /* owner 2026-10-14: each bar in its team colour (the boss sprites are red / orange, a tint cannot make them blue): a
        plain rect in the team colour, pivot moved to its left edge (same place), filled by scaling x from that edge */
+    bl_par = NULL;
     for (int k = 0; k < 2; k++) {
         Obj bar = k ? body : head, rt = u_alive(bar) ? u_tr(bar) : NULL; if (!mm_is(rt, K_RT)) continue;
         typedef struct { float x, y, w, h; } RectF;
@@ -637,15 +638,15 @@ static void hud_build(void) {
            left of it stay inside the panel (they stuck out past its left edge) */
         ap.x -= r.w * pv.x; ap.x += HUD_INSET; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, ap, NULL);
         if (r.w > HUD_INSET * 2) hud_k = (r.w - HUD_INSET) / r.w;
+        if (k) { bl_x = ap.x - HUD_INSET; bl_w = r.w; bl_y = ap.y; bl_par = u_tr_parent(rt); }   /* the bottom line below */
         img_set(bar, NULL, k ? (Col){ 0.86f, 0.30f, 0.30f, 1 } : (Col){ 0.33f, 0.52f, 0.95f, 1 });
     }
     /* under the unit portraits; 140 to the right: the Players panel (ui_game.c, top left, right edge 222 left of the centre)
        covered the bar's left end and its Blue / Red labels */
-    { Obj rt = tr; if (mm_is(rt, K_RT)) { V2 p = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); p.y -= 215; p.x += 140; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, p, NULL);
-      /* the panel's sprite fades out at the bottom: a copper line closes it */
-      typedef struct { float x, y, w, h; } RectP; RectP rp = F(0x5106978, RectP (*)(Obj, void *))(rt, NULL);
-      if (rp.w > 200 && rp.h > 40 && u_alive(head)) mk_img(head, rt, -1, C_COPPER, 0, -rp.h / 2 + 1, rp.w - 8, 2);
-      rig_log("pvp ui: boss bar copy panel %.0fx%.0f", rp.w, rp.h); } }
+    { Obj rt = tr; if (mm_is(rt, K_RT)) { V2 p = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); p.y -= 215; p.x += 140; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, p, NULL); } }
+    /* the panel's sprite fades out at the bottom: a copper line closes it (the copy's root is a 100 x 100 holder, so it is
+       placed from the bars: the dark panel reaches ~27 past each bar end and ~38 under the lower bar, measured on shots) */
+    if (bl_par && bl_w > 100 && u_alive(head)) mk_img(head, bl_par, -1, C_COPPER, bl_x + bl_w / 2, bl_y - 38, bl_w + 54, 2);
     Obj tpl_t = u_alive(name) ? name : NULL;
     for (int k = 0; k < 2 && tpl_t; k++) {                               /* "Blue" left of the top bar, "Red" left of the bottom one */
         Obj bar = k ? body : head; if (!u_alive(bar)) continue;
@@ -654,7 +655,7 @@ static void hud_build(void) {
         das_key_clear(l); txt_style(l, 1, 16, 516, 0); txt_color(l, k ? C_RED : C_BLUE); cmt_set(l, k ? TRC("team", "Red") : TRC("team", "Blue"));
         u_gc_free(h_hud_lab[k]); h_hud_lab[k] = u_gc_new(l);
         Obj brt = u_tr(bar); V2 bp = mm_is(brt, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(brt, NULL) : (V2){ 0, 0 };
-        place(l, bp.x - 38, bp.y, 64, 24);                                /* bp.x = the bar's left edge (pivot moved above) */
+        place(l, bp.x - HUD_INSET / 2, bp.y, HUD_INSET - 12, 24);       /* between the copy's end-cap and the bar (bp.x = the bar's left edge) */
     }
     /* Ready button (planning pause): built from the bar's own parts (the Esc menu may never have been opened here): the
        Recruit button sprite + a Cinzel label; the click is read with Input.GetMouseButtonDown in hud_frame */
@@ -1059,9 +1060,9 @@ static unsigned v1_gen;                                                  /* lang
 #define V1_PTOP (V1_TOP + V1_STEP * V1R_N + 2 * V1_GAP)
 #define V1_H (V1_PTOP + 36 + 46 + 66)                                       /* rows, preset row, buttons row, note (3 lines) */
 /* row columns (from the panel's left edge): label | < | value | >, 6 apart (RU labels / values touched the arrows) */
-#define V1_LAB_X (18 + 8 + 90)
-#define V1_LAB_W 180
-#define V1_ARL_X (18 + 204)
+#define V1_LAB_X (18 + 8 + 105)
+#define V1_LAB_W 210                                                     /* RU "Полоски здоровья врагов": 172 at 14 */
+#define V1_ARL_X (18 + 234)
 #define V1_ARR_X (V1_W - 18 - 16)
 #define V1_VAL_X ((V1_ARL_X + 13 + 6 + V1_ARR_X - 13 - 6) / 2)
 #define V1_VAL_W (V1_ARR_X - V1_ARL_X - 26 - 12)

@@ -335,6 +335,11 @@ static void draw_cards(void) {
         B.row[B.ncard] = U->button(B.right, 52, y, B.rw - 60, MU_CARD_CH, "", on_card, (void *)(intptr_t)B.ncard);
         /* the kit's toggle puts its box 24 from its right end: 48 wide = the box in the middle of its frame (36 wide: left) */
         B.tick[B.ncard] = U->toggle(B.right, 2, y + (MU_CARD_CH - 36) / 2, 48, "", item_pick(k) >= 0, on_tick, (void *)(intptr_t)B.ncard);
+        /* the game's check box sprite draws its square 1 px up and left of its middle: its 20 x 20 box one step right / down */
+        for (int q = 0, nq = B.tick[B.ncard] ? cm_child_count(B.tick[B.ncard]) : 0; q < nq; q++) {
+            Obj ch = cm_child(B.tick[B.ncard], q); float cw = 0, chh = 0;
+            if (!cm_rect_size(ch, &cw, &chh) && cw == 20 && chh == 20) { U->place(ch, 48 - 24 - 10 + 1, (36 - 20) / 2 + 1, 20, 20); break; }
+        }
         if (lib) {                                                    /* E3: the card from the unit's builder JSON */
             const ul_bring_api *a = ul_api(); char *js = a ? a->build_json(B.lu[k].guid) : NULL;
             jv *bj = js ? jparse(js, strlen(js), e, sizeof e) : NULL; if (a && js) a->free_str(js);
