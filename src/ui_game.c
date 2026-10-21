@@ -2942,13 +2942,13 @@ static void plist_frame(void) {
         /* round 2 (review_de #4, #28, #29): labels wrap at 14 (txt_text_h) with room between rows; the value box sits 4
            units from each arrow ("Deaktiviert" touched the right one) */
         float lw = 148, ra = L + PL_W - PL_PAD - 20, vx = ra - 4 - 80, la = vx - 4 - 20;
-        float th = txt_text_h(tl, lw), rh = th > 24 ? th + 10 : PL_SET_H, hv = txt_fit_h(tv, 80, PL_SET_H);   /* one line: about 20 */
+        float th = txt_text_h(tl, lw), rh = th > 24 ? th + 10 : PL_SET_H, hv = txt_fit_h(tv, 72, PL_SET_H);   /* one line: about 20 */
         if (hv > PL_SET_H) hv += 6;
         if (hv > rh) rh = hv;
         if (rh < PL_SET_H) rh = PL_SET_H;
         place(tl, x, ry, lw, rh);
         place(u_gc_get(h_set_arrow[2 * k]), la, ry - (rh - 20) / 2, 20, 20);
-        place(tv, vx, ry, 80, rh);
+        place(tv, vx + 4, ry, 72, rh);                         /* 4 units of padding inside: a long value (RU "Остальные") shrinks to fit */
         place(u_gc_get(h_set_arrow[2 * k + 1]), ra, ry - (rh - 20) / 2, 20, 20);
         ry -= rh;
     }
