@@ -10,6 +10,13 @@ H_UNITS = ['477ad25a-7c22-43f5-be28-db055895297e', '137a4264-054d-4b21-81f2-a69d
 G_UNITS = ['92be08ca-b7de-497a-a4ea-9aac4be0b603', 'acd20405-56c9-4360-80f6-b4c84e1a9ba4']   # Leo, Leonis
 
 
+
+def owner_plays():
+    """owner play rule: his game BINARY runs (launcher copy or the app); shells / test copies never count"""
+    import re as _re
+    out = subprocess.run(['pgrep', '-fl', 'DSModLauncher/games/[^ ]*/MacOS/Dungeon Settlers|Dungeon Settlers Modded.app/Contents/MacOS/'], capture_output=True, text=True).stdout
+    return any(l and not _re.search(r'/instances/|/private/tmp/|/tmp/|ToDelete|/ds_rel0[0-9]+/|/test_env/|pgrep|zsh -c|bash -c', l) for l in out.splitlines())
+
 class T:
     def __init__(self, name, argv):
         self.A = argv
@@ -52,9 +59,7 @@ class T:
     def wait_owner(log):
         """owner play rule: no test copies while his modded game runs (launcher copy or the app)"""
         while True:
-            a = subprocess.run(['pgrep', '-f', 'DSModLauncher/games/'], capture_output=True).returncode == 0
-            b = subprocess.run(['pgrep', '-f', 'Dungeon Settlers Modded.app'], capture_output=True).returncode == 0
-            if not a and not b: return
+            if not owner_plays(): return
             log('owner is playing: waiting 60 s'); time.sleep(60)
 
     def run(self, body):

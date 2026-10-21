@@ -124,7 +124,8 @@ def run(port):
 
 def main():
     import subprocess
-    while subprocess.run(['pgrep', '-f', 'DSModLauncher/games/'], capture_output=True).returncode == 0 or subprocess.run(['pgrep', '-f', 'Dungeon Settlers Modded.app'], capture_output=True).returncode == 0:
+    from pv_lib import owner_plays
+    while owner_plays():
         log('owner is playing: waiting 60 s'); time.sleep(60)                 # owner play rule
     T0 = time.time(); pair = realrig.lease('e3cards', os.getpid())
     while not pair and time.time() - T0 < 1800:
