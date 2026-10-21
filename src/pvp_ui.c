@@ -47,16 +47,45 @@ int pvp_v1_page_start(char *err, size_t errn);
 int pvp_v1_lobby_start(char *err, size_t errn);
 static void v1_action(int a);
 static void v1_step(int i, int d);
-#define V1R_N 5
+static void v1_preset_step(int d); static int v1_preset_typed(const char *name); static int v1_preset_delete(void); static void v1_naming_set(int on);
+static void v1_status(Buf *b);
+#define V1R_OLD 5                                                        /* mode, to win, round time, pause, Vanilla check */
+#define V1R_N (V1R_OLD + 8)                                               /* + map, floor, 6 visibility rules (pvp_rules.c) */
 /* host's choices (local until Start) */
 static const int pv_bo[3] = { 1, 3, 5 };
 static const int pv_secs[5] = { 60, 120, 180, 300, 480 };
 static struct { int mode, bo, secs, pause, vanilla, team[PVP_MAX_PLAYERS], team_set[PVP_MAX_PLAYERS]; } pv = { PVP_MODE_FIGHT, 1, 2, 0, -1, { 0 }, { 0 } };
-static char pv_err[700], pv_note_txt[700];                            /* Start Match refused: why (until the next change) */
-/* tested arena (rig run arena2: same map on every peer, 14 rooms, Blue arrival vs exit portal 28 cells apart) */
+/* lane pvprules (owner 2026-10-20): every rule lives in pvp_rules.c by id (saved in the mod's data folder at each change,
+   presets, the host's rules sent to every player at Start); pv mirrors the five old rules. */
+#include "pvp_rules.h"
+int pvpr_ui_rows(void); const char *pvpr_ui_id(int r); const char *pvpr_ui_label(int r); const char *pvpr_ui_tip(int r);
+void pvpr_ui_value(int r, const pvpr_vals *v, int here, char *out, size_t cap); int pvpr_ui_steppable(int r, const pvpr_vals *v);
+void pvpr_ui_step(int r, pvpr_vals *v, int d);
+static int pv_loaded;
+static void pv_from_store(void) {
+    const pvpr_vals *v = pvp_rules_local();
+    pv.mode = pvpr_vals_get(v, "mode") ? PVP_MODE_CTF : PVP_MODE_FIGHT; pv.bo = pvpr_vals_get(v, "win"); pv.secs = pvpr_vals_get(v, "round_time");
+    pv.pause = pvpr_vals_get(v, "pause"); pv.vanilla = pvpr_vals_get(v, "vanilla");
+}
+static void pv_to_store(void) {
+    pvpr_vals *v = pvp_rules_local();
+    pvpr_vals_set(v, "mode", pv.mode == PVP_MODE_CTF); pvpr_vals_set(v, "win", pv.bo); pvpr_vals_set(v, "round_time", pv.secs);
+    pvpr_vals_set(v, "pause", pv.pause != 0); pvpr_vals_set(v, "vanilla", pv.vanilla < 0 ? -1 : pv.vanilla != 0);
+    pvp_rules_changed();
+}
+static void pv_sync_once(void) { if (!pv_loaded && pvp_rules_path()[0]) { pv_from_store(); pv_loaded = 1; } }   /* the file's last used rules */
+/* the map for Start: the host's choice + a fresh seed (one draw on the host; every player gets the result in the orders) */
 #define PV_REGION 1
 #define PV_FLOOR 2
 #define PV_SEED 424242
+static void pv_pick_map(int here_world, pvp_map_pick *m) {
+    const pvpr_vals *v = pvp_rules_local();
+    uint32_t seed = (uint32_t)time(NULL) * 2654435761u ^ (uint32_t)clock() * 40503u ^ (uint32_t)(uintptr_t)m;
+    if (pvp_map_resolve(pvpr_vals_get(v, "map"), pvpr_vals_get(v, "floor"), seed, m)) pvp_map_resolve(PVP_MAP_HERE, 0, 0, m);
+    if (m->here && !here_world) { m->here = 0; m->region = PV_REGION; m->floor = PV_FLOOR; m->seed = PV_SEED; }   /* not a settlement world: the tested arena */
+}
+static char pv_err[700], pv_note_txt[700];                            /* Start Match refused: why (until the next change) */
+/* tested arena (rig run arena2: same map on every peer, 14 rooms, Blue arrival vs exit portal 28 cells apart): PV_REGION etc. above */
 enum { PVR_MODE, PVR_WIN, PVR_TIME, PVR_PAUSE, PVR_ARENA, PVR_VANILLA, PVR_N };
 enum { PVB_ESC, PVB_CLOSE, PVB_START, PVB_READY, PVB_FIGHT, PVB_PROP_YES, PVB_PROP_NO, PVB_HUD_BRING, PVB_RESULT_OK, PVB_BRING, PVB_BR_BACK, PVB_BR_SEND, PVB_BR_WIKI, PVB_BR_SAVE0, PVB_BR_UNIT0 = PVB_BR_SAVE0 + 8,
        PVB_P0 = PVB_BR_UNIT0 + 12, PVB_ARROW0 = PVB_P0 + 8, PVB_N = PVB_ARROW0 + 2 * PVR_N };
@@ -120,7 +149,7 @@ static void pv_value(int r, char *out, size_t cap) {
                   else snprintf(out, cap, TR("Best of %d"), pv_bo[pv.bo]); break;
     case PVR_TIME: snprintf(out, cap, TR("%d:%02d per round"), pv_secs[pv.secs] / 60, pv_secs[pv.secs] % 60); break;
     case PVR_PAUSE: snprintf(out, cap, "%s", pv.pause ? TR("Planning pause every 7 s") : TR("No pause")); break;
-    case PVR_ARENA: if (pv_here()) snprintf(out, cap, "%s", TR("This settlement")); else snprintf(out, cap, TR("Dungeon floor %d"), PV_FLOOR + 1); break;
+    case PVR_ARENA: pvpr_ui_value(0, pvp_rules_local(), pv_here(), out, cap); return;   /* the map choice (pvp_rules.c) */
     }
     dsi_utf8_fix_end(out);
 }
@@ -272,7 +301,7 @@ static void pv_refresh(void) {
     for (int t = 1; t <= 2; t++) { char u[96]; snprintf(u, sizeof u, TRN("%d unit", "%d units", units[t]), units[t]); cmt_set(pvt(h_pv_units[t]), u); }
     for (int r = 0; r < PVR_N; r++) {
         char v[64]; pv_value(r, v, sizeof v); cmt_set(pvt(h_pv_rval[r]), v);
-        for (int a = 0; a < 2; a++) u_active(pvb(PVB_ARROW0 + 2 * r + a), host && !busy_match && r != PVR_ARENA);
+        for (int a = 0; a < 2; a++) u_active(pvb(PVB_ARROW0 + 2 * r + a), host && !busy_match);
     }
     const char *note = "";
     const char *refused = pvp_mods_last ? pvp_mods_last() : "";
@@ -299,6 +328,7 @@ static void pv_show(int on) {
     pv_open = on;
     if (on) {
         int host = pvp_ui_is_host && pvp_ui_is_host();
+        pv_sync_once();
         if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
         pv_err[0] = 0;
         if (host && pvp_mods_ask) pvp_mods_ask(pv.vanilla);                 /* every player sends its mods (and sees the rule) */
@@ -310,7 +340,11 @@ static void pv_start(void) {
     int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8);
     for (int i = 0; i < n; i++) teams[ids[i]] = (uint8_t)(pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE);
     pvp_rules r = { (uint8_t)pv_bo[pv.bo], (uint16_t)pv_secs[pv.secs], (uint8_t)(pv.pause ? PVP_PAUSE_PLANNING : PVP_PAUSE_NONE), 7, 5, (uint8_t)(pv.vanilla != 0) };
-    int rc = pvp_ui_start_match ? pvp_ui_start_match(pv.mode, teams, &r, pv_here() ? -1 : PV_REGION, PV_FLOOR, PV_SEED) : -9;   /* region -1: here */
+    pv_sync_once(); pv_to_store();
+    pvp_map_pick mp_; pv_pick_map(pv_here(), &mp_);
+    int src = pvp_rules_send(&mp_);                                      /* every player gets the host's rules (+ the map) first */
+    int rc = pvp_ui_start_match ? pvp_ui_start_match(pv.mode, teams, &r, mp_.here ? -1 : mp_.region, mp_.floor, mp_.seed) : -9;   /* region -1: here */
+    rig_log("pvp ui: Start Match: rules sent rc %d, map %s region %d floor %d seed %d", src, mp_.here ? "here" : "dungeon", mp_.region, mp_.floor, mp_.seed);
     rig_log("pvp ui: Start Match: rc %d", rc);
     if (rc == -4) {                                                       /* Vanilla check refused: stay, say why */
         snprintf(pv_err, sizeof pv_err, "%s", pvp_mods_last ? pvp_mods_last() : TR("Start Match was refused."));
@@ -361,6 +395,8 @@ static void pv_click_do(int k) {
         if (r == PVR_TIME) pv.secs = (pv.secs + d + 5) % 5;
         if (r == PVR_PAUSE) pv.pause = !pv.pause;
         if (r == PVR_VANILLA) { pv.vanilla = !pv.vanilla; if (pvp_mods_ask) pvp_mods_ask(pv.vanilla); }
+        if (r == PVR_ARENA) pvpr_ui_step(0, pvp_rules_local(), d);       /* the map choice */
+        pv_to_store();
         pv_err[0] = 0;
     }
     pv_refresh();
@@ -769,7 +805,7 @@ static void pvp_ui_tips(void) {
         return;
     }
     if (pv_open) {
-        for (int r = 0; r < PVR_N; r++) tip_try(pvt(h_pv_rrow[r]), TR(pv_label[r]), TR(pv_tip[r]));
+        for (int r = 0; r < PVR_N; r++) tip_try(pvt(h_pv_rrow[r]), TR(pv_label[r]), r == PVR_ARENA ? pvpr_ui_tip(0) : TR(pv_tip[r]));
         if (pv_here()) tip_try(pvb(PVB_START), TR("Start Match"), TR("Starts the match here with the teams and rules shown: each team walks to its end of the settlement, then the fight begins."));
         else tip_try(pvb(PVB_START), TR("Start Match"), TR("Sends everyone to the arena floor with the teams and rules shown. The match begins by itself once everyone has arrived."));
         tip_try(pvb(PVB_CLOSE), cmt_game("TEXTKEY_Common_Close", "Close"), TR("Closes this window. Nothing is sent."));
@@ -851,6 +887,10 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
         char nm[64] = "", path[1300] = "", err[300] = ""; int rc = fe_world_write(1, nm, sizeof nm, path, sizeof path, err, sizeof err);
         Buf e = {0}; bput(&e, "{\"ok\":%s,\"file\":", rc ? "false" : "true"); bstr(&e, path); bput(&e, ",\"error\":"); bstr(&e, err); bput(&e, "}"); return e.p;
     }
+    else if (!strcmp(a, "preset_arrow")) { jnum(line, "dir", &d); v1_preset_step(d > 0 ? 1 : -1); goto out; }   /* lane pvprules: the presets */
+    else if (!strcmp(a, "preset_save_open")) { v1_naming_set(1); goto out; }
+    else if (!strcmp(a, "preset_save")) { char nm[300] = ""; jstr(line, "name", nm, sizeof nm); v1_preset_typed(nm); goto out; }
+    else if (!strcmp(a, "preset_delete")) { v1_preset_delete(); goto out; }
     else if (!strcmp(a, "page_arrow")) { jnum(line, "row", &v); jnum(line, "dir", &d); if (v >= 0 && v < V1R_N) v1_step((int)v, d > 0 ? 1 : -1); goto out; }
     out:;
     Buf b = {0};
@@ -866,7 +906,9 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     bstr(&b, tip_now);
     bput(&b, ",\"columns\":[");                          /* unit names shown in the team columns */
     for (int i = 0; i < pv_ncol; i++) { bput(&b, "%s", i ? "," : ""); bstr(&b, pv_col_names[i]); }
-    bput(&b, "]}");
+    bput(&b, "],");
+    v1_status(&b);
+    bput(&b, "}");
     return b.p;
 }
 
@@ -934,6 +976,7 @@ static void v1_lobby_frame(void) {
     uint32_t pm = dsnet_present_mask(c);
     if (pm == asked_mask) return;
     asked_mask = pm;
+    pv_sync_once();
     if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
     if (pvp_mods_ask) pvp_mods_ask(pv.vanilla);
 }
@@ -948,41 +991,66 @@ int pvp_v1_lobby_start(char *err, size_t errn) {
     uint8_t teams[PVP_MAX_PLAYERS] = { 0 };
     for (int i = 0; i < n; i++) { teams[ids[i]] = (uint8_t)(pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE); per[teams[ids[i]]] += v1_brought(ids[i]); }
     if (!per[PVP_TEAM_BLUE] || !per[PVP_TEAM_RED]) { snprintf(err, errn, TR("Each team needs brought units: Blue has %d, Red has %d."), per[PVP_TEAM_BLUE], per[PVP_TEAM_RED]); return -1; }
+    pv_sync_once();
     if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
+    pv_to_store();
     pvp_rules r = { (uint8_t)pv_bo[pv.bo], (uint16_t)pv_secs[pv.secs], (uint8_t)(pv.pause ? PVP_PAUSE_PLANNING : PVP_PAUSE_NONE), 7, 5, (uint8_t)(pv.vanilla != 0) };
-    int rc = pvp_ui_start_match ? pvp_ui_start_match(pv.mode, teams, &r, -1, 0, 0) : -9;
-    rig_log("pvp v1: lobby Start: teams %d/%d brought units, rc %d", per[1], per[2], rc);
+    pvp_map_pick mp_; pv_pick_map(1, &mp_);                               /* this settlement, or a dungeon floor (lane pvprules) */
+    int src = pvp_rules_send(&mp_);
+    int rc = pvp_ui_start_match ? pvp_ui_start_match(pv.mode, teams, &r, mp_.here ? -1 : mp_.region, mp_.floor, mp_.seed) : -9;
+    rig_log("pvp v1: lobby Start: teams %d/%d brought units, rules sent rc %d, map %s region %d floor %d seed %d, rc %d", per[1], per[2], src,
+            mp_.here ? "here" : "dungeon", mp_.region, mp_.floor, mp_.seed, rc);
     if (rc == -4) { snprintf(err, errn, "%s", pvp_mods_last ? pvp_mods_last() : TR("The Vanilla check refused the start.")); return -1; }
     if (rc) { snprintf(err, errn, "%s", TR("The match could not start. Try again.")); return -1; }
     return 0;
 }
 /* host choice "PvP": its rules on the host page, in their own panel, open (owner v12 5), each row with the game's tooltip.
    The menu calls this every frame while the page shows with an empty panel it placed (NULL once when the page closes).
-   Rows = the PvP window's (mode, to win, round time, pause, Vanilla check); the map is fixed: this settlement. The arrows
-   are title-view images, so a click is read here (mouse down + rect), like the menu's own list toggle. */
-static const int v1_rows[V1R_N] = { PVR_MODE, PVR_WIN, PVR_TIME, PVR_PAUSE, PVR_VANILLA };
+   Rows = the PvP window's (mode, to win, round time, pause, Vanilla check), then (lane pvprules, owner 2026-10-20) the map,
+   the floor and the six visibility rules (pvp_rules.c: ids, texts), then the presets: "Preset  < name >", Save as preset...
+   (a name field opens in place), Delete preset. Every change is saved at once (pvp_rules.txt in the mod's data folder),
+   so the last used rules come back at the next start. The arrows and buttons are title-view images, so a click is read
+   here (mouse down + rect), like the menu's own list toggle. */
+static const int v1_rows[V1R_OLD] = { PVR_MODE, PVR_WIN, PVR_TIME, PVR_PAUSE, PVR_VANILLA };
 static uintptr_t h_v1_root, h_v1_parent, h_v1_row[V1R_N], h_v1_val[V1R_N], h_v1_arrow[V1R_N][2], h_v1_note, h_v1_title, h_v1_lab[V1R_N];
+static uintptr_t h_v1_prow, h_v1_plab, h_v1_pval, h_v1_parr[2], h_v1_pbtn[4], h_v1_pbl[4], h_v1_field;   /* presets: Save as..., Delete, Save, Cancel */
+enum { V1P_SAVEAS, V1P_DELETE, V1P_SAVE, V1P_CANCEL };
+static int v1_naming;                                                    /* the name field is open */
+static char v1_pmsg[200];                                                /* last preset message (saved / deleted) */
 static unsigned v1_gen;                                                  /* language of the labels set once */
-#define V1_STEP 62
-#define V1_H (62 + V1_STEP * V1R_N + 52)                                    /* the panel's height: title band, rows, note */
+#define V1_W 520
+#define V1_STEP 36
+#define V1_RH 32
+#define V1_TOP 62
+#define V1_GAP 10                                                        /* before the visibility rows, before the presets */
+#define V1_ROWY(i) (V1_TOP + V1_STEP * (i) + ((i) >= V1R_OLD + 2 ? V1_GAP : 0) + V1_RH / 2)
+#define V1_PTOP (V1_TOP + V1_STEP * V1R_N + 2 * V1_GAP)
+#define V1_H (V1_PTOP + 36 + 46 + 50)                                       /* rows, preset row, buttons row, note */
 /* owner v0.1.12 #2: the menu's choice box (mpmenu.c title_build: 430 x 588 centred at -78, -63) was taller than these rules,
-   an empty block above the title and one below the note. While the PvP page shows, the box takes this panel's height with
-   its top where it was; draw(NULL) gives it back. */
+   an empty block above the title and one below the note. While the PvP page shows, the box takes this panel's size with
+   its top-left corner where it was; draw(NULL) gives it back. */
 static void v1_box(Obj panel, int fit) {
     Obj box = panel ? u_tr_parent(u_tr(panel)) : NULL; if (!box) return;
-    if (fit) place(box, -78, -89 + 26 + 588 / 2 - V1_H / 2, 430, V1_H); else place(box, -78, -89 + 26, 430, 588);
+    if (fit) place(box, -78 - 215 + V1_W / 2, -89 + 26 + 588 / 2 - V1_H / 2, V1_W, V1_H); else place(box, -78, -89 + 26, 430, 588);
 }
+static const char *v1_row_label(int i) { return i < V1R_OLD ? TR(pv_label[v1_rows[i]]) : pvpr_ui_label(i - V1R_OLD); }
+static const char *v1_row_tip(int i) { return i < V1R_OLD ? TR(pv_tip[v1_rows[i]]) : pvpr_ui_tip(i - V1R_OLD); }
 static void v1_labels(void) {
     cmt_set(pvt(h_v1_title), TR("PvP Rules"));
-    for (int i = 0; i < V1R_N; i++) cmt_set(pvt(h_v1_lab[i]), TR(pv_label[v1_rows[i]]));
-    cmt_set(pvt(h_v1_note), TR("Map: the starting settlement. In the lobby each player brings units; Start puts the teams at the two ends of the map."));
+    for (int i = 0; i < V1R_N; i++) cmt_set(pvt(h_v1_lab[i]), v1_row_label(i));
+    cmt_set(pvt(h_v1_plab), TR("Preset"));
+    static const char *bl[4] = { TR_NOOP("Save as preset..."), TR_NOOP("Delete preset"), TR_NOOP("Save"), TR_NOOP("Cancel") };
+    for (int k = 0; k < 4; k++) cmt_set(pvt(h_v1_pbl[k]), k == V1P_CANCEL ? cmt_game("TEXTKEY_Common_Cancel", "Cancel") : TR(bl[k]));
     v1_gen = cmt_gen();
 }
+Obj mpmenu_field_new(Obj parent, const char *placeholder, const char *text);   /* mpmenu.c */
+void mpmenu_field_get(Obj f, char *out, size_t cap);
+void mpmenu_field_put(Obj f, const char *s);
 static void v1_page_build(Obj panel) {
     Obj tv = title_view(); Obj src = tv ? AT(tv, 0x50, Obj) : NULL; if (!u_alive(src)) return;
     if (!scan_done) assets_scan_now();
     Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x130, Obj);
-    const float pw = 430, rh = 48, step = V1_STEP, ph = V1_H;
+    const float pw = V1_W, ph = V1_H, rw = V1_W - 36;
     #define QX(x) ((x) - pw / 2)
     #define QY(y) (ph / 2 - (y))
     #define KEEP(hh, o) { Obj o_ = (o); u_gc_free(hh); hh = o_ ? u_gc_new(o_) : 0; }
@@ -991,49 +1059,181 @@ static void v1_page_build(Obj panel) {
     mk_img(tpl_img, R, -1, C_BAND, 0, QY(27), pw - 4, 50); mk_img(tpl_img, R, -1, C_COPPER, 0, QY(52), pw - 4, 1);
     KEEP(h_v1_title, mk_txt(tpl_txt, R, 1, 24, 514, 0, 0, QY(27), 400, 40, C_MAIN));
     for (int i = 0; i < V1R_N; i++) {
-        float yc = QY(62 + step * i + rh / 2);
-        KEEP(h_v1_row[i], mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, QX(18 + 197), yc, 394, rh));
-        KEEP(h_v1_lab[i], mk_txt(tpl_txt, R, 0, 15, 513, 0, QX(18 + 77), yc, 130, 40, C_SUB));
-        KEEP(h_v1_val[i], mk_txt(tpl_txt, R, 0, 15, 514, 0, QX(18 + 261), yc, 186, 40, C_MAIN));
+        float yc = QY(V1_ROWY(i));
+        KEEP(h_v1_row[i], mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, QX(18 + rw / 2), yc, rw, V1_RH));
+        KEEP(h_v1_lab[i], mk_txt(tpl_txt, R, 0, 14, 513, 0, QX(18 + 8 + 85), yc, 170, V1_RH, C_SUB));
+        KEEP(h_v1_val[i], mk_txt(tpl_txt, R, 0, 14, 514, 0, QX(18 + 312), yc, 210, V1_RH, C_MAIN));
         for (int a = 0; a < 2; a++) {
-            Obj ar = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(18 + (a ? 368 : 154)), yc, 28, 28);
-            Obj at = ar ? mk_txt(tpl_txt, u_tr(ar), 0, 16, 514, 0, 0, 0, 28, 28, C_MAIN) : NULL; if (at) cmt_set(at, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9");
+            Obj ar = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(18 + (a ? 434 : 190)), yc, 26, 26);
+            Obj at = ar ? mk_txt(tpl_txt, u_tr(ar), 0, 16, 514, 0, 0, 0, 26, 26, C_MAIN) : NULL; if (at) cmt_set(at, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9");
             KEEP(h_v1_arrow[i][a], ar);
         }
     }
-    KEEP(h_v1_note, mk_txt(tpl_txt, R, 0, 12, 513, 1, 0, QY(62 + step * V1R_N + 22), 394, 44, C_SUB));
+    /* presets */
+    mk_img(tpl_img, R, -1, C_COPPER, 0, QY(V1_PTOP - V1_GAP / 2 - 1), pw - 40, 1);
+    { float yc = QY(V1_PTOP + 18);
+      KEEP(h_v1_prow, mk_img(tpl_img, R, -1, C_ROW1, QX(18 + rw / 2), yc, rw, V1_RH));
+      KEEP(h_v1_plab, mk_txt(tpl_txt, R, 0, 14, 513, 0, QX(18 + 8 + 85), yc, 170, V1_RH, C_GOLD));
+      KEEP(h_v1_pval, mk_txt(tpl_txt, R, 0, 14, 514, 0, QX(18 + 312), yc, 210, V1_RH, C_MAIN));
+      for (int a = 0; a < 2; a++) {
+          Obj ar = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(18 + (a ? 434 : 190)), yc, 26, 26);
+          Obj at = ar ? mk_txt(tpl_txt, u_tr(ar), 0, 16, 514, 0, 0, 0, 26, 26, C_MAIN) : NULL; if (at) cmt_set(at, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9");
+          KEEP(h_v1_parr[a], ar);
+      } }
+    { float yc = QY(V1_PTOP + 36 + 23);
+      const float bx[4] = { 18 + 118, 18 + rw - 118, 18 + rw - 150, 18 + rw - 50 }, bw[4] = { 228, 228, 92, 92 };
+      for (int k = 0; k < 4; k++) {
+          Obj b = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(bx[k]), yc, bw[k], 34);
+          Obj l = b ? mk_txt(tpl_txt, u_tr(b), 0, 14, 514, 0, 0, 0, bw[k] - 8, 34, C_MAIN) : NULL;
+          KEEP(h_v1_pbtn[k], b); KEEP(h_v1_pbl[k], l);
+          if (k >= V1P_SAVE) u_active(b, false);
+      }
+      u_gc_free(h_v1_field); h_v1_field = 0; }                              /* the name field: made when Save as preset... opens (v1_field) */
+    KEEP(h_v1_note, mk_txt(tpl_txt, R, 0, 12, 513, 1, 0, QY(V1_PTOP + 36 + 46 + 24), rw, 44, C_SUB));
     v1_labels();
     #undef QX
     #undef QY
     #undef KEEP
-    rig_log("pvp v1: host page rules panel built");
+    rig_log("pvp v1: host page rules panel built (%d rows + presets)", V1R_N);
 }
 static int v1_pt_in(Obj o, V3 m) { float r[4]; return u_on(o) && rect_of(o, r) && m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]; }
 static void v1_step(int i, int d) {
+    pv_sync_once();
+    if (i >= V1R_OLD) {
+        pvpr_vals *v = pvp_rules_local();
+        if (!pvpr_ui_steppable(i - V1R_OLD, v)) return;
+        pvpr_ui_step(i - V1R_OLD, v, d);
+        pvp_rules_changed(); v1_pmsg[0] = 0;
+        return;
+    }
     int r = v1_rows[i];
     if (r == PVR_MODE) pv.mode = pv.mode == PVP_MODE_FIGHT ? PVP_MODE_CTF : PVP_MODE_FIGHT;
     if (r == PVR_WIN) pv.bo = (pv.bo + d + 3) % 3;
     if (r == PVR_TIME) pv.secs = (pv.secs + d + 5) % 5;
     if (r == PVR_PAUSE) pv.pause = !pv.pause;
     if (r == PVR_VANILLA) pv.vanilla = !pv.vanilla;
+    pv_to_store(); v1_pmsg[0] = 0;
+}
+/* presets: the arrows go through the saved presets (the values are applied at once) */
+static void v1_preset_step(int d) {
+    pv_sync_once();
+    pvpr_store *s = pvp_rules_store(); if (s->npresets <= 0) return;
+    int cur = pvpr_preset_match(s, &s->last), n = s->npresets;
+    int nx = cur < 0 ? (d > 0 ? 0 : n - 1) : ((cur + d) % n + n) % n;
+    s->last = s->presets[nx].v; pv_from_store(); pvp_rules_changed();
+    snprintf(v1_pmsg, sizeof v1_pmsg, TR("Preset \"%s\" applied."), s->presets[nx].name); dsi_utf8_fix_end(v1_pmsg);
+    rig_log("pvp v1: preset %d \"%s\" applied", nx, s->presets[nx].name);
+}
+/* the preset name field: a clone of a stock TMP_InputField, made on first use (the menu finds one only after the host page
+   opened the load list once for its own fields) */
+static Obj v1_field(void) {
+    Obj f = u_gc_get(h_v1_field); if (u_alive(f)) return f;
+    Obj root = pvt(h_v1_root); if (!root) return NULL;
+    f = mpmenu_field_new(u_tr(root), TR("Preset name"), "");
+    if (!f) return NULL;
+    place(f, 18 + 130 - V1_W / 2.0f, V1_H / 2.0f - (V1_PTOP + 36 + 23), 260, 34);
+    u_gc_free(h_v1_field); h_v1_field = u_gc_new(f);
+    return f;
+}
+static void v1_naming_set(int on) {
+    v1_naming = on;
+    u_active(pvt(h_v1_pbtn[V1P_SAVEAS]), !on); u_active(pvt(h_v1_pbtn[V1P_DELETE]), !on);
+    u_active(pvt(h_v1_pbtn[V1P_SAVE]), on); u_active(pvt(h_v1_pbtn[V1P_CANCEL]), on);
+    Obj f = on ? v1_field() : u_gc_get(h_v1_field); if (u_alive(f)) {
+        if (on) { pvpr_store *s = pvp_rules_store(); int cur = pvpr_preset_match(s, &s->last); mpmenu_field_put(f, cur >= 0 ? s->presets[cur].name : ""); }
+        u_active(f, on);
+    }
+}
+/* Save as preset: the name in the field (or the given one: tests); same name = that preset is replaced */
+static int v1_preset_save(const char *given) {
+    char nm[256] = "";
+    if (given) snprintf(nm, sizeof nm, "%s", given); else mpmenu_field_get(u_gc_get(h_v1_field), nm, sizeof nm);
+    pv_sync_once(); pv_to_store();
+    pvpr_store *s = pvp_rules_store();
+    int had = pvpr_preset_find(s, nm), i = pvpr_preset_save(s, nm, &s->last);
+    if (i == -1) { snprintf(v1_pmsg, sizeof v1_pmsg, "%s", TR("Type a name for the preset first.")); return -1; }
+    if (i == -2) { snprintf(v1_pmsg, sizeof v1_pmsg, TR("You have %d presets: delete one first."), PVPR_PRESETS_MAX); return -2; }
+    pvp_rules_changed();
+    snprintf(v1_pmsg, sizeof v1_pmsg, had >= 0 ? TR("Preset \"%s\" replaced.") : TR("Preset \"%s\" saved."), s->presets[i].name); dsi_utf8_fix_end(v1_pmsg);
+    rig_log("pvp v1: preset \"%s\" %s (%d preset(s))", s->presets[i].name, had >= 0 ? "replaced" : "saved", s->npresets);
+    v1_naming_set(0);
+    return i;
+}
+/* tests: the name typed into the field (the real field when it exists), then Save */
+static int v1_preset_typed(const char *name) {
+    Obj f = v1_field();
+    if (u_alive(f)) { v1_naming_set(1); mpmenu_field_put(f, name); return v1_preset_save(NULL); }
+    return v1_preset_save(name);
+}
+static int v1_preset_delete(void) {
+    pvpr_store *s = pvp_rules_store(); int cur = pvpr_preset_match(s, &s->last);
+    if (cur < 0) return -1;
+    char nm[PVPR_NAME_MAX + 1]; snprintf(nm, sizeof nm, "%s", s->presets[cur].name);
+    pvpr_preset_delete(s, cur); pvp_rules_changed();
+    snprintf(v1_pmsg, sizeof v1_pmsg, TR("Preset \"%s\" deleted. The rules stay as they are."), nm); dsi_utf8_fix_end(v1_pmsg);
+    rig_log("pvp v1: preset \"%s\" deleted (%d left)", nm, s->npresets);
+    return 0;
+}
+static void v1_note(char *out, size_t cap) {
+    if (v1_pmsg[0]) { snprintf(out, cap, "%s", v1_pmsg); return; }
+    int m = pvpr_vals_get(pvp_rules_local(), "map");
+    if (m == PVP_MAP_HERE) snprintf(out, cap, "%s", TR("Map: the starting settlement. In the lobby each player brings units; Start puts the teams at the two ends of the map."));
+    else snprintf(out, cap, "%s", TR("In the lobby each player brings units; Start sends the teams to the arena floor. The match begins once everyone has arrived."));
+    dsi_utf8_fix_end(out);
+}
+static void v1_status(Buf *b) {
+    pvpr_store *s = pvp_rules_store(); int cur = pvpr_preset_match(s, &s->last);
+    bput(b, "\"v1_page\":%d,\"naming\":%d,\"field\":%d,\"preset_now\":", u_on(pvt(h_v1_root)), v1_naming, u_alive(u_gc_get(h_v1_field)));
+    bstr(b, cur >= 0 ? s->presets[cur].name : ""); bput(b, ",\"presets\":%d,\"preset_msg\":", s->npresets); bstr(b, v1_pmsg);
+    bput(b, ",\"rows\":[");
+    for (int i = 0; i < V1R_N; i++) { char v[96]; if (i < V1R_OLD) pv_value(v1_rows[i], v, sizeof v); else pvpr_ui_value(i - V1R_OLD, &s->last, 1, v, sizeof v);
+                                      bput(b, "%s[", i ? "," : ""); bstr(b, v1_row_label(i)); bput(b, ","); bstr(b, v); bput(b, "]"); }
+    bput(b, "]");
 }
 void pvp_v1_page_draw(void *panel) {
     Obj root = pvt(h_v1_root);
     if (!panel) {
         if (root) { u_active(root, false); v1_box(u_gc_get(h_v1_parent), 0); }
+        if (v1_naming) v1_naming_set(0);
         return;
     }
-    if (!root || u_gc_get(h_v1_parent) != (Obj)panel) { v1_page_build((Obj)panel); root = pvt(h_v1_root); if (!root) return; }
+    if (!root || u_gc_get(h_v1_parent) != (Obj)panel) { v1_page_build((Obj)panel); root = pvt(h_v1_root); if (!root) return; v1_naming = 0; }
     u_active(root, true);
     v1_box((Obj)panel, 1);
+    pv_sync_once();
     if (v1_gen != cmt_gen()) v1_labels();
-    if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
+    if (pv.vanilla < 0) { pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1; pv_to_store(); }
+    pvpr_vals *lv = pvp_rules_local(); pvpr_store *ps = pvp_rules_store();
     if (F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) {                    /* Input.GetMouseButtonDown(0) */
         V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL);
-        for (int i = 0; i < V1R_N; i++) for (int a = 0; a < 2; a++) if (v1_pt_in(pvt(h_v1_arrow[i][a]), m)) { v1_step(i, a ? 1 : -1); rig_log("pvp v1: host page %s %s", pv_label[v1_rows[i]], a ? "next" : "previous"); }
+        for (int i = 0; i < V1R_N; i++) for (int a = 0; a < 2; a++) if (v1_pt_in(pvt(h_v1_arrow[i][a]), m)) { v1_step(i, a ? 1 : -1); rig_log("pvp v1: host page %s %s", i < V1R_OLD ? pv_label[v1_rows[i]] : pvpr_ui_id(i - V1R_OLD), a ? "next" : "previous"); }
+        for (int a = 0; a < 2; a++) if (v1_pt_in(pvt(h_v1_parr[a]), m)) v1_preset_step(a ? 1 : -1);
+        if (v1_pt_in(pvt(h_v1_pbtn[V1P_SAVEAS]), m)) { v1_naming_set(1); v1_pmsg[0] = 0; }
+        else if (v1_pt_in(pvt(h_v1_pbtn[V1P_DELETE]), m)) v1_preset_delete();
+        else if (v1_pt_in(pvt(h_v1_pbtn[V1P_SAVE]), m)) v1_preset_save(NULL);
+        else if (v1_pt_in(pvt(h_v1_pbtn[V1P_CANCEL]), m)) v1_naming_set(0);
     }
-    for (int i = 0; i < V1R_N; i++) { char v[64]; pv_value(v1_rows[i], v, sizeof v); cmt_set(pvt(h_v1_val[i]), v); }
-    for (int i = 0; i < V1R_N; i++) if (tip_try(pvt(h_v1_row[i]), TR(pv_label[v1_rows[i]]), TR(pv_tip[v1_rows[i]]))) break;
+    for (int i = 0; i < V1R_N; i++) {
+        char v[96];
+        if (i < V1R_OLD) pv_value(v1_rows[i], v, sizeof v); else pvpr_ui_value(i - V1R_OLD, lv, 1, v, sizeof v);
+        cmt_set(pvt(h_v1_val[i]), v);
+        int on = i < V1R_OLD || pvpr_ui_steppable(i - V1R_OLD, lv);
+        for (int a = 0; a < 2; a++) u_active(pvt(h_v1_arrow[i][a]), on);
+        txt_color(pvt(h_v1_val[i]), on ? C_MAIN : C_SUB);
+    }
+    { int cur = pvpr_preset_match(ps, lv); char pvv[96];
+      if (ps->npresets <= 0) snprintf(pvv, sizeof pvv, "%s", TR("No presets yet"));
+      else if (cur < 0) snprintf(pvv, sizeof pvv, "%s", TR("Custom"));
+      else snprintf(pvv, sizeof pvv, "%s", ps->presets[cur].name);
+      dsi_utf8_fix_end(pvv); cmt_set(pvt(h_v1_pval), pvv); txt_color(pvt(h_v1_pval), cur >= 0 ? C_GOLD : C_SUB);
+      for (int a = 0; a < 2; a++) u_active(pvt(h_v1_parr[a]), ps->npresets > 0);
+      txt_color(pvt(h_v1_pbl[V1P_DELETE]), cur >= 0 ? C_MAIN : C_SUB); }   /* dim: nothing to delete */
+    { char nt[400]; v1_note(nt, sizeof nt); cmt_set(pvt(h_v1_note), nt); }
+    for (int i = 0; i < V1R_N; i++) if (tip_try(pvt(h_v1_row[i]), v1_row_label(i), v1_row_tip(i))) goto tipped;
+    if (tip_try(pvt(h_v1_prow), TR("Preset"), TR("Your saved sets of rules. The arrows pick one and apply its rules. Custom: the rules shown are not a saved preset."))) goto tipped;
+    if (tip_try(pvt(h_v1_pbtn[V1P_SAVEAS]), TR("Save as preset..."), TR("Saves all the rules shown under a name you type, on this computer only. The same name replaces that preset."))) goto tipped;
+    if (tip_try(pvt(h_v1_pbtn[V1P_DELETE]), TR("Delete preset"), TR("Deletes the preset shown. The rules stay as they are."))) goto tipped;
+    tipped:;
 }
 static void pvp_frame_all(const mpm_obs *o) { v1_lobby_frame(); pvp_ui_frame(o); }
 

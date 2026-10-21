@@ -198,5 +198,6 @@ void mp_modes_start(void) {
     bad |= choice_pvp();
     bad |= api->register_frame(MP_FRAME_ALWAYS, lang_poll);   /* the host choice texts follow the game's language */
     pvp_install();                                       /* hostility hooks */
+    { void pvp_rules_start(void); pvp_rules_start(); }   /* PvP rules by id, presets, the host's rules for the match (pvp_rules.c) */
     rig_log("modes: Foreign Expedition + PvP registered (API %u)%s", api->version, bad ? " (a registration was refused)" : "");
 }
