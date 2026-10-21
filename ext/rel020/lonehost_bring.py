@@ -109,8 +109,12 @@ def run(H, G, port):
     # the host choice "PvP" (choice 2 under "Host a game"): its page with the PvP rules, Start -> the PvP world -> lobby
     press(H, 'MULTIPLAYER'); press(H, 'HOST_C1'); time.sleep(1)
     ms = c(H, cmd='mpm_status'); log('host page', ms.get('state'))
-    c(H, cmd='mpm_pvp', action='page_arrow', row=1, dir=-1)                  # host page rows: To win, Round time
-    c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1); c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1)
+    for _ in range(6):                                                       # host page rows: To win, Round time; the page remembers
+        q0 = c(H, cmd='mpm_pvp')                                             # the last used values (v0.1.21 rules), so step to best of 1 / 60 s
+        if q0.get('bo') == 1 and q0.get('secs') == 60: break
+        if q0.get('bo') != 1: c(H, cmd='mpm_pvp', action='page_arrow', row=1, dir=-1)
+        if q0.get('secs') != 60: c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1)
+        time.sleep(0.3)
     time.sleep(1); c(H, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'ui_host_page_pvp.png'))
     q = c(H, cmd='mpm_pvp')
     check('0 host page "PvP": rules panel values set (best of 1, 60 s)', ms.get('state') == 'title_host' and q.get('bo') == 1 and q.get('secs') == 60, f"{ms.get('state')} bo {q.get('bo')} secs {q.get('secs')}")
