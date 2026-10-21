@@ -197,7 +197,7 @@ int pvpr_ui_rows(void) { return 2 + 6; }      /* Map, Floor, then the six visibi
 const char *pvpr_ui_id(int r) { return r == 0 ? "map" : r == 1 ? "floor" : r - 2 < 6 ? vis_ids[r - 2] : ""; }
 const char *pvpr_ui_label(int r) { return r == 0 ? TR("Map") : r == 1 ? TR("Floor") : r - 2 < 6 ? TR(vis_label[r - 2]) : ""; }
 const char *pvpr_ui_tip(int r) {
-    if (r == 0) return TR("This settlement: the PvP world's map; teams start at its two ends.\n\nRandom map: a random dungeon floor, random start points for each team.\n\nDungeon 1 or 2: a floor of that dungeon, made by the game from a new seed. The same map for every player, with no monsters, no items and no portal.");
+    if (r == 0) return TR("This settlement: the hub base you are in; teams start at its two ends.\n\nRandom map: a random dungeon floor, random start points for each team.\n\nDungeon 1 or 2: a floor of that dungeon, made by the game from a new seed. The same map for every player, with no monsters, no items and no portal.");
     if (r == 1) return TR("Which floor of the dungeon: a random one, floor 1 to 4, or the boss room (a small arena with no boss in it).");
     return r - 2 < 6 ? TR(vis_tip[r - 2]) : "";
 }

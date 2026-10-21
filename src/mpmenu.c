@@ -20,6 +20,7 @@
 #include "mp_api.h"                                      /* mod chat lines (chat_line, mp_modchat.c) */
 #include "extaddr.h"                                     /* the host's internet address for the lobby (background lookup) */
 #include "upnpport.h"                                    /* the router port for friends outside the home (UPnP, background) */
+#include "fe_ui_api.h"                                  /* fe_mode_get: the hub lobby's hint line */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -1927,16 +1928,16 @@ static void lw_header_lines(int k0, Obj t, float x0, float w, float y, float rig
     place(t, LX(cx), y, tw + 4, 28);
 }
 static Col hexcol(const char *h) { unsigned r = 0, g = 0, b = 0; sscanf(h[0] == '#' ? h + 1 : h, "%02x%02x%02x", &r, &g, &b); return (Col){ r / 255.f, g / 255.f, b / 255.f, 1 }; }
-int pvp_v1_world(void);                                  /* fe_hub.c: this world is a PvP match world (host and guests) */
 static void lw_texts(void) {
-    int host = M.state == MPM_LOBBY, pvp = pvp_v1_world();
+    int host = M.state == MPM_LOBBY;
     mp_steam_info in; mp_steam_state(&in);
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
     char b[1024]; const char *hn = M.host[0] ? M.host : TR("the host");   /* the lobby note: 3 lines, up to ~500 bytes in Russian (a 256 cut the Windows Allow line) */
     if (host) tmp_set(lwt(T_TITLE), TR("Multiplayer Lobby")); else { snprintf(b, sizeof b, TR("%s's Lobby"), hn); tmp_set(lwt(T_TITLE), b); }
     if (host && lobby_err[0] && mono_s() < lobby_err_until) {                 /* a refused Start: 10 s in the hint line, red */
         char e[600]; snprintf(e, sizeof e, "<color=" C_WARN_HEX ">%s</color>", lobby_err); tmp_set(lwt(T_HINT), e);
-    } else tmp_set(lwt(T_HINT), TR("Share your address, then press Start when everyone is in."));
+    } else { fe_mode_info fm;                                              /* the hub (owner 2026-10-21): what it is for */
+        tmp_set(lwt(T_HINT), fe_mode_get(&fm) ? TR("Bring units, then press Start. In the hub: co-op expeditions or PvP matches.") : TR("Share your address, then press Start when everyone is in.")); }
     snprintf(b, sizeof b, TR("Waiting for %s to start"), hn); tmp_set(lwt(T_GUEST), b);
     if (!host && lwt(T_CONN)) {                                            /* conninfo: "Connected to <host> through Steam" / "... to <ip:port>" */
         char a[96]; int v = mp_game_conn(0, a, sizeof a);
@@ -2003,8 +2004,8 @@ static void lw_texts(void) {
     float rows_end = 182 + 44 * (n < LW_ROWS ? n : LW_ROWS);
     lw_header_lines(0, lwt(T_PLAYERS), 32, 396, LY(159), 0);
     if (!host && lwt(T_CONN)) place(lwt(T_CONN), LX(32 + 198), LY(rows_end + 20), 396, 24);
-    lw_header_lines(2, lwt(T_RULES), 452, 396, LY(159), host && !pvp ? 42 : 0);
-    u_active(u_gc_get(h_lwb[LW_GEAR]), host && !pvp);                     /* PvP: these co-op rules are not the match's (below) */
+    lw_header_lines(2, lwt(T_RULES), 452, 396, LY(159), host ? 42 : 0);
+    u_active(u_gc_get(h_lwb[LW_GEAR]), host);
     if (host) {
         float hy = rows_end + 18 + 13;
         lw_header_lines(4, lwt(T_INV), 32, 396, LY(hy), 0);
@@ -2058,21 +2059,16 @@ static void lw_texts(void) {
     mpm_settings ss = M.set;
     if (c) { dsnet_rules r; dsnet_rules_get(c, &r); if (!host) { ss.pause_mode = r.pause_mode; ss.speedup = r.allow_speedup; ss.gear = r.gear_mode; ss.units = r.units_per_player; ss.events = r.event_choice; ss.population = r.population; ss.fog = r.shared_fog; }
              ss.admin = dsnet_admin_mode(c); ss.spectators = dsnet_spectators_allowed(c); ss.watching = __builtin_popcount(dsnet_spectator_mask(c)); }
-    /* PvP lobby (review 2026-10-21: the PvP page said "No pause", the lobby "Anyone can pause"): the match uses the host's
-       PvP rules (pvp_rules.c, sent at Start; pvp_game.c turns player pauses off for the match, Bring Units sets the units),
-       so only Spectators (dsnet, the same in a match) stays; the note says where the match rules are */
     int nrow = 0;
     for (int i = 0; i < MPM_RULE_ROWS; i++) {
-        int on = !pvp || i == MPM_RULE_ROWS - 1;
-        u_active(u_gc_get(h_lw_rrow[i]), on); u_active(lwt(T_R0L + i), on); u_active(lwt(T_R0V + i), on);
-        if (!on) continue;
+        u_active(u_gc_get(h_lw_rrow[i]), true); u_active(lwt(T_R0L + i), true); u_active(lwt(T_R0V + i), true);
         char v[64]; mpm_rule_value(&ss, i, v, sizeof v); tmp_set(lwt(T_R0L + i), mpm_rule_label(i)); tmp_set(lwt(T_R0V + i), v);
         float y = LY(188 + 40 * nrow + 20);
         place(u_gc_get(h_lw_rrow[i]), LX(452 + 198), y, 396, 40); place(lwt(T_R0L + i), LX(452 + 14 + 100), y, 200, 30); place(lwt(T_R0V + i), LX(848 - 14 - 110), y, 220, 30);
         Obj rb = u_gc_get(h_lw_rrow[i]); if (rb) img_set(rb, NULL, nrow % 2 ? C_ROW2 : C_ROW1);
         nrow++;
     }
-    tmp_set(lwt(T_RULES_NOTE), pvp ? TR("The match uses the host's PvP rules (PvP page).") : host ? TR("Only the host can change the rules.") : TR("Set by the host."));
+    tmp_set(lwt(T_RULES_NOTE), host ? TR("Only the host can change the rules.") : TR("Set by the host."));
     place(lwt(T_RULES_NOTE), LX(452 + 198), LY(188 + 40 * nrow + 16), 396, 20);
     if (loading[0]) snprintf(b, sizeof b, TR("%s is still loading"), loading); else b[0] = 0;
     tmp_set(lwt(T_NOTE), b);

@@ -2325,7 +2325,6 @@ static void tips_frame(void) {
     for (int k = 0; k < nhdr; k++) if (hit(u_gc_get(h_hdr[k]), m, cam)) { tip_header(u_gc_get(h_hdr[k]), hdr_player[k]); return; }
 }
 static void start_frame(void);
-int pvp_v1_world(void);                                      /* fe_hub.c */
 /* unitsel B3 (owner feedback v0.1.20): a guest who arrives in a world with no unit gets the Teams window, once per
    session, with the hint "Pick your units" (it stays until he has a unit or closes the window). 3 s after the world
    is ready, so the load's own windows are gone. Not in the lobby: there the units come with Start (co-op) or Bring Units
@@ -2340,7 +2339,6 @@ static void first_open_frame(void) {
     model_refresh();
     int own = 0; for (int u = 0; u < st.nunits; u++) own += st.owner[u] == st.me;
     if (own || !st.nunits) { rig_log("teams: arrival: %d unit(s) of mine: no Teams window", own); return; }
-    if (pvp_v1_world()) { rig_log("teams: arrival in a PvP world: no Teams window (units come from Bring Units)"); return; }   /* UX pass: not mid-match */
     if (opened) { pick_hint = 1; shown_sig = 0; return; }
     if (open_screen() == 0) { pick_hint = 1; shown_sig = 0; model_refresh(); layout(); rig_log("teams: arrival with no unit: Teams window opened (Pick your units)"); }
 }

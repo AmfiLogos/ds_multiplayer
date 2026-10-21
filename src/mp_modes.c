@@ -43,28 +43,19 @@ void pvp_install(void);
 const mp_menu_hooks *pvp_menu_hooks(void);
 
 static const mp_api_table *A;
-/* host choices (mp_api register_host_choice2, lane mpfix): Foreign Expedition = the neutral hub (fe/fe_hub.c; the menu's
-   own Expedition Rules panel, open), PvP = PvP v1 on the starting map (pvp/pvp_ui.c; its rules panel). Each page's Start
-   builds + loads its world; the lobby's Start starts the expedition / the match. */
+/* the host choice (mp_api register_host_choice2, lane mpfix): the hub (fe_hub.c; the menu's own Expedition Rules panel,
+   open). Its page Start builds + loads the hub; the lobby's Start brings everyone's units in. In the hub the players go on
+   co-op expeditions or start PvP matches (Esc > PvP Match, pvp_ui.c). Owner 2026-10-21: "keep only the Hub: Co-op or
+   PvP" (the separate PvP choice and its PvP world are gone). */
 int fe_world_start(int kind, char *err, size_t errn);
 static int fe_page_start(char *err, size_t errn) { return fe_world_start(0, err, errn); }
 static int fe_lobby_start(char *err, size_t errn) { return fe_menu_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, errn); }
-void pvp_v1_page_draw(void *panel);
-int pvp_v1_page_start(char *err, size_t errn);
-int pvp_v1_lobby_start(char *err, size_t errn);
 static void fe_ui_flags(void) {                          /* hub with Recruiting Off: Guild Contact hidden, popup 8 not offered */
     int off = !fe_recruit_allowed();
     A->ui_set_flag(MPUI_HIDE_GUILD_CONTACT, off);
     A->ui_set_flag(MPUI_NO_RECRUIT_POPUP, off);
 }
-int pvp_v1_world(void);                                  /* fe_hub.c */
-int pvp_v1_keep_prefix(const char *path);
-static int pvp_world_build(const char *path, const char *save_name) {
-    (void)save_name;
-    int v1 = pvp_v1_world(), r = pvp_units_join_point(path);
-    if (r == 1 && v1) pvp_v1_keep_prefix(path);            /* the PvP v1 world stays one with the brought units in */
-    return r;
-}
+static int pvp_world_build(const char *path, const char *save_name) { (void)save_name; return pvp_units_join_point(path); }
 
 /* ---- player text (mp_modes_text.h). Host choice texts are copied by multiplayer when registered: registered again
    (same id = replaced in place) when the language changes. Labels <= 47 bytes, tips <= 299 (mp_api.h): cut at a
@@ -77,21 +68,16 @@ static int choice_reg(const char *id, const char *label, const char *tip, void (
     return A->register_host_choice2(&c);
 }
 static int choice_fe(void) {
-    return choice_reg("foreign-expedition", TR("Foreign Expedition"),
-        TR("Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home."),
+    return choice_reg("foreign-expedition", TR("Hub: Co-op or PvP"),
+        TR("One shared hub: a big ready base, everything unlocked. Go on co-op expeditions together or start PvP matches (Esc > PvP Match). Your saves change only when you bring results home."),
         NULL, fe_page_start, fe_lobby_start);
-}
-static int choice_pvp(void) {
-    return choice_reg("pvp", TR("PvP"),
-        TR("Everyone brings units onto the starting map and the teams fight each other. A world made only for the match: nobody's save changes."),
-        pvp_v1_page_draw, pvp_v1_page_start, pvp_v1_lobby_start);
 }
 /* the language: multiplayer's own poll (mpmenu.c lang_poll) sets it; the host choice texts are copied when registered, so
    they are registered again (same id = replaced in place) after a change */
 static void lang_poll(void) {
     static unsigned gen;
     if (gen == dsi_generation()) return;
-    gen = dsi_generation(); choice_fe(); choice_pvp();
+    gen = dsi_generation(); choice_fe();
 }
 unsigned cmt_gen(void) { return dsi_generation(); }
 void cmt_set(void *t, const char *s) {
@@ -195,7 +181,6 @@ void mp_modes_start(void) {
     bad |= api->register_unit_tag(pvp_unit_tag, pvp_tag_sig);
     bad |= api->register_teams_portal(pvp_portal_blocked);
     bad |= api->register_menu(pvp_menu_hooks());
-    bad |= choice_pvp();
     bad |= api->register_frame(MP_FRAME_ALWAYS, lang_poll);   /* the host choice texts follow the game's language */
     pvp_install();                                       /* hostility hooks */
     { void pvp_rules_start(void); pvp_rules_start(); }   /* PvP rules by id, presets, the host's rules for the match (pvp_rules.c) */
