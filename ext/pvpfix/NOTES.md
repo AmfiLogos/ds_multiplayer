@@ -21,7 +21,8 @@ New hook sites: PassiveActionContainer.Register 0xA782C8 (pvp_game.c). ds_modloa
 with the final pins (the loader build stops otherwise). Windows module build: compiles, no new inlined hook.
 
 ## Proof (hidden Mac pairs; out/<tag>/ has logs and frames)
-- pvpfix_pair.py (Fight, best of 3): full4 16/16, ctf6 (Capture the Flag) 16/16, final runs: see the report.
+- pvpfix_pair.py on the final code (e348aa7): full9 (Fight, best of 3, 3 rounds) 17/17, ctf9 (Capture the Flag) 17/17, 0 desyncs.
+- Gate test ext/fepvp13/tests/pvp_v1_pair.py (updated): v1new3 11/11.
 - e3_lib_pair.py: e3b 5/5 (rig, data path). e3_cards_pair.py (loader copies, real card window + Unit Builder): 9/9.
 - e2_rebring.py: e2a 5/5. e7_orders.py: v0.1.20 FAIL (hold unit walked 5 cells), new PASS.
 - Fails on v0.1.20: E1 + E5 (base7), E7 (e7_base2).
