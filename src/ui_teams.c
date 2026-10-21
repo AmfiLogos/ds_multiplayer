@@ -1100,10 +1100,10 @@ static void layout(void) {
     /* the empty state's hint: right of the three empty slots (they end at x -104), never over them */
     if (!mine) p_text(-80, y1, 700, 30, 14, AL_LEFT, 0, ui_col(C_SEC, st.in_dungeon ? TR("In a dungeon, a friend can lend you a unit (Lend on their unit).")
                                                                                     : TR("Take a free unit below (left-click).")));
-    /* zones 2 and 3: fit above y -372. Room to spare: the other players' cards grow up to full size (readable names);
+    /* zones 2 and 3: fit above y -366 (the bottom line is at -374..-402). Room to spare: the other players' cards grow up to full size (readable names);
        short of room: theirs shrink first (to 0.75), then the free ones (to 0.75), then both (to 0.5) */
     float sf = 1.0f, so = 1.0f;
-    for (int it = 0; it < 40 && lower_h(order, no, sf, so) > 196 + 372; it++) {
+    for (int it = 0; it < 40 && lower_h(order, no, sf, so) > 196 + 366; it++) {
         if (so > 0.75f) so -= 0.05f; else if (sf > 0.75f) sf -= 0.05f; else if (so > 0.6f) so -= 0.05f;
         else if (sf > 0.5f) { sf -= 0.05f; if (so > 0.5f) so -= 0.05f; } else break;
     }
@@ -1193,7 +1193,7 @@ static void layout(void) {
     if ((o = u_gc_get(h_hint))) {
         char stl[300] = "";
         if (!mp_running()) snprintf(stl, sizeof stl, "%s", ui_col(C_WARN, TR("Multiplayer is not running yet: changes here are not applied.")));
-        else if (st.in_dungeon && !mine) { if (pick_hint) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>", TR("Pick your units.")); }   /* how: zone 1 */
+        else if (st.in_dungeon && !mine) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>", TR("Pick your units."));   /* how: zone 1 */
         else if (st.in_dungeon) snprintf(stl, sizeof stl, "%s", TR("In a dungeon only lending works: use Lend on your units."));
         else if (host_admin && hsel.picked >= 0) snprintf(stl, sizeof stl, "%s", TR("Host: click a section name to move the picked unit there."));
         else if (st.me == 0 && hsel.target != TM_NO_TARGET) {
@@ -1201,10 +1201,10 @@ static void layout(void) {
             if (hsel.target >= 0) { player_name(hsel.target, nm); snprintf(pls.name[hsel.target], 32, "%s", nm); }
             snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
         }
-        else if (st.me >= 0 && !mine) { if (pick_hint) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>", TR("Pick your units.")); }   /* how: zone 1 */
+        else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>", TR("Pick your units."));   /* how: zone 1; also when opened by hand (review 32) */
         else if (st.me >= 0) snprintf(stl, sizeof stl, "%s", TR("To start an expedition, use the game's Enter Dungeon."));
         snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>", stl);
-        set_text(o, -620, -405, 1240, 40, 14, AL_CENTER, 0, t);   /* the dark box's width (x +-630), centred */
+        set_text(o, -620, -388, 1240, 28, 14, AL_CENTER, 0, t);   /* inside the dark box (x +-630, bottom border y -412), centred */
     }
     if ((o = u_gc_get(h_tfold))) {                            /* viewui: Hide, left of the close button (120 wide: "Ausblenden", "Скрыть") */
         float sw_[4], sc_[4], cx = 660 - 58 - 120, cy = 444 - 54; R4 wr = rt_rect(w);
