@@ -4990,6 +4990,16 @@ static void sees_draw(uint32_t who, ui_players *p) {
     float L = -w / 2;              /* centred, but never over the Teams button right of the Players panel: a long name (10 CJK
                                       characters) with a long translation grew the line left onto the button label */
     { float ax, ay, aw, ah; if (ui_panel_anchor(&ax, &ay, &aw, &ah)) { float r = ax + aw + 8 + (uiset.compact ? 88.0f : 112.0f) + 8; if (L < r && r - L < 400) L = r; } }
+    /* uxpass (lead, before-shots 20_game_host 960x540 / 1728x1000): the estimate above left the line on the Teams button's
+       label (or 7 px from it). The button as drawn (ui_teams_button_rect, screen px): the line starts 12 units right of it
+       when they share a row */
+    { static int (*tb)(float *, float *, float *, float *); static unsigned tries;
+      if (!tb && tries++ % 50 == 0) tb = (int (*)(float *, float *, float *, float *))dlsym(RTLD_DEFAULT, "ui_teams_button_rect");
+      float bx, by, bw, bh, x0_, y0_, x1_, y1_;
+      if (tb && tb(&bx, &by, &bw, &bh)) {
+          scr_to_layer(root, bx, by, &x0_, &y0_); scr_to_layer(root, bx + bw, by + bh, &x1_, &y1_);
+          if (cy > y0_ && cy - 26 < y1_ && L < x1_ + 12 && L + w > x0_) L = x1_ + 12;
+      } }
     /* mpoverlay: never over the open Teams window (a free spot clear of the Players panel and the viewer box, else hidden) */
     { float av[2][4]; int na = 0; Obj pl = u_gc_get(h_plate), vb = u_gc_get(h_vbox); float k = pl_k;
       if (pl_shown && u_alive(pl)) { V2 s = u_rt_size(u_tr(pl)); av[na][0] = pl_cur_L; av[na][1] = pl_cur_L + s.x * k; av[na][2] = pl_cur_Y - s.y * k; av[na][3] = pl_cur_Y; na++; }
