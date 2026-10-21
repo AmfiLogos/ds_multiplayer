@@ -222,10 +222,10 @@ def run(H, G):
         sv = max(glob.glob(os.path.join(rig.idir(H), 'data', 'Saves', 'MPHub_*.json')), key=os.path.getmtime)
         w0 = json.load(open(sv)); hub_pre = w0
         rd = w0['ResearchSaveData']['ResearchDatas']
-        check('hub map: every research done, every region open, no units in the hub file',
+        check('hub map: every research done, every region open, no player units in the hub file (the Guild Merchant stays, 0.1.20)',
               all(r['Workload'] >= r['RequiredWorkload'] and not r['IsLocked'] for r in rd.values())
               and all(not r['IsLocked'] for r in w0['ClanSaveData']['ExpeditionMapData'] if r.get('Region', -1) >= 0)
-              and not w0['EntityContainerSaveData']['UnitContainerSaveData']['Base']['UnitSaveDataDictionary'] and 'MPHubTemplate' not in w0,
+              and not w0['EntityContainerSaveData']['UnitContainerSaveData']['Base'].get('PlayerGuidList') and 'MPHubTemplate' not in w0,
               f"{len(rd)} research, {len(w0['EntityContainerSaveData']['BuildingContainerSaveData']['Base']['BuildingSaveData'])} buildings")
         lu0 = [u for u in c(H, cmd='list_units', map=0)['units'] if u['faction'] == 1]
         check('hub map: 0 player units in the hub before the start', len(lu0) == 0, str(len(lu0)))
@@ -283,10 +283,11 @@ def run(H, G):
     check('hub PvP window: a visibility rule steps from its arrows and comes back', v0 != v1 and v2 == v0, f'{v0} -> {v1} -> {v2}')
     np0 = w[H].get('presets', 0)
     c(H, cmd='mpm_pvp', action='preset_save', name='Hub test'); time.sleep(1.5); q = c(H, cmd='mpm_pvp')
-    check('hub PvP window: Save as preset saves a named preset (now shown)', q.get('presets') == np0 + 1 and q.get('preset_now') == 'Hub test', f"{q.get('presets')} {q.get('preset_now')} {q.get('preset_msg')}")
+    np1 = q.get('presets', 0)                                # a copy can keep "Hub test" from an older run: then it is replaced
+    check('hub PvP window: Save as preset saves a named preset (now shown)', np1 in (np0, np0 + 1) and np1 >= 1 and q.get('preset_now') == 'Hub test', f"{np1} {q.get('preset_now')} {q.get('preset_msg')}")
     shot(H, 'pvp_window_preset'); shot(H, 'pvp_window_tip', tip=q['rows'][7][0])
     c(H, cmd='mpm_pvp', action='preset_delete'); time.sleep(1.5); q = c(H, cmd='mpm_pvp')
-    check('hub PvP window: Delete preset removes it (the rules stay)', q.get('presets') == np0 and q.get('preset_now') == '', f"{q.get('presets')} {q.get('preset_msg')}")
+    check('hub PvP window: Delete preset removes it (the rules stay)', q.get('presets') == np1 - 1 and q.get('preset_now') == '', f"{q.get('presets')} {q.get('preset_msg')}")
     here = {k: json.load(open(os.path.join(W, 'lang', f'{v}.json'))).get('This settlement', 'This settlement') if v != 'en' else 'This settlement' for k, v in CODE.items()}[LANG['H']]
     for _ in range(4):                                       # map: this settlement (the copy's saved rules may say a dungeon)
         if c(H, cmd='mpm_pvp')['rows'][4][1] == here: break
