@@ -340,6 +340,7 @@
  "Dungeon loot · %d item||Dungeon loot · %d items": "Dungeon loot · %d item||Dungeon loot · %d items",
  "Each player can recruit up to the full clan limit": "Each player can recruit up to the full clan limit",
  "Each result can be brought home once.": "Each result can be brought home once.",
+ "Each team needs at least one unit. Right-click a unit's portrait to take it.": "Each team needs at least one unit. Right-click a unit's portrait to take it.",
  "Each team needs brought units: Blue has %d, Red has %d.": "Each team needs brought units: Blue has %d, Red has %d.",
  "End for everyone": "End for everyone",
  "End the game for everyone?": "End the game for everyone?",
@@ -468,6 +469,7 @@
  "In Dungeon Settlers": "In Dungeon Settlers",
  "In a dungeon only lending works: use Lend on your units.": "In a dungeon only lending works: use Lend on your units.",
  "In a dungeon you can only lend units (Lend on a portrait)": "In a dungeon you can only lend units (Lend on a portrait)",
+ "In a dungeon, a friend can lend you a unit (Lend on their unit).": "In a dungeon, a friend can lend you a unit (Lend on their unit).",
  "In a dungeon: load it and return to the settlement first.": "In a dungeon: load it and return to the settlement first.",
  "In the lobby each player brings units; Start sends the teams to the arena floor. The match begins once everyone has arrived.": "In the lobby each player brings units; Start sends the teams to the arena floor. The match begins once everyone has arrived.",
  "Installing the host's mods...": "Installing the host's mods...",
@@ -1297,8 +1299,5 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "your gameplay mods are different from the host's: start the game from the launcher with the host's mods",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version",
  "your version is older": "your version is older",
- "‹ Newer": "‹ Newer",
- "Each team needs at least one unit. Right-click a unit's portrait to take it.": "Each team needs at least one unit. Right-click a unit's portrait to take it.",
- "In a dungeon, a friend can lend you a unit (Lend on their unit).": "In a dungeon, a friend can lend you a unit (Lend on their unit).",
- "Take your places": "Take your places"
+ "‹ Newer": "‹ Newer"
 }
