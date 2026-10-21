@@ -46,6 +46,7 @@ DSLObj mu_button(DSLObj parent, float x, float y, float w, float h, const char *
 /* ------------------------------------------------------------------ texts, icons, names */
 DSLObj mu_text(DSLObj parent, float x, float y, float w, float h, const char *s, float size, int flags, uint32_t rgba) {
     if (!U) return NULL;
+    { int l = dsi_lang(); if ((l == 1 || (l >= 5 && l <= 7)) && size < 14) size = 14; }   /* CJK never below 14 (review_ja #2) */
     DSLObj t = U->text(parent, x, y, w, h, s ? s : "", size, flags, rgba);
     if (t && !(flags & DSL_TXT_WRAP)) cm_text_ellipsis(t);
     if (t) cm_raycast(t, false);
@@ -175,6 +176,13 @@ DSLObj mu_card_draw(DSLObj parent, float x, float y, float w, const mu_card *c, 
     char line[300], bg[96] = ""; if (c->bg) mu_name_of(c->bg, bg, sizeof bg);
     snprintf(line, sizeof line, "%s%s%s%s%s", rn, bg[0] ? "  \xC2\xB7  " : "", bg, c->weapon ? "  \xC2\xB7  " : "", c->weapon ? weapon_word(c->weapon) : "");
     dsi_utf8_fix_end(line);
+    /* one size on every card: a line too long for 13 drops its weapon word (the weapon is the first worn-item icon below)
+       instead of the kit shrinking each card to its own size and cutting the weapon with "..." (RU; same as Units Laboratory) */
+    if (c->weapon) {
+        DSLObj m = U->text(card, x0, 28, tw, 22, line, 13, DSL_TXT_LEFT, MU_C_SUB); float pw = m ? cm_text_preferred_w(m) : -1;
+        if (m) U->destroy(m);
+        if (pw > tw) { snprintf(line, sizeof line, "%s%s%s", rn, bg[0] ? "  \xC2\xB7  " : "", bg); dsi_utf8_fix_end(line); }
+    }
     mu_text(card, x0, 28, tw, 22, line, 13, DSL_TXT_LEFT, MU_C_SUB);
     /* row A: worn items | skill bar */
     IconRef ic[MUC_MAX * 3]; int gr[MUC_MAX * 3], n = 0;
@@ -220,7 +228,14 @@ DSLObj mu_card_draw_compact(DSLObj parent, float x, float y, float w, const mu_c
     char line[400], bg[96] = ""; if (c->bg) mu_name_of(c->bg, bg, sizeof bg);
     snprintf(line, sizeof line, "<color=#D9BE8F>%s</color>  %s%s%s%s%s", lv, rn, bg[0] ? "  \xC2\xB7  " : "", bg, c->weapon ? "  \xC2\xB7  " : "", c->weapon ? weapon_word(c->weapon) : "");
     dsi_utf8_fix_end(line);
-    mu_text(card, x0, 30, tw, 24, line, 13, DSL_TXT_LEFT, MU_C_SUB);
+    DSLObj lt = mu_text(card, x0, 30, tw, 24, line, 13, DSL_TXT_LEFT, MU_C_SUB);
+    /* too long at its size (RU, DE): the background goes, the weapon stays, and every card keeps the same text size (the
+       kit shrank each long line by its own amount and the "..." cut the weapon) */
+    float pw = lt && bg[0] && c->weapon ? cm_text_preferred_w(lt) : -1;
+    if (pw > tw) {
+        snprintf(line, sizeof line, "<color=#D9BE8F>%s</color>  %s  \xC2\xB7  %s", lv, rn, weapon_word(c->weapon));
+        dsi_utf8_fix_end(line); U->set_text(lt, line);
+    }
     float ix = x0 + tw + 10, right = w - 8;
     IconRef ic[MUC_MAX * 6]; int gr[MUC_MAX * 6], n = 0;
     /* row A: worn items | skill bar */

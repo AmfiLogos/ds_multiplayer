@@ -333,7 +333,8 @@ static void draw_cards(void) {
         B.card_item[B.ncard] = k;
         /* the card is a button: one under the card's rect, hidden by it (the card and its icons let clicks through) */
         B.row[B.ncard] = U->button(B.right, 52, y, B.rw - 60, MU_CARD_CH, "", on_card, (void *)(intptr_t)B.ncard);
-        B.tick[B.ncard] = U->toggle(B.right, 8, y + (MU_CARD_CH - 36) / 2, 36, "", item_pick(k) >= 0, on_tick, (void *)(intptr_t)B.ncard);
+        /* the kit's toggle puts its box 24 from its right end: 48 wide = the box in the middle of its frame (36 wide: left) */
+        B.tick[B.ncard] = U->toggle(B.right, 2, y + (MU_CARD_CH - 36) / 2, 48, "", item_pick(k) >= 0, on_tick, (void *)(intptr_t)B.ncard);
         if (lib) {                                                    /* E3: the card from the unit's builder JSON */
             const ul_bring_api *a = ul_api(); char *js = a ? a->build_json(B.lu[k].guid) : NULL;
             jv *bj = js ? jparse(js, strlen(js), e, sizeof e) : NULL; if (a && js) a->free_str(js);

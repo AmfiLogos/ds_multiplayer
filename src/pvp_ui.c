@@ -101,7 +101,10 @@ static uintptr_t h_pv_vsub, h_pv_root, h_pv_view, h_pv_area, h_pv_title, h_pv_hi
 static uintptr_t h_pr_root, h_pr_title, h_pr_score, h_pr_rounds;          /* result window */
 static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab;                        /* boss bar copy */
 static uintptr_t h_lab_yes, h_lab_no, h_lab_bring, h_hud_flab, h_prop_root, h_prop_txt, h_rs_root, h_rs_title, h_rs_score, h_rs_sub;    /* E4 fight button + proposal box, E9 round screen */
-static double rs_t0; static uint32_t rs_key; static char hud_last[400];                                                        /* E9: when this round screen showed (local clock) */
+static double rs_t0; static uint32_t rs_key; static char hud_last[400];
+#define HUD_INSET 40.0f                                                  /* the bars start this far right of the copy's own bar start */
+#define PROP_W 520.0f                                                    /* the fight vote box */
+static float hud_k = 1, prop_x, prop_y;                                                        /* E9: when this round screen showed (local clock) */
 int  mu_bring_is_open(void);                                         /* mu_bring.c */
 int  pvp_ui_vote(int op) __attribute__((weak_import));
 int  pvp_ui_my_slot(void) __attribute__((weak_import));
@@ -113,6 +116,8 @@ static int vote_view(const pvp_state *s) {
     if (s->vote_open) return (s->agree_mask >> me & 1u) ? 3 : 2;
     return s->countdown_at ? 4 : 1;
 }
+/* review_ja #2: CJK (ko, zh-Hans, zh-Hant, ja) is never designed below 14 (smaller kanji turn to blobs at 960x540) */
+static float pv_fs(float s) { int l = dsi_lang(); return (l == 1 || (l >= 5 && l <= 7)) && s < 14 ? 14 : s; }
 static int pv_open, pr_open, pv_click = -1;
 static int br_open;
 int pvp_ui_window_open(void) { return pv_open || pr_open || br_open; }   /* fe_menu.c: its window steps aside meanwhile */
@@ -194,7 +199,7 @@ static void pv_build(Obj v) {
         float x0 = t == 1 ? 24 : 392, cx = x0 + 172;
         KEEP(h_pv_teamh[t], mk_txt(tpl_txt, R, 1, 22, 514, 0, PX(cx), PY(128), 340, 32, t == 1 ? C_BLUE : C_RED));
         mk_img(tpl_img, R, -1, C_LINE, PX(cx), PY(148), 344, 1);
-        KEEP(h_pv_units[t], mk_txt(tpl_txt, R, 0, 13, 514, 0, PX(cx), PY(PV_TEAM_TOP + PV_TEAM_ROWS * PV_BLOCK + 14), 340, 20, C_SUB));
+        KEEP(h_pv_units[t], mk_txt(tpl_txt, R, 0, pv_fs(13), 514, 0, PX(cx), PY(PV_TEAM_TOP + PV_TEAM_ROWS * PV_BLOCK + 14), 340, 20, C_SUB));
     }
     for (int i = 0; i < 8; i++) {                                     /* player buttons + their units; placed in their column at refresh */
         Obj b = mk_button(src, R, 1, S_NBTN, C_WHITE, 0, 0, 330, 32, 16, "", C_MAIN);
@@ -204,7 +209,7 @@ static void pv_build(Obj v) {
             Obj im = fr ? mk_img(tpl_img, u_tr(fr), -1, C_ROW2, 0, 0, 42, 42) : NULL;
             KEEP(h_pv_por[i][k], fr);
             if (fr && im) { u_gc_free(h_pv_pname[i][k]); h_pv_pname[i][k] = 0; }
-            Obj nt = mk_txt(tpl_txt, R, 0, 11, 514, 0, 0, 0, 80, 16, C_SUB); u_active(nt, false);
+            Obj nt = mk_txt(tpl_txt, R, 0, pv_fs(11), 514, 0, 0, 0, 80, 16, C_SUB); u_active(nt, false);
             KEEP(h_pv_pname[i][k], nt);
         }
     }
@@ -222,8 +227,8 @@ static void pv_build(Obj v) {
         }
     }
     /* the Vanilla check line (a guest's list of mods to turn off can be long: two lines) and the note (a refusal: three) */
-    KEEP(h_pv_vsub, mk_txt(tpl_txt, R, 0, 13, 514, 1, 0, PY(PV_RULES_TOP + 56 + 38 * PVR_N + 4), W - 60, 40, C_SUB));
-    KEEP(h_pv_note, mk_txt(tpl_txt, R, 0, 13, 514, 1, 0, PY(H - 100), W - 60, 56, C_ORANGE));
+    KEEP(h_pv_vsub, mk_txt(tpl_txt, R, 0, pv_fs(13), 514, 1, 0, PY(PV_RULES_TOP + 56 + 38 * PVR_N + 4), W - 60, 40, C_SUB));
+    KEEP(h_pv_note, mk_txt(tpl_txt, R, 0, pv_fs(13), 514, 1, 0, PY(H - 100), W - 60, 56, C_ORANGE));
     mk_img(tpl_img, R, -1, C_BAND, 0, PY(H - 32), W - 4, 60);
     mk_img(tpl_img, R, -1, C_COPPER, 0, PY(H - 62), W - 4, 1);
     KEEP(h_pvb[PVB_CLOSE], mk_button(src, R, 1, S_NBTN, C_WHITE, PX(24 + 90), PY(H - 32), 180, 34, 16, cmt_game("TEXTKEY_Common_Close", "Close"), C_MAIN));
@@ -307,7 +312,7 @@ static void pv_refresh(void) {
             if (pv_ncol < 16) snprintf(pv_col_names[pv_ncol++], 64, "%s", un);
         }
     }
-    cmt_set(pvt(h_pv_teamh[1]), TR("Blue")); cmt_set(pvt(h_pv_teamh[2]), TR("Red"));
+    cmt_set(pvt(h_pv_teamh[1]), TRC("team", "Blue")); cmt_set(pvt(h_pv_teamh[2]), TRC("team", "Red"));
     for (int t = 1; t <= 2; t++) { char u[96]; snprintf(u, sizeof u, TRN("%d unit", "%d units", units[t]), units[t]); cmt_set(pvt(h_pv_units[t]), u); }
     for (int r = 0; r < PVR_N; r++) {
         char v[64]; pv_value(r, v, sizeof v); cmt_set(pvt(h_pv_rval[r]), v);
@@ -628,27 +633,34 @@ static void hud_build(void) {
         RectF r = F(0x5106978, RectF (*)(Obj, void *))(rt, NULL);
         V2 pv = F(0x5107200, V2 (*)(Obj, void *))(rt, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL);
         F(0x51072F4, void (*)(Obj, V2, void *))(rt, (V2){ 0, pv.y }, NULL);
-        ap.x -= r.w * pv.x; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, ap, NULL);
+        /* the bar starts HUD_INSET further right (its fill scale is HUD_K = the rest of its width): the Blue / Red labels
+           left of it stay inside the panel (they stuck out past its left edge) */
+        ap.x -= r.w * pv.x; ap.x += HUD_INSET; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, ap, NULL);
+        if (r.w > HUD_INSET * 2) hud_k = (r.w - HUD_INSET) / r.w;
         img_set(bar, NULL, k ? (Col){ 0.86f, 0.30f, 0.30f, 1 } : (Col){ 0.33f, 0.52f, 0.95f, 1 });
     }
     /* under the unit portraits; 140 to the right: the Players panel (ui_game.c, top left, right edge 222 left of the centre)
        covered the bar's left end and its Blue / Red labels */
-    { Obj rt = tr; if (mm_is(rt, K_RT)) { V2 p = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); p.y -= 215; p.x += 140; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, p, NULL); } }
+    { Obj rt = tr; if (mm_is(rt, K_RT)) { V2 p = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); p.y -= 215; p.x += 140; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, p, NULL);
+      /* the panel's sprite fades out at the bottom: a copper line closes it */
+      typedef struct { float x, y, w, h; } RectP; RectP rp = F(0x5106978, RectP (*)(Obj, void *))(rt, NULL);
+      if (rp.w > 200 && rp.h > 40 && u_alive(head)) mk_img(head, rt, -1, C_COPPER, 0, -rp.h / 2 + 1, rp.w - 8, 2);
+      rig_log("pvp ui: boss bar copy panel %.0fx%.0f", rp.w, rp.h); } }
     Obj tpl_t = u_alive(name) ? name : NULL;
     for (int k = 0; k < 2 && tpl_t; k++) {                               /* "Blue" left of the top bar, "Red" left of the bottom one */
         Obj bar = k ? body : head; if (!u_alive(bar)) continue;
         Obj l = u_instantiate(tpl_t, u_tr_parent(u_tr(bar)));
         if (!u_alive(l)) continue;
-        das_key_clear(l); txt_style(l, 1, 16, 516, 0); txt_color(l, k ? C_RED : C_BLUE); cmt_set(l, k ? TR("Red") : TR("Blue"));
+        das_key_clear(l); txt_style(l, 1, 16, 516, 0); txt_color(l, k ? C_RED : C_BLUE); cmt_set(l, k ? TRC("team", "Red") : TRC("team", "Blue"));
         u_gc_free(h_hud_lab[k]); h_hud_lab[k] = u_gc_new(l);
         Obj brt = u_tr(bar); V2 bp = mm_is(brt, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(brt, NULL) : (V2){ 0, 0 };
-        place(l, bp.x - 52, bp.y, 90, 24);                                /* bp.x = the bar's left edge (pivot moved above) */
+        place(l, bp.x - 38, bp.y, 64, 24);                                /* bp.x = the bar's left edge (pivot moved above) */
     }
     /* Ready button (planning pause): built from the bar's own parts (the Esc menu may never have been opened here): the
        Recruit button sprite + a Cinzel label; the click is read with Input.GetMouseButtonDown in hud_frame */
     if (u_alive(head) && u_alive(name)) {
         Obj hrt = u_tr(body ? body : head); V2 hp = mm_is(hrt, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(hrt, NULL) : (V2){ 0, 0 };
-        if (mm_is(hrt, K_RT)) { typedef struct { float x, y, w, h; } RectB; RectB rb = F(0x5106978, RectB (*)(Obj, void *))(hrt, NULL); hp.x += rb.w / 2; }   /* the bar's pivot is its left edge (above): centre under it */
+        if (mm_is(hrt, K_RT)) { typedef struct { float x, y, w, h; } RectB; RectB rb = F(0x5106978, RectB (*)(Obj, void *))(hrt, NULL); hp.x += (rb.w - HUD_INSET) / 2; }   /* the bar's pivot is its left edge (above): centre under it */
         Obj b = mk_img(head, u_tr_parent(hrt), S_RECRUIT, C_WHITE, hp.x, hp.y - 44, 170, 38);   /* under the bars, centred */
         if (b) { Obj l = mk_txt(name, u_tr(b), 1, 18, 514, 0, 0, 0, 170, 38, C_START);
                  if (l) { das_key_clear(l); cmt_set(l, TR("Ready")); u_gc_free(h_hud_rlab); h_hud_rlab = u_gc_new(l); } }
@@ -664,9 +676,10 @@ static void hud_build(void) {
         u_gc_free(h_pvb[PVB_HUD_BRING]); h_pvb[PVB_HUD_BRING] = hb ? u_gc_new(hb) : 0; u_active(hb, false);
         /* E4: the host's box when a guest proposes the fight: "<name> proposes a fight" + Start / Not yet */
         if (!scan_done) assets_scan_now();
-        Obj pb = mk_img(head, u_tr_parent(hrt), S_BOX, C_WHITE, hp.x, hp.y - 120, 440, 104);
+        Obj pb = mk_img(head, u_tr_parent(hrt), S_BOX, C_WHITE, hp.x, hp.y - 120, PROP_W, 104);
+        prop_x = hp.x; prop_y = hp.y - 120;
         if (pb) {
-            Obj t = mk_txt(name, u_tr(pb), 0, 18, 514, 1, 0, 22, 410, 40, C_MAIN);
+            Obj t = mk_txt(name, u_tr(pb), 0, 18, 514, 1, 0, 22, PROP_W - 30, 40, C_MAIN);
             if (t) { das_key_clear(t); u_gc_free(h_prop_txt); h_prop_txt = u_gc_new(t); }
             for (int k = 0; k < 2; k++) {
                 Obj bb = mk_img(head, u_tr(pb), k ? S_NBTN : S_RECRUIT, C_WHITE, k ? 100 : -100, -24, 170, 36);
@@ -709,13 +722,13 @@ static void hud_frame(const pvp_state *s) {
     if (s->planning) snprintf(clock, sizeof clock, "%s", TR("Planning"));
     dsi_utf8_fix_end(clock);
     char rd[64]; snprintf(rd, sizeof rd, TR("Round %d"), s->round);
-    snprintf(t, sizeof t, "<color=#7FA8FF>%s</color> %d - %d <color=#FF7F7F>%s</color>   %s   %s", TR("Blue"), s->score[1], s->score[2], TR("Red"), rd, clock);
+    snprintf(t, sizeof t, "<color=#7FA8FF>%s</color> %d - %d <color=#FF7F7F>%s</color>   %s   %s", TRC("team", "Blue"), s->score[1], s->score[2], TRC("team", "Red"), rd, clock);
     Obj nm = u_gc_get(h_hud_name); if (u_alive(nm)) cmt_set(nm, t);
     { size_t k = 0; for (const char *q = t; *q && k < sizeof hud_last - 1; q++) hud_last[k++] = *q == '"' || *q == '\\' ? '\'' : *q; hud_last[k] = 0; }   /* tests */
-    for (int k = 0; k < 2; k++) { Obj l = u_gc_get(h_hud_lab[k]); if (u_alive(l)) cmt_set(l, k ? TR("Red") : TR("Blue")); }
+    for (int k = 0; k < 2; k++) { Obj l = u_gc_get(h_hud_lab[k]); if (u_alive(l)) cmt_set(l, k ? TRC("team", "Red") : TRC("team", "Blue")); }
     { Obj l = u_gc_get(h_hud_rlab); if (u_alive(l)) cmt_set(l, TR("Ready")); }   /* (DASText re-reads its key on enable) */
     for (int k = 0; k < 2; k++) { Obj im = u_gc_get(h_hud_bar[k]); Obj rt = u_alive(im) ? u_tr(im) : NULL;
-        if (mm_is(rt, K_TR)) F(0x510AFF8, void (*)(Obj, V3, void *))(rt, (V3){ pm[k + 1] / 1000.0f, 1, 1 }, NULL); }   /* Transform.localScale */
+        if (mm_is(rt, K_TR)) F(0x510AFF8, void (*)(Obj, V3, void *))(rt, (V3){ pm[k + 1] / 1000.0f * hud_k, 1, 1 }, NULL); }   /* Transform.localScale */
     Obj rb = pvb(PVB_READY); if (rb) u_active(rb, s->planning != 0);
     /* E4: Propose fight / Cancel (agreed countdown); the vote box: "<name> proposes a fight" Agree / Not yet, or waiting */
     int vv = vote_view(s);
@@ -727,7 +740,11 @@ static void hud_frame(const pvp_state *s) {
     Obj pr = u_gc_get(h_prop_root); if (u_alive(pr)) u_active(pr, vv == 2 || vv == 3);
     for (int k = 0; k < 2; k++) { Obj bb = pvb(k ? PVB_PROP_NO : PVB_PROP_YES); if (bb) u_active(bb, vv == 2); }
     if (vv == 2 || vv == 3) {
+        /* waiting (no buttons): the box shrinks to its text line, no empty band where the buttons were */
+        if (u_alive(pr)) place(pr, prop_x, vv == 2 ? prop_y : prop_y + 26, PROP_W, vv == 2 ? 104 : 52);
+        { Obj l = u_gc_get(h_prop_txt); if (u_alive(l)) place(l, 0, vv == 2 ? 22 : 0, PROP_W - 30, 40); }
         char pn[64] = "", t2[200]; if (pvp_ui_player_name) pvp_ui_player_name(s->vote_by, pn, sizeof pn);
+        if (strlen(pn) > 24) { pn[24] = 0; dsi_utf8_fix_end(pn); strcat(pn, "\xE2\x80\xA6"); }   /* a long name: cut, the box keeps one line */
         if (vv == 2) snprintf(t2, sizeof t2, TR("%s proposes a fight"), pn); else snprintf(t2, sizeof t2, "%s", TR("Waiting for the other players to agree"));
         dsi_utf8_fix_end(t2); Obj l = u_gc_get(h_prop_txt); if (u_alive(l)) cmt_set(l, t2);
     }
@@ -743,7 +760,7 @@ static void hud_frame(const pvp_state *s) {
         else if (s->last_winner == PVP_TEAM_BLUE) snprintf(a, sizeof a, TR("Blue wins round %d"), s->round);
         else if (s->last_winner == PVP_TEAM_RED) snprintf(a, sizeof a, TR("Red wins round %d"), s->round);
         else snprintf(a, sizeof a, TR("Round %d is a draw"), s->round);
-        snprintf(b2, sizeof b2, "<color=#7FA8FF>%s</color>  %d - %d  <color=#FF7F7F>%s</color>", TR("Blue"), s->score[1], s->score[2], TR("Red"));
+        snprintf(b2, sizeof b2, "<color=#7FA8FF>%s</color>  %d - %d  <color=#FF7F7F>%s</color>", TRC("team", "Blue"), s->score[1], s->score[2], TRC("team", "Red"));
         if (s->ending == PVP_RESET_MATCH) snprintf(c2, sizeof c2, TR("Results in %d"), left); else snprintf(c2, sizeof c2, TR("Next round in %d"), left);
         dsi_utf8_fix_end(a); dsi_utf8_fix_end(c2);
         Obj t; if (u_alive(t = u_gc_get(h_rs_title))) cmt_set(t, a); if (u_alive(t = u_gc_get(h_rs_score))) cmt_set(t, b2); if (u_alive(t = u_gc_get(h_rs_sub))) cmt_set(t, c2);
@@ -800,7 +817,7 @@ static void pr_frame(const pvp_state *s) {
     snprintf(b, sizeof b, "<color=#7FA8FF>%d</color>  -  <color=#FF7F7F>%d</color>", s->score[1], s->score[2]); cmt_set(u_gc_get(h_pr_score), b);
     char r[900] = ""; size_t o = 0;
     o += (size_t)snprintf(r + o, sizeof r - o, "%s ", TR("Rounds:"));
-    for (int i = 0; i < pr_nhist && o < sizeof r - 80; i++) o += (size_t)snprintf(r + o, sizeof r - o, "%s%d %s", i ? ",  " : "", i + 1, pr_hist[i] == 1 ? TR("Blue") : pr_hist[i] == 2 ? TR("Red") : TR("draw"));
+    for (int i = 0; i < pr_nhist && o < sizeof r - 80; i++) o += (size_t)snprintf(r + o, sizeof r - o, "%s%d %s", i ? ",  " : "", i + 1, pr_hist[i] == 1 ? TRC("team", "Blue") : pr_hist[i] == 2 ? TRC("team", "Red") : TR("draw"));
     if (s->draws && o < sizeof r) { o += (size_t)snprintf(r + o, sizeof r - o, "\n"); if (o < sizeof r) o += (size_t)snprintf(r + o, sizeof r - o, TR("Draws: %d"), s->draws); }
     if (o < sizeof r) snprintf(r + o, sizeof r - o, "\n%s", pvp_v1_world() ? TR("This PvP world is only for the match: back to the title to play again.") : TR("The world is back as it was before the match."));
     { Obj ok = pvb(PVB_RESULT_OK); if (ok) cmt_set(btn_label(ok, 1), pvp_v1_world() ? TR("Back to the Title") : TR("Back to the World")); }
@@ -1033,14 +1050,21 @@ enum { V1P_SAVEAS, V1P_DELETE, V1P_SAVE, V1P_CANCEL };
 static int v1_naming;                                                    /* the name field is open */
 static char v1_pmsg[200];                                                /* last preset message (saved / deleted) */
 static unsigned v1_gen;                                                  /* language of the labels set once */
-#define V1_W 520
+#define V1_W 560
 #define V1_STEP 36
 #define V1_RH 32
 #define V1_TOP 62
 #define V1_GAP 10                                                        /* before the visibility rows, before the presets */
 #define V1_ROWY(i) (V1_TOP + V1_STEP * (i) + ((i) >= V1R_OLD + 2 ? V1_GAP : 0) + V1_RH / 2)
 #define V1_PTOP (V1_TOP + V1_STEP * V1R_N + 2 * V1_GAP)
-#define V1_H (V1_PTOP + 36 + 46 + 50)                                       /* rows, preset row, buttons row, note */
+#define V1_H (V1_PTOP + 36 + 46 + 66)                                       /* rows, preset row, buttons row, note (3 lines) */
+/* row columns (from the panel's left edge): label | < | value | >, 6 apart (RU labels / values touched the arrows) */
+#define V1_LAB_X (18 + 8 + 90)
+#define V1_LAB_W 180
+#define V1_ARL_X (18 + 204)
+#define V1_ARR_X (V1_W - 18 - 16)
+#define V1_VAL_X ((V1_ARL_X + 13 + 6 + V1_ARR_X - 13 - 6) / 2)
+#define V1_VAL_W (V1_ARR_X - V1_ARL_X - 26 - 12)
 /* owner v0.1.12 #2: the menu's choice box (mpmenu.c title_build: 430 x 588 centred at -78, -63) was taller than these rules,
    an empty block above the title and one below the note. While the PvP page shows, the box takes this panel's size with
    its top-left corner where it was; draw(NULL) gives it back. */
@@ -1076,10 +1100,10 @@ static void v1_page_build(Obj panel) {
     for (int i = 0; i < V1R_N; i++) {
         float yc = QY(V1_ROWY(i));
         KEEP(h_v1_row[i], mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, QX(18 + rw / 2), yc, rw, V1_RH));
-        KEEP(h_v1_lab[i], mk_txt(tpl_txt, R, 0, 14, 513, 0, QX(18 + 8 + 85), yc, 170, V1_RH, C_SUB));
-        KEEP(h_v1_val[i], mk_txt(tpl_txt, R, 0, 14, 514, 0, QX(18 + 312), yc, 210, V1_RH, C_MAIN));
+        KEEP(h_v1_lab[i], mk_txt(tpl_txt, R, 0, 14, 513, 0, QX(V1_LAB_X), yc, V1_LAB_W, V1_RH, C_SUB));
+        KEEP(h_v1_val[i], mk_txt(tpl_txt, R, 0, 14, 514, 0, QX(V1_VAL_X), yc, V1_VAL_W, V1_RH, C_MAIN));
         for (int a = 0; a < 2; a++) {
-            Obj ar = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(18 + (a ? 434 : 190)), yc, 26, 26);
+            Obj ar = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(a ? V1_ARR_X : V1_ARL_X), yc, 26, 26);
             Obj at = ar ? mk_txt(tpl_txt, u_tr(ar), 0, 16, 514, 0, 0, 0, 26, 26, C_MAIN) : NULL; if (at) cmt_set(at, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9");
             KEEP(h_v1_arrow[i][a], ar);
         }
@@ -1088,10 +1112,10 @@ static void v1_page_build(Obj panel) {
     mk_img(tpl_img, R, -1, C_COPPER, 0, QY(V1_PTOP - V1_GAP / 2 - 1), pw - 40, 1);
     { float yc = QY(V1_PTOP + 18);
       KEEP(h_v1_prow, mk_img(tpl_img, R, -1, C_ROW1, QX(18 + rw / 2), yc, rw, V1_RH));
-      KEEP(h_v1_plab, mk_txt(tpl_txt, R, 0, 14, 513, 0, QX(18 + 8 + 85), yc, 170, V1_RH, C_GOLD));
-      KEEP(h_v1_pval, mk_txt(tpl_txt, R, 0, 14, 514, 0, QX(18 + 312), yc, 210, V1_RH, C_MAIN));
+      KEEP(h_v1_plab, mk_txt(tpl_txt, R, 0, 14, 513, 0, QX(V1_LAB_X), yc, V1_LAB_W, V1_RH, C_GOLD));
+      KEEP(h_v1_pval, mk_txt(tpl_txt, R, 0, 14, 514, 0, QX(V1_VAL_X), yc, V1_VAL_W, V1_RH, C_MAIN));
       for (int a = 0; a < 2; a++) {
-          Obj ar = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(18 + (a ? 434 : 190)), yc, 26, 26);
+          Obj ar = mk_img(tpl_img, R, S_NBTN, C_WHITE, QX(a ? V1_ARR_X : V1_ARL_X), yc, 26, 26);
           Obj at = ar ? mk_txt(tpl_txt, u_tr(ar), 0, 16, 514, 0, 0, 0, 26, 26, C_MAIN) : NULL; if (at) cmt_set(at, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9");
           KEEP(h_v1_parr[a], ar);
       } }
@@ -1104,7 +1128,7 @@ static void v1_page_build(Obj panel) {
           if (k >= V1P_SAVE) u_active(b, false);
       }
       u_gc_free(h_v1_field); h_v1_field = 0; }                              /* the name field: made when Save as preset... opens (v1_field) */
-    KEEP(h_v1_note, mk_txt(tpl_txt, R, 0, 12, 513, 1, 0, QY(V1_PTOP + 36 + 46 + 24), rw, 44, C_SUB));
+    KEEP(h_v1_note, mk_txt(tpl_txt, R, 0, pv_fs(12), 513, 1, 0, QY(V1_PTOP + 36 + 46 + 32), rw, 56, C_SUB));
     v1_labels();
     #undef QX
     #undef QY

@@ -26,6 +26,8 @@ static struct {
     fe_save_info saves[64]; fe_unit_info units[64]; fe_save_info targets[16]; fe_result_info res[16];
     char run[40], msg[1200], err[600];
 } W;
+/* review_ja #2: CJK (ko, zh-Hans, zh-Hant, ja) is never designed below 14 (smaller kanji turn to blobs at 960x540) */
+static float few_fs(float s) { int l = dsi_lang(); return (l == 1 || (l >= 5 && l <= 7)) && s < 14 ? 14 : s; }
 static Obj few_t(int k) { Obj o = u_gc_get(W.t[k]); return u_alive(o) ? o : NULL; }
 static uintptr_t *few_reg(void) { return W.esc ? h_lwr : h_tb; }
 static Obj few_btn(int id) { Obj o = u_gc_get(few_reg()[id]); return u_alive(o) ? o : NULL; }
@@ -81,17 +83,17 @@ static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
     }
     BTN(MPB_FE_UNITPG, S_NBTN, WX(344 + 100), WY(156 + 66 * 4 + 14), 200, 26, 13, "More units \xE2\x80\xBA", C_SUB);
     T(FT_COUNT, 0, 15, 516, 0, WX(936 - 150), WY(156 + 66 * 4 + 14), 300, 24, C_GOLD);
-    T(FT_NOTE, 0, 13, 513, 1, 0, WY(486), 900, 66, C_SUB);
+    T(FT_NOTE, 0, few_fs(13), 513, 1, 0, WY(486), 900, 66, C_SUB);
     /* results: table, loot, what will be applied, target, conflict */
     T(FT_TABLE, 0, 15, 513, 1, 0, WY(140 + 105), 900, 210, C_MAIN);
-    T(FT_LOOT, 0, 13, 513, 1, 0, WY(372), 900, 40, C_SUB);
-    T(FT_APPLY, 0, 13, 513, 1, 0, WY(430), 900, 64, C_MAIN);
+    T(FT_LOOT, 0, few_fs(13), 513, 1, 0, WY(372), 900, 40, C_SUB);
+    T(FT_APPLY, 0, few_fs(13), 513, 1, 0, WY(430), 900, 64, C_MAIN);
     T(FT_TARGET, 0, 15, 514, 0, 0, WY(486), 520, 26, C_MAIN);
     BTN(MPB_FE_TGT_PREV, S_NBTN, WX(480 - 280), WY(486), 28, 28, 16, "\xE2\x80\xB9", C_MAIN);
     BTN(MPB_FE_TGT_NEXT, S_NBTN, WX(480 + 280), WY(486), 28, 28, 16, "\xE2\x80\xBA", C_MAIN);
-    T(FT_CONFLICT, 0, 13, 513, 1, WX(24 + 300), WY(522), 600, 34, C_ORANGE);
-    BTN(MPB_FE_VER_EXP, S_NBTN, WX(700), WY(522), 170, 30, 13, "Expedition version", C_MAIN);
-    BTN(MPB_FE_VER_HOME, S_NBTN, WX(880), WY(522), 150, 30, 13, "Home version", C_MAIN);
+    T(FT_CONFLICT, 0, few_fs(13), 513, 1, WX(24 + 300), WY(522), 600, 34, C_ORANGE);
+    BTN(MPB_FE_VER_EXP, S_NBTN, WX(700), WY(522), 170, 30, few_fs(13), "Expedition version", C_MAIN);
+    BTN(MPB_FE_VER_HOME, S_NBTN, WX(880), WY(522), 150, 30, few_fs(13), "Home version", C_MAIN);
     for (int i = 0; i < 6; i++) BTN(MPB_FE_RES0 + i, S_NBTN, 0, WY(160 + 54 * i + 25), 900, 50, 15, "", C_MAIN);
     T(FT_MSG, 0, 15, 514, 1, 0, WY(300), 820, 160, C_MAIN);
     /* bottom bar */
