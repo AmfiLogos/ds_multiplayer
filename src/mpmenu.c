@@ -3176,7 +3176,9 @@ __attribute__((visibility("default"))) int mpmenu_escape_ours(void) {
             M.state == MPM_LOBBY && M.lobby_settings_open, rules_close_frames, teams_modal(), teams_close_frames);
     if (chat_typing) { test_chat_escape = 1; rig_log("mpmenu: Escape closed the chat"); return 1; }
     if (M.confirm_leave) { pending_click = MPB_LEAVE_CANCEL; rig_log("mpmenu: Escape = Cancel in the Leave box"); return 1; }
-    for (int k = 0; k < nhooks; k++) { int ec = hooks[k].escape ? hooks[k].escape() : 0; if (ec) { pending_click = ec; return 1; } }   /* Custom Modes windows (FE) */
+    /* Custom Modes windows (FE), the Steam friends picker: the last registered first. The picker registers at the lobby, after
+       FE, and opens over an FE window (results opened by themselves at the session start), so Escape closes the top one. */
+    for (int k = nhooks - 1; k >= 0; k--) { int ec = hooks[k].escape ? hooks[k].escape() : 0; if (ec) { pending_click = ec; return 1; } }
     if (lbox_up > BX_LEAVE && lbox_ours(lbox_view())) {                    /* the box's own Cancel: the click hook answers it */
         rig_log("mpmenu: Escape = Cancel in our box"); F(0xF65638, void (*)(Obj, void *))(lbox_view(), NULL); return 1; }
     if (M.state == MPM_LOBBY && M.lobby_settings_open) { pending_click = MPB_RULES_DONE; rig_log("mpmenu: Escape closed the lobby Rules"); return 1; }
