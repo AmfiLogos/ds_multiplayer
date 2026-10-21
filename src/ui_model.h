@@ -68,6 +68,7 @@ typedef struct ui_votes {
     uint8_t pause[UI_MAX_PLAYERS];
     int allow_speedup, allow_pause;
     uint32_t story_pause;                      /* players holding a story popup open (pauses even with pause off) */
+    int vote_open;                             /* unitsel: a vote box is open (its proposer holds the same pause) */
     uint32_t busy;                             /* players still loading a map change (transitions barrier) */
     int pause_by1;                             /* dsnet_pause_by + 1 (0 = nobody known) */
     int paused_ext;                            /* the session is paused (mp stats) even if no vote shows it (auto pause) */
@@ -176,7 +177,8 @@ int  ui_story_args_read(const uint8_t *a, size_t n, uint32_t *node, int *choice)
  * Decided once every present player voted: more accepts = go, more declines = stay, a tie goes to
  * the host's vote. One proposal at a time: a new one while another is open is ignored.
  * Fed only by commands (same order on every peer). */
-enum { UI_MAP_ENTER_DUNGEON = 1, UI_MAP_RETURN_BASE = 2, UI_MAP_NEXT_FLOOR = 3 };
+enum { UI_MAP_ENTER_DUNGEON = 1, UI_MAP_RETURN_BASE = 2, UI_MAP_NEXT_FLOOR = 3,
+       UI_MAP_RETURN_SCROLL = 4 };   /* unitsel B5: a player uses a Return scroll (order = owner guid[16] + the ord UseSkill payload) */
 #define UI_MAP_MAX_ORDER 1024
 typedef struct ui_mapvote {
     uint32_t id;                               /* 0 = none */
@@ -194,6 +196,11 @@ int  ui_mapvote_propose(ui_mapvote *m, uint32_t id, int proposer, int kind, cons
 #define UI_MAP_CANCEL 2          /* timeout (60 s with no decision) */
 #define UI_MAP_CANCEL_USER 3     /* the proposer pressed Cancel */
 #define UI_MAP_TIMEOUT_S 60
+/* unitsel B5 (Return scroll): after UI_SCROLL_TIMEOUT_S (60 s) the proposer sends UI_MAP_TIMEOUT_YES: every present player who
+   has not answered counts as agree, then the usual tally (more yes = go, more no = stay, tie = the host's vote) */
+#define UI_MAP_TIMEOUT_YES 4
+#define UI_SCROLL_TIMEOUT_S 60                /* owner 2026-10-20 late: 60 s (was 20) */
+int  ui_map_timeout_s(int kind);               /* seconds before the proposer's timeout order (60, Return scroll 20) */
 int  ui_mapvote_vote(ui_mapvote *m, int player, uint32_t id, int accept, uint32_t present);
 int  ui_mapvote_recheck(ui_mapvote *m, uint32_t present);
 int  ui_mapvote_open(const ui_mapvote *m);     /* a proposal waits for votes */

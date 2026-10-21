@@ -113,7 +113,8 @@ void ui_pause_text(const ui_votes *v, const ui_players *p, char *out, size_t cap
     char who[256], nm[40];
     if (!cap) return;
     int n = v->allow_pause ? ui_pause_voters(v, p, who, sizeof who) : 0;
-    if (v->story_pause & v->present) snprintf(out, cap, n ? TR("Paused for a story event (and by %s)") : TR("Paused for a story event"), who);
+    if ((v->story_pause & v->present) && v->vote_open) snprintf(out, cap, "%s", TR("Paused while everyone votes"));
+    else if (v->story_pause & v->present) snprintf(out, cap, n ? TR("Paused for a story event (and by %s)") : TR("Paused for a story event"), who);
     else if (n) snprintf(out, cap, TR("Paused by %s"), who);
     else if (v->pause_by1 > 0) snprintf(out, cap, TR("Paused by %s"), ui_player_label(p, v->pause_by1 - 1, nm));
     else snprintf(out, cap, "%s", TR("Paused"));
@@ -340,16 +341,23 @@ int ui_mapvote_vote(ui_mapvote *m, int player, uint32_t id, int accept, uint32_t
         m->cancelled = accept;
         return m->decided = 0;
     }
+    if (accept == UI_MAP_TIMEOUT_YES) {                      /* unitsel B5: no answer in time = agree */
+        if (player != m->proposer && player != 0) return -1;
+        for (int i = 0; i < UI_MAX_PLAYERS; i++) if ((present >> i & 1u) && m->vote[i] < 0) m->vote[i] = 1;
+        return map_tally(m, present);
+    }
     if (player == m->proposer) return -1;                    /* the proposer always accepts */
     m->vote[player] = accept ? 1 : 0;
     return map_tally(m, present);
 }
 int ui_mapvote_recheck(ui_mapvote *m, uint32_t present) { return map_tally(m, present); }
+int ui_map_timeout_s(int kind) { return kind == UI_MAP_RETURN_SCROLL ? UI_SCROLL_TIMEOUT_S : UI_MAP_TIMEOUT_S; }
 const char *ui_map_kind_text(int kind) {
     switch (kind) {
     case UI_MAP_ENTER_DUNGEON: return TR("enter the dungeon");
     case UI_MAP_RETURN_BASE: return TR("return to the settlement");
     case UI_MAP_NEXT_FLOOR: return TR("go down to the next floor");
+    case UI_MAP_RETURN_SCROLL: return TR("use a Return scroll");
     default: return TR("change the map");
     }
 }
@@ -379,11 +387,13 @@ const char *ui_map_question(int kind, int next_floor, char *out, size_t cap) {
     else if (kind == UI_MAP_NEXT_FLOOR) snprintf(out, cap, "%s", TR("Go down to the next floor?"));
     else if (kind == UI_MAP_RETURN_BASE) snprintf(out, cap, "%s", TR("Return to the settlement?"));
     else if (kind == UI_MAP_ENTER_DUNGEON) snprintf(out, cap, "%s", TR("Enter the dungeon?"));
+    else if (kind == UI_MAP_RETURN_SCROLL) snprintf(out, cap, "%s", TR("Use a Return scroll?"));
     else snprintf(out, cap, "%s", TR("Change the map?"));
     return out;
 }
 const char *ui_map_short(int kind) {
-    return kind == UI_MAP_NEXT_FLOOR ? TR("go down") : kind == UI_MAP_RETURN_BASE ? TR("return to the settlement") : kind == UI_MAP_ENTER_DUNGEON ? TR("enter the dungeon") : TR("change the map");
+    return kind == UI_MAP_NEXT_FLOOR ? TR("go down") : kind == UI_MAP_RETURN_BASE ? TR("return to the settlement") : kind == UI_MAP_ENTER_DUNGEON ? TR("enter the dungeon")
+         : kind == UI_MAP_RETURN_SCROLL ? TR("use a Return scroll") : TR("change the map");
 }
 void ui_mapvote_marks(const ui_mapvote *m, const ui_players *p, uint32_t present, const char *ok, char *out, size_t cap) {
     size_t n = 0; int k = 0;
@@ -399,13 +409,13 @@ void ui_mapvote_marks(const ui_mapvote *m, const ui_players *p, uint32_t present
 }
 void ui_mapvote_result(const ui_mapvote *m, const ui_players *p, uint32_t present, int cur_floor_no, char *out, size_t cap) {
     char nm[40];
-    if (m->cancelled == UI_MAP_CANCEL) { snprintf(out, cap, TR("No answer in %d s: the vote was cancelled"), UI_MAP_TIMEOUT_S); return; }
+    if (m->cancelled == UI_MAP_CANCEL) { snprintf(out, cap, TR("No answer in %d s: the vote was cancelled"), ui_map_timeout_s(m->kind)); return; }
     if (m->cancelled == UI_MAP_CANCEL_USER) { snprintf(out, cap, TR("%s cancelled the vote"), ui_player_label(p, m->proposer, nm)); return; }
     if (m->decided == 1) {
         int yes = 0, all = 0;
         for (int i = 0; i < UI_MAX_PLAYERS; i++) if (present >> i & 1u) { all++; yes += m->vote[i] == 1; }
         const char *what = m->kind == UI_MAP_NEXT_FLOOR ? TR("going down") : m->kind == UI_MAP_RETURN_BASE ? TR("returning to the settlement")
-                         : m->kind == UI_MAP_ENTER_DUNGEON ? TR("entering the dungeon") : TR("changing the map");
+                         : m->kind == UI_MAP_ENTER_DUNGEON ? TR("entering the dungeon") : m->kind == UI_MAP_RETURN_SCROLL ? TR("using the Return scroll") : TR("changing the map");
         if (yes >= all) snprintf(out, cap, TR("Everyone agreed: %s"), what);
         else snprintf(out, cap, TR("Agreed (%d of %d): %s"), yes, all, what);
         return;
@@ -437,12 +447,12 @@ int ui_map_propose_read(const uint8_t *a, size_t n, uint32_t *id, int *kind, con
 }
 void ui_map_vote_write(uint8_t o[5], uint32_t id, int accept) {
     o[0] = (uint8_t)id; o[1] = (uint8_t)(id >> 8); o[2] = (uint8_t)(id >> 16); o[3] = (uint8_t)(id >> 24);
-    o[4] = accept == UI_MAP_CANCEL || accept == UI_MAP_CANCEL_USER ? (uint8_t)accept : accept ? 1 : 0;
+    o[4] = accept == UI_MAP_CANCEL || accept == UI_MAP_CANCEL_USER || accept == UI_MAP_TIMEOUT_YES ? (uint8_t)accept : accept ? 1 : 0;
 }
 int ui_map_vote_read(const uint8_t *a, size_t n, uint32_t *id, int *accept) {
     if (n < 5) return -1;
     *id = (uint32_t)a[0] | (uint32_t)a[1] << 8 | (uint32_t)a[2] << 16 | (uint32_t)a[3] << 24;
-    *accept = a[4] == UI_MAP_CANCEL || a[4] == UI_MAP_CANCEL_USER ? a[4] : a[4] != 0;
+    *accept = a[4] == UI_MAP_CANCEL || a[4] == UI_MAP_CANCEL_USER || a[4] == UI_MAP_TIMEOUT_YES ? a[4] : a[4] != 0;
     return *id ? 0 : -1;
 }
 

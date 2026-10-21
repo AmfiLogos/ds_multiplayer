@@ -538,6 +538,16 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         }
         break;
     }
+    case P_SEL: {                              /* unitsel B1: selected units, to the others that are not loading */
+        if (n < 6 || c->spectator) return;
+        uint32_t k = p[5]; if (k > DSNET_SEL_MAX || 6 + 16 * k > n) return;
+        uint8_t b[7 + 16 * DSNET_SEL_MAX]; b[0] = P_SEL; b[1] = (uint8_t)c->id; memcpy(b + 2, p + 1, 5 + 16 * k);
+        for (int i = 0; i < MAX_CONNS; i++) {
+            sconn *o = s->conn[i];
+            if (o && o != c && o->id >= 0 && !o->closing && o->status != ST_LOADING && o->status != ST_NEW) dsnet_link_send(&o->link, b, 7 + 16 * k);
+        }
+        break;
+    }
     case P_MARK: {                             /* ping add / delete: to the others; adds limited per sender */
         if (n < 12 || (p[1] != DSNET_MARK_ADD && p[1] != DSNET_MARK_DEL)) return;
         if (p[1] == DSNET_MARK_ADD) {

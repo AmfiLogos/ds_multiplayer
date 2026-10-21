@@ -48,6 +48,9 @@ enum {
     P_SAVE_FAIL,      /* host c->s: the game could not make the join-point save; s->c to every guest waiting for it (it leaves) */
     P_HELD,           /* s->c  u32 busy_mask, u32 window_mask, to players still loading (P_TIMECTL skips them): a guest waiting
                          for the join save sees the host held by a window and waits (~2 Hz and on change) */
+    P_SEL,            /* c->s  u32 map_key, u8 n (<= DSNET_SEL_MAX), n x guid[16]: the units this player has selected (unitsel B1).
+                         s->c u8 from + same. Outside the sim (like P_VIEW): relayed to every other player that is not
+                         loading, never stamped, never in saves or hashes; n 0 = nothing selected */
 };
 /* SAVE: host -> server -> joiners (join point). PATCH: host -> server -> the players of a PATCH_POINT (partial resync).
    REPORT: guest -> server -> host, outside the sim (desync report part; the server stamps seq_after = the sender's slot). */

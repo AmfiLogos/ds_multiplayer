@@ -377,6 +377,11 @@ enum { DSNET_MARK_ADD = 1, DSNET_MARK_DEL = 2 };
 typedef struct dsnet_mark_ev { int from, op, owner, id; uint32_t map_key; int x, y; } dsnet_mark_ev;
 int dsnet_mark_send(dsnet_client *c, int op, int owner, int id, uint32_t map_key, int x, int y); /* 0 sent */
 int dsnet_mark_poll(dsnet_client *c, dsnet_mark_ev *out);   /* 1 = one event (ring of 64), 0 none; own sends NOT echoed */
+/* unitsel B1: selected units of each player, outside the sim (P_SEL). send: 0 sent (n is cut to DSNET_SEL_MAX);
+   of: units of that player (n, -1 nothing known yet), the map key it was sent for and its age */
+#define DSNET_SEL_MAX 24
+int dsnet_sel_send(dsnet_client *c, uint32_t map_key, const uint8_t (*guids)[16], int n);
+int dsnet_sel_of(dsnet_client *c, int player, uint32_t *map_key, uint8_t (*out)[16], int max, double *age_ms);
 #define DSNET_MARK_SPAM_N  4                    /* server: at most 4 adds per sender in any 5 s (deletes never dropped) */
 #define DSNET_MARK_SPAM_MS 5000
 /* marks of a player, up to max (dsnet_marked_of copies at most 3, for older callers) */
