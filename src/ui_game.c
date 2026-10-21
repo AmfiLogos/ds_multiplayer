@@ -732,11 +732,47 @@ static void hud_track(Obj h) {
 }
 static void hk_hud_init(Obj h, Obj entity, void *mi) { o_hud_init(h, entity, mi); hud_track(h); }
 
+/* PvP enemy units (E5b, owner 2026-10-20: a player must not see the status of enemy units beyond the monster view): every
+   frame, an enemy PvP unit's portrait in my unit bar is hidden, and on its world HUD the health bars and the status parts
+   (skill in use, booked skill, work gauge) unless the PvP rules show them. pvp_game.c decides (weak); view only. */
+int pvp_view_hide(const uint8_t g[16], int what) __attribute__((weak_import));   /* what: 1 portrait, 2 health bars, 3 status */
+static void pvp_view_pass(void) {
+    if (!pvp_view_hide) return;
+    for (int i = 0; i < MAX_SC; i++) {
+        Obj u = u_gc_get(sc[i].unit), pa = u_gc_get(sc[i].parts);
+        if (!u || !u_alive(pa)) continue;
+        if (pvp_view_hide((const uint8_t *)u + UNIT_GUID, 1)) u_active(pa, false);
+    }
+    for (int i = 0; i < MAX_HUD; i++) {
+        Obj h = u_gc_get(hud[i].hud); if (!u_alive(h)) continue;
+        int hp = pvp_view_hide(hud[i].guid, 2), st = pvp_view_hide(hud[i].guid, 3);
+        if (!hp && !st) continue;
+        static const int bars[5] = { 0x80, 0x88, 0x90, 0x98, 0xA0 };       /* UnitEntityHUD: shield, head + bg, body + bg (SpriteRenderer) */
+        for (int k = 0; hp && k < 5; k++) { Obj r = AT(h, bars[k], Obj); if (u_alive(r)) F(0x509EA54, void (*)(Obj, bool, void *))(r, false, NULL); }   /* Renderer.set_enabled */
+        if (st) {
+            Obj so = AT(h, 0xB8, Obj), wo = AT(h, 0xD8, Obj);                /* _skillObject, _workloadObject (GameObjects) */
+            if (u_alive(so)) u_go_active(so, false);
+            if (u_alive(wo)) u_go_active(wo, false);
+            static const int bk[2] = { 0xE8, 0xF0 };                          /* _bookedSkill, _bookedSkillFrame */
+            for (int k = 0; k < 2; k++) { Obj r = AT(h, bk[k], Obj); if (u_alive(r)) F(0x509EA54, void (*)(Obj, bool, void *))(r, false, NULL); }
+        }
+    }
+}
+
+int ui_hud_bars_on(const uint8_t g[16]) {                    /* test (pvp_hudcheck): this unit's head health bar shown, -1 = no HUD tracked */
+    for (int i = 0; i < MAX_HUD; i++) {
+        Obj h = u_gc_get(hud[i].hud); if (!u_alive(h) || memcmp(hud[i].guid, g, 16)) continue;
+        Obj r = AT(h, 0x88, Obj); return u_alive(r) ? F(0x509E968, bool (*)(Obj, void *))(r, NULL) : -1;   /* Renderer.get_enabled */
+    }
+    return -1;
+}
+
 /* re-tag everything when the ownership table changes */
 static uint64_t own_sig;
 unsigned mp_game_session_gen(void);
 static void tags_frame(void) {
     if (!on()) return;
+    pvp_view_pass();
     { dsnet_client *c = cli(); static uint32_t refused = 0, seen_me = 99;   /* host rule "Units per player" */
       int u = c ? dsnet_units_per_player(c) : 0; if (u > 0) ui_max_owned = u;
       uint32_t r = c ? dsnet_claim_refusals(c, me()) : 0;
@@ -3277,8 +3313,9 @@ static void filter_list(Obj list) {
 }
 static void (*o_sel_select)(Obj, Obj, void *);
 static void (*o_sel_toggle)(Obj, Obj, void *);
-static void hk_sel_select(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_select(sp, list, mi); }
-static void hk_sel_toggle(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_toggle(sp, list, mi); }
+void pvp_select_after(Obj select_data) __attribute__((weak_import));   /* pvp_game.c (E7b): an enemy PvP unit is never selected as mine */
+static void hk_sel_select(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_select(sp, list, mi); if (pvp_select_after && sp) pvp_select_after(AT(sp, 0x10, Obj)); }
+static void hk_sel_toggle(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_toggle(sp, list, mi); if (pvp_select_after && sp) pvp_select_after(AT(sp, 0x10, Obj)); }
 
 /* 8a2. unitsel B2 (owner feedback v0.1.20): a unit that changes owner (Teams, lend, take back) leaves the selection of
    every player who could order it and no longer can, so nobody keeps giving orders to units he does not own. Only the
@@ -4063,6 +4100,8 @@ static void marks_api(void) {
     fn_mark_send = (int (*)(dsnet_client *, int, int, int, uint32_t, int, int))dlsym(RTLD_DEFAULT, "dsnet_mark_send");
     fn_mark_poll = (int (*)(dsnet_client *, dsnet_mark_ev *))dlsym(RTLD_DEFAULT, "dsnet_mark_poll");
 }
+int pvp_peer_hidden(int slot) __attribute__((weak_import));   /* pvp_game.c (E5): an opponent in a PvP match */
+static int peer_hidden(int pl) { return pvp_peer_hidden && pvp_peer_hidden(pl); }
 #define SFX_PING 233                                         /* SFXEnum UI_Alert_Tutorial: a stock UI notice sound */
 static ui_pings pings; static ui_spam ping_spam; static int ping_next_id; static uint32_t ping_mute;   /* mute: bit per slot */
 static double ping_sound_t[UI_MAX_PLAYERS], ping_cycle_t; static int ping_cycle_k;
@@ -4193,6 +4232,7 @@ static void marks_poll(void) {
     while (fn_mark_poll(c, &ev) == 1) {
         if (ev.from < 0 || ev.from >= UI_MAX_PLAYERS) continue;
         if (ev.map_key != coop_key()) { rig_log("ui: ping event from %d for another map (%08x): dropped", ev.from, ev.map_key); continue; }
+        if (ev.op == DSNET_MARK_ADD && peer_hidden(ev.from)) { rig_log("ui: ping of %d dropped: an opponent in the PvP match", ev.from); continue; }   /* E5: no sound, no mark */
         if (ev.op == DSNET_MARK_ADD) ping_add_local(ev.from, ev.id, ev.map_key, ev.x, ev.y);
         else if (ev.op == DSNET_MARK_DEL) { int d = ui_ping_del(&pings, ev.owner, ev.id); rig_log("ui: ping of %d (id %d) deleted by %d (%d)", ev.owner, ev.id, ev.from, d); }
     }
@@ -4304,7 +4344,7 @@ static void pings_draw(void) {
     for (int i = 0; i < UI_PING_MAX; i++) {
         ui_ping *p = &pings.p[i];
         int muted = p->owner != me() && (ping_mute >> (p->owner & 31) & 1u);
-        if (!vis_all || !p->used || p->map_key != key || muted || (!uiset.pings && p->owner != me())) { ping_hide(i); continue; }
+        if (!vis_all || !p->used || p->map_key != key || muted || (!uiset.pings && p->owner != me()) || peer_hidden(p->owner)) { ping_hide(i); continue; }   /* PvP (E5): no opponent's ping */
         Obj ring = u_gc_get(h_pring[i]), rip = u_gc_get(h_prip[i]), pin = u_gc_get(h_ppin[i]), nmt = u_gc_get(h_pname[i]), arw = u_gc_get(h_parrow[i]);
         Obj pinbg = u_gc_get(h_ppinbg[i]), arwt = u_gc_get(h_parrowt[i]);
         if (!u_alive(ring) || !u_alive(arw)) {
@@ -4383,6 +4423,7 @@ static void view_send(void) {
 }
 static int view_get(int pl, float v[4]) {                    /* a friend's view on this map, 1 = known */
     dsnet_client *c = cli(); uint32_t k = 0; double age = 0;
+    if (peer_hidden(pl)) return 0;                           /* PvP (E5): never an opponent's view (no corners, no follow) */
     if (!c || !fn_view_of || fn_view_of(c, pl, &k, v, &age) != 0) return 0;
     for (int i = 0; i < 4; i++) if (!isfinite(v[i]) || fabsf(v[i]) > 1e5f) return 0;   /* a bad packet never reaches the camera */
     return k == coop_key();

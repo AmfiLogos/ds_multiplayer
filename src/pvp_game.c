@@ -19,6 +19,8 @@
 #include "mp_modes_text.h"
 #include "mp.h"
 #include "pvp_core.h"
+#include "mu_bring.h"
+int pvp_bring_picks(const mu_pick *picks, int n, char *err, size_t errn);   /* fe_game.c */
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -326,6 +328,36 @@ static void h_deadapply(Obj self, Obj data, void *mi) {
     }
     o_deadapply(self, data, mi);
 }
+/* E3: builder units (Units Laboratory's My Units / Unit Builder, brought with their full entry) carry the builder's folded
+   conditional passives as PermanentStats grants (owner rule: the builder's numbers). Their live grant must not add the same
+   bonus again: PassiveActionContainer.Register(entity, key, isInit) 0xA782C8 is skipped for such a skill on a unit whose
+   permanent record of that skill's stat is set (StatusReader +0x10 -> StatusComponent, permanent records +0x40,
+   Dictionary<StatType,float>), only in a PvP / expedition world (a normal world stays stock). In multiplayer itself (not
+   Units Laboratory): every peer runs the same rule on the same save, with or without Units Laboratory. */
+int mu_folded_skill(const char *key, char *stat, size_t n);   /* mu_save.c */
+int rig_stat_id(const char *name);
+static uint32_t n_passive_skipped;
+static void (*o_preg)(Obj, Obj, Obj, bool, void *);
+static int perm_has(Obj ent, int stat) {
+    Obj sr = F(0x185FEDC, Obj (*)(Obj, void *))(ent, md(0x6691B40));          /* GetComponent<StatusReader> */
+    Obj sc = sr ? AT(sr, 0x10, Obj) : NULL, d = sc ? AT(sc, 0x40, Obj) : NULL;
+    Obj ent_arr = d ? AT(d, 0x18, Obj) : NULL; int cnt = d ? AT(d, 0x20, int32_t) : 0;
+    for (int i = 0; ent_arr && i < cnt; i++) {
+        char *e = (char *)ent_arr + 0x20 + i * 16;                            /* {hash, next, key, value} */
+        if (*(int32_t *)e >= 0 && *(int32_t *)(e + 8) == stat && *(float *)(e + 12) != 0) return 1;
+    }
+    return 0;
+}
+static void h_preg(Obj self, Obj ent, Obj key, bool init, void *mi) {
+    char k[96] = "", st[64];
+    int len = key ? AT(key, 0x10, int32_t) : 0;
+    for (int i = 0; i < len && i < 95; i++) k[i] = (char)AT(key, 0x14 + 2 * i, uint16_t);
+    if (ent && k[0] && (pvp_v1_world() || fe_world_is_hub() || pvp_hold_events(&g)) && mu_folded_skill(k, st, sizeof st)) {
+        int id = rig_stat_id(st);
+        if (id > 0 && perm_has(ent, id)) { n_passive_skipped++; rig_log("pvp: %s not registered on a builder unit (its bonus is folded in its permanent stats)", k); return; }
+    }
+    o_preg(self, ent, key, init, mi);
+}
 /* stock story events are held from PvP setup until the old world is back (pvp_hold_events): EventContainer.IsEventStartable
    0xC8D6FC (timed events) answers no, EventContainer.StartEvent(key) 0xC8DFBC and EventFlowProcessor.StartEvent(key) 0xCEA620
    (keyed events) do nothing */
@@ -423,16 +455,10 @@ static int send_to_ends(int map) {
     (void)map;
     return sent;
 }
-/* PvP v1 on the settlement map (BASE): the two team ends = the two ends of the longest straight walkable line near the
-   teams (owner v12 13: "players appear there, PvP is on"; default logged in MORNING_QUESTIONS). Lines: every row and every
-   column within BASE_SCAN cells of the units' mean cell; a line = contiguous cells RuntimeMapData.IsMovable says yes to,
-   (and explored), cut to BASE_HALF cells each side of the centre (so the teams meet in seconds).
-   Same map data on every peer: same ends. Blue goes to the low end (smaller x or y), Red to the high end. */
+/* PvP v1 on the settlement map (BASE): each team walks to its end (owner v12 13: "players appear there, PvP is on"); the
+   ends: find_base_ends below (E6: random reachable cells). */
 #define VA_MAP_MOVABLE 0xBEF2F0      /* RuntimeMapData.IsMovable(Vector2Int) */
 #define VA_MAP_VISITED 0xBEF354      /* RuntimeMapData.IsVisited(Vector2Int) */
-#define BASE_SCAN 12
-#define BASE_HALF 18
-#define BASE_INSET 2
 typedef struct { int32_t x, y; } V2I;
 static int movable(Obj rd, int x, int y, int mx, int my) {
     if (x < 0 || y < 0 || x >= mx || y >= my) return 0;
@@ -440,30 +466,74 @@ static int movable(Obj rd, int x, int y, int mx, int my) {
     return F(VA_MAP_MOVABLE, bool (*)(Obj, V2I, void *))(rd, v, NULL)      /* 2026-10-16: movable-only cells run far into the dark, */
         && F(VA_MAP_VISITED, bool (*)(Obj, V2I, void *))(rd, v, NULL);     /* where the units never got) */
 }
+/* E6 (owner v0.1.20 PvP session: "on a random PvP map, teams spawn at random valid locations"): the two ends are drawn
+   at random from the settlement cells the units can reach (walkable AND explored, one connected area from the units, at most
+   BASE_REACH cells away), each with at least 6 of its 8 neighbours walkable (two units fit), Red between BASE_MIN_D and BASE_MAX_D
+   cells from Blue. The draw is a hash of the match number and the unit table (inside the stamped START: same cells on every
+   peer, a new pair each match), never a game or local random number. No such pair: the farthest reachable pair. */
+#define BASE_REACH 40
+#define BASE_MIN_D 12
+#define BASE_MAX_D 30
+static uint64_t mix64(uint64_t x) { x += 0x9E3779B97F4A7C15ull; x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull; x = (x ^ (x >> 27)) * 0x94D049BB133111EBull; return x ^ (x >> 31); }
+static int roomy(Obj rd, int x, int y, int mx, int my) {                /* at least 6 of the 8 neighbours walkable: two units fit */
+    int n = 0;
+    for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) if ((dx || dy) && movable(rd, x + dx, y + dy, mx, my)) n++;
+    return n >= 6;
+}
 static void find_base_ends(int map) {
     Obj h = combat_of(map), rd = h ? AT(h, 0x10, Obj) : NULL;             /* CombatDataHandler._runtimeData */
-    int64_t sx = 0, sy = 0; int nu = 0;
-    for (int i = 0; i < g.nunits; i++) { int32_t c[2]; if (unit_cell(map, g.units[i].guid, c)) { sx += c[0]; sy += c[1]; nu++; } }
+    int64_t sx = 0, sy = 0; int nu = 0; int32_t first[2] = { 0, 0 };
+    for (int i = 0; i < g.nunits; i++) { int32_t c[2]; if (unit_cell(map, g.units[i].guid, c)) { if (!nu) { first[0] = c[0]; first[1] = c[1]; } sx += c[0]; sy += c[1]; nu++; } }
     if (!rd || !nu) { rig_log("pvp: base ends: no map data (%p) or no unit cell (%d): teams stay where they are", rd, nu); return; }
-    int cx = (int)(sx / nu), cy = (int)(sy / nu), mx = AT(rd, 0x28, int32_t), my = AT(rd, 0x2C, int32_t);   /* _maxSize */
-    int best = 0, bax = 0, a0 = 0, a1 = 0, line = 0;                         /* axis 0: a row (x varies), 1: a column */
-    for (int axis = 0; axis < 2; axis++)
-        for (int d = -BASE_SCAN; d <= BASE_SCAN; d++) {
-            int fixed = axis ? cx + d : cy + d, mid = axis ? cy : cx, lo = mid - BASE_HALF, hi = mid + BASE_HALF;
-            for (int k = lo; k <= hi; ) {                                   /* runs of movable cells inside [lo, hi] */
-                if (!(axis ? movable(rd, fixed, k, mx, my) : movable(rd, k, fixed, mx, my))) { k++; continue; }
-                int st = k; while (k <= hi && (axis ? movable(rd, fixed, k, mx, my) : movable(rd, k, fixed, mx, my))) k++;
-                int len = k - st;
-                if (len > best) { best = len; bax = axis; a0 = st; a1 = k - 1; line = fixed; }
-            }
+    int mx = AT(rd, 0x28, int32_t), my = AT(rd, 0x2C, int32_t);           /* _maxSize */
+    int cx = (int)(sx / nu), cy = (int)(sy / nu);
+    if (!movable(rd, cx, cy, mx, my)) {                                    /* the mean cell may be a wall or a unit's cell: the nearest walkable one */
+        int found = 0;
+        for (int r = 1; r <= 6 && !found; r++) for (int dy = -r; dy <= r && !found; dy++) for (int dx = -r; dx <= r && !found; dx++)
+            if ((abs(dx) == r || abs(dy) == r) && movable(rd, cx + dx, cy + dy, mx, my)) { cx += dx; cy += dy; found = 1; }
+        if (!found) { cx = first[0]; cy = first[1]; }
+    }
+    enum { S = 2 * BASE_REACH + 1 };
+    static uint8_t seen[S * S]; static int16_t qx[S * S], qy[S * S]; static int32_t room[S * S][2];
+    memset(seen, 0, sizeof seen);
+    int qh = 0, qt = 0, nroom = 0;
+    if (movable(rd, cx, cy, mx, my)) { seen[BASE_REACH * S + BASE_REACH] = 1; qx[qt] = (int16_t)cx; qy[qt] = (int16_t)cy; qt++; }
+    while (qh < qt) {                                                       /* flood fill, 4 directions, fixed order */
+        int x = qx[qh], y = qy[qh]; qh++;
+        if (roomy(rd, x, y, mx, my)) { room[nroom][0] = x; room[nroom][1] = y; nroom++; }
+        static const int d4[4][2] = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+        for (int k = 0; k < 4; k++) {
+            int nx = x + d4[k][0], ny = y + d4[k][1], ix = nx - cx + BASE_REACH, iy = ny - cy + BASE_REACH;
+            if (ix < 0 || iy < 0 || ix >= S || iy >= S || seen[iy * S + ix] || !movable(rd, nx, ny, mx, my)) continue;
+            seen[iy * S + ix] = 1; qx[qt] = (int16_t)nx; qy[qt] = (int16_t)ny; qt++;
         }
-    if (best < 2 * BASE_INSET + 3) { rig_log("pvp: base ends: no walkable line near (%d,%d) (best %d): teams stay where they are", cx, cy, best); return; }
-    int32_t blue[2], red[2];
-    if (bax == 0) { blue[0] = a0 + BASE_INSET; blue[1] = line; red[0] = a1 - BASE_INSET; red[1] = line; }
-    else { blue[0] = line; blue[1] = a0 + BASE_INSET; red[0] = line; red[1] = a1 - BASE_INSET; }
+    }
+    if (nroom < 2) { rig_log("pvp: base ends: %d roomy reachable cells near (%d,%d): teams stay where they are", nroom, cx, cy); return; }
+    uint64_t seed = 1469598103934665603ULL; seed = fnv(seed, &g.matches, 4); for (int i = 0; i < g.nunits; i++) seed = fnv(seed, g.units[i].guid, 16);
+    uint64_t r1 = mix64(seed), r2 = mix64(seed ^ 0xA5A5A5A5A5A5A5A5ull);
+    int b0 = (int)(r1 % (uint64_t)nroom), bi = b0, ri = -1, nok = 0;
+    for (int k = 0; k < nroom; k++) {                                     /* Blue: the drawn cell, else the next one that has a Red cell in range */
+        int c2 = (b0 + k) % nroom, cnt = 0;
+        for (int i = 0; i < nroom; i++) {
+            int64_t dx = room[i][0] - room[c2][0], dy = room[i][1] - room[c2][1], d2 = dx * dx + dy * dy;
+            if (d2 >= BASE_MIN_D * BASE_MIN_D && d2 <= BASE_MAX_D * BASE_MAX_D) cnt++;
+        }
+        if (cnt) { bi = c2; nok = cnt; break; }
+    }
+    if (nok) {
+        int want = (int)(r2 % (uint64_t)nok);
+        for (int i = 0; i < nroom && ri < 0; i++) {
+            int64_t dx = room[i][0] - room[bi][0], dy = room[i][1] - room[bi][1], d2 = dx * dx + dy * dy;
+            if (d2 >= BASE_MIN_D * BASE_MIN_D && d2 <= BASE_MAX_D * BASE_MAX_D && want-- == 0) ri = i;
+        }
+    } else {                                                                /* small area: the farthest cell from Blue */
+        int64_t best = -1;
+        for (int i = 0; i < nroom; i++) { int64_t dx = room[i][0] - room[bi][0], dy = room[i][1] - room[bi][1], d2 = dx * dx + dy * dy; if (d2 > best) { best = d2; ri = i; } }
+    }
+    int32_t blue[2] = { room[bi][0], room[bi][1] }, red[2] = { room[ri][0], room[ri][1] };
     pvp_set_ends(&g, blue, red);
-    rig_log("pvp: base ends: centre (%d,%d), longest walkable %s %d cells (%d..%d at %d): blue (%d,%d) red (%d,%d)", cx, cy,
-            bax ? "column" : "row", best, a0, a1, line, blue[0], blue[1], red[0], red[1]);
+    rig_log("pvp: base ends (random, match %u): %d roomy reachable cells from (%d,%d), %d at 12..30 cells: blue (%d,%d) red (%d,%d)", g.matches, nroom, cx, cy, nok,
+            blue[0], blue[1], red[0], red[1]);
 }
 static int send_both_to_ends(void) {
     int sent = 0;
@@ -483,7 +553,11 @@ int ord_apply(int player, const uint8_t *payload, size_t len);
 void rig_det_sim_scope(int enter);
 static int n_kick;
 static int fix_out = 1;
-static int kicks = 1;                /* test switch (pvp_cfg kicks): 0 = no automatic attack orders (scripted CTF tests) */              /* test switch (pvp_cfg): 0 = the M3 build's behaviour (downed units stay targets) */
+/* E7 (owner v0.1.20 PvP session: "G (hold position) is ignored and units start chasing / attacking opponents"): the
+   automatic attack orders (every unit on its closest enemy at the fight start, idle units every 2 s) were given in the
+   player's name and overrode hold position and the player's own orders. Off: units do what their player tells them (the
+   game's own combat AI still answers enemies that come close). pvp_cfg kicks 1 = the old behaviour (tests only). */
+static int kicks = 0;
 /* every 2 s of fight while a unit is out: what each unit in is doing (combat state, target unit index, task) */
 static void diag(int map) {
     char line[400]; int o = 0, any_out = 0;
@@ -534,6 +608,7 @@ static void fight_kick_idle(int map, int only_idle) {
         rig_log("pvp: fight %s unit %d -> %d (%s): rc %d", only_idle ? "re-kick" : "kick", i, best, why, rc);
     }
 }
+static uint32_t n_walk_resend;
 #define PLACE_MAX_TICKS 3600         /* placing ends after 60 s of game time even if Red is not there */
 static void placing_step(int map) {
     int arrived = 1, any = 0;
@@ -545,8 +620,21 @@ static void placing_step(int map) {
         int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1];
         if (dx * dx + dy * dy > (g.arena == PVP_WHERE_BASE ? 36 : 16)) arrived = 0;   /* base: two walkers share one end cell */
     }
-    if (g.arena == PVP_WHERE_BASE && !arrived && g.ticks % 120 == 0) send_both_to_ends();   /* a settler job took a unit off its walk */
-    if ((any && arrived && g.ticks >= 60) || g.ticks >= PLACE_MAX_TICKS || g.countdown_at) {
+    /* E4 / E8 (owner 2026-10-20: "nobody starts a fight alone"): round 1 is the teams' preparation, with no time limit: the
+       fight begins only after a proposal every team player agreed to, at the end of its countdown (pvp_core.c: PROPOSE /
+       AGREE set countdown_at). Later rounds start again from the arena snapshot (teams at their ends): the 3 s countdown
+       follows at once, as before. A unit not at its end is sent there again every 2 s (a settler job took it off its walk),
+       except in the preparation once its player gave it an order (E7: the player's orders win; ord_game.c ord_apply). */
+    int prep = g.round <= 1;
+    if (g.arena == PVP_WHERE_BASE && !arrived && g.ticks % 120 == 0) {   /* every 2 s: a unit not at its end and not ordered by its player walks on */
+        for (int i = 0; i < g.nunits; i++) {
+            int t = g.units[i].team; int32_t c[2];
+            if ((t != PVP_TEAM_BLUE && t != PVP_TEAM_RED) || g.units[i].out || (prep && g.units[i].ordered) || !unit_cell(map, g.units[i].guid, c)) continue;
+            int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1]; if (dx * dx + dy * dy <= 36) continue;
+            Guid gg; memcpy(&gg, g.units[i].guid, 16); rig_order_move(gg, g.end_cell[t][0], g.end_cell[t][1]); n_walk_resend++;
+        }
+    }
+    if (prep ? g.countdown_at != 0 : ((any && arrived && g.ticks >= 60) || g.ticks >= PLACE_MAX_TICKS || g.countdown_at)) {
         if (!pvp_place_done(&g)) return;            /* M4: 3 s countdown first (units hold where they are) */
         if (g.arena == PVP_WHERE_BASE) { Obj h = combat_of(map); if (h) pair_all(h, 1); }   /* enemies from now on */
         rig_log("pvp: fight begins at match tick %u (%s)", g.ticks, arrived ? (g.arena == PVP_WHERE_BASE ? "teams at their ends" : "Red at its end") : "placing time out");
@@ -666,7 +754,7 @@ static int freeze_order(mp_session *s, int player, const uint8_t guid[16], const
     rig_log("pvp: freeze at world tick %lld (now %lld)", (long long)freeze_at, (long long)tick());
     return 0;
 }
-int pvp_freeze_now(void) { return (freeze_at >= 0 && tick() >= freeze_at) || pvp_planning(&g); }   /* + M5 planning pause */
+int pvp_freeze_now(void) { return (freeze_at >= 0 && tick() >= freeze_at) || pvp_planning(&g) || pvp_ending(&g) || pvp_vote_open(&g); }   /* + M5 planning pause, E9 round result screen, E4 fight vote */
 static mp_session *reg_sess;
 static void session_check(void) {
     mp_session *s = sess();
@@ -762,7 +850,10 @@ static int snap_take(snap_t *x, const char *what) {
 }
 static int is_host(void) { mp_session *s = sess(); return s && dsnet_is_host(mp_client(s)); }
 void pvp_set_hold(int on) { g.hold = (uint8_t)(on != 0); }   /* pvp_units.c, inside DSNET_FE_START (every peer, same step) */
-int pvp_snap_world_lock(void) { world_locked = 0; int rc = snap_take(&snap_world, "world"); if (!rc) world_locked = 1; return rc; }
+int pvp_snap_world_lock(void) {                         /* E2: a second units start in the same match setup keeps the first world */
+    if (world_locked && snap_world.json) { rig_log("pvp: world snapshot kept (units brought again)"); return 0; }
+    world_locked = 0; int rc = snap_take(&snap_world, "world"); if (!rc) world_locked = 1; return rc;
+}
 void pvp_units_after_match(void);
 void pvp_units_frame(void);
 char *pvp_units_exec(const char *cmd, const char *line);
@@ -795,6 +886,9 @@ static void pause_rule_frame(void) {
 }
 static int send_cmd(const uint8_t *p, size_t n);
 static uint32_t plan_seen; static double plan_t0;
+#define ROUND_SCREEN_S 5
+static uint32_t end_seen; static double end_t0;
+
 static double now_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
 /* CTF: the carrier's world name shows the flag it carries (ui_game.c hud_apply, weak); pvp_tag_sig changes when a flag moves
    from home / carrier / ground, so the names re-tag then */
@@ -827,6 +921,85 @@ static void cam_to(float x, float y, float size) {
     if (cam && size > 0) F(0x50805E8, void (*)(Obj, float, void *))(cam, size, NULL);          /* Camera.orthographicSize */
 }
 
+/* ---------------------------------------------------------------- E5: PvP vision (mp_fog.c, ui_game.c; view only) */
+static int my_team_now(void);
+int pvp_rule_on(const char *id);
+int pvp_vision_my_team(void) {                           /* my team for the fog, 0 = none (no match, I play no team, or rule enemy_vision on) */
+    return pvp_rule_on("enemy_vision") ? 0 : my_team_now();
+}
+static int my_team_now(void) {                           /* my team while a match runs, 0 = none */
+    if (!pvp_active(&g)) return 0;
+    mp_session *s = sess(); dsnet_client *c = s ? mp_client(s) : NULL; int me = c ? dsnet_player_id(c) : -1;
+    return me >= 0 && me < PVP_MAX_PLAYERS ? g.team_of[me] : 0;
+}
+int pvp_vision_team_of(const uint8_t gd[16]) { return pvp_active(&g) ? pvp_team_of_unit(&g, gd) : 0; }
+/* PvP rule settings by id (lane pvprules, owner 2026-10-20): 1 on, 0 off, -1 unknown. Weak default here (all unknown: the
+   defaults below, every enemy_* hidden); the rules lane's strong definition in the same image replaces it at link. Ids:
+   enemy_vision enemy_windows enemy_portraits enemy_hpbars enemy_status enemy_viewrange (1 = shown). Display only. */
+__attribute__((weak)) int pvp_rule_get(const char *id) { (void)id; return -1; }
+int pvp_rule_on(const char *id) { return pvp_rule_get(id) == 1; }
+int pvp_vision_enemy_range(void) { return pvp_active(&g) && pvp_rule_on("enemy_viewrange"); }
+int pvp_vision_units(uint8_t (*gl)[16], uint8_t *team, int max) {
+    int n = 0; if (!pvp_active(&g)) return 0;
+    for (int i = 0; i < g.nunits && n < max; i++) { memcpy(gl[n], g.units[i].guid, 16); team[n] = g.units[i].team; n++; }
+    return n;
+}
+/* a player slot on the other team than mine in a match (ui_game.c: no camera view, ping or follow of an opponent) */
+int pvp_peer_hidden(int slot) {
+    int mt = my_team_now();
+    return mt && slot >= 0 && slot < PVP_MAX_PLAYERS && g.team_of[slot] && g.team_of[slot] != mt;
+}
+
+/* E5b / E7b (owner 2026-10-20): an enemy PvP unit is a Player unit to the game, so a click selected it and opened the full
+   unit window (stats, inventory, skills), and its portrait, health bars and statuses showed. View only, decided here:
+   - after SelectProcessor.Select / Toggle (pvp_select_after): an enemy unit is the EnemyUnit group (3001), like a monster:
+     a click opens only the monster inspect view, no selection of it for orders (rule enemy_windows on = stock);
+   - ui_game.c pvp_view_pass asks pvp_view_hide each frame: portrait (enemy_portraits), health bars (enemy_hpbars),
+     statuses (enemy_status). */
+static int enemy_unit(const uint8_t gd[16]) {
+    int mt = my_team_now(), ut = mt ? pvp_team_of_unit(&g, gd) : 0;
+    return ut && ut != mt;
+}
+int pvp_view_hide(const uint8_t gd[16], int what) {
+    if (!enemy_unit(gd)) return 0;
+    return what == 1 ? !pvp_rule_on("enemy_portraits") : what == 2 ? !pvp_rule_on("enemy_hpbars") : what == 3 ? !pvp_rule_on("enemy_status") : 0;
+}
+/* ord_game.c ord_apply (E7): units that got their player's order (inside the step, every peer) */
+void pvp_units_ordered(const uint8_t (*u)[16], int n) {
+    if (!pvp_active(&g) || !g.placing) return;
+    for (int i = 0; i < n; i++) pvp_mark_ordered(&g, u[i]);
+}
+/* ord_game.c (E7b): an interaction other than an attack (InteractionType 2) by a PvP unit on a unit of the other team
+   (rescue, first aid, carry, give ...) is refused. Sim state only (the PvP table): the same answer on every peer. */
+static uint32_t n_act_refused;
+int pvp_act_refused(int type, const uint8_t actor[16], const uint8_t target[16]) {
+    if (!pvp_active(&g) || type == 2) return 0;
+    int ta = pvp_team_of_unit(&g, actor), tt = pvp_team_of_unit(&g, target);
+    if (!ta || !tt || ta == tt) return 0;
+    n_act_refused++;
+    return 1;
+}
+static uint32_t n_selgroup_enemy;
+/* SelectProcessor.GetSelectGroup is inlined on Windows (inline audit), so the rule runs after SelectProcessor.Select /
+   Toggle (ui_game.c, hooked there): SelectDataContainer (SelectProcessor +0x10): group +0x10, List<IEntity> +0x18. A
+   selection of my player units (3003) that holds enemy PvP units: only enemies = the enemy group (3001: the game shows
+   the monster inspect view, no command), else the enemies leave the list (rule enemy_windows on = stock). View only. */
+void pvp_select_after(Obj sd) {
+    if (!sd || !my_team_now() || pvp_rule_on("enemy_windows") || AT(sd, 0x10, int32_t) != 3003) return;
+    Obj l = AT(sd, 0x18, Obj); Obj items = l ? AT(l, 0x10, Obj) : NULL; int n = l ? AT(l, 0x18, int32_t) : 0;
+    if (!items || n <= 0 || n > 256) return;
+    int en = 0;
+    for (int i = 0; i < n; i++) { Obj e = AT(items, 0x20 + 8 * i, Obj); if (!e) continue; G16 ge = gget(e); if (enemy_unit((const uint8_t *)&ge)) en++; }
+    if (!en) return;
+    n_selgroup_enemy++;
+    if (en == n) { AT(sd, 0x10, int32_t) = 3001; rig_log("pvp: a click selected %d enemy unit(s): enemy view only (group 3001)", n); return; }
+    int j = 0;
+    for (int i = 0; i < n; i++) { Obj e = AT(items, 0x20 + 8 * i, Obj); G16 ge = gget(e); if (e && !enemy_unit((const uint8_t *)&ge)) AT(items, 0x20 + 8 * j++, Obj) = e; }
+    for (int i = j; i < n; i++) AT(items, 0x20 + 8 * i, Obj) = NULL;
+    AT(l, 0x18, int32_t) = j; AT(l, 0x1C, int32_t)++;
+    rig_log("pvp: %d enemy unit(s) left out of a selection of %d", en, n);
+}
+
 /* ---------------------------------------------------------------- M4: API for the PvP windows (pvp_ui.inc in mpmenu.c) */
 const pvp_state *pvp_ui_state(void) { return &g; }
 int pvp_ui_is_host(void) { return is_host(); }
@@ -848,6 +1021,28 @@ int pvp_units_built(void);
 /* own units: the match is set up once the world with the brought units is in (pvp_units.c) */
 static struct { int on, mode, region, floor, seed, built0; uint8_t teams[PVP_MAX_PLAYERS]; pvp_rules r; int64_t ok_since; } after_units;
 int pvp_ui_start_match(int mode, const uint8_t teams[PVP_MAX_PLAYERS], const pvp_rules *r, int region, int floor, int seed);
+/* E2 (owner v0.1.20: "bring units from inside a PvP world"): in the preparation (round 1, no vote, no countdown) a player
+   may Bring Units again (HUD button). The host then sets the match up again with the new roster: END, the units start
+   (the world snapshot and owner tables of before the first start are kept), then SETUP / BASE / START as at first. */
+int pvp_units_gen(void);
+static int match_gen = -1, rebring_step;
+static struct { int mode, region, floor, seed; uint8_t teams[PVP_MAX_PLAYERS]; pvp_rules r; } last_setup;
+static void rebring_frame(void) {
+    if (!is_host()) return;
+    if (rebring_step == 1 && g.phase == PVP_OFF) {
+        rebring_step = 0;
+        char *res = pvp_units_exec("pvp_units_start", "{}"); int ok = res && strstr(res, "\"ok\":true");
+        rig_log("pvp: units brought again in the preparation: units start %s", res ? res : "?"); free(res);
+        if (ok) { after_units.on = 1; after_units.mode = last_setup.mode; after_units.region = last_setup.region; after_units.floor = last_setup.floor; after_units.seed = last_setup.seed;
+                  memcpy(after_units.teams, last_setup.teams, PVP_MAX_PLAYERS); after_units.r = last_setup.r; after_units.ok_since = -1; after_units.built0 = pvp_units_built(); }
+        return;
+    }
+    if (rebring_step || after_units.on || !world_locked || match_gen < 0 || pvp_units_gen() == match_gen) return;
+    if (!pvp_active(&g) || !g.placing || g.round > 1 || g.countdown_at || g.vote_open || g.resetting || g.ending) return;
+    uint8_t b[4]; size_t n = pvp_cmd_simple(b, sizeof b, PVP_OP_END);
+    int rc = send_cmd(b, n); match_gen = -1; rebring_step = rc ? 0 : 1;
+    rig_log("pvp: new units brought in the preparation: the match is set up again (END rc %d)", rc);
+}
 static void after_units_frame(void) {
     if (!after_units.on || !is_host()) return;
     mp_session *s = sess(); dsnet_client *c = s ? mp_client(s) : NULL;
@@ -876,6 +1071,8 @@ int pvp_ui_start_match(int mode, const uint8_t teams[PVP_MAX_PLAYERS], const pvp
     uint8_t b[64]; size_t n = pvp_cmd_setup(b, sizeof b, mode, teams, r);
     int rc = send_cmd(b, n);
     if (rc) return rc;
+    last_setup.mode = mode; last_setup.region = region; last_setup.floor = floor; last_setup.seed = seed; memcpy(last_setup.teams, teams, PVP_MAX_PLAYERS); last_setup.r = *r;
+    match_gen = world_locked ? pvp_units_gen() : -1;
     if (snap_take(&snap_world, "world")) return -2;
     n = region < 0 ? pvp_cmd_simple(b, sizeof b, PVP_OP_BASE) : pvp_cmd_arena(b, sizeof b, region, floor, seed);   /* region < 0: here, on the settlement */
     rc = send_cmd(b, n);
@@ -884,6 +1081,18 @@ int pvp_ui_start_match(int mode, const uint8_t teams[PVP_MAX_PLAYERS], const pvp
     return rc;
 }
 int pvp_ui_ready(void) { uint8_t b[4]; size_t n = pvp_cmd_simple(b, sizeof b, PVP_OP_READY); return send_cmd(b, n); }
+/* E4: the fight vote. Any team player: PROPOSE (the world stands still while it is open), AGREE, NOT YET; CANCEL stops an
+   agreed countdown. Stamped commands: the same answer at the same step on every peer (pvp_core.c). */
+int pvp_ui_vote(int op) {
+    if (op != PVP_OP_PROPOSE && op != PVP_OP_AGREE && op != PVP_OP_NOTYET && op != PVP_OP_CANCEL) return -1;
+    uint8_t b[4]; size_t n = pvp_cmd_simple(b, sizeof b, op);
+    int rc = send_cmd(b, n); rig_log("pvp: fight vote op %d sent: rc %d", op, rc); return rc;
+}
+int pvp_ui_my_slot(void) { mp_session *s = sess(); dsnet_client *c = s ? mp_client(s) : NULL; return c ? dsnet_player_id(c) : -1; }
+int pvp_ui_player_name(int slot, char *out, int cap) {
+    mp_session *s = sess(); dsnet_client *c = s ? mp_client(s) : NULL; const char *nm = c ? dsnet_player_name(c, slot) : NULL;
+    snprintf(out, (size_t)cap, "%s", nm && nm[0] ? nm : slot == 0 ? TR("Host") : TR("Player")); dsi_utf8_fix_end(out); return 0;
+}
 int pvp_ui_unit_name(int i, char *out, int cap) {        /* the unit's name (DASText of its info) for messages */
     out[0] = 0; if (i < 0 || i >= g.nunits) return -1;
     Guid gg; memcpy(&gg, g.units[i].guid, 16); Obj u = find_unit(cur_map(), gg); if (!u) return -1;
@@ -901,7 +1110,7 @@ static void center(const char *fmt, ...) {
 }
 /* local messages from the shared state (every peer shows the same ones at the same step) */
 static void messages_frame(void) {
-    static uint32_t seen_match, seen_round, seen_fight, seen_plans, seen_ctf; static int seen_reset, seen_cd = -1;
+    static uint32_t seen_match, seen_round, seen_fight, seen_plans, seen_ctf, seen_prep; static int seen_reset, seen_cd = -1;
     if (pvp_active(&g)) {
         if (g.matches != seen_match) { seen_match = g.matches; seen_round = 0; seen_fight = 0; seen_reset = 0; seen_plans = g.plans; seen_ctf = ctf_seq; }
         if (g.round != seen_round) { seen_round = g.round; seen_fight = 0; seen_cd = -1; seen_reset = 0; }
@@ -923,13 +1132,15 @@ static void messages_frame(void) {
             else if (ctf_last_kind == 2) center("%s", red ? TR("The Red flag is back home") : TR("The Blue flag is back home"));
             else center("%s", red ? TR("Blue scores!") : TR("Red scores!"));
         }
-        if (g.resetting && g.resetting != seen_reset) {
-            seen_reset = g.resetting;
-            if (g.resetting == PVP_RESET_MATCH) center(g.match_winner == PVP_TEAM_BLUE ? TR("Blue wins the match  %d - %d") : g.match_winner == PVP_TEAM_RED ? TR("Red wins the match  %d - %d")
-                                                       : TR("Nobody wins the match  %d - %d"), g.score[1], g.score[2]);
-            else if (g.last_winner) center(g.last_winner == PVP_TEAM_RED ? TR("Red wins the round  %d - %d") : TR("Blue wins the round  %d - %d"), g.score[1], g.score[2]);
-            else center(TR("Round drawn  %d - %d"), g.score[1], g.score[2]);
+        { static int was_open; static uint32_t was_match;                     /* E4: a proposal closed without agreement */
+          if (was_match != g.matches) { was_match = g.matches; was_open = 0; }
+          if (was_open && !g.vote_open && !g.countdown_at && g.placing) center("%s", TR("Not yet: the fight waits until everyone agrees."));
+          was_open = g.vote_open; }
+        if (g.placing && !g.countdown_at && g.round <= 1 && seen_prep != g.matches) {   /* E8: the preparation starts */
+            seen_prep = g.matches; center("%s", TR("Preparation: place your units, then propose the fight. It starts when every player agreed."));
         }
+        /* E9: the round / match result is the round result screen (pvp_ui.c), shown while the world stands still */
+        (void)seen_reset;
     }
 }
 /* host: START once every peer is on the arena floor and nobody is loading */
@@ -956,10 +1167,19 @@ void pvp_frame(void) {
     auto_start_frame();
     pvp_units_frame();
     after_units_frame();
+    rebring_frame();
     if (is_host()) {
         /* ARENA snapshot once the first fight began, between steps, never in a map change */
         if (pvp_fighting(&g) && g.round == 1 && arena_snap_match != (int)g.matches && rig_det_mp_ready() && !busy() && !(trn_flow_busy && trn_flow_busy()))
             if (!snap_take(&snap_arena, "arena")) arena_snap_match = (int)g.matches;
+        /* E9: the round result screen shows for ROUND_SCREEN_S on the host's clock, then NEXT runs the reset */
+        if (pvp_ending(&g)) {
+            if (end_seen != g.matches * 64 + g.round) { end_seen = g.matches * 64 + g.round; end_t0 = now_s(); }
+            else if (end_t0 > 0 && now_s() - end_t0 >= ROUND_SCREEN_S) {
+                uint8_t b[4]; size_t n = pvp_cmd_simple(b, sizeof b, PVP_OP_NEXT);
+                rig_log("pvp: round %d result screen over: next (rc %d)", g.round, send_cmd(b, n)); end_t0 = -1;
+            }
+        }
         /* planning pause: the host's clock ends it after plan_len_s (Ready from everyone may end it sooner) */
         if (pvp_planning(&g)) {
             if (plan_seen != g.plans) { plan_seen = g.plans; plan_t0 = now_s(); }
@@ -994,7 +1214,8 @@ void pvp_install(void) {
     bad |= rig_hook(0xC8D6FC, (void *)h_ev_startable, (void **)&o_ev_startable, "pvp EventContainer.IsEventStartable");
     bad |= rig_hook(0xC8DFBC, (void *)h_ev_start1, (void **)&o_ev_start1, "pvp EventContainer.StartEvent(key)");
     bad |= rig_hook(0xCEA620, (void *)h_ev_start2, (void **)&o_ev_start2, "pvp EventFlowProcessor.StartEvent(key)");
-    rig_log("pvp: hooks %s", bad ? "INCOMPLETE" : "installed (17)");
+    bad |= rig_hook(0xA782C8, (void *)h_preg, (void **)&o_preg, "pvp PassiveActionContainer.Register");
+    rig_log("pvp: hooks %s", bad ? "INCOMPLETE" : "installed (18)");
 }
 
 /* ---------------------------------------------------------------- rig commands */
@@ -1022,6 +1243,31 @@ char *pvp_exec(const char *cmd, const char *line) {
         if (jnum(line, "vanilla", &v)) ru.vanilla = (uint8_t)v;
         size_t n = pvp_cmd_setup(b, sizeof b, (int)mode, t, &ru);
         Buf r = {0}; bput(&r, "{\"ok\":true,\"rc\":%d}", send_cmd(b, n)); return okj(&r);
+    }
+    if (!strcmp(cmd, "pvp_bring_lib")) {               /* E3 test: {"ids":"id1,id2"} = the card window's My Units picks -> Bring (pvp_bring_picks) */
+        char ids[600] = ""; jstr(line, "ids", ids, sizeof ids);
+        static mu_pick pk[8]; int n = 0; memset(pk, 0, sizeof pk);
+        for (char *t2 = strtok(ids, ","); t2 && n < 8; t2 = strtok(NULL, ",")) { snprintf(pk[n].lib_id, sizeof pk[n].lib_id, "%s", t2); snprintf(pk[n].unit_guid, sizeof pk[n].unit_guid, "%s", t2); snprintf(pk[n].name, sizeof pk[n].name, "%s", t2); n++; }
+        char err[300] = ""; int rc = pvp_bring_picks(pk, n, err, sizeof err);
+        Buf r = {0}; bput(&r, "{\"ok\":%s,\"rc\":%d,\"ul\":%d,\"error\":", rc ? "false" : "true", rc, mu_ul_present()); bstr(&r, err); bput(&r, "}"); return okj(&r);
+    }
+    if (!strcmp(cmd, "pvp_hudcheck")) {                /* E5b test: per PvP unit [team, enemy, head health bar shown (-1 no HUD)] on this copy */
+        int ui_hud_bars_on(const uint8_t g[16]);
+        Buf r = {0}; bput(&r, "{\"ok\":true,\"units\":[");
+        for (int i = 0; i < g.nunits; i++) bput(&r, "%s[%d,%d,%d]", i ? "," : "", g.units[i].team, enemy_unit(g.units[i].guid), ui_hud_bars_on(g.units[i].guid));
+        bput(&r, "]}"); return okj(&r);
+    }
+    if (!strcmp(cmd, "pvp_selgroup")) {                /* E7b test: a click's selection of this unit (SelectProcessor.Select, hooked like a
+                                                          click); the group after it: 3003 = my units, 3001 = enemy (monster view) */
+        char gs[64]; Guid gg; if (!jstr(line, "guid", gs, sizeof gs) || !guid_parse(gs, &gg)) return errj("need guid");
+        int ord_debug_click_select(int map, const uint8_t g[16]);
+        int grp = ord_debug_click_select(cur_map(), (const uint8_t *)&gg);
+        Buf r = {0}; bput(&r, "{\"ok\":true,\"group\":%d}", grp); return okj(&r);
+    }
+    if (!strcmp(cmd, "pvp_vote")) {                    /* E4: {"op":"propose|agree|notyet|cancel"} from this player */
+        char o[16] = ""; jstr(line, "op", o, sizeof o);
+        int op = !strcmp(o, "propose") ? PVP_OP_PROPOSE : !strcmp(o, "agree") ? PVP_OP_AGREE : !strcmp(o, "notyet") ? PVP_OP_NOTYET : !strcmp(o, "cancel") ? PVP_OP_CANCEL : -1;
+        Buf r = {0}; bput(&r, "{\"ok\":true,\"rc\":%d}", pvp_ui_vote(op)); return okj(&r);
     }
     if (!strcmp(cmd, "pvp_ready") || !strcmp(cmd, "pvp_resume")) {
         uint8_t b[4]; size_t n = pvp_cmd_simple(b, sizeof b, cmd[4] == 'r' && cmd[5] == 'e' && cmd[6] == 'a' ? PVP_OP_READY : PVP_OP_RESUME);
@@ -1083,7 +1329,7 @@ char *pvp_exec(const char *cmd, const char *line) {
             if (!b || !key_has(AT(b, 0x38, Obj), "BannerStand")) continue; int32_t cc[2] = { -1, -1 }; unit_cell(map, (const uint8_t *)(e + 8), cc);
             bput(&q, "%s[%d,%d,%d]", k++ ? "," : "", cc[0], cc[1], key_has(AT(b, 0x38, Obj), "Blue")); } }
         bput(&q, "],\"cuts\":{\"spawn\":%u,\"npc\":%u,\"dungeon_tick\":%u,\"portal\":%u,\"gameover\":%u,\"kick\":%d,\"death_skipped\":%u,\"downed_made\":%u,\"passive_skipped\":%u,\"events_held\":%u,\"markers\":%d},\"hold\":%d}",
-             n_spawn_cut, n_npc_cut, n_dungeon_tick_cut, n_portal_refused, n_gameover_cut, n_kick, n_death_skipped, n_downed_made, 0u, n_events_held, n_markers, pvp_hold_events(&g));
+             n_spawn_cut, n_npc_cut, n_dungeon_tick_cut, n_portal_refused, n_gameover_cut, n_kick, n_death_skipped, n_downed_made, n_passive_skipped, n_events_held, n_markers, pvp_hold_events(&g));
         return okj(&q);
     }
     if (!strcmp(cmd, "pvp_cfg")) {                   /* test: {"fix_out":0|1} on THIS copy (set the same on every copy before START) */
@@ -1132,9 +1378,9 @@ char *pvp_exec(const char *cmd, const char *line) {
     if (!strcmp(cmd, "pvp_status")) {
         int map = cur_map(); Obj h = combat_of(map);
         Buf r = {0};
-        bput(&r, "{\"ok\":true,\"round\":%d,\"score\":[%d,%d],\"draws\":%d,\"resetting\":%d,\"last_winner\":%d,\"match_winner\":%d,\"planning\":%d,\"plans\":%u,\"rules\":[%d,%d,%d,%d,%d],\"vanilla\":%d,\"snaps\":[%d,%d],\"resyncs\":%d,\"overrides\":%d,\"arena\":%d,\"placing\":%d,\"fight_start\":%u,\"ends\":[[%d,%d],[%d,%d]],\"frozen\":%d,\"freeze_at\":%lld,\"world_tick\":%lld,\"phase\":%d,\"mode\":%d,\"active\":%d,\"ticks\":%u,\"matches\":%u,\"hash\":\"%016llx\",\"last_rc\":%d,"
+        bput(&r, "{\"ok\":true,\"ending\":%d,\"vote_open\":%d,\"vote_by\":%d,\"agree_mask\":%u,\"cd_ticks\":%u,\"countdown_at\":%u,\"kicks\":%d,\"walk_resend\":%u,\"selgroup_enemy\":%u,\"act_refused\":%u,\"round\":%d,\"score\":[%d,%d],\"draws\":%d,\"resetting\":%d,\"last_winner\":%d,\"match_winner\":%d,\"planning\":%d,\"plans\":%u,\"rules\":[%d,%d,%d,%d,%d],\"vanilla\":%d,\"snaps\":[%d,%d],\"resyncs\":%d,\"overrides\":%d,\"arena\":%d,\"placing\":%d,\"fight_start\":%u,\"ends\":[[%d,%d],[%d,%d]],\"frozen\":%d,\"freeze_at\":%lld,\"world_tick\":%lld,\"phase\":%d,\"mode\":%d,\"active\":%d,\"ticks\":%u,\"matches\":%u,\"hash\":\"%016llx\",\"last_rc\":%d,"
                  "\"counts\":{\"rel\":%u,\"ishostile\":%u,\"add\":%u,\"refresh\":%u,\"remove\":%u,\"aggro\":%u,\"rejected\":%u,\"isrel\":%u},\"handler\":%d,\"teams\":[",
-             g.round, g.score[1], g.score[2], g.draws, g.resetting, g.last_winner, g.match_winner, g.planning, g.plans,
+             g.ending, g.vote_open, g.vote_by, g.agree_mask, g.cd_ticks, g.countdown_at, kicks, n_walk_resend, n_selgroup_enemy, n_act_refused, g.round, g.score[1], g.score[2], g.draws, g.resetting, g.last_winner, g.match_winner, g.planning, g.plans,
              g.rules.best_of, g.rules.round_secs, g.rules.pause_rule, g.rules.plan_every_s, g.rules.plan_len_s, g.rules.vanilla, snap_world.tick_at, snap_arena.tick_at, n_resync, n_override,
              g.arena, g.placing, g.fight_start, g.end_cell[1][0], g.end_cell[1][1], g.end_cell[2][0], g.end_cell[2][1],
              pvp_freeze_now(), (long long)freeze_at, (long long)tick(), g.phase, g.mode, pvp_active(&g), g.ticks, g.matches, (unsigned long long)pvp_hash(&g), last_rc,
@@ -1157,9 +1403,11 @@ char *pvp_exec(const char *cmd, const char *line) {
             if (u) {
                 int cs; Guid cur, force, tt; unit_combat(u, &cs, &cur, &force, &tt);
                 char cg[64], tg[64]; guid_str(cur, cg); guid_str(tt, tg);
+                Obj ei = AT(u, 0x40, Obj), ec = ei ? AT(ei, 0x10, Obj) : NULL;   /* EntityInfoReader -> EntityInfoComponent._behaviourOption (+0x20, Mac = Windows) */
+                bput(&r, ",\"options\":%d", ec ? AT(ec, 0x20, int32_t) : -1);
                 bput(&r, ",\"dead\":%d,\"hp\":%.2f,\"task\":%d,\"combat\":%d,\"target\":\"%s\",\"task_target\":\"%s\"", unit_dead(u), unit_stat(u, 9), unit_task(u), cs, cg, tg);
             }
-            bput(&r, ",\"hed\":%d,\"hostile_entries\":%d,\"enemies_listed\":%d,\"out_tick\":%d}", d != NULL, nh, enemies, pvp_out_tick(&g, g.units[i].guid));
+            bput(&r, ",\"hed\":%d,\"hostile_entries\":%d,\"enemies_listed\":%d,\"out_tick\":%d,\"ordered\":%d}", d != NULL, nh, enemies, pvp_out_tick(&g, g.units[i].guid), g.units[i].ordered);
         }
         bput(&r, "]}");
         return okj(&r);

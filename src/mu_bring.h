@@ -1,10 +1,10 @@
 // mu_bring.h - Bring Units: the card window of Foreign Expedition and PvP (owner 2026-10-20: "port the Bring units card
-// window into the multiplayer mod"). From ds_custommodes units/mu_bring.h (removed there at 5454e03), saves only: units in a
-// multiplayer mode come only from the player's own saves (owner 2026-10-20), so there is no My Units tab and no Unit
-// Builder door. Left: the player's saves; right: Compact Plus cards (the game's own icons) with a tick each; a per-player cap.
-// Needs the loader's widget kit (mu_ui_init with a host that has one): without it mu_bring_open returns -1 and the caller
-// shows its text list. Everything runs on the game's main thread; `done` is called between frames, once, after the window
-// closed.
+// window into the multiplayer mod"). From ds_custommodes units/mu_bring.h (removed there at 5454e03). Left: the player's
+// saves; right: Compact Plus cards (the game's own icons) with a tick each; a per-player cap. With Units Laboratory
+// installed (E3, owner 2026-10-20) a Saves / My Units switch and a "Build a unit" button (Unit Builder) come in; without it
+// the window has saves only. Needs the loader's widget kit (mu_ui_init with a host that has one): without it mu_bring_open
+// returns -1 and the caller shows its text list. Everything runs on the game's main thread; `done` is called between
+// frames, once, after the window closed.
 #pragma once
 #include <stddef.h>
 
@@ -17,6 +17,7 @@ typedef struct mu_pick {
     char unit_guid[40];          /* the unit's guid in that save (36 chars + 0) */
     char name[96];               /* display name */
     int level;
+    char lib_id[17];             /* E3: a Units Laboratory My Units unit (its id; save_file empty), "" = a save unit */
 } mu_pick;
 
 /* the saves to offer. NULL list_saves = the game's own Saves folder of this player (read only), newest first. A save the
@@ -40,6 +41,11 @@ int  mu_bring_open(const mu_bring_req *req);
 void mu_bring_close(void);       /* closes it like Cancel (done(NULL, -1)) */
 int  mu_bring_is_open(void);
 int  mu_bring_available(void);   /* 1 = the loader's widget kit is there (the card window can open) */
+/* E3 (owner 2026-10-20): Units Laboratory, when this player has it (found at run time, no link): the window gets a source
+   switch Saves / My Units and a "Build a unit" button; a My Units pick travels as its full entry (others need nothing). */
+int   mu_ul_present(void);
+char *mu_ul_entry_json(const char *id, const char *player_uid, char *err, size_t errn);   /* malloc'd (mu_ul_free) */
+void  mu_ul_free(char *s);
 
 /* tests (rig commands mpm_bring_state / mpm_bring_close; the test driver's "bring:<name>" targets) */
 void *mu_bring_test_find(const char *name);

@@ -14,7 +14,7 @@
 enum pvp_team  { PVP_TEAM_NONE = 0, PVP_TEAM_BLUE = 1, PVP_TEAM_RED = 2 };
 enum pvp_phase { PVP_OFF = 0, PVP_SETUP = 1, PVP_MATCH = 2 };
 enum pvp_mode  { PVP_MODE_FIGHT = 1, PVP_MODE_CTF = 2 };
-enum pvp_op    { PVP_OP_SETUP = 1, PVP_OP_START = 2, PVP_OP_END = 3, PVP_OP_ARENA = 4, PVP_OP_READY = 5, PVP_OP_RESUME = 6, PVP_OP_BASE = 7 };
+enum pvp_op    { PVP_OP_SETUP = 1, PVP_OP_START = 2, PVP_OP_END = 3, PVP_OP_ARENA = 4, PVP_OP_READY = 5, PVP_OP_RESUME = 6, PVP_OP_BASE = 7, PVP_OP_PROPOSE = 8, PVP_OP_NEXT = 9, PVP_OP_AGREE = 10, PVP_OP_NOTYET = 11, PVP_OP_CANCEL = 12 };
 /* arena: where the match is played. 0 = where the units stand (no arena rules), 1 = a dungeon floor (ARENA), 2 = the
    settlement map the units are on (BASE, PvP v1: teams walk to the two ends of the map, arena rules on). */
 enum pvp_where { PVP_WHERE_HERE = 0, PVP_WHERE_DUNGEON = 1, PVP_WHERE_BASE = 2 };
@@ -31,7 +31,7 @@ pvp_rules pvp_rules_default(void);   /* best of 3, 180 s, no pause, planning 7 s
 /* pvp_apply results */
 enum { PVP_OK = 0, PVP_ERR_NOT_HOST = -1, PVP_ERR_BAD = -2, PVP_ERR_PHASE = -3, PVP_ERR_EMPTY_TEAM = -4 };
 
-typedef struct pvp_unit { uint8_t guid[16]; uint8_t team, player; uint32_t out; } pvp_unit;   /* out: match tick + 1 when it went out, 0 = in */
+typedef struct pvp_unit { uint8_t guid[16]; uint8_t team, player; uint32_t out; uint8_t ordered; } pvp_unit;   /* out: match tick + 1 when it went out, 0 = in; ordered: its player gave it an order this round (E7) */
 
 typedef struct pvp_state {
     uint8_t phase, mode;
@@ -64,6 +64,17 @@ typedef struct pvp_state {
     uint32_t captures;                  /* all captures in the match */
     uint32_t countdown_at;              /* M4: match tick + 1 when the 3 s countdown before the fight began, 0 = none */
     uint8_t hold;                       /* own units came in (pvp_units.c): PvP time until the old world is back */
+    /* E9 (owner v0.1.20: "the end of a round is abrupt and looks like a desync"): a round that ends sets `ending` (the
+       PVP_RESET_* it will be) and the world stops (glue: no world tick); every player sees the round result screen. The
+       host's clock ends it with NEXT: then `resetting` = ending and the reload runs as before. */
+    uint8_t ending;
+    /* E4 (owner 2026-10-20: "nobody starts a fight alone, not even the host"): in round 1 any team player PROPOSEs the fight;
+       the game stands still while the vote is open (vote_open; glue: no world tick); every team player must AGREE (agree_mask);
+       NOTYET closes it. All agreed: the preparation countdown (cd_ticks, PVP_AGREE_COUNTDOWN_TICKS) runs, at 0 the fight
+       begins; CANCEL by any team player during it stops it and closes the proposal. No countdown and no start without that. */
+    uint8_t vote_open, vote_by;         /* vote_by: the proposer's player slot */
+    uint32_t agree_mask;
+    uint16_t cd_ticks;                  /* length of the running countdown (0 = PVP_COUNTDOWN_TICKS) */
 } pvp_state;
 enum { PVP_FLAG_HOME = 0, PVP_FLAG_CARRIED = 1, PVP_FLAG_DROPPED = 2 };
 #define PVP_FLAG_TAKE_TICKS 60          /* an enemy stays within PVP_FLAG_REACH cells of a flag for 1 s to take it */
@@ -79,7 +90,9 @@ enum { PVP_EV_TAKEN = 1, PVP_EV_DROPPED = 2, PVP_EV_RETURNED = 4, PVP_EV_CAPTURE
  *   ARENA: i32 region, i32 floor, i32 seed   (12 bytes; SETUP phase only)
  *   BASE:  nothing                           (SETUP phase only): play on the settlement map, teams at its two ends
  *   START: nothing                           the unit table is taken from the owners given to pvp_apply
- *   END:   nothing */
+ *   END:   nothing
+ *   PROPOSE / AGREE / NOTYET / CANCEL: nothing (any team player; E4 fight vote, round 1 placing only)
+ *   NEXT:  nothing (host, round result screen shown): the reset of the ended round / match runs now (E9) */
 size_t pvp_cmd_setup(uint8_t *out, size_t cap, int mode, const uint8_t team_of[PVP_MAX_PLAYERS], const pvp_rules *r);
 size_t pvp_cmd_simple(uint8_t *out, size_t cap, int op);
 size_t pvp_cmd_arena(uint8_t *out, size_t cap, int32_t region, int32_t floor, int32_t seed);
@@ -96,6 +109,7 @@ void pvp_on_tick(pvp_state *s);         /* once per world tick */
  * Returns 1 if this report marked it, 0 if already out / not a PvP unit / no match. */
 int  pvp_mark_out(pvp_state *s, const uint8_t guid[16]);
 int  pvp_out_tick(const pvp_state *s, const uint8_t guid[16]);   /* match tick it went out, -1 = still in */
+void pvp_mark_ordered(pvp_state *s, const uint8_t guid[16]);   /* E7: its player ordered it (glue, inside the step) */
 
 int  pvp_active(const pvp_state *s);    /* a match runs: the hostility hooks are on */
 int  pvp_arena(const pvp_state *s);     /* the arena rules are on (from ARENA until END) */
@@ -110,6 +124,9 @@ int  pvp_place_done(pvp_state *s);
    units that are not out, in per mille of the team's full HP. A team with no unit left loses the round; at the round time
    the higher HP wins, equal = draw. Returns PVP_RESET_* (ROUND: next round after the reload; MATCH: the match is decided). */
 int  pvp_round_check(pvp_state *s, const uint32_t hp_permille[3]);
+int  pvp_ending(const pvp_state *s);    /* E9: a round just ended, the result screen shows, the world stands still */
+#define PVP_AGREE_COUNTDOWN_TICKS 600   /* E4/E8: 10 s at 1x from "everyone agreed" to the fight (round 1) */
+int  pvp_vote_open(const pvp_state *s);   /* E4: a fight proposal waits for answers: the world stands still */
 /* The state every peer gets with the reload (the glue writes it into the snapshot it sends): */
 void pvp_next_round(const pvp_state *s, pvp_state *out);   /* same match, round + 1, units back in, placing again */
 void pvp_after_match(const pvp_state *s, pvp_state *out);  /* OFF; keeps matches, the last score and the winner */

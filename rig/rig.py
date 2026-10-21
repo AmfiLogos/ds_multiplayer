@@ -313,6 +313,9 @@ def cap_wait(what):
         time.sleep(max(0.5, min(15, limit - (time.time() - t0))))
 
 
+EXTRA_ENV = {}                                                 # copy letter -> {name: value} added to its start env (tests)
+
+
 def start(x, window=False, fps=30, show=None):
     """show='left'|'right': VISIBLE window on that half of the screen (owner demo only; tests never pass it)."""
     if alive(read_pid(x)):
@@ -333,6 +336,7 @@ def start(x, window=False, fps=30, show=None):
            'DYLD_INSERT_LIBRARIES': DYLIB}
     env.update(ctl_env())                                      # test copy: control socket on (test tools)
     env.update({k: v for k, v in os.environ.items() if k.startswith('DSRIG_') and k not in env})   # DSRIG_DIAG, DSRIG_DETAIL_SYNC...
+    env.update(EXTRA_ENV.get(x, {}))                           # a test's own variables for this copy (e.g. DSML_GAME_SAVES = a test folder)
     args = [exe, '-logFile', os.path.join(idir(x), 'player.log'), '-screen-fullscreen', '0',
             '-screen-width', '960', '-screen-height', '540']
     if window and show:
