@@ -855,7 +855,10 @@ static void clock_lobby(Obj clock) {
     int sp = dsnet_allow_speedup(c), pa = dsnet_allow_pause(c);
     if (spect()) { sp = pa = 0; u_active(AT(clock, 0x50, Obj), false); }   /* spectators: no speed or pause buttons at all */
     u_active(AT(clock, 0x58, Obj), sp);
-    u_active(AT(clock, 0x60, Obj), sp);
+    /* the very-fast button: the stock Initialize hides it (no click listener, SetSpeedChangeOnUI(3) throws) and
+       VeryFast is not a session speed (clamped to Fast). Showing it gave a 4th button that did nothing (owner
+       2026-10-20): it stays hidden. */
+    u_active(AT(clock, 0x60, Obj), false);
     u_active(AT(clock, 0x48, Obj), pa);
 }
 static void hk_clock_init(Obj clock, Obj view, void *mi) {
@@ -3205,7 +3208,9 @@ static void order_frame(void) {
 static char *ui_view_cmd(void) {
     Buf b = {0}; char t[1024];
     Obj v = pause_view();
-    bput(&b, "{\"ok\":true,\"pause_panel\":%d,\"pause_line\":", u_alive(v) ? u_go_active_self(AT(v, 0x30, Obj)) : -1);
+    bput(&b, "{\"ok\":true,\"pause_panel\":%d,", u_alive(v) ? u_go_active_self(AT(v, 0x30, Obj)) : -1);
+    { Obj ck = u_gc_get(h_clock); Obj vf = u_alive(ck) ? AT(ck, 0x60, Obj) : NULL, fa = u_alive(ck) ? AT(ck, 0x58, Obj) : NULL;   /* speed buttons: very fast must stay hidden */
+      bput(&b, "\"very_fast\":%d,\"fast\":%d,\"pause_line\":", u_alive(vf) ? (int)u_go_active_self(u_go(vf)) : -1, u_alive(fa) ? (int)u_go_active_self(u_go(fa)) : -1); }
     Obj pl = u_gc_get(h_pause_line); str_utf8(u_alive(pl) ? tmp_get(pl) : NULL, t, sizeof t); bstr(&b, t);
     Obj li = u_gc_get(h_pl[PL_BODY]); str_utf8(u_alive(li) ? tmp_get(li) : NULL, t, sizeof t);
     bput(&b, ",\"player_list\":"); bstr(&b, t);
