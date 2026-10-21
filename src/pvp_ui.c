@@ -132,8 +132,15 @@ static int pvp_ui_present(int *ids, char (*names)[32], int max) {
     return n;
 }
 static void pv_default_teams(void) {
-    int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8), k = 0;
-    for (int i = 0; i < n; i++) if (!pv.team_set[ids[i]]) { pv.team[ids[i]] = (k++ % 2) ? PVP_TEAM_RED : PVP_TEAM_BLUE; pv.team_set[ids[i]] = 1; }
+    int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8), cnt[3] = { 0, 0, 0 };
+    /* UX pass 2026-10-21: a newcomer goes to the smaller team. Before, the count restarted at Blue for each new player:
+       after a refused Start with the host alone (host Blue), the friend who joined was put on Blue too, and every Start
+       was refused with "Red has 0" */
+    for (int i = 0; i < n; i++) if (pv.team_set[ids[i]] && pv.team[ids[i]] >= PVP_TEAM_BLUE && pv.team[ids[i]] <= PVP_TEAM_RED) cnt[pv.team[ids[i]]]++;
+    for (int i = 0; i < n; i++) if (!pv.team_set[ids[i]]) {
+        int t = cnt[PVP_TEAM_RED] < cnt[PVP_TEAM_BLUE] ? PVP_TEAM_RED : PVP_TEAM_BLUE;
+        pv.team[ids[i]] = t; pv.team_set[ids[i]] = 1; cnt[t]++;
+    }
 }
 /* the rule shown: in a match the one sent with SETUP; else the host's choice (a guest: as the host last told it) */
 static int pv_vanilla_shown(const pvp_state *s, int host) {
