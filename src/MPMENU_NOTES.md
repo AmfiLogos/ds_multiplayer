@@ -192,3 +192,16 @@ Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_men
   "Connected to <host> through Steam" / "Connected to <ip:port>". In game: ui_game.c Players panel right column.
 - Test: `mpm_conn` (rows' via + words; test copies: `{mark:id}` on the host marks that guest's loopback port like the
   Steam bridge); mpm_status lw.conn, lw.addr_rects (frames mask this Mac's addresses). Pair test ext/conninfo/conninfo_pair.py.
+
+## Lobby Quit / Turn off multiplayer, Steam lobby address (owner 2026-10-20, branch lobbyquit)
+- Lobby bottom bar: Quit (MPB_LOBBY_QUIT, left) + host only "Turn off multiplayer" (MPB_LEAVE, the old host Leave) +
+  Start. Host Quit asks the same box (confirm_leave = 2), then MPA_LEAVE | MPA_QUIT_TITLE: mp_game_quit_to_title = leave
+  (guests get "The host left the game") + the no-autosave QuitToTitleSceneRequested. The stock "Quit to title" asks no
+  save question (SystemMenuView.OnQuitToTitlePressed = a Yes/No box only, then autosave); the lobby runs before Start
+  (the world is still the loaded save), so today's no-autosave quit stays. Guest lobby: only Quit, no box.
+- Turn off multiplayer: the host stays in the world; it stays paused as the lobby held it (the player's play button runs it).
+- Steam lobby (mpm_steam_state steam): the address block is hidden; MPB_SHOW_ADDR "Show address for friends without
+  Steam" shows it (game side only, lw_addr_shown, reset when the lobby ends). "Same home" = lan_ip: en0, else the first
+  real LAN adapter (ui_addr_kind; Windows shim names VPN / virtual adapters utun / vmnet; + Docker, WSL), never 169.254/16
+  or 100.64/10 while a real one is up.
+- Tests: mpmenu_test (host lobby Quit -> MPA_QUIT_TITLE; Turn off -> none; guest Quit), pair rig/lobbyquit_pair.py.

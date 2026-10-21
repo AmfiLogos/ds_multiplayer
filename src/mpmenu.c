@@ -1649,8 +1649,10 @@ static void esc_sync(const mpm_obs *o) {
  * title band, hint strip, two columns (Players + Invite | Rules with the cog), bottom bar Leave left / Start right.
  * Host 880 x 740, guest 880 x 640. Buttons are SubUI_SystemMenuButton clones (the click hook knows them, h_lwb). The cog
  * opens the Rules panel (same as the host page) over the window. Mockup px from the window's top-left -> centre units. */
-enum { LW_START, LW_INVITE, LW_COPY, LW_LEAVE, LW_GEAR, LW_BRING, LW_NB };
-static const int lw_ids[LW_NB] = { MPB_START, MPB_INVITE, MPB_COPY_ADDR, MPB_LEAVE, MPB_LOBBY_SETTINGS, MPB_FE_BRINGWIN };
+enum { LW_START, LW_INVITE, LW_COPY, LW_LEAVE, LW_GEAR, LW_BRING, LW_QUIT, LW_SHOWADDR, LW_NB };   /* LW_LEAVE = "Turn off multiplayer" (host only) */
+static const int lw_ids[LW_NB] = { MPB_START, MPB_INVITE, MPB_COPY_ADDR, MPB_LEAVE, MPB_LOBBY_SETTINGS, MPB_FE_BRINGWIN, MPB_LOBBY_QUIT, MPB_SHOW_ADDR };
+/* owner 2026-10-20: in a Steam lobby the address block is hidden until "Show address for friends without Steam" */
+static int lw_addr_shown;
 uintptr_t h_lwr[MPB_COUNT];                       /* the lobby Rules panel's arrows + Done, by button id */
 #define LW_ROWS 4
 enum { T_TITLE, T_HINT, T_GUEST, T_PLAYERS, T_INV, T_RULES, T_INV_ADDR, T_INV_NOTE, T_RULES_NOTE, T_NOTE, T_CONN,
@@ -1667,6 +1669,7 @@ static int up_state;                                     /* upnpport_get state f
 static char lobby_addr[96];                              /* the address in the lobby box = what Copy copies */
 static float lw_h = 740;
 static float lw_note_h;                                 /* steaminv: height of the note under Steam invite (ui_friends.c) */
+static float lw_addr_h = 40 + 10 + 52;                  /* the address block (box + note) or its "Show address" button */
 int ui_friends_invite_click(void); float ui_friends_lobby_note(float x, float y, float w, int steam);
 int mp_game_conn(int player, char *addr, size_t n);      /* mp_game.c (conninfo): enum dsnet_via + the address this copy may show */
 /* conninfo (owner 2026-10-20): the connection words of a players row, for the lobby and ui_game.c's Players panel.
@@ -1689,6 +1692,13 @@ __attribute__((visibility("default"))) int mpmenu_conn_words(int player, char *o
 static Obj lwt(int k) { Obj t = u_gc_get(h_lwt[k]); return u_alive(t) ? t : NULL; }
 #define LX(x) ((x) - 440.0f)
 #define LY(y) (lw_h / 2 - (y))
+/* bottom bar, left part (mockup px): Quit 32..172, Turn off multiplayer 184..424 (DE / RU labels shrink to fit); Start 616..848 */
+#define LW_QUIT_X 32.0f
+#define LW_QUIT_W 140.0f
+#define LW_OFF_X 184.0f
+#define LW_OFF_W 240.0f
+#define LW_MID_X 520.0f                   /* host: the space between Turn off multiplayer and Start (Bring units, the loading note) */
+#define LW_MID_W 172.0f
 static void lw_build(Obj v, int host) {
     if (!scan_done || !h_spr[S_COG]) assets_scan_now();
     Obj src = AT(v, 0x70, Obj);                                             /* Report bug: button template */
@@ -1746,7 +1756,8 @@ static void lw_build(Obj v, int host) {
         T(T_INV_ADDR, 0, 16, 513, 0, 0, 0, 268, 30, C_MAIN);
         b = mk_button(src, R, 1, S_NBTN, C_WHITE, 0, 0, 96, 40, 16, TR("Copy"), C_MAIN); KEEP(h_lwb[LW_COPY], b);
         T(T_INV_NOTE, 0, 12, 513, 1, 0, 0, 396, 34, C_SUB);
-    }
+        b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 198), 0, 396, 30, 14, TR("Show address for friends without Steam"), C_SUB); KEEP(h_lwb[LW_SHOWADDR], b);
+    } else { u_gc_free(h_lwb[LW_SHOWADDR]); h_lwb[LW_SHOWADDR] = 0; }
     /* rules (read-only rows; the host's cog opens the Rules panel) */
     for (int i = 0; i < MPM_RULE_ROWS; i++) {
         float y = LY(188 + 40 * i + 20);
@@ -1763,11 +1774,14 @@ static void lw_build(Obj v, int host) {
     /* bottom bar (placed at the content's height in lw_texts) */
     KEEP(h_lw_bbar, mk_img(tpl_img, R, -1, C_BAND, 0, LY(lw_h - 38), 876, 74));
     KEEP(h_lw_bline, mk_img(tpl_img, R, -1, C_COPPER, 0, LY(lw_h - 76), 876, 1));
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 103), LY(lw_h - 38), 206, 34, 16, host ? TR("Leave multiplayer") : TR("Leave"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b);
+    /* owner 2026-10-20: Quit (end the session, back to the title) left; host: Turn off multiplayer (keep playing alone) beside it */
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(lw_h - 38), LW_QUIT_W, 34, 16, TR("Quit"), C_MAIN); KEEP(h_lwb[LW_QUIT], b);
+    if (host) { b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_OFF_X + LW_OFF_W / 2), LY(lw_h - 38), LW_OFF_W, 34, 16, TR("Turn off multiplayer"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b); }
+    else { u_gc_free(h_lwb[LW_LEAVE]); h_lwb[LW_LEAVE] = 0; }
     if (host) { b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, LX(848 - 116), LY(lw_h - 38), 232, 44, 18, mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), C_START); KEEP(h_lwb[LW_START], b); }
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? 0 : LX(848 - 116), LY(lw_h - 38), 206, 34, 16, TR("Bring units"), C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? LX(LW_MID_X) : LX(848 - 116), LY(lw_h - 38), host ? LW_MID_W : 206, 34, 16, TR("Bring units"), C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
     if (b) u_active(b, false);
-    T(T_NOTE, 0, 14, 514, 0, 0, LY(lw_h - 38), 300, 24, C_ORANGE);
+    T(T_NOTE, 0, 14, 514, 0, host ? LX(LW_MID_X) : 0, LY(lw_h - 38), host ? LW_MID_W : 300, 24, C_ORANGE);
     #undef T
     #undef KEEP
     if (host) { Obj sh = mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 1 }, 0, 0, 876, 10);   /* hides the columns behind the open Rules */
@@ -1857,6 +1871,11 @@ static void lw_texts(void) {
         Obj ib = u_gc_get(h_lwb[LW_INVITE]); if (ib) place(ib, LX(32 + 198), LY(y1), 396, 40);
         lw_note_h = ui_friends_lobby_note(LX(32 + 198), LY(y1 + 20 + 4 + 10), 396, in.steam);   /* steaminv: "Your friend must open ... first." */
         float y2 = y1 + 20 + 10 + 20 + lw_note_h;
+        int addr_on = !in.steam || lw_addr_shown;                          /* Steam lobby: Steam invite first, the address on request */
+        { Obj sa = u_gc_get(h_lwb[LW_SHOWADDR]); u_active(sa, !addr_on); if (sa) place(sa, LX(32 + 198), LY(y2 - 5), 396, 30); }
+        u_active(u_gc_get(h_lw_addrbox[0]), addr_on); u_active(u_gc_get(h_lw_addrbox[1]), addr_on); u_active(lwt(T_INV_ADDR), addr_on);
+        u_active(u_gc_get(h_lwb[LW_COPY]), addr_on); u_active(lwt(T_INV_NOTE), addr_on);
+        lw_addr_h = addr_on ? 40 + 10 + 52 : 30;
         place(u_gc_get(h_lw_addrbox[0]), LX(32 + 146), LY(y2), 292, 40); place(u_gc_get(h_lw_addrbox[1]), LX(32 + 146), LY(y2), 290, 38);
         place(lwt(T_INV_ADDR), LX(32 + 12 + 134), LY(y2), 268, 30);
         Obj cb = u_gc_get(h_lwb[LW_COPY]); if (cb) place(cb, LX(428 - 48), LY(y2), 96, 40);
@@ -1901,15 +1920,16 @@ static void lw_texts(void) {
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
     /* height from the content: no empty band under the columns; the window stays centred */
-    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + 40 + 10 + 52 + lw_note_h : rows_end + 36, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
+    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + lw_addr_h + lw_note_h : rows_end + 36, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
     float H = (left > right ? left : right) + 24 + 76;
     place(u_gc_get(h_lw_frame), 0, LY(H / 2), 880, H);
     { float top = host ? 123 : 127, bot = H - 77; place(u_gc_get(h_lw_body), 0, LY((top + bot) / 2), 876, bot - top); }
     if (!host) { u_active(u_gc_get(h_lw_lines[4]), false); u_active(u_gc_get(h_lw_lines[5]), false); }   /* no Invite header */
     place(u_gc_get(h_lw_bbar), 0, LY(H - 38), 876, 74); place(u_gc_get(h_lw_bline), 0, LY(H - 76), 876, 1);
-    Obj lb = u_gc_get(h_lwb[LW_LEAVE]); if (lb) place(lb, LX(32 + 103), LY(H - 38), 206, 34);
+    Obj qb = u_gc_get(h_lwb[LW_QUIT]); if (qb) place(qb, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(H - 38), LW_QUIT_W, 34);
+    Obj lb = u_gc_get(h_lwb[LW_LEAVE]); if (lb) place(lb, LX(LW_OFF_X + LW_OFF_W / 2), LY(H - 38), LW_OFF_W, 34);
     Obj sb = u_gc_get(h_lwb[LW_START]); if (sb) place(sb, LX(848 - 116), LY(H - 38), 232, 44);
-    place(lwt(T_NOTE), 0, LY(H - 38), 300, 24);
+    if (host) place(lwt(T_NOTE), LX(LW_MID_X), LY(H - 38), LW_MID_W, 30); else place(lwt(T_NOTE), 0, LY(H - 38), 300, 24);
     place(u_gc_get(h_lw_root), 0, H / 2 - lw_h / 2, 880, lw_h);
     { float top = host ? 123 : 127, bot = H - 77;                          /* inside the body: never over the title or Start */
       if (u_gc_get(rp_lobby.root)) place(u_gc_get(rp_lobby.root), 0, LY((top + bot) / 2), RP_WIDE_W, RP_WIDE_H);
@@ -1921,6 +1941,7 @@ static void lw_texts(void) {
 static void lw_sync(Obj v, int lobby) {
     Obj root = u_gc_get(h_lw_root);
     int host = M.state == MPM_LOBBY;
+    if (!host) lw_addr_shown = 0;                                           /* hidden again in the next lobby */
     if (lobby && (!u_alive(root) || u_gc_get(h_lw_view) != v || lw_host_built != host)) {
         if (u_alive(root)) u_active(root, false);
         lw_build(v, host); root = u_gc_get(h_lw_root);
@@ -1939,6 +1960,7 @@ static void h_esc_press(Obj btn, void *mi) {                                /* S
     for (int k = 0; k < nhooks; k++) if (hooks[k].press && hooks[k].press(btn)) return;   /* Custom Modes buttons (PvP) */
     if (escb_press(btn)) return;                                            /* mp_api register_esc_button */
     for (int i = 0; i < NE; i++) if (btn && btn == eb(esc_ids[i])) { pending_click = esc_ids[i]; return; }
+    if (btn && btn == u_gc_get(h_lwb[LW_SHOWADDR])) { lw_addr_shown = 1; lw_texts(); rig_log("mpmenu: lobby: address shown"); return; }
     for (int i = 0; i < LW_NB; i++) if (btn && btn == u_gc_get(h_lwb[i])) { pending_click = lw_ids[i]; return; }
     for (int i = 0; i < MPB_COUNT; i++) if (h_lwr[i] && btn == u_gc_get(h_lwr[i])) { pending_click = i; return; }
     o_esc_press(btn, mi);
@@ -2092,13 +2114,19 @@ static void esc_load_rule(Obj v) {
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <net/if.h>
-static void lan_ip(char *out, size_t cap) {                                 /* first up, non-loopback IPv4 (en0 first) */
+/* the ONE "Same home" address (owner 2026-10-20): en0, else the first real LAN adapter. VPN / virtual adapters (Tailscale
+   utun, bridge, vmnet, Docker, Hyper-V: ui_addr_kind, the Windows getifaddrs shim names them so), link-local 169.254/16
+   and carrier NAT 100.64/10 (Tailscale) only when nothing else is up. */
+static void lan_ip(char *out, size_t cap) {
     struct ifaddrs *ifs = NULL, *i; snprintf(out, cap, "127.0.0.1");
     if (getifaddrs(&ifs)) return;
-    for (int pass = 0; pass < 2; pass++)
+    for (int pass = 0; pass < 3; pass++)
         for (i = ifs; i; i = i->ifa_next) {
             if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET || !(i->ifa_flags & IFF_UP) || (i->ifa_flags & IFF_LOOPBACK)) continue;
-            if (pass == 0 && strcmp(i->ifa_name, "en0")) continue;
+            uint32_t a = ntohl(((struct sockaddr_in *)i->ifa_addr)->sin_addr.s_addr);
+            int lan = ui_addr_kind(i->ifa_name) == 0 && a >> 16 != 0xA9FE && (a & 0xFFC00000u) != 0x64400000u;
+            if (pass == 0 && (strcmp(i->ifa_name, "en0") || !lan)) continue;
+            if (pass == 1 && !lan) continue;
             inet_ntop(AF_INET, &((struct sockaddr_in *)i->ifa_addr)->sin_addr, out, (socklen_t)cap);
             freeifaddrs(ifs); return;
         }
@@ -2481,8 +2509,11 @@ static int leave_box_text(char *out, size_t cap) {             /* returns how ma
     }
     char who[400];
     if (n) snprintf(who, sizeof who, TRN("%s goes back to the title.", "%s go back to the title.", n), names);
-    snprintf(out, cap, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", n ? TR("End the game for everyone?") : TR("Leave multiplayer?"),
-             n ? who : TR("Nobody else is in this world now. Friends can no longer join."), TR("The world stays on your computer. You keep playing it alone."));
+    int quit = M.confirm_leave == 2, lobby = M.state == MPM_LOBBY;           /* lobby: Quit (then the title) or Turn off multiplayer */
+    snprintf(out, cap, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>",
+             n ? TR("End the game for everyone?") : quit ? TR("Quit to the title?") : lobby ? TR("Turn off multiplayer?") : TR("Leave multiplayer?"),
+             n ? who : TR("Nobody else is in this world now. Friends can no longer join."),
+             quit ? TR("The world stays on your computer. You go back to the title.") : TR("The world stays on your computer. You keep playing it alone."));
     return n;
 }
 static void leave_box_show(void) {
@@ -2495,7 +2526,7 @@ static void leave_box_show(void) {
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str_ok(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
     tmp_set(AT(v, 0x30, Obj), lbox_text);
     txt_fit_stock(AT(v, 0x30, Obj));
-    tmp_set(AT(v, 0x40, Obj), others ? TR("End for everyone") : TR("Leave"));          /* from the box's own case, not its text */
+    tmp_set(AT(v, 0x40, Obj), others ? TR("End for everyone") : M.confirm_leave == 2 ? TR("Quit") : M.state == MPM_LOBBY ? TR("Turn off") : TR("Leave"));   /* from the box's own case, not its text */
     tmp_set(AT(v, 0x50, Obj), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }   /* centred, as the ui lane's boxes */
     u_go_active(u_go(v), true);
@@ -2521,7 +2552,7 @@ __attribute__((visibility("default"))) int mpmenu_notice_click(int confirm) {
     if (lbox_up > BX_LEAVE && lbox_ours(lbox_view())) { invite_click(confirm); return 1; }   /* invite / joining boxes */
     if (!M.confirm_leave || !lbox_ours(lbox_view())) return 0;
     lbox_up = 0; pending_click = confirm ? MPB_LEAVE_CONFIRM : MPB_LEAVE_CANCEL;
-    rig_log("mpmenu: Leave box: %s", confirm ? "End for everyone" : "Cancel");
+    rig_log("mpmenu: Leave box (%s): %s", M.confirm_leave == 2 ? "Quit" : "Turn off", confirm ? "confirm" : "Cancel");
     return 1;
 }
 /* ---------------------------------------------------------------- invite during a single-player game (lan_v10, ux_flow F9; core API) */
@@ -3545,12 +3576,13 @@ static void run_actions(int a, const mpm_obs *o) {
     if (a & MPA_CONFIRM_LEAVE) leave_box_show();
     if (a & MPA_LEAVE_BOX_CLOSE) leave_box_close();
     if (a & MPA_LEAVE) {                                                    /* guest: straight to the title (mp_game) */
-        int host_alone = o->role == 1 && o->scene == 2;                     /* the host stays in the world, single player */
+        int quit = (a & MPA_QUIT_TITLE) != 0;                               /* lobby Quit: everyone (the host too) goes to the title */
+        int host_alone = o->role == 1 && o->scene == 2 && !quit;            /* the host stays in the world, single player */
         hist_update();                                                      /* Recent worlds: the state at leaving */
-        static void (*leave_title)(void); static int looked;
-        if (!looked) { looked = 1; leave_title = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_leave_to_title"); }
-        if (leave_title) leave_title(); else mp_steam_leave();
-        host_failed = 0; rig_log("mpmenu: left the session");
+        static void (*leave_title)(void), (*quit_title)(void); static int looked;
+        if (!looked) { looked = 1; leave_title = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_leave_to_title"); quit_title = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_quit_to_title"); }
+        if (quit && quit_title) quit_title(); else if (leave_title) leave_title(); else mp_steam_leave();
+        host_failed = 0; rig_log("mpmenu: left the session%s", quit ? " (Quit: to the title)" : "");
         if (host_alone) say("%s", TR("Multiplayer ended. You are playing alone now; the world stays on your computer."));
     }
     if (a & MPA_FRIENDS) friends_refresh();
@@ -3595,7 +3627,9 @@ static void tips_frame(const mpm_obs *o) {
     /* lobby window (3.5, 3.7) */
     if (M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY) {
         TIP(u_gc_get(h_lwb[LW_START]), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Starts the game for everyone in the lobby. Players who join later catch up with the running game."));
-        TIP(u_gc_get(h_lwb[LW_LEAVE]), TR("Leave Multiplayer"), TR("Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you leave and return to the title; your units stay reserved for you."));
+        TIP(u_gc_get(h_lwb[LW_QUIT]), TR("Quit"), M.state == MPM_LOBBY ? TR("Asks first, then ends the game for everyone and goes back to the title. The world stays on your computer.")
+                                                                        : TR("You leave and return to the title; your units stay reserved for you."));
+        TIP(u_gc_get(h_lwb[LW_LEAVE]), TR("Turn Off Multiplayer"), TR("Asks first, then ends the game for everyone. You stay in this world and keep playing alone."));
         if (!lobby_rules) {
             TIP(u_gc_get(h_lwb[LW_GEAR]), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));
             TIP(lwt(T_RULES), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));

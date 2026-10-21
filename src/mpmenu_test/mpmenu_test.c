@@ -141,7 +141,13 @@ int main(void) {
     o.steam = 1; CHECK(mpm_step(&m, &o, MPB_INVITE) == MPA_INVITE && m.state == MPM_LOBBY); o.steam = 0;
     /* lobby Leave (host): the same confirm box */
     { mpm_model q = m; int aa = mpm_step(&q, &o, MPB_LEAVE); CHECK(q.state == MPM_LOBBY && (aa & MPA_CONFIRM_LEAVE) && !(aa & MPA_LEAVE));
-      aa = mpm_step(&q, &o, MPB_LEAVE_CONFIRM); CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_LOBBY_HIDE)); }
+      aa = mpm_step(&q, &o, MPB_LEAVE_CONFIRM); CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_LOBBY_HIDE) && !(aa & MPA_QUIT_TITLE)); }   /* Turn off multiplayer: the host stays in the world */
+    /* lobby Quit (owner 2026-10-20): the same box, then the session ends AND the host goes to the title; Cancel keeps the lobby */
+    { mpm_model q = m; CHECK(mpm_is_visible(&q, &o, MPB_LOBBY_QUIT));
+      int aa = mpm_step(&q, &o, MPB_LOBBY_QUIT); CHECK(q.state == MPM_LOBBY && (aa & MPA_CONFIRM_LEAVE) && !(aa & MPA_LEAVE));
+      aa = mpm_step(&q, &o, MPB_LEAVE_CANCEL); CHECK(q.state == MPM_LOBBY && !q.confirm_leave && !(aa & MPA_LEAVE));
+      mpm_step(&q, &o, MPB_LOBBY_QUIT); aa = mpm_step(&q, &o, MPB_LEAVE_CONFIRM); CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_QUIT_TITLE) && (aa & MPA_LOBBY_HIDE));
+      mpm_step(&q, &o, MPB_NONE); CHECK(!mpm_is_visible(&q, &o, MPB_LOBBY_QUIT)); }
     a = mpm_step(&m, &o, MPB_START); CHECK(m.state == MPM_PLAYING && (a & MPA_LOBBY_HIDE) && (a & MPA_START_GAME));
     /* Esc menu: host sees Invite + Leave, guest only Leave */
     CHECK(mpm_visible(&m, &o) == 0);
@@ -188,6 +194,8 @@ int main(void) {
     /* host still in the lobby (ux #14): the guest gets the waiting panel; Start on the host ends it */
     o.esc_open = 0; o.host_lobby = 1; a = mpm_step(&m, &o, MPB_NONE);
     CHECK(m.state == MPM_GUEST_LOBBY && (a & MPA_LOBBY_SHOW) && mpm_visible(&m, &o) == B(MPB_LEAVE));
+    { mpm_model q = m; int aa = mpm_step(&q, &o, MPB_LOBBY_QUIT);           /* guest lobby Quit: no box, straight to the title */
+      CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_QUIT_TITLE) && (aa & MPA_LOBBY_HIDE)); }
     { const char *gn[] = { "Alex", "Ben" }; char gt[512]; mpm_lobby_text(&m, gn, 2, gt, sizeof gt);
       char tl[64]; mpm_lobby_title(&m, tl, sizeof tl);
       CHECK(!strcmp(tl, "In Alex's lobby") && strstr(gt, "The game starts when Alex presses Start.") && strstr(gt, "\xC2\xB7 Alex (host)\n\xC2\xB7 Ben") && !strstr(gt, "Pause:") && !strstr(gt, "<b>")); }
