@@ -2313,7 +2313,23 @@ static float bar_bottom_y(Obj root) {                       /* y just under the 
     V3 rp = F(0x5109A08, V3 (*)(Obj, void *))(root, NULL), rs = F(0x510F4F8, V3 (*)(Obj, void *))(root, NULL);
     RectF4 rr = (ui_is(root, K_RT) ? F(0x5106978, RectF4 (*)(Obj, void *))(root, NULL) : (RectF4){0,0,0,0});
     if (rs.y == 0) return 0;
-    return (bp.y + br.y * bs.y - (rp.y + (rr.y + rr.h) * rs.y)) / rs.y;                    /* <= 0: below the top edge */
+    float wy = bp.y + br.y * bs.y;                                                          /* world y of the bar's bottom */
+    /* final review (UI scale 1.5, F1): the game's cards grow past the bar's rect (their bars and mood icon lay under the
+       Teams button and the "sees this too" line): the lowest shown card part counts too (card, mood icon, stress bar) */
+    for (int i = 0; i < MAX_SC; i++) {
+        Obj pa = u_gc_get(sc[i].parts);
+        if (!u_alive(pa) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(pa), NULL)) continue;
+        Obj parts[] = { u_tr(pa), AT(pa, 0x1C8, Obj), AT(pa, 0x198, Obj), AT(pa, 0x1C0, Obj) };   /* _moodIcon, _stressBar(Background) */
+        for (size_t k = 0; k < sizeof parts / sizeof parts[0]; k++) {
+            Obj t = k ? (u_alive(parts[k]) ? u_tr(parts[k]) : NULL) : parts[0];
+            if (!u_alive(t) || !ui_is(t, K_RT) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(t), NULL)) continue;
+            RectF4 q = F(0x5106978, RectF4 (*)(Obj, void *))(t, NULL);
+            V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(t, (V3){ q.x, q.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(t, (V3){ q.x, q.y + q.h, 0 }, NULL);
+            float lo = a.y < b.y ? a.y : b.y;
+            if (lo < wy) wy = lo;
+        }
+    }
+    return (wy - (rp.y + (rr.y + rr.h) * rs.y)) / rs.y;                                     /* <= 0: below the top edge */
 }
 #define PL_TOP   196.0f
 #define PL_X     (-300.0f)
@@ -2364,6 +2380,8 @@ static void obj_text(Obj t, const char *txt) {             /* plist_set for a te
 static uintptr_t h_band, h_arrow;                            /* (probes: header background / collapse button) */
 static const char *pl_dot = "•";
 static Obj tr_find(Obj t, const char *path) { return t ? F(0x510F3C0, Obj (*)(Obj, Obj, void *))(t, u_str(path), NULL) : NULL; }
+static int lang_cjk(void) { const char *c = dsi_code(); return c && (!strncmp(c, "ja", 2) || !strncmp(c, "zh", 2) || !strncmp(c, "ko", 2)); }   /* as mpmenu.c */
+static float small_pt(float latin) { return lang_cjk() ? (latin < 14 ? 14 : latin) : latin < 12 ? 12 : latin; }   /* floors: CJK 14, Latin 12 (review_ja F3) */
 static void tmp_style(Obj t, Obj font, float size, int align) {
     if (!ui_is(t, K_TMP)) return;
     if (u_alive(font)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, font, NULL);        /* TMP_Text.font */
@@ -2567,7 +2585,7 @@ static int plist_style(void) {
         Obj tn = u_instantiate(u_gc_get(h_status), root), tr_ = u_instantiate(u_gc_get(h_status), root);
         Obj two[2] = { tn, tr_ };
         for (int q = 0; q < 2; q++) if (ui_is(two[q], K_TMP)) {
-            rt_top_left(u_tr(two[q])); u_rt_set_size(u_tr(two[q]), PL_W, 22); tmp_style(two[q], lora, q ? 12 : 16, q ? 516 : 513);
+            rt_top_left(u_tr(two[q])); u_rt_set_size(u_tr(two[q]), PL_W, 22); tmp_style(two[q], lora, q ? small_pt(12) : 16, q ? 516 : 513);
             u_set_sibling(u_tr(two[q]), 1 << 20); show(two[q], 0); obj_text(two[q], "");
         }
         u_gc_free(h_rname[r]); h_rname[r] = u_gc_new(tn); u_gc_free(h_rright[r]); h_rright[r] = u_gc_new(tr_);
@@ -2781,7 +2799,7 @@ static void plist_frame(void) {
     plist_set(PL_HDR, h2);
     plist_set(PL_BODY, bl); plist_set(PL_BODYR, br);
     int host = me() == 0;
-    plist_set(PL_SEE, ui_col("#a69085", TR("Other units see-through")));
+    plist_set(PL_SEE, ui_col("#a69085", TR("Fade other units")));
     plist_set(PL_NAMES, ui_col("#a69085", TR("Names above units")));
     plist_set(PL_UNITS, ui_col("#a69085", TR("Units per player")));
     plist_set(PL_ADMIN, ui_col("#a69085", TR("Admin mode (host)")));
@@ -2795,24 +2813,24 @@ static void plist_frame(void) {
         else if (nw) snprintf(row, sizeof row, TR("<color=#ccbeb8>On (%d)</color>"), nw);
         else snprintf(row, sizeof row, "%s", ui_col("#ccbeb8", TR("On")));
         plist_set(PL_SPECTR, row); }
-    plist_set(PL_TIPS, ui_col("#a69085", TR("Show tooltips on hover")));
+    plist_set(PL_TIPS, ui_col("#a69085", TR("Hover tooltips")));
     plist_set(PL_SIZE, ui_col("#a69085", TR("Panel size")));
     plist_set(PL_SIZER, uiset.compact ? ui_col("#ccbeb8", TR("Compact")) : ui_col("#ccbeb8", TR("Normal")));
     plist_set(PL_TEAMS, ui_col("#a69085", TR("Teams button")));
     plist_set(PL_TEAMSR, uiset.teams_button ? ui_col("#ccbeb8", TR("Show")) : ui_col("#ccbeb8", TR("Hide")));
     plist_set(PL_TIPSR, uiset.tooltips ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
-    plist_set(PL_HINT, TR("<size=86%><color=#a69085>Right-click and drag to move the multiplayer windows</color></size>"));
+    plist_set(PL_HINT, TR("<size=86%><color=#a69085>Right-click and drag to move these windows</color></size>"));
     { int fade = 12, join = 1, en = 1; chat_get(&fade, &join, &en);
-      plist_set(PL_CFADE, ui_col("#a69085", TR("Chat messages fade after")));
+      plist_set(PL_CFADE, ui_col("#a69085", TR("Chat fade time")));
       snprintf(row, sizeof row, TR("<color=#ccbeb8>%d s</color>"), fade); plist_set(PL_CFADER, row);
-      plist_set(PL_CJOIN, ui_col("#a69085", TR("Show join / leave lines")));
+      plist_set(PL_CJOIN, ui_col("#a69085", TR("Join / leave lines")));
       plist_set(PL_CJOINR, join ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
       plist_set(PL_CHAT, ui_col("#a69085", TR("Chat")));
       plist_set(PL_CHATR, en ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off"))); }
     plist_set(PL_ADMINR, admin_on() ? ui_col("#f16071", TR("On")) : ui_col("#ccbeb8", TR("Off")));
     /* lan_v10 rows */
     { static const struct { int lab, val; const char *txt; } onoff[] = { { PL_PINGS, PL_PINGSR, TR_NOOP("Show pings") }, { PL_PSOUND, PL_PSOUNDR, TR_NOOP("Ping sound") },
-          { PL_PCHAT, PL_PCHATR, TR_NOOP("Ping lines in chat") }, { PL_VIEWS, PL_VIEWSR, TR_NOOP("Show friends' views") }, { PL_OFFS, PL_OFFSR, TR_NOOP("Show off-screen friends") } };
+          { PL_PCHAT, PL_PCHATR, TR_NOOP("Ping lines in chat") }, { PL_VIEWS, PL_VIEWSR, TR_NOOP("Show friends' views") }, { PL_OFFS, PL_OFFSR, TR_NOOP("Off-screen friends") } };
       int vals[5] = { uiset.pings, uiset.ping_sound, uiset.ping_chat, uiset.views, uiset.offscreen };
       for (int k = 0; k < 5; k++) { snprintf(row, sizeof row, "<color=#a69085>%s</color>", TR(onoff[k].txt)); plist_set(onoff[k].lab, row);
                                     plist_set(onoff[k].val, vals[k] ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off"))); }
@@ -2904,16 +2922,16 @@ static void plist_frame(void) {
             Obj tn = u_gc_get(h_rname[r]), tr_ = u_gc_get(h_rright[r]);
             obj_text(tn, pl_rl[r]); obj_text(tr_, pl_rr[r]);
             float bw = lvl[r] >= 0 ? 26 : 0, rw = strcmp(pl_rr[r], " ") ? tmp_pref_w(tr_) + 2 : 0;
-            float wn = inner - bw - (rw > 0 ? rw + 8 : 0), nh = 26, rh = PL_ROW_H;
+            float wn = inner - bw - (rw > 0 ? rw + 8 : 0), nh = 26, rh = PL_ROW_H, uh = lang_cjk() ? 20 : 16;   /* uh: the small line (CJK 14 pt) */
             int under = 0;
             if (wn < 40 || txt_fit_h(tn, wn, 26) > 26.5f) {
                 under = rw > 0; wn = inner - bw;
                 nh = txt_fit_h(tn, wn, 26);
-                rh = nh + (under ? 16 : 0) + 6; if (rh < PL_ROW_H) rh = PL_ROW_H;
+                rh = nh + (under ? uh : 0) + 6; if (rh < PL_ROW_H) rh = PL_ROW_H;
             }
             place(u_gc_get(h_rowbg[r]), L + 2, ry, PL_W - 4, rh);
             place(tn, x, ry - 3, wn, nh);
-            if (under) place(tr_, x, ry - 3 - nh, inner - bw, 16);
+            if (under) place(tr_, x, ry - 3 - nh, inner - bw, uh);
             else place(tr_, x + inner - bw - rw, ry - 3, rw > 0 ? rw : 1, 26);
             if (lvl[r] >= 0) bars_put(r, lvl[r], L + PL_W - PL_PAD - 18, ry - 9);
             ry -= rh;
@@ -2941,14 +2959,18 @@ static void plist_frame(void) {
         show(u_gc_get(h_set_arrow[2 * k]), vis); show(u_gc_get(h_set_arrow[2 * k + 1]), vis);
         /* round 2 (review_de #4, #28, #29): labels wrap at 14 (txt_text_h) with room between rows; the value box sits 4
            units from each arrow ("Deaktiviert" touched the right one) */
-        float lw = 148, ra = L + PL_W - PL_PAD - 20, vx = ra - 4 - 80, la = vx - 4 - 20;
-        float th = txt_text_h(tl, lw), rh = th > 24 ? th + 10 : PL_SET_H, hv = txt_fit_h(tv, 72, PL_SET_H);   /* one line: about 20 */
+        /* final review (de F5): at 960 / 1728 "Deaktiviert" (72 wide) touched the right arrow and "Namen über Einheiten" (147)
+           the left one: the label wraps at 144 (8 units = 4 px at 960 before the arrow); a value that fits 64 at the floor
+           (12, CJK 14) sits in 64 (12 units each side), only a longer one (ES "Desactivado") keeps the whole 72 */
+        float lw = 144, ra = L + PL_W - PL_PAD - 20, vx = ra - 4 - 80, la = vx - 4 - 20;
+        float vw = tmp_pref_w(tv) * (lang_cjk() ? 1.0f : 12.0f / 14.0f) <= 64 ? 64 : 72;   /* preferred width at the design size 14 */
+        float th = txt_text_h(tl, lw), rh = th > 24 ? th + 10 : PL_SET_H, hv = txt_fit_h(tv, vw, PL_SET_H);   /* one line: about 20 */
         if (hv > PL_SET_H) hv += 6;
         if (hv > rh) rh = hv;
         if (rh < PL_SET_H) rh = PL_SET_H;
         place(tl, x, ry, lw, rh);
         place(u_gc_get(h_set_arrow[2 * k]), la, ry - (rh - 20) / 2, 20, 20);
-        place(tv, vx + 4, ry, 72, rh);                         /* 4 units of padding inside: a long value (RU "Остальные") shrinks to fit */
+        place(tv, vx + 4 + (72 - vw) / 2, ry, vw, rh);        /* a long value (RU "Остальные") shrinks to fit */
         place(u_gc_get(h_set_arrow[2 * k + 1]), ra, ry - (rh - 20) / 2, 20, 20);
         ry -= rh;
     }
@@ -3121,7 +3143,7 @@ static uintptr_t h_tip_box, h_tip_txt; static double tip_until; static char tip_
 void ui_tooltip(const char *text) {
     Obj root = layer_top();
     settings_load();
-    if (!root || !text || !uiset.tooltips) return;          /* "Show tooltips on hover" off: none of ours */
+    if (!root || !text || !uiset.tooltips) return;          /* "Hover tooltips" off: none of ours */
     Obj box = u_gc_get(h_tip_box), tx = u_gc_get(h_tip_txt);
     if (!u_alive(box)) {
         static uintptr_t h_noticev;
@@ -3156,7 +3178,7 @@ int ui_panel_anchor(float *x, float *y, float *w, float *h) {   /* the header AS
     if (x) *x = pl_cur_L; if (y) *y = pl_cur_Y; if (w) *w = PL_W * k; if (h) *h = PL_HDR_H * k;
     return pl_shown;
 }
-int ui_tooltips_enabled(void) { settings_load(); return uiset.tooltips; }   /* ui_tip.c (dlsym): "Show tooltips on hover" */
+int ui_tooltips_enabled(void) { settings_load(); return uiset.tooltips; }   /* ui_tip.c (dlsym): "Hover tooltips" */
 static int pl_drag_arm, pl_dragging; static float pl_drag_mx, pl_drag_my, pl_drag_L, pl_drag_Y;
 static void plist_mouse(void) {
     Obj hdr = u_gc_get(h_pl[PL_HDR]);
@@ -5464,6 +5486,20 @@ static void hk_qs_item(Obj v, void *mi) { if (!qs_refuse(v)) o_qs_item(v, mi); }
 /* Owner chip on each portrait card (the stock status line stays untouched): a small dark chip at the card's top-left,
    "Free" for a free unit, else a dot in the controller's colour (grey when the owner is away). */
 static uintptr_t h_chip_bg[MAX_SC], h_chip_tx[MAX_SC];
+/* final review (ja F3): the level badge (_levelName +0x148) in the picture's units: its left edge and top from the picture's
+   bottom-left corner. 0 = not shown / not known */
+static int chip_badge(Obj pa, Obj pic, float *left, float *top) {
+    Obj lv = AT(pa, 0x148, Obj);
+    if (!u_alive(lv) || !u_alive(pic) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(lv), NULL)) return 0;
+    Obj pr_ = u_tr(pic), lr_ = u_tr(lv);
+    if (!ui_is(pr_, K_RT) || !ui_is(lr_, K_RT)) return 0;
+    RectF4 p = F(0x5106978, RectF4 (*)(Obj, void *))(pr_, NULL), q = F(0x5106978, RectF4 (*)(Obj, void *))(lr_, NULL);
+    V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(pr_, (V3){ p.x, p.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(pr_, (V3){ p.x + p.w, p.y + p.h, 0 }, NULL);
+    V3 c = F(0x510E0AC, V3 (*)(Obj, V3, void *))(lr_, (V3){ q.x, q.y + q.h, 0 }, NULL);
+    if (b.x - a.x < 1 || b.y - a.y < 1) return 0;
+    *left = (c.x - a.x) * p.w / (b.x - a.x); *top = (c.y - a.y) * p.h / (b.y - a.y);
+    return *left > 0 && *left < p.w;
+}
 static void chips_frame(void) {
     for (int i = 0; i < MAX_SC; i++) {
         Obj pa = u_gc_get(sc[i].parts), u = u_gc_get(sc[i].unit), bg = u_gc_get(h_chip_bg[i]), tx = u_gc_get(h_chip_tx[i]);
@@ -5471,14 +5507,15 @@ static void chips_frame(void) {
         if (vis && !u_alive(bg)) {
             /* at the portrait picture's bottom-left (the name is at the top, the level badge at the bottom-right) */
             Obj pic = AT(pa, 0x140, Obj);
-            bg = img_make(u_alive(pic) ? u_tr(pic) : u_tr(pa), NULL, 20, 16);
+            float ch = lang_cjk() ? 20 : 16;                         /* final review (ja F3): Latin 12, CJK 14 (was 11) */
+            bg = img_make(u_alive(pic) ? u_tr(pic) : u_tr(pa), NULL, 20, ch);
             if (bg) {
                 graphic_color(bg, hex_col("#222025", 0.85f));
                 Obj rt = u_tr(bg);
                 F(0x5106B64, void (*)(float, float, Obj, void *))(0, 0, rt, NULL); F(0x5106D48, void (*)(float, float, Obj, void *))(0, 0, rt, NULL);
                 F(0x51072F4, void (*)(float, float, Obj, void *))(0, 0, rt, NULL); u_rt_set_pos(rt, 2, 2);
-                tx = line_clone(rt, 0.5f, 20, 16, -8);
-                if (ui_is(tx, K_TMP)) tmp_style(tx, u_gc_get(h_lora), 11, 514);
+                tx = line_clone(rt, 0.5f, 20, ch, -ch / 2);
+                if (ui_is(tx, K_TMP)) tmp_style(tx, u_gc_get(h_lora), small_pt(11), 514);
             }
             u_gc_free(h_chip_bg[i]); h_chip_bg[i] = u_gc_new(bg); u_gc_free(h_chip_tx[i]); h_chip_tx[i] = u_gc_new(tx);
         }
@@ -5486,17 +5523,20 @@ static void chips_frame(void) {
         if (!vis || !u_alive(tx)) continue;
         if (u_alive(bg)) u_set_sibling(u_tr(bg), 1 << 20);            /* above the dim overlay */
         int o = owner_of(u), e = eff_of(u);
-        char t[64]; float w;
+        char t[64]; float w, ch = u_alive(bg) ? u_rt_size(u_tr(bg)).y : 16, cy = 2;
         if (o == UI_UNCLAIMED) { snprintf(t, sizeof t, "%s", ui_col("#ccbeb8", TR("Free"))); w = 30; }
         else if (o == UI_RESERVED) { snprintf(t, sizeof t, "<color=#8a8088>%s</color>", pl_dot); w = 16; }
         else { snprintf(t, sizeof t, "<color=%s>%s</color>", ui_player_color(e >= 0 ? e : o), pl_dot); w = 16; }
         line_text(tx, t);
         if (o == UI_UNCLAIMED && ui_is(tx, K_TMP)) {                  /* "Free" too long even at 0.75 (ru): the chip grows wider, inside the picture */
             Obj pic = AT(pa, 0x140, Obj); float pw = u_alive(pic) ? u_rt_size(u_tr(pic)).x : 0, cap = pw > 24 ? pw - 4 : 64;
-            float need = txt_fit_w(tx, 30, 16) + 6; if (need > 31) w = need < cap ? need : cap;
+            float need = txt_fit_w(tx, 30, ch) + 6; if (need > 31) w = need < cap ? need : cap;
+            /* final review (ja F3): never over the level badge (bottom-right): a chip wider than the room left of it goes
+               just above the badge */
+            float bl, bt; if (chip_badge(pa, pic, &bl, &bt) && 2 + w + 3 > bl) cy = bt + 2;
         }
-        if (u_alive(bg)) u_rt_set_size(u_tr(bg), w, 16);
-        if (ui_is(tx, K_TMP)) u_rt_set_size(u_tr(tx), w, 16);
+        if (u_alive(bg)) { u_rt_set_size(u_tr(bg), w, ch); u_rt_set_pos(u_tr(bg), 2, cy); }
+        if (ui_is(tx, K_TMP)) u_rt_set_size(u_tr(tx), w, ch);
     }
 }
 

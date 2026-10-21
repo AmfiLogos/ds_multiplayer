@@ -469,7 +469,10 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
                                           : m->set.fe ? TR("Host a Foreign Expedition") : m->host_new ? TR("Host a new save") : TR("Host your save")); break;
     case MPB_JOIN_FRIEND:
         if (m->steam) snprintf(out, cap, "%s", TR("Join a friend on Steam"));
-        else snprintf(out, cap, "<color=#A69085><line-height=80%%>%s\n<size=65%%>%s</size></line-height></color>", TR("Join a friend on Steam"), TR("Needs the Steam version"));
+        else {                                                              /* the small line in points: 65% of the auto-sized label was ~9.6 */
+            const char *lc = dsi_code(); int cjk = lc && (!strncmp(lc, "ja", 2) || !strncmp(lc, "zh", 2) || !strncmp(lc, "ko", 2));
+            snprintf(out, cap, "<color=#A69085><line-height=80%%>%s\n<size=%d>%s</size></line-height></color>", TR("Join a friend on Steam"), cjk ? 14 : 12, TR("Needs the Steam version"));
+        }
         break;
     case MPB_FRIEND0: case MPB_FRIEND1: case MPB_FRIEND2: case MPB_FRIEND3: case MPB_FRIEND4: case MPB_FRIEND5:
         if (m->friends[b - MPB_FRIEND0][0]) snprintf(out, cap, TR("Join %s's world"), m->friends[b - MPB_FRIEND0]);

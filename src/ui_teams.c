@@ -1669,6 +1669,8 @@ static void hud_place(void) {
     }
     int c = hud_is_compact();
     float W = HUD_WID(c), H = HUD_SIZE(c);
+    static float lab_w[2];                                   /* final review (ru 5): the label's width at its size, measured on a layout */
+    if (H + 6 + lab_w[c] + 4 > W) W = H + 6 + lab_w[c] + 4;  /* a longer label ("Команды") widens the button (it shrank to the box edge) */
     if (hud_px < 0) hud_px = 0; if (hud_px > cr.w - W) hud_px = cr.w - W;          /* stay on screen */
     if (hud_py > 0) hud_py = 0; if (hud_py < -(cr.h - H)) hud_py = -(cr.h - H);
     static float last[4] = {-1}; float now[4] = { hud_px, hud_py, W, (float)c };
@@ -1682,7 +1684,10 @@ static void hud_place(void) {
         if (!ch) continue;
         if (!tx) { rt_size(ch, H, H); Obj ic = img_of(tr_find(ch, "Img_ExitIcon")); if (u_alive(ic)) rt_size(u_tr(ic), H * 0.7f, H * 0.6f); }
         else { rt_size(ch, W - H - 6, H); rt_pos(ch, H + 6, 0); (tm_is(tx, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0);
-               (tm_is(tx, K_TMP) ? F(0x4F0B68C, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0); }   /* fontSizeMax: auto size stays at most this */
+               (tm_is(tx, K_TMP) ? F(0x4F0B68C, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0);   /* fontSizeMax: auto size stays at most this */
+               void *k = tm_is(tx, K_TMP) ? *(void **)tx : NULL;   /* TMP preferredWidth (slot 84): at fontSizeMax while auto size is on */
+               float pw = k ? (*(float (**)(Obj, void *))((char *)k + 0x678))(tx, *(void **)((char *)k + 0x680)) : 0;
+               if (pw > 1 && (pw > lab_w[c] + 0.5f || pw < lab_w[c] - 0.5f)) { lab_w[c] = pw; hud_dirty = 1; } }
     }
 }
 static void hud_move(float dx, float dy) {                   /* screen pixels -> canvas units */

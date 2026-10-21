@@ -1089,6 +1089,8 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
            176..356 between them (8 from each); both 40 high: a long label or value takes 2 lines at its size, not 1 shrunk */
         Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(x0 + 76), yc, 128, 40, C_SUB); tmp_set(lb, mpm_rule_label(i));
         Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(x0 + 266), yc, 180, 40, C_MAIN);
+        { typedef struct { float x, y, z, w; } mg4; static void *mmg; if (!mmg) mmg = mth("TMPro", "TMP_Text", "set_margin", 1);   /* the value 6 inside each side, */
+          if (mmg && v) MCALL(mmg, void, Obj, mg4, const void *)(v, (mg4){ 6, 0, 6, 0 }, mmg); }   /* as TMP margins (the fit measures them): de "Geteilt, eigene Einheiten" touched both arrows */
         u_gc_free(p->val[i]); p->val[i] = v ? u_gc_new(v) : 0;
         for (int a = 0; a < 2; a++) {
             Obj b = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(x0 + (a ? 378 : 158)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
@@ -1218,7 +1220,7 @@ static void trow_note(int id, Obj b) {
 static void trow_fit(int id, Obj b, float note) {
     if (id < 0 || id >= MPB_COUNT || id == MPB_SETTINGS || trow_base[id] < 30 || trow_lw[id] < 4 || trow_lh[id] < 4) return;
     float need = txt_fit_h(AT(b, 0x130, Obj), trow_lw[id], trow_lh[id]);
-    float want = need > trow_lh[id] + 1 && need + 16 > trow_base[id] ? need + 16 + note : trow_base[id] + (note > CN_H ? note - CN_H : 0);
+    float want = need > trow_lh[id] + 1 && need + 16 > trow_base[id] ? need + (id == MPB_HEADER ? 36 : 16) + note : trow_base[id] + (note > CN_H ? note - CN_H : 0);   /* a 2-line page title: 18 above and below (the label under it touched it) */
     if (want == trow_cur[id]) return;
     row_height(b, 262, want);
     Obj bg = first_image(u_tr(b), 0);
@@ -1343,7 +1345,7 @@ static void title_build(Obj v) {
                 if (w) { u_gc_free(h_tb[MPB_HISTW0 + i]); h_tb[MPB_HISTW0 + i] = u_gc_new(w); }
             }
             Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 0, -380 + 16 + 250, RY(rw_h - 20), 500, 20, C_SUB);
-            if (nt) tmp_set(nt, TR("Click a world to reconnect the same way. x removes it from this list."));
+            if (nt) tmp_set(nt, TR("Click a world to reconnect the same way. The x button removes it from this list."));
             u_gc_free(h_rw_note); h_rw_note = nt ? u_gc_new(nt) : 0;
             Obj pv = mk_button(src, R, 0, S_NBTN, C_WHITE, 380 - 16 - 160, RY(rw_h - 20), 100, 26, 14, TR("\xE2\x80\xB9 Newer"), C_MAIN);
             Obj nx = mk_button(src, R, 0, S_NBTN, C_WHITE, 380 - 16 - 52, RY(rw_h - 20), 100, 26, 14, TR("Older \xE2\x80\xBA"), C_MAIN);
@@ -1401,6 +1403,7 @@ static void title_sync(const mpm_obs *o) {
         if (!n) continue;
         tmp_set(nt, n);
         float h = txt_fit_h(nt, cnote_x[k], CN_H);                            /* CN_H, or more when it wraps even at 0.75 */
+        if (h <= CN_H && lang_cjk()) { float th = txt_text_h(nt, cnote_x[k]); if (th > h && th < 2 * CN_H) h = (float)(int)(th + 0.99f); }   /* ja 14: one line is ~20 high (it sat on the frame) */
         cnh[k] = h > CN_H ? h : CN_H;
     }
     for (int i = 0; i < NT; i++) { Obj b = tb(title_ids[i]); int k = mpm_choice_of_btn(title_ids[i]);   /* rows grow to a long label */
@@ -1449,7 +1452,10 @@ static void title_sync(const mpm_obs *o) {
             for (char *tok = strtok_r(tmp, ";", &save); tok; tok = strtok_r(NULL, ";", &save)) {   /* "Name|id" (older: "Name|#colour") */
                 char *bar = strchr(tok, '|'); if (bar) *bar = 0;
                 const char *col = bar && bar[1] >= '0' && bar[1] <= '9' ? palette_color(atoi(bar + 1)) : "#CCBEB8";   /* old hex / none: neutral */
-                o += (size_t)snprintf(pl + o, sizeof pl - (o < sizeof pl ? o : sizeof pl), "%s<color=%s>%s</color>%s", o ? TR(", ") : "", col, tok,
+                char nm1[64]; { int cp = 0; size_t q = 0, cut = 0;                 /* a long name: 15 characters + "..." (it filled 2 lines) */
+                  for (; tok[q]; q++) if (((unsigned char)tok[q] & 0xC0) != 0x80 && ++cp == 16) cut = q;
+                  if (cut && cp > 16 && cut < sizeof nm1 - 4) snprintf(nm1, sizeof nm1, "%.*s\xE2\x80\xA6", (int)cut, tok); else snprintf(nm1, sizeof nm1, "%s", tok); }
+                o += (size_t)snprintf(pl + o, sizeof pl - (o < sizeof pl ? o : sizeof pl), "%s<color=%s>%s</color>%s", o ? TR(", ") : "", col, nm1,
                                       !strcmp(h->how, "host") || strcmp(tok, h->host) ? "" : TR(" (host)"));
             }
             if (!strcmp(h->how, "host")) { if (pl[0]) snprintf(t, sizeof t, TR("You hosted \xC2\xB7 with %s"), pl); else snprintf(t, sizeof t, "%s", TR("You hosted")); }
@@ -1480,13 +1486,18 @@ static void title_sync(const mpm_obs *o) {
         u_active(tb(MPB_HIST_PREV), M.hist_page > 0); u_active(tb(MPB_HIST_NEXT), (M.hist_page + 1) * 6 < nhist);
         /* the panel's height follows the rows shown; a row grows by what its players line needs beyond one line, the footer
            by what its note needs (ja at its 14 floor: both wrapped onto the borders) */
-        float rh[6], h2[6], rows = 0;
+        /* the players line ends 8 before the leftmost unit box (it ran under the boxes); a wrapped line gets 8 more under it
+           (at 960 x 540 its second line sat on the row's bottom border) */
+        float rh[6], h2[6], w2[6], rows = 0;
         for (int i = 0; i < 6; i++) {
-            Obj l2 = u_gc_get(h_rw_l2[i]); h2[i] = i < shown && l2 ? txt_fit_h(l2, 380, 22) : 22; if (h2[i] < 22) h2[i] = 22;
-            rh[i] = 66 + h2[i] - 22; if (i < shown) rows += rh[i] + 6;
+            int nu = 0; for (int k = 0; k < 6; k++) if (u_on(u_gc_get(h_rw_pf[i][k]))) nu++;
+            w2[i] = nu ? 368 - 90 - 15 - 96 * (nu - 1) - 66 - 15 - 8 - (-368 + 14) : 380;
+            Obj l2 = u_gc_get(h_rw_l2[i]); h2[i] = i < shown && l2 ? txt_fit_h(l2, w2[i], 22) : 22; if (h2[i] < 22) h2[i] = 22;
+            rh[i] = 66 + h2[i] - 22 + (h2[i] > 23 ? 8 : 0); if (i < shown) rows += rh[i] + 6;
         }
         if (!shown) rows = 72;
-        Obj rnt = u_gc_get(h_rw_note); float nh = rnt ? txt_fit_h(rnt, 500, 20) : 20; if (nh < 20) nh = 20;
+        Obj rnt = u_gc_get(h_rw_note); float nw = M.hist_page > 0 || (M.hist_page + 1) * 6 < nhist ? 500 : 728;   /* no Newer / Older: the full width */
+        float nh = rnt ? txt_fit_h(rnt, nw, 20) : 20; if (nh < 20) nh = 20;
         float fh = 40 + nh - 20, H = 56 + 12 + rows + fh;
         place(rw, 103, 397 - H / 2, 760, H);
         place(u_gc_get(h_rw_band), 0, H / 2 - 28, 756, 54); place(u_gc_get(h_rw_line), 0, H / 2 - 56, 756, 1);
@@ -1497,7 +1508,7 @@ static void title_sync(const mpm_obs *o) {
               float T = rh[i] / 2;
               place(b, 0, H / 2 - (y + T), 736, rh[i]); y += rh[i] + 6;
               place(u_gc_get(h_rw_l1[i]), -368 + 14 + 230, T - 21, 460, 28);
-              place(u_gc_get(h_rw_l2[i]), -368 + 14 + 190, T - 36 - h2[i] / 2, 380, h2[i]);
+              place(u_gc_get(h_rw_l2[i]), -368 + 14 + w2[i] / 2, T - 36 - h2[i] / 2, w2[i], h2[i]);
               place(u_gc_get(h_rw_ul[i]), 368 - 80 - 110, T - 23, 220, 20);   /* 2 lower than built: off the frame's top (ja) */
               place(u_gc_get(h_rw_u[i]), 368 - 80 - 110, T - 45, 220, 22);
               for (int k = 0; k < 6; k++) { float px = 368 - 90 - 15 - 96 * (5 - k) - 66;
@@ -1505,7 +1516,7 @@ static void title_sync(const mpm_obs *o) {
               if (tb(MPB_HISTX0 + i)) place(tb(MPB_HISTX0 + i), 368 - 22, T - 18, 26, 26);
               if (tb(MPB_HISTW0 + i)) place(tb(MPB_HISTW0 + i), 368 - 10 - 40, T - 49, 80, 26);
           } }
-        place(rnt, -380 + 16 + 250, -H / 2 + fh / 2, 500, nh);
+        place(rnt, -380 + 16 + nw / 2, -H / 2 + fh / 2, nw, nh);
         if (tb(MPB_HIST_PREV)) place(tb(MPB_HIST_PREV), 380 - 16 - 160, -H / 2 + fh / 2, 100, 26);
         if (tb(MPB_HIST_NEXT)) place(tb(MPB_HIST_NEXT), 380 - 16 - 52, -H / 2 + fh / 2, 100, 26);
     }
@@ -1580,6 +1591,7 @@ static void esc_shift_find(Obj v, Obj holder) {
     }
 }
 /* add_world: height our parts add (world units). Each mover's local y = its stock y + half of that, in its parent's units */
+static float esc_up;                                                        /* screen px the Esc column goes up more (esc_sync: UI scale 1.5) */
 static void esc_shift_apply(float add_world) {
     for (int i = 0; i < n_emove; i++) {
         Obj t = u_gc_get(h_emove[i]), pa = t ? u_tr_parent(t) : NULL; if (!mm_is(t, K_TR) || !mm_is(pa, K_TR)) continue;
@@ -1664,8 +1676,12 @@ static void esc_build(Obj v) {
         if (u_alive(r)) { { char lr[200]; snprintf(lr, sizeof lr, "<color=#A69085>%s</color>", TR("Leave multiplayer to load another world")); tmp_set(r, lr); }
             /* one line: as wide as its text (the seed line's width wrapped de "zu laden" alone onto a second line, onto the seed) */
             if (mm_is(r, K_TMP) && fit_methods() && mm_is(u_tr(r), K_RT)) {
-                V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(r), NULL); float pw = fit_pref(r, 0).x + 8;
-                if (pw > sd.x) { sd.x = pw > 640 ? 640 : pw; F(0x5107110, void (*)(Obj, V2, void *))(u_tr(r), sd, NULL); } }
+                float fs = F(0x4F0B338, float (*)(Obj, void *))(r, NULL), fl = lang_cjk() ? 14 : 12;   /* the seed's 12: ja unreadable at 960 */
+                if (fs > 1 && fs < fl) { F(0x4F0B5DC, void (*)(Obj, bool, void *))(r, false, NULL); F(0x4F0B340, void (*)(Obj, float, void *))(r, fl, NULL); }
+                V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(r), NULL), s0 = sd; float pw = fit_pref(r, 0).x + 8;
+                if (pw > sd.x) sd.x = pw > 640 ? 640 : pw;
+                float ph = fit_pref(r, sd.x).y; if (ph > sd.y) sd.y = (float)(int)(ph + 0.99f);   /* 14 is taller than the seed's rect */
+                if (sd.x != s0.x || sd.y != s0.y) F(0x5107110, void (*)(Obj, V2, void *))(u_tr(r), sd, NULL); }
             u_active(r, false); }
         u_gc_free(h_ereason); h_ereason = u_alive(r) ? u_gc_new(r) : 0;
     }
@@ -1705,13 +1721,13 @@ static void esc_sync(const mpm_obs *o) {
             for (int i = 0; i < NE; i++) if (u_on(eb(esc_ids[i]))) add += step;
             float rr[4]; if (in_session() && u_alive(rl) && rect_of(rl, rr)) add += rr[3] - rr[1] + 2;
         }
-        esc_shift_apply(lobby ? 0 : add);                                   /* the lobby hides the column: stock place */
+        esc_shift_apply(lobby ? 0 : add + 2 * esc_up);                      /* the lobby hides the column: stock place */
     }
     if (!lobby) {
         /* the seed lines go right under the lowest visible button (stock ones and ours), keeping their own spacing */
-        float low = 1e9f, bh = 0, r[4];
-        for (int off = 0x48; off <= 0x78; off += 8) if (off != 0x58) { Obj b = AT(v, off, Obj); if (u_on(b) && rect_of(b, r) && r[1] < low) { low = r[1]; bh = r[3] - r[1]; } }
-        for (int i = 0; i < NE; i++) { Obj b = eb(esc_ids[i]); if (u_on(b) && rect_of(b, r) && r[1] < low) { low = r[1]; bh = r[3] - r[1]; } }
+        float low = 1e9f, bh = 0, high = -1e9f, r[4];
+        for (int off = 0x48; off <= 0x78; off += 8) if (off != 0x58) { Obj b = AT(v, off, Obj); if (u_on(b) && rect_of(b, r)) { if (r[1] < low) { low = r[1]; bh = r[3] - r[1]; } if (r[3] > high) high = r[3]; } }
+        for (int i = 0; i < NE; i++) { Obj b = eb(esc_ids[i]); if (u_on(b) && rect_of(b, r)) { if (r[1] < low) { low = r[1]; bh = r[3] - r[1]; } if (r[3] > high) high = r[3]; } }
         Obj l0 = AT(v, 0x88, Obj), l1 = AT(v, 0x90, Obj); float s0[4];
         Obj rl = u_gc_get(h_ereason); int show_r = in_session() && u_alive(rl);
         u_active(rl, show_r);
@@ -1734,6 +1750,18 @@ static void esc_sync(const mpm_obs *o) {
                     V3 p = (mm_is(u_tr(l), K_TR) ? F(0x5109A08, V3 (*)(Obj, void *))(u_tr(l), NULL) : (V3){0, 0, 0}); p.y += delta;
                     (mm_is(u_tr(l), K_TR) ? F(0x5109B04, void (*)(Obj, V3, void *))(u_tr(l), p, NULL) : (void)0);
                 }
+        }
+        /* UI scale 1.5: the column with our buttons ran to the window's bottom (the reason line 2 px above it, the seed line
+           off it at 1280 x 720): the column goes up (esc_up, next frame) until the lowest line is 3% of the height above the
+           bottom, as far as the room above it allows. At scale 1 the lines are well above it: esc_up stays 0. */
+        float bot = 1e9f, sh = (float)F(0x5092CD4, int (*)(void *))(NULL);  /* Screen.height */
+        for (int k = 0; k < 2; k++) { Obj l = AT(v, 0x88 + 8 * k, Obj); if (u_on(l) && rect_of(l, r) && r[1] < bot) bot = r[1]; }
+        if (show_r && u_on(rl) && rect_of(rl, r) && r[1] < bot) bot = r[1];
+        if (low < 1e8f && bot < 1e8f && high > -1e8f && sh > 0) {
+            float m = sh * 0.03f, want = m - (bot - esc_up), room = sh - m - (high - esc_up);
+            if (want > room) want = room;
+            if (want < 0) want = 0;
+            if (want - esc_up > 0.5f || esc_up - want > 0.5f) esc_up = want;
         }
     }
     if (lobby) u_active(u_gc_get(h_ereason), false);
@@ -1945,7 +1973,7 @@ static void lw_texts(void) {
                     break; } }
             { char cw[128] = ""; size_t rl = strlen(rowt); mpmenu_conn_words(id, cw, sizeof cw);
               if ((mode[0] || cw[0]) && rl < sizeof rowt)
-                  snprintf(rowt + rl, sizeof rowt - rl, "\n%s%s<size=75%%><color=#A69085>%s</color></size>", mode, mode[0] && cw[0] ? "  " : "", cw); }
+                  snprintf(rowt + rl, sizeof rowt - rl, "\n%s%s<size=%d%%><color=#A69085>%s</color></size>", mode, mode[0] && cw[0] ? "  " : "", lang_cjk() ? 88 : 75, cw); }   /* 12; ja / zh / ko 14 */
             tmp_set(nm, rowt);
             { char d[48]; snprintf(d, sizeof d, "<color=%s>\xE2\x80\xA2</color>", ui_player_color(id)); tmp_set(dot, d); }   /* the player's colour */
             int ping = 0, behind = 0, state = DSNET_NET_IN_SYNC;
@@ -1956,9 +1984,10 @@ static void lw_texts(void) {
             if (id != me) lvl = state == DSNET_NET_ABSENT ? 0 : ui_conn_level(ping, behind, cs);
             tmp_set(st, tag == 1 ? TR("Host") : tag == 2 ? TR("You") : "");
             float right = 428 - 14 - (lvl >= 0 ? 18 + 12 : 0);              /* tag left of the bars */
-            place(st, LX(right - 24), y, 48, 20);                          /* 48: "ホスト" / "あなた" at 14 */
-            place(tb0, LX(right - 24), y, 50, 20); place(tb1, LX(right - 24), y, 46, 16);   /* a 2-unit edge: 1 was lost at 960 x 540 */
-            float nr = (tag ? right - 49 : right) - 6;                     /* the name up to 6 before the tag / the bars */
+            float tw = lang_cjk() ? 56 : 50, th = lang_cjk() ? 24 : 20;    /* ja "ホスト" at 14: 2 more each side (the ink touched the box) */
+            place(st, LX(right - 24), y, tw - 2, th);                      /* 48: "ホスト" / "あなた" at 14 */
+            place(tb0, LX(right - 24), y, tw, th); place(tb1, LX(right - 24), y, tw - 4, th - 4);   /* a 2-unit edge: 1 was lost at 960 x 540 */
+            float nr = (tag ? right - 24 - tw / 2 : right) - 10;           /* the name up to 10 before the tag / the bars */
             place(nm, LX((68 + nr) / 2), y, nr - 68, 40);
         }
         u_active(tb0, shown && tag); u_active(tb1, shown && tag);         /* "Host" and "You" both boxed */
@@ -2006,8 +2035,8 @@ static void lw_texts(void) {
           else if (inet && up_state == UPNPP_ALREADY) snprintf(l1, sizeof l1, TR("Friends outside your home: %s (your router already forwards this port)."), M.internet);
           else if (up_ok) snprintf(l1, sizeof l1, in.steam ? TR("Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.")
                                                            : TR("Your router opened port %s, but your internet address is unknown."), M.internet[0] ? strrchr(M.internet, ':') + 1 : pn);
-          else snprintf(l1, sizeof l1, in.steam ? TR("Your router did not open a port. Friends outside your home need Steam invite, or open port %s on your router (also called port forwarding) to this computer.")
-                                                : TR("Your router did not open a port. Friends outside your home need you to open port %s on your router (also called port forwarding) to this computer."), pn);
+          else snprintf(l1, sizeof l1, in.steam ? TR("Your router did not open a port. For friends outside your home, use Steam invite, or forward port %s on your router to this computer (port forwarding).")
+                                                : TR("Your router did not open a port. For friends outside your home, forward port %s on your router to this computer (port forwarding)."), pn);
           size_t bl = (size_t)snprintf(b, sizeof b, "%s\n", l1);
           if (bl < sizeof b) bl += (size_t)snprintf(b + bl, sizeof b - bl, TR("Same home: %s"), M.direct[0] ? M.direct : "...");
 #ifdef _WIN32
@@ -2606,8 +2635,40 @@ static void lbox_restore(void) {
     u_gc_free(LG.h_bg); u_gc_free(LG.h_tx); LG.h_bg = LG.h_tx = 0;
     rig_log("mpmenu: notice box: stock size again (was %.0f higher)", LG.extra);
 }
+/* at UI scale 1.5 the stock box is wider than the free area right of the title column, and the column draws over its left
+   part (the body text lost its first letters): on the title, the box moves right until it clears the column (+20% of the
+   column's width, its frame); back to its place when it closes or shows another text (lbox_fit_frame) */
+static struct { int on; uintptr_t h; float x; uint32_t hash; } LS;
+static void lbox_unshift(void) {
+    if (!LS.on) return;
+    LS.on = 0;
+    Obj p = u_gc_get(LS.h);
+    if (u_alive(p) && mm_is(p, K_RT)) { V2 ap = F(0x5106E38, V2 (*)(Obj, void *))(p, NULL); ap.x = LS.x; F(0x5106F2C, void (*)(Obj, V2, void *))(p, ap, NULL); }
+    u_gc_free(LS.h); LS.h = 0;
+}
+static void lbox_shift(Obj v) {
+    lbox_unshift();
+    Obj tv = title_view(); if (!u_alive(v) || !u_on(v) || !u_alive(tv) || !u_on(tv)) return;
+    float cl = 1e9f, cr = -1e9f, r[4];                                       /* the title column: its visible buttons (stock + ours) */
+    for (int i = 0; i < 7; i++) { Obj b = AT(tv, 0x30 + 8 * i, Obj); if (u_on(b) && rect_of(b, r)) { if (r[0] < cl) cl = r[0]; if (r[2] > cr) cr = r[2]; } }
+    for (int i = 0; i < NT; i++) { Obj b = tb(title_ids[i]); if (u_on(b) && rect_of(b, r)) { if (r[0] < cl) cl = r[0]; if (r[2] > cr) cr = r[2]; } }
+    if (cr < cl) return;
+    Obj p = tr_find(u_tr(v), "Panel_Notice"), bg = tr_find(u_tr(v), "Panel_Notice/Img_BackGroundBox");
+    float br[4]; if (!u_alive(p) || !mm_is(p, K_RT) || !u_alive(bg) || !mm_is(bg, K_RT) || !rect_of(bg, br)) return;
+    float lim = cr + 0.2f * (cr - cl), dx = lim - br[0], sw = (float)F(0x5092C94, int (*)(void *))(NULL);   /* Screen.width */
+    if (dx < 1) return;
+    if (sw > 0 && br[2] + dx > sw * 0.98f) dx = sw * 0.98f - br[2];          /* never off the right edge */
+    V2 bsd = F(0x510701C, V2 (*)(Obj, void *))(bg, NULL); float sc = bsd.x > 1 ? (br[2] - br[0]) / bsd.x : 0;   /* screen px per canvas unit */
+    if (dx < 1 || sc <= 0) return;
+    V2 ap = F(0x5106E38, V2 (*)(Obj, void *))(p, NULL);
+    LS.x = ap.x; ap.x += dx / sc; F(0x5106F2C, void (*)(Obj, V2, void *))(p, ap, NULL);
+    char rb[2048] = ""; str_utf8(tmp_get(AT(v, 0x30, Obj)), rb, sizeof rb); LS.hash = fit_hash(rb);
+    LS.h = u_gc_new(p); LS.on = 1;
+    rig_log("mpmenu: notice box: %.0f px right, clear of the title column (right edge %.0f)", dx, cr);
+}
 static void lbox_grow(Obj v) {
     lbox_restore();
+    lbox_shift(v);
     if (!u_alive(v) || !u_on(v) || !fit_methods() || !lg_methods()) return;
     Obj t = AT(v, 0x30, Obj); if (!u_alive(t) || !mm_is(t, K_TMP)) return;
     Obj tx = u_tr(t), bg = tr_find(u_tr(v), "Panel_Notice/Img_BackGroundBox");
@@ -2637,11 +2698,13 @@ static void lbox_grow(Obj v) {
     LG.h_bg = u_gc_new(bg); LG.h_tx = u_gc_new(tx); LG.on = 1;
     rig_log("mpmenu: notice box: %.0f higher for its text (needs %.0f, rect %.0f)", extra, need, r.h);
 }
-static void lbox_fit_frame(void) {                                           /* the box closed or shows another text: stock size */
-    if (!LG.on) return;
+static void lbox_fit_frame(void) {                                           /* the box closed or shows another text: stock size and place */
+    if (!LG.on && !LS.on) return;
     Obj v = lbox_view(); char t[2048] = "";
     if (u_alive(v) && u_on(v)) str_utf8(tmp_get(AT(v, 0x30, Obj)), t, sizeof t);
-    if (!t[0] || fit_hash(t) != LG.hash) lbox_restore();
+    uint32_t h = t[0] ? fit_hash(t) : 0;
+    if (LG.on && (!t[0] || h != LG.hash)) lbox_restore();
+    if (LS.on && (!t[0] || h != LS.hash)) lbox_unshift();
 }
 static int leave_box_text(char *out, size_t cap) {             /* returns how many other players are in (they go back to the title) */
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;

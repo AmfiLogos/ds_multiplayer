@@ -102,7 +102,7 @@ static uintptr_t h_pr_root, h_pr_title, h_pr_score, h_pr_rounds;          /* res
 static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab;                        /* boss bar copy */
 static uintptr_t h_lab_yes, h_lab_no, h_lab_bring, h_hud_flab, h_prop_root, h_prop_txt, h_rs_root, h_rs_title, h_rs_score, h_rs_sub;    /* E4 fight button + proposal box, E9 round screen */
 static double rs_t0; static uint32_t rs_key; static char hud_last[400];
-#define HUD_INSET 72.0f                                                  /* the bars start this far right of the copy's own bar start (its end-cap stays there) */
+#define HUD_INSET 84.0f                                                  /* the bars start this far right of the copy's own bar start (its end-cap stays there) */
 #define PROP_W 520.0f                                                    /* the fight vote box */
 static float hud_k = 1, prop_x, prop_y, bl_x, bl_w, bl_y; static Obj bl_par;                                                        /* E9: when this round screen showed (local clock) */
 int  mu_bring_is_open(void);                                         /* mu_bring.c */
@@ -160,7 +160,7 @@ static void pv_value(int r, char *out, size_t cap) {
                         snprintf(out, cap, "%s", pv_vanilla_shown(s, pvp_ui_is_host && pvp_ui_is_host()) ? TR("On: vanilla only") : TR("Off: mods allowed")); break; }
     case PVR_MODE: snprintf(out, cap, "%s", pv.mode == PVP_MODE_CTF ? TR("Capture the Flag") : TR("Fight")); break;
     case PVR_WIN: if (pv.mode == PVP_MODE_CTF) snprintf(out, cap, TRN("%d capture to win", "%d captures to win", pv_bo[pv.bo]), pv_bo[pv.bo]);
-                  else snprintf(out, cap, TR("Best of %d"), pv_bo[pv.bo]); break;
+                  else snprintf(out, cap, TRN("Best of %d", "Best of %d", pv_bo[pv.bo]), pv_bo[pv.bo]); break;   /* TRN: "1 Runde" / "3 Runden" */
     case PVR_TIME: snprintf(out, cap, TR("%d:%02d per round"), pv_secs[pv.secs] / 60, pv_secs[pv.secs] % 60); break;
     case PVR_PAUSE: snprintf(out, cap, "%s", pv.pause ? TR("Planning pause every 7 s") : TR("No pause")); break;
     case PVR_ARENA: pvpr_ui_value(0, pvp_rules_local(), pv_here(), out, cap); return;   /* the map choice (pvp_rules.c) */
@@ -647,16 +647,22 @@ static void hud_build(void) {
     /* the panel's sprite fades out at the bottom: a copper line closes it (the copy's root is a 100 x 100 holder, so it is
        placed from the bars: the dark panel reaches ~27 past each bar end and ~38 under the lower bar, measured on shots) */
     if (bl_par && bl_w > 100 && u_alive(head)) mk_img(head, bl_par, -1, C_COPPER, bl_x + bl_w / 2, bl_y - 38, bl_w + 54, 2);
-    Obj tpl_t = u_alive(name) ? name : NULL;
+    Obj tpl_t = u_alive(name) ? name : NULL, labs[2] = { NULL, NULL }; float lab_pw = 0;
     for (int k = 0; k < 2 && tpl_t; k++) {                               /* "Blue" left of the top bar, "Red" left of the bottom one */
         Obj bar = k ? body : head; if (!u_alive(bar)) continue;
         Obj l = u_instantiate(tpl_t, u_tr_parent(u_tr(bar)));
         if (!u_alive(l)) continue;
         das_key_clear(l); txt_style(l, 1, 16, 516, 0); txt_color(l, k ? C_RED : C_BLUE); cmt_set(l, k ? TRC("team", "Red") : TRC("team", "Blue"));
-        u_gc_free(h_hud_lab[k]); h_hud_lab[k] = u_gc_new(l);
+        u_gc_free(h_hud_lab[k]); h_hud_lab[k] = u_gc_new(l); labs[k] = l;
+        if (mm_is(l, K_TMP)) { float pw = F(0x4F0D81C, float (*)(Obj, void *))(l, NULL); if (pw > lab_pw) lab_pw = pw; }   /* TMP_Text.preferredWidth at 16 */
         Obj brt = u_tr(bar); V2 bp = mm_is(brt, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(brt, NULL) : (V2){ 0, 0 };
-        place(l, bp.x - HUD_INSET / 2, bp.y, HUD_INSET - 12, 24);       /* between the copy's end-cap and the bar (bp.x = the bar's left edge) */
+        /* between the copy's end-cap and the bar (bp.x = the bar's left edge): 10 clear of the end-cap, 6 before the bar */
+        place(l, bp.x - (HUD_INSET + 4) / 2, bp.y, HUD_INSET - 16, 24);
     }
+    /* one size for both labels: the size at which the longer one fits ("Красные" was auto-sized to 13.5 next to "Синие"
+       at 16); 68 wide holds "Красные" at 15, "Vermelho" at about 13 */
+    if (lab_pw > HUD_INSET - 16) { float sz = 16 * (HUD_INSET - 16) / lab_pw; sz = (float)(int)(sz * 2) / 2; if (sz < 12) sz = 12;
+                                   for (int k = 0; k < 2; k++) if (labs[k]) txt_style(labs[k], 1, sz, 516, 0); }
     /* Ready button (planning pause): built from the bar's own parts (the Esc menu may never have been opened here): the
        Recruit button sprite + a Cinzel label; the click is read with Input.GetMouseButtonDown in hud_frame */
     if (u_alive(head) && u_alive(name)) {
@@ -677,8 +683,8 @@ static void hud_build(void) {
         u_gc_free(h_pvb[PVB_HUD_BRING]); h_pvb[PVB_HUD_BRING] = hb ? u_gc_new(hb) : 0; u_active(hb, false);
         /* E4: the host's box when a guest proposes the fight: "<name> proposes a fight" + Start / Not yet */
         if (!scan_done) assets_scan_now();
-        Obj pb = mk_img(head, u_tr_parent(hrt), S_BOX, C_WHITE, hp.x, hp.y - 120, PROP_W, 104);
-        prop_x = hp.x; prop_y = hp.y - 120;
+        prop_x = hp.x - HUD_INSET / 2; prop_y = hp.y - 120;              /* centred on the panel (hp.x is the centre of the bars, right of the labels) */
+        Obj pb = mk_img(head, u_tr_parent(hrt), S_BOX, C_WHITE, prop_x, prop_y, PROP_W, 104);
         if (pb) {
             Obj t = mk_txt(name, u_tr(pb), 0, 18, 514, 1, 0, 22, PROP_W - 30, 40, C_MAIN);
             if (t) { das_key_clear(t); u_gc_free(h_prop_txt); h_prop_txt = u_gc_new(t); }
@@ -1023,7 +1029,7 @@ int pvp_v1_lobby_start(char *err, size_t errn) {
     pv_default_teams();
     uint8_t teams[PVP_MAX_PLAYERS] = { 0 };
     for (int i = 0; i < n; i++) { teams[ids[i]] = (uint8_t)(pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE); per[teams[ids[i]]] += v1_brought(ids[i]); }
-    if (!per[PVP_TEAM_BLUE] || !per[PVP_TEAM_RED]) { snprintf(err, errn, TR("Each team needs brought units: Blue has %d, Red has %d."), per[PVP_TEAM_BLUE], per[PVP_TEAM_RED]); return -1; }
+    if (!per[PVP_TEAM_BLUE] || !per[PVP_TEAM_RED]) { snprintf(err, errn, TR("Each team needs at least one unit: Blue has %d, Red has %d."), per[PVP_TEAM_BLUE], per[PVP_TEAM_RED]); return -1; }
     pv_sync_once();
     if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
     pv_to_store();
