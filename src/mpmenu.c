@@ -1714,6 +1714,8 @@ static int up_state;                                     /* upnpport_get state f
 static char lobby_addr[96];                              /* the address in the lobby box = what Copy copies */
 static float lw_h = 740;
 static float lw_k = 1;                                  /* the window's scale to fit the screen (lw_texts) */
+static char lobby_err[512]; static double lobby_err_until;   /* a refused lobby Start (host choice), shown in the hint line */
+#define C_WARN_HEX "#F16071"
 static float lw_note_h;                                 /* steaminv: height of the note under Steam invite (ui_friends.c) */
 static float lw_addr_h = 40 + 10 + 52;                  /* the address block (box + note) or its "Show address" button */
 int ui_friends_invite_click(void); float ui_friends_lobby_note(float x, float y, float w, int steam);
@@ -1966,6 +1968,9 @@ static void lw_texts(void) {
     tmp_set(lwt(T_RULES_NOTE), host ? TR("Only the host can change the rules.") : TR("Set by the host."));
     if (loading[0]) snprintf(b, sizeof b, TR("%s is still loading"), loading); else b[0] = 0;
     tmp_set(lwt(T_NOTE), b);
+    { static int err_shown; int on = host && lobby_err[0] && mono_s() < lobby_err_until;   /* a refused Start: 10 s in the hint line */
+      if (on != err_shown) { char e[600]; snprintf(e, sizeof e, "<color=" C_WARN_HEX ">%s</color>", lobby_err);
+                             tmp_set(lwt(T_HINT), on ? e : TR("Share your address, then press Start when everyone is in.")); err_shown = on; } }
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
     /* height from the content: no empty band under the columns; the window stays centred */
@@ -1978,6 +1983,7 @@ static void lw_texts(void) {
     Obj qb = u_gc_get(h_lwb[LW_QUIT]); if (qb) place(qb, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(H - 38), LW_QUIT_W, 34);
     Obj lb = u_gc_get(h_lwb[LW_LEAVE]); if (lb) place(lb, LX(LW_OFF_X + LW_OFF_W / 2), LY(H - 38), LW_OFF_W, 34);
     Obj sb = u_gc_get(h_lwb[LW_START]); if (sb) place(sb, LX(848 - 116), LY(H - 38), 232, 44);
+    { Obj bb = u_gc_get(h_lwb[LW_BRING]); if (bb) place(bb, host ? LX(LW_MID_X) : LX(848 - 116), LY(H - 38), host ? LW_MID_W : 206, 34); }   /* UX pass: with the bar (it stayed at the first height, under the window) */
     if (host) place(lwt(T_NOTE), LX(LW_MID_X), LY(H - 38), LW_MID_W, 30); else place(lwt(T_NOTE), 0, LY(H - 38), 300, 24);
     /* UX pass 2026-10-21: the window fits the game window. The Esc view carries the user's UI scale (up to 1.75 on the
        1080-high canvas): the lobby could be taller than the screen, Start cut off. Measured in pixels, scaled down about
@@ -3860,7 +3866,10 @@ static void run_actions(int a, const mpm_obs *o) {
         if (!hc || !hc->lobby_start) snprintf(err, sizeof err, "%s", TR("No mod offers this choice."));
         rig_log("mpmenu: host choice \"%s\" lobby start rc %d %s", hc ? hc->id : "?", rc, err);
         if (rc == 0) { M.state = MPM_PLAYING; run_actions(MPA_LOBBY_HIDE | MPA_START_GAME, o); }
-        else if (ui_notice) ui_notice(err[0] ? err : TR("This mode could not start."));
+        else {                                                              /* UX pass: in the lobby's own hint line (the top alert sat over the window's edge) */
+            snprintf(lobby_err, sizeof lobby_err, "%s", err[0] ? err : TR("This mode could not start.")); lobby_err_until = mono_s() + 10;
+            if (!u_alive(lwt(T_HINT)) && ui_notice) ui_notice(lobby_err);
+        }
     }
     if (a & MPA_START_GAME) lobby_hold(0);
     if (a & MPA_RULES) rules_send("lobby");
