@@ -2396,11 +2396,13 @@ static void rules_send(const char *why) {
     char gid[64] = ""; prefs_save(); if (campaign_guid(gid, sizeof gid)) world_put(gid, &M.set);
     rig_log("mpmenu: rules (%s): pause %d speed-up %d gear %d units %d (rc %d)", why, r.pause_mode, r.allow_speedup, r.gear_mode, r.units_per_player, rc);
 }
+int pvp_pause_mode_saved(void) __attribute__((weak_import));               /* pvp_game.c: >= 0 while a match turns player pauses off */
 static void rules_sync(const mpm_obs *o) {
     if (o->role != 1 || frames % 60 || frames - rules_sent_frame < 120) return;   /* host; our own change has landed */
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
     if (!c) return;
     dsnet_rules r; dsnet_rules_get(c, &r);
+    if (pvp_pause_mode_saved) { int sv = pvp_pause_mode_saved(); if (sv >= 0) r.pause_mode = sv; }   /* the match's "no pause" is never remembered (a quit mid-match kept it) */
     int adm = dsnet_admin_mode(c), spa = dsnet_spectators_allowed(c) != 0;
     if (r.pause_mode == M.set.pause_mode && (r.allow_speedup != 0) == (M.set.speedup != 0) && r.gear_mode == M.set.gear && r.units_per_player == M.set.units && r.event_choice == M.set.events && r.population == M.set.population && r.shared_fog == M.set.fog && adm == M.set.admin
         && spa == (M.set.spectators != 0)) return;

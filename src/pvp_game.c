@@ -873,6 +873,7 @@ int pvp_save_override(const uint8_t **det, size_t *dl, const uint8_t **json, siz
 }
 /* no player pause in a PvP match (owner: host setting none / planning): dsnet pause mode NONE from START to the end */
 static int rules_saved = -1;
+int pvp_pause_mode_saved(void) { return rules_saved; }    /* mpmenu.c rules_sync: the host's own mode while a match overrides it */
 static void pause_rule_frame(void) {
     mp_session *s = sess(); if (!s || !is_host()) return;
     dsnet_client *c = mp_client(s);
