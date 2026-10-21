@@ -20,6 +20,7 @@ enum { ST_NEW = 0, ST_PLAYING, ST_LOADING, ST_CATCHUP, ST_DESYNCED };
 typedef struct sconn {
     dsnet_link link;
     int local, id, status, is_host, closing, busy, resync, ping_ms;
+    int desync_seen;     /* its P_DESYNC came before this resync (a real desync); FE start / PvP snapshot reloads: 0 */
     int spectator;                                  /* watches: outside the sim, never holds the timer, commands dropped */
     int patch_wanted, patching, auto_paused;
     double mark_t[DSNET_MARK_SPAM_N]; int mark_i;   /* times of this sender's last ping adds (spam limit) */   /* lan_v10 partial resync: asked / in the issued PATCH_POINT; desync pause sent */
@@ -462,7 +463,7 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         if (n < 5) return;
         int partial = n >= 6 && p[5];             /* a partial resync comes first: no pause for it (~1 s, no reload) */
         if (c->status == ST_PLAYING || c->status == ST_CATCHUP) {
-            c->status = ST_DESYNCED;
+            c->status = ST_DESYNCED; c->desync_seen = 1;
             uint8_t cause = c->id;
             if (auto_pause(s) && !partial && !c->spectator) { issue(s, DSNET_PAUSE_ALL, DSNET_NO_PLAYER, 0, &cause, 1); c->auto_paused = 1; }
         }
@@ -577,7 +578,7 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         break;
     case P_READY:
         if (c->status == ST_CATCHUP) {
-            c->status = ST_PLAYING; c->ticks_behind = 0; c->behind_at = s->timer; c->resync = 0; c->auto_paused = 0;
+            c->status = ST_PLAYING; c->ticks_behind = 0; c->behind_at = s->timer; c->resync = 0; c->auto_paused = 0; c->desync_seen = 0;
             dsnet_logf("server: player %d caught up at timer %u", c->id, s->timer);
         }
         break;
@@ -722,14 +723,15 @@ static void send_players(dsnet_server *s, int ping) {
         if (ping) dsnet_link_send(&c->link, pg, 5);
         if (c->spectator) {
             if (c->closing) continue;
-            int st = c->status == ST_PLAYING ? DSNET_NET_IN_SYNC : c->status == ST_DESYNCED || c->resync ? DSNET_NET_RESYNCING : DSNET_NET_LOADING;
+            int st = c->status == ST_PLAYING ? DSNET_NET_IN_SYNC : c->status == ST_DESYNCED || (c->resync && c->desync_seen) ? DSNET_NET_RESYNCING : DSNET_NET_LOADING;
             q = put8(q, c->id); q = put8(q, st); q = put16(q, c->ping_ms > 65535 ? 65535 : c->ping_ms);
             memset(q, 0, 32); memcpy(q, c->name, utf8_len31(c->name)); q += 32;
             scnt++;
             continue;
         }
         int st = c->status == ST_PLAYING ? DSNET_NET_IN_SYNC
-               : c->status == ST_DESYNCED || c->resync ? DSNET_NET_RESYNCING : DSNET_NET_LOADING;
+               : c->status == ST_DESYNCED || (c->resync && c->desync_seen) ? DSNET_NET_RESYNCING   /* a real desync */
+               : DSNET_NET_LOADING;                                     /* loading, also a planned reload (FE start, PvP snapshot) */
         int tb = c->status == ST_PLAYING ? ext_behind(s, c) : 0;
         if (tb < 0) tb = 0;
         if (tb > 65535) tb = 65535;

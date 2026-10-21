@@ -887,23 +887,30 @@ static ui_net_state net_state(void) {
     if (st.needs_state) return st.loads ? UI_NET_DESYNC : UI_NET_WAITING;
     return UI_NET_PLAYING;
 }
-/* review #10: a resync reloads every peer from the host's save; say why on every peer, before the reload */
+/* review #10: a resync reloads every peer from the host's save; say why on every peer, before the reload. Only a real
+   desync says "went out of sync" (dsnet RESYNCING = its P_DESYNC came first); a planned reload (Foreign Expedition / PvP
+   start, PvP round snapshot: an in-sync player goes to LOADING) says "Loading the world" (v0.1.21 final review). */
 static void resync_frame(const ui_players *p) {
-    static uint32_t was;                                     /* players seen out of sync (bit per player) */
+    static uint32_t was, was_ok;                             /* players seen out of sync / in sync (bit per player) */
     dsnet_client *c = cli();
-    if (!c) { was = 0; return; }
+    if (!c) { was = was_ok = 0; return; }
     mp_stats ms; mp_get_stats(sess(), &ms);
-    uint32_t now = 0;
+    uint32_t now = 0, ok = 0, planned = 0;
     for (int i = 0; i < UI_MAX_PLAYERS; i++) {
         if (!(p->present >> i & 1u)) continue;
         int ping = -1, behind = 0, ns = 0;
-        if (dsnet_player_net(c, i, &ping, &behind, &ns) == 0 && ns == DSNET_NET_RESYNCING) now |= 1u << i;
+        if (dsnet_player_net(c, i, &ping, &behind, &ns) != 0) continue;
+        if (ns == DSNET_NET_RESYNCING) now |= 1u << i;
+        else if (ns == DSNET_NET_IN_SYNC) ok |= 1u << i;
+        else if (ns == DSNET_NET_LOADING && (was_ok >> i & 1u)) planned |= 1u << i;
     }
     if (ms.desynced && me() >= 0) now |= 1u << me();
     uint32_t fresh = now & ~was;
-    was = now;
+    was = now; was_ok = ok;
     for (int i = 0; fresh && i < UI_MAX_PLAYERS; i++)
-        if (fresh >> i & 1u) { char tx[256]; ui_resync_text(p, i, me(), tx, sizeof tx); notice("%s", tx); break; }
+        if (fresh >> i & 1u) { char tx[256]; ui_resync_text(p, i, me(), tx, sizeof tx); notice("%s", tx); return; }
+    static double planned_t;                                 /* several guests reload in turn: one line */
+    if ((planned & ~now) && now_s() - planned_t > 10) { planned_t = now_s(); notice("%s", TR("Loading the world")); }
 }
 static int status_agree;                                     /* the status line asks the others to press >> (by state, not by text) */
 static char status_text[256], pause_text[256];             /* pause_text: the one pause line (panel + banner, #20) */
