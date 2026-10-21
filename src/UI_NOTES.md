@@ -324,3 +324,10 @@ menu in multiplayer pauses nobody (#7). Test: `ui_test/uxgame_pair.py` (one pair
   DSNET_STORY_PAUSE (map / scroll vote: bit 0, Teams expedition proposal: bit 1 via `ui_vote_hold`) until the vote
   ends; story popups now also hold it in the "all must vote" mode. Text "Paused while everyone votes".
   Probe `ui_vote_state`. Tests: ext/unitsel/b1_glow_pair.py, b23_owner_pair.py, b4_pause_pair.py, b5_scroll_pair.py.
+- B6 (owner 2026-10-21 "my clicks on my friend's units locked his control"): not reproduced. Hidden pair, real mouse path
+  (fake UnityEngine.Input, -DTEAMS_MOUSE_TEST): the host left-clicks / selects the guest's unit 18 times, then with its own
+  unit selected right-clicks the guest's unit (that sends WP_CLEAR + MOVE_ALL for the HOST's unit only) while the guest
+  orders that unit back and forth: 12/12 guest orders ran, the host sent no order from look-clicks, 0 desyncs, same on the
+  old code (int020). The only click paths that change a friend's unit: host right-click on its portrait with Admin mode
+  on (reassigns it, by design: "Admin mode lets the host take it") and host world orders on it with Admin mode on.
+  Test: ext/unitsel/b6_lookclick_pair.py (mouse build).
