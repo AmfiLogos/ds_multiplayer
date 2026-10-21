@@ -92,6 +92,9 @@ class T:
             if os.path.exists(p): os.replace(p, p + '.last')
             d = os.path.join(rig.idir(x), 'data', 'mp_owners')
             if os.path.exists(d): os.replace(d, d + '_' + time.strftime('%Y%m%d-%H%M%S'))
+            # the PvP Rules box keeps the last used rules per copy: an earlier test's (CTF, 300 s rounds, map 2) set it apart
+            r = os.path.join(rig.idir(x), 'data', 'ModData', 'multiplayer', 'pvp_rules.txt')
+            if os.path.exists(r): os.replace(r, r + '.last_' + time.strftime('%Y%m%d-%H%M%S'))
         cache = os.path.join(rig.idir(H), 'data', 'Mods', 'custom-modes', 'wiki', 'saves'); os.makedirs(cache, exist_ok=True)
         shutil.copy2(TPL, os.path.join(cache, os.path.basename(TPL)))
         self.work = {}
