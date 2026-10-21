@@ -309,11 +309,10 @@ static void draw_left(void) {
 }
 static void draw_cards(void) {
     if (B.right) U->destroy(B.right);
-    B.right = U->panel(B.win, B.rx, B.ry, B.rw, B.rh, MU_C_BAND);
+    B.right = mu_plate(B.win, B.rx, B.ry, B.rw, B.rh, MU_C_WELL);   /* one colour (the tinted Box sprite had a darker lower band) */
     B.ncard = 0;
     mu_drawn_reset();
     if (!B.right) return;
-    cm_raycast(B.right, false);
     load_save_units();
     int lib = B.src == 1;
     int n = lib ? B.nlu : B.nsu; const char *empty = NULL; uint32_t ecol = MU_C_SUB;
@@ -419,11 +418,10 @@ static int build_ui(void) {
     B.status = mu_text(B.win, x, y, w - 20 - x, 40, "", 14, DSL_TXT_LEFT, MU_C_SUB);
     B.ry = y + 50; B.rh = h - B.ry - 64; B.rx = 232; B.rw = w - B.rx - 20;
     float by = h - 54;                                                /* bottom: Picked n / max, pages, Cancel, Bring */
-    DSLObj bot = U->panel(B.win, 20, by, w - 40, 44, 0x00000000u);
+    DSLObj bot = mu_plate(B.win, 20, by, w - 40, 44, 0);           /* a holder only: a Box panel drew frame lines out of line */
     if (bot) {
-        cm_raycast(bot, false);
         float bw = w - 40;
-        B.t_picked = mu_text(bot, 0, 0, 200, 44, "", 16, DSL_TXT_LEFT, MU_C_GOLD);
+        B.t_picked = mu_text(bot, 12, 0, 188, 44, "", 16, DSL_TXT_LEFT, MU_C_GOLD);
         float px = 212 + (bw - 212 - 290 - 200) / 2; if (px < 212) px = 212;
         B.b_prev = mu_button(bot, px, 2, 44, 40, "<", on_page, (void *)(intptr_t)-1);
         B.t_page = mu_text(bot, px + 48, 0, 104, 44, "", 14, DSL_TXT_CENTER, MU_C_SUB);
