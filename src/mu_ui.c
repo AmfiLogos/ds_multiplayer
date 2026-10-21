@@ -82,6 +82,13 @@ float mu_ui_scale(void) {
     float s = cm_alive(m) && get.fn ? CM_CALL(get, float, Obj, const void *)(m, get.mi) : 1.f;
     return s >= 0.5f && s <= 2.f ? s : 1.f;
 }
+/* a plain colour rect (no sprite): the stock "Box" sprite stretched over a large area shows its own darker footer band */
+DSLObj mu_plate(DSLObj parent, float x, float y, float w, float h, uint32_t rgba) {
+    if (!U) return NULL;
+    DSLObj p = U->panel(parent, x, y, w, h, rgba ? rgba : 0x01u);
+    if (p) { cm_set_sprite(p, NULL, rgba); cm_raycast(p, false); }
+    return p;
+}
 typedef struct { float x, y, z; } V3s;
 DSLObj mu_window(const char *title, float want_w, float want_h, float *w, float *h) {
     if (!U) return NULL;
@@ -96,6 +103,7 @@ DSLObj mu_window(const char *title, float want_w, float want_h, float *w, float 
     U->place(p, (lw - ww * sc) / 2, (lh - hh * sc) / 2, ww, hh);
     { static cm_m ls; if (!ls.fn) ls = cm_il_method("UnityEngine", "Transform", "set_localScale", 1, NULL);
       if (ls.fn) CM_CALL(ls, void, Obj, V3s, const void *)(p, (V3s){ sc, sc, 1 }, ls.mi); }
+    mu_plate(p, 6, 6, ww - 12, hh - 12, MU_C_BODY);                    /* one body colour inside the frame (the lobby's #222025) */
     U->text(p, 20, 10, ww - 40, 40, title, 26, DSL_TXT_CENTER | DSL_TXT_TITLE, 0);
     if (w) *w = ww;
     if (h) *h = hh;
