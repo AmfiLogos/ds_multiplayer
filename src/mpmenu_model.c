@@ -492,11 +492,11 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
             const char *f = m->spect ? (m->state == MPM_GUEST_LOADING ? TR("Joining %s's game as a spectator... loading") : TR("Joining %s's game as a spectator..."))
                                      : (m->state == MPM_GUEST_LOADING ? TR("Joining %s's game... loading") : TR("Joining %s's game..."));
             snprintf(tmp, sizeof tmp, f, m->host[0] ? m->host : TR("the host"));
-            if (m->host_window) snprintf(out, cap, "<size=75%%>%s\n%s</size>", tmp, TR("Waiting for the host to close a window..."));
-            else snprintf(out, cap, "<size=75%%>%s</size>", tmp);
+            if (m->host_window) snprintf(out, cap, "%s\n%s", tmp, TR("Waiting for the host to close a window..."));   /* the line's own size (Lora 14): */
+            else snprintf(out, cap, "%s", tmp);                             /* at 75% it was unreadable at 960 x 540 */
         }
         else if (m->connecting[0]) { snprintf(tmp, sizeof tmp, m->watch ? TR("Connecting to %s to watch...") : TR("Connecting to %s..."), m->connecting);
-                                     snprintf(out, cap, "<size=70%%>%s</size>", tmp); }
+                                     snprintf(out, cap, "%s", tmp); }
         else if (m->msg[0]) snprintf(out, cap, "<color=#F16071>%s</color>", m->msg);   /* Lora 14 (game side) */
         else if (m->no_field) snprintf(out, cap, "<size=60%%>%s</size>", TR("Copy the host's address, then press Connect"));
         else out[0] = 0;
