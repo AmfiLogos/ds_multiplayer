@@ -211,7 +211,9 @@ def phase_match(H, G, B):
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_arena.png'))
     wait('match on both', lambda: all(c(x, cmd='pvp_status').get('active') for x in (H, G)), timeout=600, every=2)
     t_match = c(H, cmd='status')['tick']
-    try:
+    try:                                                       # v0.1.21: nobody starts alone: the guest proposes, the host agrees
+        c(G, cmd='pvp_vote', op='propose'); wait('vote open', lambda: c(H, cmd='pvp_status').get('vote_open'), timeout=60, every=1)
+        c(H, cmd='pvp_vote', op='agree')
         wait('fight begins', lambda: c(H, cmd='pvp_status').get('fight_start', 0) > 0, timeout=420, every=3)
         fought = True
     except RuntimeError:
