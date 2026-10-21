@@ -626,11 +626,14 @@ static void placing_step(int map) {
        follows at once, as before. A unit not at its end is sent there again every 2 s (a settler job took it off its walk),
        except in the preparation once its player gave it an order (E7: the player's orders win; ord_game.c ord_apply). */
     int prep = g.round <= 1;
-    if (g.arena == PVP_WHERE_BASE && !arrived && g.ticks % 120 == 0) {   /* every 2 s: a unit not at its end and not ordered by its player walks on */
+    /* every 2 s: a unit not at its end and not ordered by its player walks on. Dungeon too (Red only), v0.1.21 F5: a far Red
+       end (the farthest portal of a big floor, 56-62 cells) was not reached before round 1's fight; the arena snapshot then
+       kept Red mid-walk with no order, so every later round waited the 60 s placing time out */
+    if (!arrived && g.ticks % 120 == 0) {
         for (int i = 0; i < g.nunits; i++) {
             int t = g.units[i].team; int32_t c[2];
-            if ((t != PVP_TEAM_BLUE && t != PVP_TEAM_RED) || g.units[i].out || (prep && g.units[i].ordered) || !unit_cell(map, g.units[i].guid, c)) continue;
-            int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1]; if (dx * dx + dy * dy <= 36) continue;
+            if ((t != PVP_TEAM_RED && !(g.arena == PVP_WHERE_BASE && t == PVP_TEAM_BLUE)) || g.units[i].out || (prep && g.units[i].ordered) || !unit_cell(map, g.units[i].guid, c)) continue;
+            int dx = c[0] - g.end_cell[t][0], dy = c[1] - g.end_cell[t][1]; if (dx * dx + dy * dy <= (g.arena == PVP_WHERE_BASE ? 36 : 16)) continue;
             Guid gg; memcpy(&gg, g.units[i].guid, 16); rig_order_move(gg, g.end_cell[t][0], g.end_cell[t][1]); n_walk_resend++;
         }
     }
