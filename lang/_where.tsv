@@ -296,8 +296,8 @@
 "Could not bring %s: %s"	fe_game.c:176 fe_game.c:183
 "Could not bring the units. Try again."	pvp_ui.c:581
 "Could not bring the units: %s"	pvp_ui.c:580 pvp_ui.c:963
-"Could not bring these units."	fe_game.c:668
-"Could not bring these units: the save could not be read."	fe_game.c:668
+"Could not bring these units."	fe_game.c:670
+"Could not bring these units: the save could not be read."	fe_game.c:670
 "Could not connect to the host"	mp_game.c:1023
 "Could not get the host's mods"	mpmenu.c:3159 mpmenu.c:3160 mpmenu.c:3175 mpmenu.c:3176
 "Could not join"	mp_game.c:1116 net/ds_modcheck.h:401
@@ -419,7 +419,7 @@
 "Friends' units"	ui_model.c:612
 "From"	ui_teams.c:953
 "From a save"	mu_bring.c:430
-"Game folder"	fe_game.c:622
+"Game folder"	fe_game.c:624
 "Gear"	mpmenu_model.c:56 mpmenu_model.c:61 mpmenu_model.c:85 mpmenu_model.c:485
 "Gear is now: %s (host rule)."	mpmenu.c:2952
 "Gear: %s"	mpmenu_model.c:520
@@ -565,7 +565,7 @@
 "Multiplayer Lobby"	mpmenu.c:1936
 "Multiplayer could not start"	mpmenu_model.c:351 mpmenu_model.c:353 mpmenu_model.c:359
 "Multiplayer ended. You are playing alone now; the world stays on your computer."	mpmenu.c:4039
-"Multiplayer folder"	fe_game.c:622
+"Multiplayer folder"	fe_game.c:624
 "Multiplayer is not running yet: changes here are not applied."	ui_teams.c:1195
 "Multiplayer is not running yet: the expedition cannot start"	ui_teams.c:2116
 "Multiplayer is not running yet: this change cannot be applied"	ui_teams.c:1477
@@ -861,7 +861,7 @@
 "Start Match"	pvp_ui.c:235 pvp_ui.c:846 pvp_ui.c:847
 "Start Match was refused."	pvp_ui.c:365
 "Start a new campaign and open it to other players as soon as it is created."	mpmenu.c:4123 mpmenu.c:4134
-"Start this from the title screen."	fe_hub.c:149
+"Start this from the title screen."	fe_hub.c:190
 "Starts at one end of the settlement."	pvp_ui.c:851
 "Starts at the arrival point of the arena."	pvp_ui.c:851
 "Starts at the far end of the arena, by the exit portal (which does not work in a match)."	pvp_ui.c:852
@@ -903,6 +903,7 @@
 "The Blue flag is back home"	pvp_game.c:1158
 "The Blue flag was dropped"	pvp_game.c:1157
 "The Foreign Expedition could not start."	fe_game.c:263
+"The Multiplayer mod has no map for this game version (build %s). Update the Multiplayer mod."	fe_hub.c:76
 "The Red flag is back home"	pvp_game.c:1158
 "The Red flag was dropped"	pvp_game.c:1157
 "The Return scroll could not be used"	ui_game.c:1327
@@ -940,9 +941,8 @@
 "The host's hub"	fe_menu.c:204
 "The host's hub rules:"	fe_menu.c:44
 "The host's world did not arrive. Try to join again"	mp_game.c:1490
-"The hub map could not be downloaded from dungeonsettlers.wiki (needed once). Check the internet connection and try again."	fe_hub.c:51
-"The hub map could not be written into the Saves folder."	fe_hub.c:134
-"The hub map file is not a base save."	fe_hub.c:89
+"The hub map could not be written into the Saves folder."	fe_hub.c:175
+"The hub map file is not a base save."	fe_hub.c:130
 "The map change could not be sent"	ui_game.c:1271
 "The map change could not be started"	ui_game.c:1332
 "The match could not start. Try again."	pvp_ui.c:1043
@@ -1284,7 +1284,7 @@
 "verb\u0004Host"	mpmenu.c:2986 mpmenu.c:2986
 "virtual adapter"	ui_game.c:2652
 "waiting"	ui_teams.c:1366
-"where they came from"	fe_game.c:728
+"where they came from"	fe_game.c:730
 "with %s"	mpmenu.c:4236
 "yes"	ui_game.c:1126
 "you"	ui_teams.c:1322

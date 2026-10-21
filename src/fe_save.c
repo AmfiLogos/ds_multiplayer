@@ -400,6 +400,12 @@ static jv *key_totals(const jv *save) {
     }
     return kt;
 }
+static jv *hint_spawn, *hint_diff;
+void fe_hub_hints(const jv *spawn, const jv *difficulty) {
+    jfree(hint_spawn); jfree(hint_diff);
+    hint_spawn = jis(spawn, JN_ARR) && spawn->cnt ? jcopy(spawn) : NULL;
+    hint_diff = jis(difficulty, JN_ARR) && difficulty->cnt ? jcopy(difficulty) : NULL;
+}
 jv *fe_build_hub(const jv *host, const jv *entries, const char *run_id, const jv *maps, jv **run_out, char *err, size_t errn) {
     jv *hdr = jget(host, "CampaignSaveHeader");
     if (jnumv(jget(hdr, "CurrentMap")) != 0) { snprintf(err, errn, "the hub save must be at the settlement (CurrentMap 0)"); return NULL; }
@@ -419,6 +425,10 @@ jv *fe_build_hub(const jv *host, const jv *entries, const char *run_id, const jv
     }
     for (size_t i = 0; i < cl->cnt; i++) fe_remove_unit(hub, cl->v[i]->v[0]->s, 1, removed);
     jfree(cl);
+    /* a hub with no units of its own (wiki hub file): the brought units stand where the template's units stood and get
+       its difficulty (fe_hub_hints); without this they took the map's first entity cell and kept their home difficulty */
+    if (!old_pos->cnt && hint_spawn) for (size_t i = 0; i < hint_spawn->cnt; i++) jpush(old_pos, jcopy(hint_spawn->v[i]));
+    if (!diff && hint_diff) diff = jcopy(hint_diff);
     char cg[37], stem[64], disp[96], ts[32];
     fe_new_guid(cg);
     snprintf(stem, sizeof stem, "MPFE_%.8s", rid);
