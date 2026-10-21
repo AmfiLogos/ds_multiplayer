@@ -207,6 +207,11 @@ chk g021_pvp_unit 'pvp_test: all [0-9]+ checks passed' $WT make -C src/pvp_test 
 netnew() { make -C src/net all >/dev/null || return 1; local t rc=0; for t in conn_via join_window; do src/net/build/test_dsnet --only $t || rc=1; done; return $rc; }
 chk g021_net_new 'PASS join_host_window' $WT netnew   # conninfo: via per player, address on the host only; joinpopup: guest waits while the host holds a window
 noul() { local L=$OUT/g021_$1_raw.log; shift; (cd $WT && python3 rig/ul_side.py none "$@") > $L 2>&1; local rc=$?; command grep -E 'ul_side:|RESULT|[0-9]+/[0-9]+ PASS|FAIL' $L | tail -8; return $rc; }
+rulesaside() {   # each rig copy's "last used PvP rules" (pvprules) set aside: PvP tests expect the default rules
+  local f n=0 d=$OUT/old/pvp_rules-$(date +%H%M%S); mkdir -p $d
+  for f in $HOME/ds_multiplayer/instances/*/data/ModData/multiplayer/pvp_rules.txt(N); do mv $f $d/${${f:h:h:h:h}:t}_pvp_rules.txt; n=$((n+1)); done
+  echo "RULES ASIDE $n"; }
+chk g021_rulesaside1 'RULES ASIDE' $WT rulesaside
 chk g021_pvp_noul 'RESULT PASS' $WT noul pvp_noul ext/fepvp13/tests/pvp_v1_pair.py --dylib $D --tag g021_pvp_noul   # PvP match, neither copy has Units Laboratory
 chk g021_fe_noul '^.*([0-9]+)/\1 PASS' $WT noul fe_noul ext/fepvp13/tests/hub_dive_test.py --dylib $D   # Foreign Expedition dive + loot home, no Units Laboratory
 chk g021_ulnoblock 'RESULT PASS' $LD/loader env HM_BUILD=$OUT/hm_build python3 test/ulnoblock_pair.py   # Units Laboratory never blocks a join; gcd-cdr still refused
@@ -214,6 +219,7 @@ chk g021_conninfo 'RESULT PASS' $WT python3 ext/conninfo/conninfo_pair.py --dyli
 chk g021_upnpport 'RESULT PASS' $WT python3 ext/upnpport/upnpport_lobby.py --dylib $D --out $OUT/g021_upnpport   # router port lines (fake router; DSRIG_UPNP off by default)
 popjoin2() { local L=$OUT/g021_popup_hold_raw.log; (cd $WT/rig && POPUP_OUT=$OUT/g021_popup_hold python3 pin_run.py $D popup_join_test.py --answer yes --hold 100 --play 60) > $L 2>&1; local rc=$?; command grep -E 'RESULT|FAIL' $L | tail -5; return $rc; }
 chk g021_popup_hold 'RESULT PASS' $WT popjoin2   # host keeps the popup open 100 s while a guest joins: guest waits, joins after, 0 desyncs
+chk g021_rulesaside2 'RULES ASIDE' $WT rulesaside
 chk g021_lonebring 'RESULT PASS' $WT python3 ext/rel020/lonehost_bring.py --dylib $D --tag g021_lonebring   # a lone host (no guest yet, no Units Laboratory) brings 2 units in the PvP lobby (bringcards fix)
 chk g021_bringcards 'RESULT PASS' $LD/loader env HM_BUILD=$OUT/hm_build BC_MP=$WT python3 test/bringcards_pair.py   # Bring Units card window in PvP + FE (host alone first), 0 desyncs (needs hm_build of g021_hostmods)
 chk g021_fe_testc 'ALL PASS' $WT/ext/foreign_expedition python3 tests/test_c.py   # FE results: loot on the ground comes home (feloot)
