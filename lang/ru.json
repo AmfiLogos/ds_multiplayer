@@ -391,7 +391,6 @@
  ],
  "Each player can recruit up to the full clan limit": "Каждый игрок может нанять до полного лимита клана",
  "Each result can be brought home once.": "Каждый результат можно забрать домой один раз.",
- "Each team needs at least one unit (claim units with right-click on their portraits).": "Каждой команде нужен хотя бы один юнит (назначьте юнитов правой кнопкой мыши по их портретам).",
  "Each team needs brought units: Blue has %d, Red has %d.": "Каждой команде нужны взятые юниты: у синих %d, у красных %d.",
  "End for everyone": "Завершить для всех",
  "End the game for everyone?": "Завершить игру для всех?",
@@ -632,7 +631,6 @@
  "Next Player": "Следующий игрок",
  "Next player ›": "Следующий игрок ›",
  "Next round in %d": "Следующий раунд через %d с",
- "Next: take a free unit (left-click).": "Далее: возьмите свободный юнит (левый клик).",
  "No Steam friend is hosting right now. Ask them to host, or use Join by address.": "Сейчас ни у одного друга в Steam нет открытого мира. Попросите друга создать мир или используйте «Подключиться по адресу».",
  "No Steam friends found.": "Друзья в Steam не найдены.",
  "No answer from %s. Check the address, and ask the host to open port %u on the router.": "Нет ответа от %s. Проверьте адрес и попросите хоста открыть порт %u на роутере.",
@@ -1385,8 +1383,6 @@
  "your version is older": "ваша версия старее",
  "‹ Newer": "‹ Новые",
  "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s хочет использовать Свиток возвращения.\nВсе возвращаются в поселение.\n<size=88%%><color=#a69085>%s      осталось %d с (нет ответа = согласие)</color></size>",
- "In a dungeon a friend can lend you one (Lend on his portrait).": "В подземелье друг может одолжить вам юнит (Одолжить на его портрете).",
- "Left-click a free unit to take it.": "Щёлкните левой кнопкой по свободному юниту, чтобы взять его.",
  "Paused while everyone votes": "Пауза, пока все голосуют",
  "Pick your units.": "Выберите своих юнитов.",
  "Refuse": "Отказаться",
@@ -1394,5 +1390,8 @@
  "Use a Return scroll?": "Использовать Свиток возвращения?",
  "use a Return scroll": "использовать Свиток возвращения",
  "using the Return scroll": "используем Свиток возвращения",
- "Taking places...": "Расстановка..."
+ "Taking places...": "Расстановка...",
+ "Each team needs at least one unit. Right-click a unit's portrait to take it.": "Каждой команде нужен хотя бы один юнит. Нажмите правой кнопкой на портрет юнита, чтобы забрать его.",
+ "In a dungeon, a friend can lend you a unit (Lend on their unit).": "В подземелье друг может одолжить вам отряд (кнопка «Одолжить» на его отряде).",
+ "Take your places": "По местам"
 }

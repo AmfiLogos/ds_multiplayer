@@ -365,7 +365,6 @@
  ],
  "Each player can recruit up to the full clan limit": "每位玩家最多可招募至完整的人口上限",
  "Each result can be brought home once.": "每項結果只能帶回家一次。",
- "Each team needs at least one unit (claim units with right-click on their portraits).": "每支隊伍至少需要一個單位（在其頭像上按右鍵即可認領單位）。",
  "Each team needs brought units: Blue has %d, Red has %d.": "每支隊伍都需要已帶入的單位：藍隊有 %d 個，紅隊有 %d 個。",
  "End for everyone": "為所有人結束",
  "End the game for everyone?": "要為所有人結束遊戲嗎？",
@@ -606,7 +605,6 @@
  "Next Player": "下一位玩家",
  "Next player ›": "下一位玩家 ›",
  "Next round in %d": "%d 秒後進入下一回合",
- "Next: take a free unit (left-click).": "下一步：左鍵點擊一個空閒單位以接管。",
  "No Steam friend is hosting right now. Ask them to host, or use Join by address.": "目前沒有 Steam 好友在主持世界。請對方建立遊戲，或使用「透過位址加入」。",
  "No Steam friends found.": "找不到 Steam 好友。",
  "No answer from %s. Check the address, and ask the host to open port %u on the router.": "%s 沒有回覆。請檢查位址，並請房主在路由器上開放連接埠 %u。",
@@ -1337,8 +1335,6 @@
  "your version is older": "你的版本較舊",
  "‹ Newer": "‹ 較新",
  "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s 想要使用返回卷軸。\n所有人都會返回定居點。\n<size=88%%><color=#a69085>%s      剩餘 %d 秒（無回覆 = 同意）</color></size>",
- "In a dungeon a friend can lend you one (Lend on his portrait).": "在地城中，好友可以借給你一個單位（點他頭像上的借出）。",
- "Left-click a free unit to take it.": "左鍵點擊一個空閒單位即可接手。",
  "Paused while everyone votes": "所有人投票期間已暫停",
  "Pick your units.": "選擇你的單位。",
  "Refuse": "拒絕",
@@ -1346,5 +1342,8 @@
  "Use a Return scroll?": "使用返回卷軸？",
  "use a Return scroll": "使用返回卷軸",
  "using the Return scroll": "正在使用返回卷軸",
- "Taking places...": "正在就位..."
+ "Taking places...": "正在就位...",
+ "Each team needs at least one unit. Right-click a unit's portrait to take it.": "每支隊伍至少需要一個單位。右鍵點擊單位頭像即可接管。",
+ "In a dungeon, a friend can lend you a unit (Lend on their unit).": "在地下城中，朋友可以借給你一個單位（在其單位上點「借出」）。",
+ "Take your places": "各就各位"
 }

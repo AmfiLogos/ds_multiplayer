@@ -378,7 +378,6 @@
  ],
  "Each player can recruit up to the full clan limit": "Cada jogador pode recrutar até o limite total do clã",
  "Each result can be brought home once.": "Cada resultado pode ser levado para casa uma vez.",
- "Each team needs at least one unit (claim units with right-click on their portraits).": "Cada equipe precisa de pelo menos uma unidade (reivindique unidades com o botão direito nos retratos delas).",
  "Each team needs brought units: Blue has %d, Red has %d.": "Cada equipe precisa de unidades levadas: Azul tem %d, Vermelho tem %d.",
  "End for everyone": "Encerrar para todos",
  "End the game for everyone?": "Encerrar o jogo para todos?",
@@ -619,7 +618,6 @@
  "Next Player": "Próximo jogador",
  "Next player ›": "Próximo jogador ›",
  "Next round in %d": "Próxima rodada em %d s",
- "Next: take a free unit (left-click).": "Próximo: pegue uma unidade livre (clique com o botão esquerdo).",
  "No Steam friend is hosting right now. Ask them to host, or use Join by address.": "Nenhum amigo da Steam está hospedando agora. Peça para hospedarem, ou use Entrar pelo endereço.",
  "No Steam friends found.": "Nenhum amigo da Steam encontrado.",
  "No answer from %s. Check the address, and ask the host to open port %u on the router.": "Sem resposta de %s. Verifique o endereço e peça ao anfitrião para abrir a porta %u no roteador.",
@@ -1361,8 +1359,6 @@
  "your version is older": "sua versão é mais antiga",
  "‹ Newer": "‹ Mais novos",
  "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s quer usar um Pergaminho de retorno.\nTodos voltam ao assentamento.\n<size=88%%><color=#a69085>%s      restam %d s (sem resposta = concordar)</color></size>",
- "In a dungeon a friend can lend you one (Lend on his portrait).": "Em uma masmorra, um amigo pode te emprestar uma (Emprestar no retrato dele).",
- "Left-click a free unit to take it.": "Clique com o botão esquerdo em uma unidade livre para pegá-la.",
  "Paused while everyone votes": "Pausado enquanto todos votam",
  "Pick your units.": "Escolha suas unidades.",
  "Refuse": "Recusar",
@@ -1370,5 +1366,8 @@
  "Use a Return scroll?": "Usar um Pergaminho de retorno?",
  "use a Return scroll": "usar um Pergaminho de retorno",
  "using the Return scroll": "usando o Pergaminho de retorno",
- "Taking places...": "Tomando posições..."
+ "Taking places...": "Tomando posições...",
+ "Each team needs at least one unit. Right-click a unit's portrait to take it.": "Cada equipe precisa de pelo menos uma unidade. Clique com o botão direito no retrato de uma unidade para pegá-la.",
+ "In a dungeon, a friend can lend you a unit (Lend on their unit).": "Numa masmorra, um amigo pode te emprestar uma unidade (Emprestar na unidade dele).",
+ "Take your places": "Às posições"
 }

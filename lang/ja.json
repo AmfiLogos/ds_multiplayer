@@ -365,7 +365,6 @@
  ],
  "Each player can recruit up to the full clan limit": "各プレイヤーがクラン上限まで募集できます",
  "Each result can be brought home once.": "各結果は一度だけ持ち帰れます。",
- "Each team needs at least one unit (claim units with right-click on their portraits).": "各チームには少なくとも1体のユニットが必要です（ポートレートを右クリックしてユニットを確保）。",
  "Each team needs brought units: Blue has %d, Red has %d.": "各チームには連れていったユニットが必要です：青は%d、赤は%d。",
  "End for everyone": "全員のゲームを終了",
  "End the game for everyone?": "全員のゲームを終了しますか？",
@@ -606,7 +605,6 @@
  "Next Player": "次のプレイヤー",
  "Next player ›": "次のプレイヤー ›",
  "Next round in %d": "%d秒後に次のラウンド",
- "Next: take a free unit (left-click).": "次：フリーユニットを取得（左クリック）。",
  "No Steam friend is hosting right now. Ask them to host, or use Join by address.": "今ホストしているSteamフレンドはいません。ホストを頼むか、「アドレスで参加」を使ってください。",
  "No Steam friends found.": "Steam のフレンドが見つかりません。",
  "No answer from %s. Check the address, and ask the host to open port %u on the router.": "%sから応答がありません。アドレスを確認し、ホストにルーターのポート%uを開放してもらってください。",
@@ -1337,8 +1335,6 @@
  "your version is older": "あなたのバージョンが古い",
  "‹ Newer": "‹ 新しい順",
  "<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>": "<size=150%%>%s</size>\n%s が帰還の巻物を使おうとしています。\n全員が入植地に戻ります。\n<size=88%%><color=#a69085>%s      残り %d 秒（応答なし = 同意）</color></size>",
- "In a dungeon a friend can lend you one (Lend on his portrait).": "ダンジョンでは、フレンドが1体貸してくれます（フレンドの肖像の「貸す」）。",
- "Left-click a free unit to take it.": "空いているユニットを左クリックして受け取ります。",
  "Paused while everyone votes": "全員の投票中は一時停止",
  "Pick your units.": "ユニットを選んでください。",
  "Refuse": "拒否",
@@ -1346,5 +1342,8 @@
  "Use a Return scroll?": "帰還の巻物を使いますか？",
  "use a Return scroll": "帰還の巻物を使う",
  "using the Return scroll": "帰還の巻物を使用中",
- "Taking places...": "配置中..."
+ "Taking places...": "配置中...",
+ "Each team needs at least one unit. Right-click a unit's portrait to take it.": "各チームには少なくとも1体のユニットが必要です。ユニットのポートレートを右クリックして引き取ります。",
+ "In a dungeon, a friend can lend you a unit (Lend on their unit).": "ダンジョンでは、フレンドがユニットを貸せます（そのユニットの「貸す」）。",
+ "Take your places": "配置につけ"
 }

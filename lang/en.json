@@ -340,7 +340,6 @@
  "Dungeon loot · %d item||Dungeon loot · %d items": "Dungeon loot · %d item||Dungeon loot · %d items",
  "Each player can recruit up to the full clan limit": "Each player can recruit up to the full clan limit",
  "Each result can be brought home once.": "Each result can be brought home once.",
- "Each team needs at least one unit (claim units with right-click on their portraits).": "Each team needs at least one unit (claim units with right-click on their portraits).",
  "Each team needs brought units: Blue has %d, Red has %d.": "Each team needs brought units: Blue has %d, Red has %d.",
  "End for everyone": "End for everyone",
  "End the game for everyone?": "End the game for everyone?",
@@ -467,7 +466,6 @@
  "If Windows asks to allow Dungeon Settlers on networks, click Allow.": "If Windows asks to allow Dungeon Settlers on networks, click Allow.",
  "In %s's lobby": "In %s's lobby",
  "In Dungeon Settlers": "In Dungeon Settlers",
- "In a dungeon a friend can lend you one (Lend on his portrait).": "In a dungeon a friend can lend you one (Lend on his portrait).",
  "In a dungeon only lending works: use Lend on your units.": "In a dungeon only lending works: use Lend on your units.",
  "In a dungeon you can only lend units (Lend on a portrait)": "In a dungeon you can only lend units (Lend on a portrait)",
  "In a dungeon: load it and return to the settlement first.": "In a dungeon: load it and return to the settlement first.",
@@ -514,7 +512,6 @@
  "Leave multiplayer to load another world.": "Leave multiplayer to load another world.",
  "Leave multiplayer?": "Leave multiplayer?",
  "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it.": "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it.",
- "Left-click a free unit to take it.": "Left-click a free unit to take it.",
  "Left-click to take": "Left-click to take",
  "Left-click: free this unit. Use Lend to give control to another player.": "Left-click: free this unit. Use Lend to give control to another player.",
  "Left-click: take this unit.": "Left-click: take this unit.",
@@ -583,7 +580,6 @@
  "Next Player": "Next Player",
  "Next player ›": "Next player ›",
  "Next round in %d": "Next round in %d",
- "Next: take a free unit (left-click).": "Next: take a free unit (left-click).",
  "No Steam friend is hosting right now. Ask them to host, or use Join by address.": "No Steam friend is hosting right now. Ask them to host, or use Join by address.",
  "No Steam friends found.": "No Steam friends found.",
  "No answer from %s. Check the address, and ask the host to open port %u on the router.": "No answer from %s. Check the address, and ask the host to open port %u on the router.",
@@ -1298,5 +1294,8 @@
  "your gameplay mods are different from the host's: start the game from the launcher with the host's mods": "your gameplay mods are different from the host's: start the game from the launcher with the host's mods",
  "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version": "your mods are a different version from the host's: both players need the same Dungeon Settlers Modded version",
  "your version is older": "your version is older",
- "‹ Newer": "‹ Newer"
+ "‹ Newer": "‹ Newer",
+ "Each team needs at least one unit. Right-click a unit's portrait to take it.": "Each team needs at least one unit. Right-click a unit's portrait to take it.",
+ "In a dungeon, a friend can lend you a unit (Lend on their unit).": "In a dungeon, a friend can lend you a unit (Lend on their unit).",
+ "Take your places": "Take your places"
 }
