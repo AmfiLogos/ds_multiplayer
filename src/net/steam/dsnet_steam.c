@@ -787,6 +787,14 @@ int dsnet_steam_host_adopt(dsnet_steam_host *h, uint32_t hconn) {
 
 void dsnet_steam_host_stop(dsnet_steam_host *h) {
     if (!h) return;
+    /* The server is stopped first (mp_game session_teardown): its last bytes (P_BYE, "the host ended the session") are
+       still in our loopback sockets / to_steam. The pump forwards them and closes each bridge itself at the server's
+       EOF (lingering Steam close). Wait for that, at most 500 ms; closing at once lost the BYE (v0.1.21 F3: the guest
+       of a Steam host who pressed Quit saw "connection lost" and tried to rejoin for 60 s). */
+    for (double t0 = dsnet_now_ms(); dsnet_now_ms() - t0 < 500; usleep(5000)) {
+        LOCK(); int n = host_peer_count(h), run = G_running; UNLOCK();
+        if (!n || !run) break;
+    }
     LOCK();
     for (int i = 0; i < MAX_BRIDGES; i++) if (G_br[i].used && G_br[i].host == h) bridge_close(&G_br[i]);
     for (int i = 0; i < 8; i++) if (G_hosts[i] == h) G_hosts[i] = NULL;
