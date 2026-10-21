@@ -56,6 +56,7 @@ float txt_fit_h(Obj t, float w, float h);                 /* mpmenu.c: the heigh
 void txt_fit_text(Obj t, const char *s);
 void txt_fit_stock(Obj t);                                 /* the stock notice box text: auto size while ours is up */
 float txt_fit_w(Obj t, float w, float h);                  /* mpmenu.c: the width a one-line box needs (its text too long even at 0.75) */
+float txt_text_h(Obj t, float w);                          /* mpmenu.c: the height of a text at its design size, wrapped at w (0: not measured) */
 static void tmp_set(Obj t, const char *s) {
     if (!ui_is(t, K_TMP)) return;
     void *k = *(void **)t;
@@ -2349,6 +2350,17 @@ static int lobby_open(void) {                                /* review #30: hidd
     return fn ? fn() : 0;
 }
 static uintptr_t h_hdrbg, h_hdrline, h_gear, h_cog, h_tog, h_chev, h_lora, h_cinzel, h_rowbg[PL_MAXROWS], h_bars[PL_MAXROWS + 1][3], h_set_arrow[2 * PL_SETMAX];
+/* uxpass round 2 (review_de #1, #2): one name text and one right text per row (the two multi-line columns drifted apart:
+   "Direkt (...)" between the rows, "Du" on a third line, a long CJK name wrapped over the panel's bottom border) */
+static uintptr_t h_rname[PL_MAXROWS], h_rright[PL_MAXROWS];
+static char pl_rl[PL_MAXROWS][256], pl_rr[PL_MAXROWS][200];
+static void obj_text(Obj t, const char *txt) {             /* plist_set for a text outside h_pl (DASText keeps _text = ours) */
+    char cur[600]; if (!u_alive(t)) return;
+    str_utf8(tmp_get(t), cur, sizeof cur);
+    if (!strcmp(cur, txt)) return;
+    tmp_set(t, txt);
+    if (!strcmp(cls_name(t), "DASText")) F(0x6F95C8, void (*)(Obj, void **, Obj))(t, (void **)((char *)t + 0x7D0), u_str(txt));
+}
 static uintptr_t h_band, h_arrow;                            /* (probes: header background / collapse button) */
 static const char *pl_dot = "•";
 static Obj tr_find(Obj t, const char *path) { return t ? F(0x510F3C0, Obj (*)(Obj, Obj, void *))(t, u_str(path), NULL) : NULL; }
@@ -2551,6 +2563,21 @@ static int plist_style(void) {
         pl_written[i] = 0;
     }
     for (int r = 0; r <= PL_MAXROWS; r++) for (int b = 0; b < 3; b++) { Obj im = u_gc_get(h_bars[r][b]); if (u_alive(im)) u_set_sibling(u_tr(im), 1 << 20); }
+    for (int r = 0; r < PL_MAXROWS; r++) {                   /* uxpass round 2: the row texts (name Lora 16 left, right column Lora 12 right) */
+        Obj tn = u_instantiate(u_gc_get(h_status), root), tr_ = u_instantiate(u_gc_get(h_status), root);
+        Obj two[2] = { tn, tr_ };
+        for (int q = 0; q < 2; q++) if (ui_is(two[q], K_TMP)) {
+            rt_top_left(u_tr(two[q])); u_rt_set_size(u_tr(two[q]), PL_W, 22); tmp_style(two[q], lora, q ? 12 : 16, q ? 516 : 513);
+            u_set_sibling(u_tr(two[q]), 1 << 20); show(two[q], 0); obj_text(two[q], "");
+        }
+        u_gc_free(h_rname[r]); h_rname[r] = u_gc_new(tn); u_gc_free(h_rright[r]); h_rright[r] = u_gc_new(tr_);
+    }
+    /* uxpass round 2 (review_de #4, #28, #30): settings labels and the move hint keep their size (no shrink to 11 pt) and
+       wrap; their rows grow (plist_frame, txt_text_h) */
+    for (int i = 0; i < PL_N; i++) if (pl_is_label(i) || i == PL_HINT) {
+        Obj t = u_gc_get(h_pl[i]);
+        if (ui_is(t, K_TMP)) { txt_fit(t, 14, 1); F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, true, NULL); }
+    }
     rig_log("ui: player panel (board) built: frame %p gear %p toggle %p lora %p cinzel %p dot %s", fr, gear, tog, lora, cinzel, pl_dot);
     return 1;
 }
@@ -2674,7 +2701,7 @@ static void plist_frame(void) {
         for (int i = 0; i < PL_N; i++) show(u_gc_get(h_pl[i]), 0);
         Obj every[] = { u_gc_get(h_plate), u_gc_get(h_hdrbg), u_gc_get(h_hdrline), u_gc_get(h_gear), u_gc_get(h_tog) };
         for (size_t k = 0; k < sizeof every / sizeof every[0]; k++) show(every[k], 0);
-        for (int r = 0; r < PL_MAXROWS; r++) show(u_gc_get(h_rowbg[r]), 0);
+        for (int r = 0; r < PL_MAXROWS; r++) { show(u_gc_get(h_rowbg[r]), 0); show(u_gc_get(h_rname[r]), 0); show(u_gc_get(h_rright[r]), 0); }
         for (int r = 0; r <= PL_MAXROWS; r++) bars_hide(r);
         for (int k = 0; k < 2 * PL_SETMAX; k++) show(u_gc_get(h_set_arrow[k]), 0);
         for (int k = 0; k < PL_NADDR; k++) show(u_gc_get(h_acopy[k]), 0);
@@ -2706,6 +2733,9 @@ static void plist_frame(void) {
           else snprintf(rr, sizeof rr, " "); }
         nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "%s%s", rows ? "\n" : "", row);
         nr += (size_t)snprintf(br + nr, sizeof br - nr, "%s%s", rows ? "\n" : "", rr);
+        snprintf(pl_rl[rows], sizeof pl_rl[0], "%s", row);
+        { char cw[128]; if (i != me() && mpmenu_conn_words(i, cw, sizeof cw)) snprintf(pl_rr[rows], sizeof pl_rr[0], "<color=#a69085>%s</color>", cw);
+          else snprintf(pl_rr[rows], sizeof pl_rr[0], "%s", rr); }   /* the row's own right text: no margin (the bars get their place) */
         rows++;
     }
     { int nh = dsnet_hold_count(c);
@@ -2716,6 +2746,7 @@ static void plist_frame(void) {
           lvl[rows] = -2; worst = 0; row_player[rows] = -1; row_lvl[rows] = -2;
           nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "%s%s", rows ? "\n" : "", row);
           nr += (size_t)snprintf(br + nr, sizeof br - nr, "%s<color=#f16071>X</color>", rows ? "\n" : "");
+          snprintf(pl_rl[rows], sizeof pl_rl[0], "%s", row); snprintf(pl_rr[rows], sizeof pl_rr[0], "<color=#f16071>X</color>");
           rows++;
       } }
     {   /* spectators (owner 2026-10-14): a "Watching (n)" divider, then one grey row each with its connection bars */
@@ -2725,6 +2756,7 @@ static void plist_frame(void) {
             lvl[rows] = -3; row_player[rows] = -1; row_lvl[rows] = -3;
             nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "%s%s", rows ? "\n" : "", row);
             nr += (size_t)snprintf(br + nr, sizeof br - nr, "%s ", rows ? "\n" : "");
+            snprintf(pl_rl[rows], sizeof pl_rl[0], "%s", row); snprintf(pl_rr[rows], sizeof pl_rr[0], " ");
             rows++;
             for (int i = 0; i < UI_MAX_PLAYERS && rows < PL_MAXROWS; i++) {
                 if (!(ui_spectators >> i & 1u)) continue;
@@ -2737,6 +2769,7 @@ static void plist_frame(void) {
                 row_player[rows] = i; row_watch[rows] = 1;
                 nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "\n%s", row);
                 nr += (size_t)snprintf(br + nr, sizeof br - nr, "\n%s", i == me() ? ui_col("#a69085", TR("You")) : " ");
+                snprintf(pl_rl[rows], sizeof pl_rl[0], "%s", row); snprintf(pl_rr[rows], sizeof pl_rr[0], "%s", i == me() ? ui_col("#a69085", TR("You")) : " ");
                 rows++;
             }
         }
@@ -2857,20 +2890,35 @@ static void plist_frame(void) {
     /* player rows, or the settings rows (cog) */
     Obj tb = u_gc_get(h_pl[PL_BODY]), tbr = u_gc_get(h_pl[PL_BODYR]);
     int show_rows = open_ && !pl_pop;
-    show(tb, show_rows); show(tbr, show_rows);
-    for (int r = 0; r < PL_MAXROWS; r++) { show(u_gc_get(h_rowbg[r]), show_rows && r < rows); bars_hide(r); }
+    show(tb, 0); show(tbr, 0);                               /* uxpass round 2: their texts stay (tests); the rows below draw */
+    for (int r = 0; r < PL_MAXROWS; r++) {
+        int on_ = show_rows && r < rows;
+        show(u_gc_get(h_rowbg[r]), on_); show(u_gc_get(h_rname[r]), on_); show(u_gc_get(h_rright[r]), on_); bars_hide(r);
+    }
     if (show_rows) {
+        /* uxpass round 2 (review_de #1, #2): each row is its own name + right text. The name ends before the right text
+           ("Du", "Direkt (127.0.0.1:47777)") and the bars; a name too long there even at 0.75 (12 CJK characters) takes
+           the row's whole width and the right text goes on a small line under it, in the same row (the row grows) */
+        float ry = y;
         for (int r = 0; r < rows; r++) {
-            place(u_gc_get(h_rowbg[r]), L + 2, y - PL_ROW_H * (float)r, PL_W - 4, PL_ROW_H);
-            if (lvl[r] >= 0) bars_put(r, lvl[r], L + PL_W - PL_PAD - 18, y - PL_ROW_H * (float)r - 9);
+            Obj tn = u_gc_get(h_rname[r]), tr_ = u_gc_get(h_rright[r]);
+            obj_text(tn, pl_rl[r]); obj_text(tr_, pl_rr[r]);
+            float bw = lvl[r] >= 0 ? 26 : 0, rw = strcmp(pl_rr[r], " ") ? tmp_pref_w(tr_) + 2 : 0;
+            float wn = inner - bw - (rw > 0 ? rw + 8 : 0), nh = 26, rh = PL_ROW_H;
+            int under = 0;
+            if (wn < 40 || txt_fit_h(tn, wn, 26) > 26.5f) {
+                under = rw > 0; wn = inner - bw;
+                nh = txt_fit_h(tn, wn, 26);
+                rh = nh + (under ? 16 : 0) + 6; if (rh < PL_ROW_H) rh = PL_ROW_H;
+            }
+            place(u_gc_get(h_rowbg[r]), L + 2, ry, PL_W - 4, rh);
+            place(tn, x, ry - 3, wn, nh);
+            if (under) place(tr_, x, ry - 3 - nh, inner - bw, 16);
+            else place(tr_, x + inner - bw - rw, ry - 3, rw > 0 ? rw : 1, 26);
+            if (lvl[r] >= 0) bars_put(r, lvl[r], L + PL_W - PL_PAD - 18, ry - 9);
+            ry -= rh;
         }
-        /* uxpass: the names end before the right column ("Direct (192.168.1.20:47777)", DE "Direkt (...)" ran under the
-           names): a long name shrinks (text fit) instead of running under the connection words */
-        float wr = tmp_pref_w(tbr), wn = wr > 60 ? inner - wr - 8 : inner - 60;
-        if (wn < 100) wn = 100;
-        place(tb, x, y + 1, wn, PL_ROW_H * (float)rows);
-        place(tbr, x, y + 1, inner, PL_ROW_H * (float)rows);
-        y -= PL_ROW_H * (float)rows;
+        y = ry;
     }
     y = host_addr_rows(show_rows && host, x, inner, L, y);
     /* settings: everyone: see-through, names, tooltips; host: units per player, admin; then the move hint (lan_v8) */
@@ -2891,18 +2939,22 @@ static void plist_frame(void) {
         Obj tl = u_gc_get(h_pl[lab[k]]), tv = u_gc_get(h_pl[val[k]]);
         show(tl, vis); show(tv, vis);
         show(u_gc_get(h_set_arrow[2 * k]), vis); show(u_gc_get(h_set_arrow[2 * k + 1]), vis);
-        float rh = txt_fit_h(tl, 160, PL_SET_H), hv = txt_fit_h(tv, 72, PL_SET_H);
+        /* round 2 (review_de #4, #28, #29): labels wrap at 14 (txt_text_h) with room between rows; the value box sits 4
+           units from each arrow ("Deaktiviert" touched the right one) */
+        float lw = 148, ra = L + PL_W - PL_PAD - 20, vx = ra - 4 - 80, la = vx - 4 - 20;
+        float th = txt_text_h(tl, lw), rh = th > 24 ? th + 10 : PL_SET_H, hv = txt_fit_h(tv, 80, PL_SET_H);   /* one line: about 20 */
+        if (hv > PL_SET_H) hv += 6;
         if (hv > rh) rh = hv;
         if (rh < PL_SET_H) rh = PL_SET_H;
-        place(tl, x, ry, 160, rh);
-        place(u_gc_get(h_set_arrow[2 * k]), L + PL_W - PL_PAD - 22 - 72 - 22, ry - (rh - 20) / 2, 20, 20);
-        place(tv, L + PL_W - PL_PAD - 22 - 72, ry, 72, rh);
-        place(u_gc_get(h_set_arrow[2 * k + 1]), L + PL_W - PL_PAD - 22, ry - (rh - 20) / 2, 20, 20);
+        place(tl, x, ry, lw, rh);
+        place(u_gc_get(h_set_arrow[2 * k]), la, ry - (rh - 20) / 2, 20, 20);
+        place(tv, vx, ry, 80, rh);
+        place(u_gc_get(h_set_arrow[2 * k + 1]), ra, ry - (rh - 20) / 2, 20, 20);
         ry -= rh;
     }
     Obj th2 = u_gc_get(h_pl[PL_HINT]);
     show(th2, nset > 0);
-    if (nset) { y = ry; float hh = txt_fit_h(th2, inner, 20); place(th2, x, y - 2, inner, hh); y -= hh + 6; }   /* wraps when too long */
+    if (nset) { y = ry; float hh = txt_text_h(th2, inner) + 4; if (hh < 20) hh = 20; place(th2, x, y - 4, inner, hh); y -= hh + 10; }   /* wraps at its size (round 2: it shrank to a tiny line on the border) */
     Obj tn = u_gc_get(h_pl[PL_NOTE]);
     show(tn, open_ && note[0] != 0);
     if (open_ && note[0]) {                                  /* one line per absent player, each may wrap */
