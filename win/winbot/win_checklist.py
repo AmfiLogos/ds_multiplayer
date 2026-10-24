@@ -401,6 +401,7 @@ def item3(w, rep, a, mac):
     for lang in ('de', 'ru'):
         w.prepare(lang=LANG[lang], active=BASE_MODS, settings={})
         w.start()
+        w.wait_log('dsload.log', ['fades its title in'], 30, since=0)    # the boot screen covers the title until this line
         sh = lambda n: w.gshot(os.path.join(rep.out, 'shots', f'3_{lang}_{n}.png'))
         sh('title')
         w.ui({'op': 'open'}); sh('mods')
