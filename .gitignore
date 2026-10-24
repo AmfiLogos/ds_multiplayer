@@ -48,6 +48,8 @@ instances/
 /rig/lan*/
 /rig/release/
 /rig/smoke_out/
+/rig/prefs_snap/
+/rig/prefs_overwritten/
 /rig/tools/
 *.zip
 *.png
