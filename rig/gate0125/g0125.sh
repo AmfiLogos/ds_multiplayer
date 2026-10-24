@@ -263,5 +263,6 @@ chk g025_rows_build 'ROWS DEMO BUILT' $WT rowsdemo
 chk g025_l1_rows '([0-9]+)/\1 checks, violations 0' $LD/loader python3 $LR l1_rows_test.py $OUT/g025_l1_rows   # a module's filter toggle + row text on the Load list
 chk g025_l1_v13 '([0-9]+)/\1 checks, violations 0' $LD/loader python3 $LR l1_v13_test.py $OUT/g025_l1_v13   # Load list "Mods: ..." line + hover card, flow K
 chk g025_filters 'RESULT ([0-9]+)/\1 checks, violations 0' $LD/loader python3 $LR l1_filter_test.py $OUT/g025_filters   # the filter panel: data guard, kinds, Latest save only, restart, 4 sizes / UI scales
+chk g025_look 'RESULT PASS ([0-9]+)/\1' $LD/loader env MP_TREE=$WT python3 test/look_test.py   # v0.1.25: the kit's texts in the game's look (lane dsfont's test)
 print "g025_inputs_unchanged $([[ $( { echo "MP $(git -C $WT rev-parse HEAD)  LD $(git -C $LD rev-parse HEAD)  CM $(git -C $CMR rev-parse HEAD)  pins $(head -1 $LD/loader/mp_pin.txt) $(head -1 $LD/loader/cm_pin.txt)  RELEASE $(cat $LD/RELEASE $LD/loader/RELEASE 2>/dev/null | head -1)"; for f in $REL/* $D $WT/build/custom-modes*.dylib; do print -r -- "$(shasum -a 256 "$f" | cut -c1-64)  $f"; done; } | shasum -a 256 | cut -c1-64) == $IN ]] && echo PASS || echo FAIL)" | tee -a $SUM
 print "g025_prefs $([[ $(prefs) == identical ]] && echo PASS || echo FAIL)" | tee -a $SUM
