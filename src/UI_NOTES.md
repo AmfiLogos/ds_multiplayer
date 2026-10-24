@@ -192,8 +192,10 @@ menu in multiplayer pauses nobody (#7). Test: `ui_test/uxgame_pair.py` (one pair
 - Viewer (8h): no orderable unit on a dungeon map -> banner + Follow camera / Free camera / Ask; zero-guid ui orders
   30 FOLLOW, 31 CAMERA (CampaignSettingContainer +0x18 CameraSetting Get/SetPosition, ortho), 32 ASK.
 - Centred messages = HelpNoticeView (owner confirmed it is the goddess statue message); `ui_center_message` exported.
-- Texts we create: the font asset's default material (TMP_Asset.m_Material +0x88, vtable slot 68): no outline
-  (the clock text and the notice body use outline presets, e.g. "Lora-Regular SDF OutLine16").
+- Texts we create: the game's look for their role (owner 2026-10-24, replaces the 2026-10-13 "no outline" rule):
+  mpmenu.c mpm_look_material() = LanguageSetting.GetMaterial(style, SoftOutline16) for the body font and section heads
+  ("Lora-Regular SDF OutLine16", as the game's title column, Options and Load Campaign texts), the font's own plain
+  material for window titles (24 and up), text fields and fonts without a preset (chat fallback faces).
 - Every typed Unity call goes through ui_is() (il2cpp class check; 15:45 crash: Graphic.set_color on a Transform).
 - Pause line sits right under the stock "Game Paused" strip (owner).
 

@@ -380,21 +380,20 @@ static Obj line_clone(Obj parent_tr, float pivot_y, float w, float h, float y) {
     u_go_active(u_go(b), true);
     return b;
 }
-/* owner 2026-10-13 (final): no black outline on our texts. Our lines are clones of the clock's time text, whose
-   material has an outline; give every clone the plain material of the game's window body text: the stock Lora
-   text material (quest title, kept by the panel) for Lora, else the font asset's own default material
-   (TMP_Asset.m_Material +0x88). TMP_Text.fontSharedMaterial set = vtable slot 68 (+0x578). */
+/* Text look (owner 2026-10-24; it replaces the 2026-10-13 "no outline" rule): our lines are clones of the clock's time text;
+   each takes the game's material for its font and size (mpmenu.c mpm_look_material: the body font and section heads ->
+   SoftOutline16, window titles and other fonts -> plain). TMP_Text.fontSharedMaterial set = vtable slot 68 (+0x578). */
+Obj mpm_look_material(Obj f, float size, int head);
 static uintptr_t h_plain_mat;                                /* stock Lora body text material (plist_style) */
-static void tmp_plain(Obj t) {
+static void tmp_plain(Obj t) {                               /* the game's look for the text's font and size (name kept) */
     if (!ui_is(t, K_TMP)) return;
     Obj f = F(0x4F0A59C, Obj (*)(Obj, void *))(t, NULL);                                   /* TMP_Text.font */
     if (!u_alive(f)) return;
-    /* the font asset's own default material (TMP_Asset.m_Material +0x88): plain, no outline / underlay. (The notice box
-       body uses "Lora-Regular SDF OutLine16", an outline preset: not that one.) */
-    Obj m = AT(f, 0x88, Obj);
+    Obj m = mpm_look_material(f, F(0x4F0B338, float (*)(Obj, void *))(t, NULL), 0);         /* TMP_Text.fontSize */
+    if (!u_alive(m)) m = AT(f, 0x88, Obj);                                                 /* TMP_Asset.m_Material: plain */
     if (!u_alive(m)) return;
-    static Obj logged;
-    if (m != logged) { logged = m; char mn[96] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), mn, sizeof mn); rig_log("ui: plain text material in use: %s", mn); }
+    static uintptr_t logged;                                 /* an address, only compared */
+    if ((uintptr_t)m != logged) { logged = (uintptr_t)m; char mn[96] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), mn, sizeof mn); rig_log("ui: text material in use: %s", mn); }
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x578))(t, m, *(void **)((char *)k + 0x580));
 }

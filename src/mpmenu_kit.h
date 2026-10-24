@@ -60,6 +60,9 @@ void das_key_set(Obj t, bool on);
 void das_key_clear(Obj t);                       /* _useTextKey off and _textKey null: our own text stays */
 void das_text_keep(Obj t, Obj s);                /* DASText._text = s: its Awake re-applies _text over ours */
 void txt_style(Obj t, int cinzel, float size, int align, int wrap);
+/* the game's material for a text in font f at size (head 1: a section head): body / title font -> SoftOutline16, window
+   titles (title font, 24 and up) and other fonts -> the plain material (mpmenu.c "Text look") */
+Obj mpm_look_material(Obj f, float size, int head);
 void txt_color(Obj t, Col c);
 void img_set(Obj im, Obj sprite, Col c);
 void place(Obj comp, float x, float y, float w, float h);
