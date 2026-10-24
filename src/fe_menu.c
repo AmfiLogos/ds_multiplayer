@@ -39,6 +39,18 @@ static void few_txt(const char *key, char *out, size_t cap) {             /* Tex
     if (!out[0] || !strcmp(out, key)) snprintf(out, cap, "%s", key);
 }
 static void few_item_name(const char *key, char *out, size_t cap) { char k[128]; snprintf(k, sizeof k, "TEXTKEY_%s_NAME", key); few_txt(k, out, cap); }
+/* "Spear · Water · Nature": the skill trees' names as the game's own skill tab shows them (TEXTKEY_EntitySkillUI_<tree>,
+   "Water" for WaterMagic), else its tree title (TEXTKEY_SKILLTREE_<tree>_NAME), else the key; u->trees holds the keys */
+static void few_trees(const fe_unit_info *u, char *out, size_t cap) {
+    char keys[sizeof u->trees]; snprintf(keys, sizeof keys, "%s", u->trees); size_t o = 0; out[0] = 0;
+    for (char *t = keys, *nx; t && *t && o + 8 < cap; t = nx) {
+        nx = strstr(t, " \xC2\xB7 "); if (nx) { *nx = 0; nx += 4; }
+        char k[128], nm[96]; snprintf(k, sizeof k, "TEXTKEY_EntitySkillUI_%s", t); few_txt(k, nm, sizeof nm);
+        if (!strcmp(nm, k)) { snprintf(k, sizeof k, "TEXTKEY_SKILLTREE_%s_NAME", t); few_txt(k, nm, sizeof nm); }
+        if (!strcmp(nm, k)) snprintf(nm, sizeof nm, "%s", t);
+        o += (size_t)snprintf(out + o, cap - o, "%s%s", o ? " \xC2\xB7 " : "", nm);
+    }
+}
 static void few_gear(const fe_unit_info *u, char *out, size_t cap) {      /* "Sword, Helmet, ..." in the game's language; "" = none */
     size_t o = 0; out[0] = 0;
     for (int g = 0; g < u->ngear && o + 40 < cap; g++) { char in[64]; few_item_name(u->gear_keys[g], in, sizeof in); o += (size_t)snprintf(out + o, cap - o, "%s%s", g ? ", " : "", in); }
@@ -177,7 +189,8 @@ static void few_sync(void) {
                 int on = 0; for (int p = 0; p < W.npicked; p++) if (W.picked[p] == k) on = 1;
                 char lv[64]; cmt_level(lv, sizeof lv, u->level);
                 snprintf(b, sizeof b, "%s  <size=80%%><color=#A69085>%s</color></size>", nm, lv); cmt_set(u_gc_get(W.cardt[i][0]), b);
-                cmt_set(u_gc_get(W.cardt[i][1]), u->trees[0] ? u->trees : TR("No skill tree yet"));
+                char trees[300]; few_trees(u, trees, sizeof trees);
+                cmt_set(u_gc_get(W.cardt[i][1]), trees[0] ? trees : TR("No skill tree yet"));
                 few_gear(u, gear, sizeof gear);
                 cmt_set(u_gc_get(W.cardt[i][2]), gear[0] ? gear : TR("No gear"));
                 cmt_set(u_gc_get(W.cardt[i][3]), on ? "\xE2\x9C\x93" : "");
@@ -388,8 +401,8 @@ static void few_tips(void) {
         for (int i = 0; i < 8; i++) {
             int k = W.upage * 8 + i; const char *gen = TR("Click to add or remove it. A copy travels with its gear and backpack; the unit itself stays at home and keeps working.");
             if (W.sel_save >= 0 && k < W.nunit) {
-                char gear[200]; few_gear(&W.units[k], gear, sizeof gear);
-                snprintf(body, sizeof body, "%s\n%s\n\n%s", W.units[k].trees[0] ? W.units[k].trees : TR("No skill tree yet"), gear[0] ? gear : TR("No gear"), gen);
+                char gear[200], trees[300]; few_gear(&W.units[k], gear, sizeof gear); few_trees(&W.units[k], trees, sizeof trees);
+                snprintf(body, sizeof body, "%s\n%s\n\n%s", trees[0] ? trees : TR("No skill tree yet"), gear[0] ? gear : TR("No gear"), gen);
             } else snprintf(body, sizeof body, "%s", gen);
             TIPW(MPB_FE_UNIT0 + i, TR("Bring this unit"), body);
         }
