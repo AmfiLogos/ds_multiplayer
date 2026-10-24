@@ -4304,6 +4304,16 @@ static void tag_click_frame(void) {
  * world row and its save rows inactive, then the stock RefreshPanelSize. The save panel (Save) is never filtered.
  * Until the loader's LOAD-ROW API exists this file owns the SaveLoadView.RefreshLoadPanel hook (as the tag owns its two). */
 static int lf_mode = MPM_LIST_SOLO, lf_other, lf_hidden, lf_shown, lf_applied;
+/* the loader's filter panel (loader kit v0.1.23, its dsl_rows.c; owner 2026-10-24: filters on the right of the Load
+ * Campaign window replace this box): on the single-player list the panel's Multiplayer box decides, so this filter shows
+ * every world there and draws no box. Your save and the Expedition pick keep this filter as before. The loader asks two
+ * exports below: dsl_loadlist_own (1 = this filter decides the open list) and dsl_loadlist_world_mp (the tag). */
+static int lf_loader_panel(void) {
+    static int v = -1;
+    if (v < 0) { int (*f)(void) = (int (*)(void))mpmenu_loader_sym("dsl_loadlist_panel"); v = f && f() > 0; rig_log("mpmenu: load list: the loader's filter panel %s", v ? "decides the single-player list" : "not there (older loader): this box stays"); }
+    return v;
+}
+static int lf_eff(int mode) { return mode == MPM_LIST_SOLO && lf_loader_panel() ? MPM_LIST_ALL : mode; }
 static uintptr_t h_lf_slv, h_lf_tog, h_lf_box;                              /* the list view, our toggle text and its box */
 static void lf_toggle_sync(Obj slv);
 static tag_row *tag_row_find(tag_row *t, Obj row) {                        /* no new entry (tag_row_of adds one) */
@@ -4319,7 +4329,7 @@ static void lf_apply(Obj slv, const char *why) {
         Obj cs = AT(arr, 0x20 + 8 * i, Obj); if (!u_alive(cs)) continue;
         tag_row *r = tag_row_find(tcase, cs); if (!r || !r->guid[0]) continue;
         char nm[MPM_TAG_NAMES][32]; int tagged = tag_get(r->guid, nm) >= 0;
-        int show = mpm_list_show(lf_mode, lf_other, tagged, AT(cs, 0xA0, bool));   /* _isCurrentCampaign */
+        int show = mpm_list_show(lf_eff(lf_mode), lf_other, tagged, AT(cs, 0xA0, bool));   /* _isCurrentCampaign */
         u_active(cs, show);
         if (show) shown++; else { hid++; if (nh < 64) snprintf(hidden_guid[nh++], 40, "%s", r->guid); }
     }
@@ -4361,7 +4371,7 @@ static void lf_band(Obj slv, int on) {
 }
 static void lf_toggle_sync(Obj slv) {
     Obj tog = u_gc_get(h_lf_tog), box = u_gc_get(h_lf_box), low = AT(slv, 0x98, Obj);   /* _lowLoadPanel */
-    const char *lbl = mpm_list_toggle_label(lf_mode);
+    const char *lbl = mpm_list_toggle_label(lf_eff(lf_mode));
     if (!lbl[0]) { u_active(tog, false); u_active(box, false); lf_band(slv, 0); return; }
     if (!u_alive(tog)) {
         Obj tt = AT(slv, 0x48, Obj);                                        /* _saveLoadTitle (text template) */
@@ -4412,6 +4422,13 @@ static void lf_frame(void) {
 __attribute__((visibility("default"))) int dsl_loadlist_hidden(int *kind) {
     if (kind) *kind = lf_mode == MPM_LIST_MP ? 2 : 1;
     return popup_open(5) && u_alive(u_gc_get(h_lf_slv)) ? lf_hidden : 0;
+}
+/* the loader's filter panel: 1 = this filter decides the open list now (Your save, the Expedition pick), so the panel stays
+   away; 0 = the single-player list, the panel decides */
+__attribute__((visibility("default"))) int dsl_loadlist_own(void) { return mpm_list_mode(&M) != MPM_LIST_SOLO; }
+/* the loader's filter panel: 1 = a Multiplayer world (its tag, mp_tags.txt) */
+__attribute__((visibility("default"))) int dsl_loadlist_world_mp(const char *guid) {
+    char nm[MPM_TAG_NAMES][32]; return guid && *guid && tag_get(guid, nm) >= 0;
 }
 
 /* ---------------------------------------------------------------- the third host choice (MASTER_PLAN 2.2 B register_host_choice) */
