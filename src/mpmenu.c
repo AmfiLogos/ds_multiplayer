@@ -624,7 +624,7 @@ void txt_color(Obj t, Col c) { if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Co
  * 0.75: the game's way for long text, the text keeps its design size and wraps to more lines (the line grows; it
  * draws past its rect, centred); a box we own asks txt_fit_h() for the height its text needs and grows. */
 #define FIT_N 2048                                                           /* open addressing by object address */
-typedef struct { Obj t; uintptr_t h; float size, w, h_, qw, qh, qr, qs; uint32_t hash, qhash; uint8_t wrap, on, dirty, multi, stock, qk; } fit_e;   /* q*: txt_fit_h / _w cache */
+typedef struct { Obj t; uintptr_t h; float size, w, h_, qw, qh, qr, qs; uint32_t hash, qhash; uint8_t wrap, on, dirty, multi, stock, qk, ell; } fit_e;   /* q*: txt_fit_h / _w cache */
 typedef struct { float x, y, w, h; } fit_rect;
 static fit_e fit_tab[FIT_N];
 static int fit_count;
@@ -712,6 +712,11 @@ static void fit_one(fit_e *e, Obj t, float w, float h) {
         int fits = fit_at_min(e, t, w, h, &two);
         fit_set(t, 0, e->size, e->wrap);
         char tx[64] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
+        if (!fits && e->ell && !e->wrap) {                                  /* a one-line text (txt_one_line): 0.75, one line, "..." */
+            e->on = 5; fit_set(t, 0, mn, 0); F(0x4F0BB74, void (*)(Obj, int, void *))(t, 1, NULL);   /* overflowMode Ellipsis */
+            rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f even at %.0f: one line at %.0f, ends in ...", tx, w, h, mn, mn);
+            return;
+        }
         if (!fits) {                                                         /* the game's long text: design size, more lines */
             e->on = 4; fit_set(t, 0, e->size, 1);
             rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f even at %.0f: size %.0f, wraps (%.0f high)", tx, w, h, mn, e->size, fit_pref(t, w).y);
@@ -757,6 +762,9 @@ static void fit_frame(void) {
 }
 /* for the game-side files (ui_game.c, ui_teams.c) and Custom Modes texts styled their own way: same fit */
 void txt_fit(Obj t, float size, int wrap) { if (mm_is(t, K_TMP)) fit_style(t, size, wrap); }
+/* a one-line text in a fixed box (after txt_style / mk_txt): too long even at 0.75 = one line at 0.75 that ends in "..."
+   (the game's ellipsis), never more lines past its box (Bring Units cards: gear lines ran out of their card) */
+void txt_one_line(Obj t) { fit_e *e = mm_is(t, K_TMP) ? fit_find(t, 1) : NULL; if (e) { e->ell = 1; e->dirty = 1; } }
 void txt_fit_text(Obj t, const char *s) { fit_text(t, s); }
 /* the fit's current settings again (after a measure) */
 static void fit_apply(fit_e *e, Obj t) {
