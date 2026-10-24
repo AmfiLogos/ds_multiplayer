@@ -1,0 +1,5 @@
+# v0.1.23 first: the lane's tests and what touches the Load list, then last release's red
+g023_rows_build        # rows-demo for g023_l1_rows
+g023_filters g023_hidden g023_l1_rows g023_savedel g023_l1_v13 g023_l1_soft g023_update_mac
+g023_mpmenu_unit g023_i18n_tool g023_hooklist
+g023_crash_rig         # 15/18 in v0.1.22: test reader on the old crash-report URL
