@@ -348,8 +348,8 @@ def run(X, Y, PORT):
         check('design #13 no [name] tag on portraits', va.get('bar_names') and not any('[' in n for n in va['bar_names']), va.get('bar_names'))
         check('#3 panel position unchanged (top area)', va.get('panel_pos', [0, 0])[1] < 0, va.get('panel_pos'))
         shot(X, 'v2_panel_open_host'); shot(Y, 'v2_panel_open_guest')
-        mats = [l for l in log_since(X, run_mark.get(X, 0)).splitlines() if 'plain text material in use' in l]
-        check('final: our texts use the font\'s plain material (no outline preset)', mats and not any('utline' in l or 'nderlay' in l for l in mats), mats[-3:] if mats else 'no log line')
+        mats = [l for l in log_since(X, run_mark.get(X, 0)).splitlines() if 'text material in use' in l]   # 2026-10-24: the game's look
+        check('final: our texts use the game\'s SoftOutline16 look (as its menus)', mats and any('OutLine16' in l for l in mats) and not any('nderlay' in l for l in mats), mats[-3:] if mats else 'no log line')
     step('panel', panel)
 
     def units_rule():                                          # uxmenu 2026-10-13: host rule "Units per player"
