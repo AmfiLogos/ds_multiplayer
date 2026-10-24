@@ -39,6 +39,10 @@ static void few_txt(const char *key, char *out, size_t cap) {             /* Tex
     if (!out[0] || !strcmp(out, key)) snprintf(out, cap, "%s", key);
 }
 static void few_item_name(const char *key, char *out, size_t cap) { char k[128]; snprintf(k, sizeof k, "TEXTKEY_%s_NAME", key); few_txt(k, out, cap); }
+static void few_gear(const fe_unit_info *u, char *out, size_t cap) {      /* "Sword, Helmet, ..." in the game's language; "" = none */
+    size_t o = 0; out[0] = 0;
+    for (int g = 0; g < u->ngear && o + 40 < cap; g++) { char in[64]; few_item_name(u->gear_keys[g], in, sizeof in); o += (size_t)snprintf(out + o, cap - o, "%s%s", g ? ", " : "", in); }
+}
 static void few_rules_line(const fe_mode_info *m, char *out, size_t cap) {
     char who[160], each[96]; int nu = m->units > 0 ? m->units : 3;
     if (m->host[0]) snprintf(who, sizeof who, TR("%s's hub rules:"), m->host); else snprintf(who, sizeof who, "%s", TR("The host's hub rules:"));
@@ -68,7 +72,7 @@ static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
         float y = WY(156 + 56 * i + 26);
         BTN(MPB_FE_SAVE0 + i, S_NBTN, WX(24 + 150), y, 300, 52, 14, "", C_MAIN);
         Obj b = u_gc_get(reg[MPB_FE_SAVE0 + i]);
-        for (int k = 0; b && k < 2; k++) { Obj t = mk_txt(tpl_txt, u_tr(b), 0, k ? 12 : 16, 513, 0, 4, k ? -11 : 9, 280, 22, k ? C_SUB : C_MAIN); u_gc_free(W.rowt[i][k]); W.rowt[i][k] = t ? u_gc_new(t) : 0; }
+        for (int k = 0; b && k < 2; k++) { Obj t = mk_txt(tpl_txt, u_tr(b), 0, k ? 12 : 16, 513, 0, 4, k ? -11 : 9, 280, 22, k ? C_SUB : C_MAIN); txt_one_line(t); u_gc_free(W.rowt[i][k]); W.rowt[i][k] = t ? u_gc_new(t) : 0; }
     }
     BTN(MPB_FE_SAVEPG, S_NBTN, WX(24 + 150), WY(156 + 56 * 6 + 14), 300, 26, 13, "More saves \xE2\x80\xBA", C_SUB);
     for (int i = 0; i < 8; i++) {                                           /* right column: unit cards (2 x 4) */
@@ -78,6 +82,7 @@ static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
         static const float ys[4] = { 15, -2, -18, 15 };
         for (int k = 0; b && k < 4; k++) {
             Obj t = mk_txt(tpl_txt, u_tr(b), 0, k == 0 ? 15 : k == 3 ? 18 : 12, k == 3 ? 514 : 513, 0, k == 3 ? -126 : 18, ys[k], k == 3 ? 24 : 240, 20, k == 3 ? C_GOLD : k == 0 ? C_MAIN : C_SUB);
+            if (k < 3) txt_one_line(t);                                     /* name / trees / gear: one line, "..." (the full text in the card's tip) */
             u_gc_free(W.cardt[i][k]); W.cardt[i][k] = t ? u_gc_new(t) : 0;
         }
     }
@@ -167,13 +172,13 @@ static void few_sync(void) {
             for (int i = 0; i < 8; i++) {
                 int k = W.upage * 8 + i; few_show(MPB_FE_UNIT0 + i, k < W.nunit);
                 if (k >= W.nunit) continue;
-                fe_unit_info *u = &W.units[k]; char nm[64], gear[200] = ""; size_t o = 0;
+                fe_unit_info *u = &W.units[k]; char nm[64], gear[200];
                 few_txt(u->name_key, nm, sizeof nm);
                 int on = 0; for (int p = 0; p < W.npicked; p++) if (W.picked[p] == k) on = 1;
                 char lv[64]; cmt_level(lv, sizeof lv, u->level);
                 snprintf(b, sizeof b, "%s  <size=80%%><color=#A69085>%s</color></size>", nm, lv); cmt_set(u_gc_get(W.cardt[i][0]), b);
                 cmt_set(u_gc_get(W.cardt[i][1]), u->trees[0] ? u->trees : TR("No skill tree yet"));
-                for (int g = 0; g < u->ngear && o < sizeof gear - 40; g++) { char in[64]; few_item_name(u->gear_keys[g], in, sizeof in); o += (size_t)snprintf(gear + o, sizeof gear - o, "%s%s", g ? ", " : "", in); }
+                few_gear(u, gear, sizeof gear);
                 cmt_set(u_gc_get(W.cardt[i][2]), gear[0] ? gear : TR("No gear"));
                 cmt_set(u_gc_get(W.cardt[i][3]), on ? "\xE2\x9C\x93" : "");
             }
@@ -370,8 +375,24 @@ static void few_tips(void) {
     #define TIPW(id, t, b) tip_try(few_btn(id), (t), (b))
     if (W.mode == FEW_NONE) return;
     if (W.mode == FEW_BRING) {
-        for (int i = 0; i < 6; i++) TIPW(MPB_FE_SAVE0 + i, TR("Your save"), TR("Units come from this save. It is only read: nothing in it changes until you bring the results home."));
-        for (int i = 0; i < 8; i++) TIPW(MPB_FE_UNIT0 + i, TR("Bring this unit"), TR("Click to add or remove it. A copy travels with its gear and backpack; the unit itself stays at home and keeps working."));
+        fe_mode_info m; fe_mode_get(&m);
+        char body[900];                                                     /* a line cut with "..." on the card / row: in full here */
+        for (int i = 0; i < 6; i++) {
+            int k = W.page * 6 + i; const char *gen = TR("Units come from this save. It is only read: nothing in it changes until you bring the results home.");
+            fe_save_info *s = k < W.nsave ? &W.saves[k] : NULL;
+            if (s && !s->ok) snprintf(body, sizeof body, "%s\n\n%s", TR("In a dungeon: load it and return to the settlement first."), gen);
+            else if (s && !few_version_ok(s, &m)) { char t[300]; snprintf(t, sizeof t, TR("Made with %s. Load and save it once in this build first."), s->version); snprintf(body, sizeof body, "%s\n\n%s", t, gen); }
+            else snprintf(body, sizeof body, "%s", gen);
+            TIPW(MPB_FE_SAVE0 + i, TR("Your save"), body);
+        }
+        for (int i = 0; i < 8; i++) {
+            int k = W.upage * 8 + i; const char *gen = TR("Click to add or remove it. A copy travels with its gear and backpack; the unit itself stays at home and keeps working.");
+            if (W.sel_save >= 0 && k < W.nunit) {
+                char gear[200]; few_gear(&W.units[k], gear, sizeof gear);
+                snprintf(body, sizeof body, "%s\n%s\n\n%s", W.units[k].trees[0] ? W.units[k].trees : TR("No skill tree yet"), gear[0] ? gear : TR("No gear"), gen);
+            } else snprintf(body, sizeof body, "%s", gen);
+            TIPW(MPB_FE_UNIT0 + i, TR("Bring this unit"), body);
+        }
         TIPW(MPB_FE_OK, TR("Bring these units"), TR("Sends copies of the picked units to the host. You can bring other units instead until the host presses Start."));
         TIPW(MPB_FE_CANCEL, cmt_game("TEXTKEY_CommonPopUp_Cancel", "Cancel"), TR("Closes this window. Nothing is sent."));
     }
