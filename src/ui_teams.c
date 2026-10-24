@@ -550,7 +550,7 @@ static Obj img_of(Obj tr) { static uintptr_t h; return comp_of(tr, &h, "UnityEng
 static void button_off(Obj tr) { static uintptr_t h; Obj b = comp_of(tr, &h, "UnityEngine.UI", "Button"); if (u_alive(b)) u_enabled(b, false); }
 static void centre_anchor(Obj rt) { rt_anchor(rt, 0.5f, 0.5f, 0.5f, 0.5f); rt_pivot(rt, 0.5f, 0.5f); }
 /* a body text (Lora) under parent: size w x h, font size, alignment */
-static void tmp_plain(Obj t);
+static void tmp_look(Obj t, int head);
 static Obj new_text(Obj parent_tr, float w, float h, float size, int align) {
     Obj tpl = u_gc_get(h_tpl_text);
     if (!u_alive(tpl) && load_templates()) return NULL;
@@ -566,19 +566,23 @@ static Obj new_text(Obj parent_tr, float w, float h, float size, int align) {
     (tm_is(t, K_TMP) ? F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, true, NULL) : (void)0);           /* word wrap */
     { static int logged; Obj m0 = (tm_is(t, K_TMP) ? F(0x4F0A6B4, Obj (*)(Obj, void *))(t, NULL) : NULL); char a_[80] = "", b_[80] = "";
       if (!logged && u_alive(m0)) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m0, NULL), a_, sizeof a_);
-      tmp_plain(t);
+      tmp_look(t, 0);
       Obj m1 = (tm_is(t, K_TMP) ? F(0x4F0A6B4, Obj (*)(Obj, void *))(t, NULL) : NULL);
       if (!logged && u_alive(m1)) { str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m1, NULL), b_, sizeof b_); rig_log("teams: text material %s -> %s", a_, b_); logged = 1; } }
     g_raycast(t, false);
     tmp_set(t, "");
     return t;
 }
-/* the font asset's own default material (TMP_Asset.m_Material +0x88): plain, no outline preset (owner 2026-10-13:
-   the card-name material we cloned from has a black outline the game's windows do not) */
-static void tmp_plain(Obj t) {
+/* Text look (owner 2026-10-24; it replaces the 2026-10-13 "no outline" rule): the game's material for the text's font and
+   size (mpmenu.c mpm_look_material: body font and section heads -> SoftOutline16, other fonts -> plain); head = a title of
+   this window (section heads, "Teams", "Going"): SoftOutline16 at any size. Fallback: the font asset's own plain material
+   (TMP_Asset.m_Material +0x88). */
+Obj mpm_look_material(Obj f, float size, int head);
+static void tmp_look(Obj t, int head) {
     if (!tm_is(t, K_TMP)) return;
     Obj f = F(0x4F0A59C, Obj (*)(Obj, void *))(t, NULL);
-    Obj m = tm_is(f, K_FA) ? AT(f, 0x88, Obj) : NULL;
+    Obj m = tm_is(f, K_FA) ? mpm_look_material(f, F(0x4F0B338, float (*)(Obj, void *))(t, NULL), head) : NULL;   /* TMP_Text.fontSize */
+    if (!u_alive(m) && tm_is(f, K_FA)) m = AT(f, 0x88, Obj);
     if (!u_alive(m)) return;
     void *k = *(void **)t;                                    /* TMP_Text.fontSharedMaterial setter: vtable slot 68 */
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x578))(t, m, *(void **)((char *)k + 0x580));
@@ -592,9 +596,9 @@ static Obj font_body(void) {
     Obj f = lang_font(0);
     return f ? f : (tm_is(tmp_of(u_gc_get(h_tpl_text)), K_TMP) ? F(0x4F0A59C, Obj (*)(Obj, void *))(tmp_of(u_gc_get(h_tpl_text)), NULL) : NULL);
 }
-static void tmp_font(Obj t, Obj f) {                         /* TMP_Text.font, with that font's own material */
+static void tmp_font(Obj t, Obj f, int head) {               /* TMP_Text.font, with the game's look for it */
     if (u_alive(t) && u_alive(f)) (tm_is(t, K_TMP) ? F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL) : (void)0);
-    tmp_plain(t);
+    tmp_look(t, head);
 }
 /* a plain rectangle (the level box clone: sprite and children removed) under parent, stretched between anchors */
 static Obj new_rect(Obj parent_tr, float x0, float y0, float x1, float y1, float w, float h, C4 c) {
@@ -828,8 +832,8 @@ static void set_text(Obj o, float lx, float cy, float w, float h, float size, in
     if (!u_alive(o)) return;
     Obj t = u_tr(o);
     centre_anchor(t); rt_size(t, w, h); rt_pos(t, lx + w / 2, cy);
-    tmp_font(o, cinzel ? font_title() : font_body());
-    (tm_is(o, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(o, size, NULL) : (void)0);
+    (tm_is(o, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(o, size, NULL) : (void)0);   /* size first: the look reads it */
+    tmp_font(o, cinzel ? font_title() : font_body(), cinzel);
     (tm_is(o, K_TMP) ? F(0x4F0B7BC, void (*)(Obj, int, void *))(o, align, NULL) : (void)0);
     txt_fit(o, size, 1);                                                    /* new_text wraps; too long for w x h: auto size */
     tmp_set(o, txt); u_active(o, true); u_last_sibling(t);
@@ -1746,7 +1750,7 @@ static void hud_frame(void) {
     }
     Obj t = new_text(rt, HUD_W - lx, HUD_H, 22, AL_LEFT);
     if (t) { rt_anchor(u_tr(t), 0, 0.5f, 0, 0.5f); rt_pivot(u_tr(t), 0, 0.5f); rt_pos(u_tr(t), lx, 0);
-             tmp_font(t, font_title()); tmp_set(t, TR("Teams"));
+             tmp_font(t, font_title(), 1); tmp_set(t, TR("Teams"));
              /* one line that shrinks to fit: a longer word ("Команды", "Équipes") wrapped into two cut lines */
              (tm_is(t, K_TMP) ? F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, false, NULL) : (void)0);     /* no word wrap */
              (tm_is(t, K_TMP) ? F(0x4F0B634, void (*)(Obj, float, void *))(t, 9.0f, NULL) : (void)0);     /* fontSizeMin */
@@ -1815,7 +1819,7 @@ static void stock_side_block(Obj view) {
     u_gc_free(h_side); h_side = u_gc_new(blk);
     float top = pr.h / 2, w = pr.w;
     Obj t = new_text(bt, w - 20, 34, 22, AL_CENTER);
-    if (t) { tmp_font(t, font_title()); rt_pos(u_tr(t), 0, top - 26); tmp_set(t, ui_col(C_MAIN, TR("Going"))); }
+    if (t) { tmp_font(t, font_title(), 1); rt_pos(u_tr(t), 0, top - 26); tmp_set(t, ui_col(C_MAIN, TR("Going"))); }
     model_refresh();
     char pn_[40]; pname(prop.proposer, pn_);
     Obj t2 = new_text(bt, w - 20, 24, 14, AL_CENTER);

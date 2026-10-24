@@ -491,22 +491,25 @@ void img_set(Obj im, Obj sprite, Col c) {                          /* sprite (sl
     F(0x52602F8, void (*)(Obj, Col, void *))(im, c, NULL);
     F(0x5260348, void (*)(Obj, bool, void *))(im, false, NULL);
 }
-/* Body text material (owner 2026-10-13: our texts had a black outline the game's windows do not have; the clones carried
- * the menu-button label's material). The stock window body text, CommonNoticeView Panel_Notice/Txt_Notice (Lora 16), gives
- * its fontSharedMaterial; every Lora text of our windows uses it. Cinzel titles use the Cinzel font's own material. */
+/* Text look (owner 2026-10-24: "not the same as the rest of the menus"; it replaces the 2026-10-13 plain-material rule):
+ * every text we make or restyle takes the game's look for its role, as measured in the game's own menus (title column,
+ * Options, Load Campaign): body text, buttons, labels = the language's body font + its SoftOutline16 material
+ * ("Lora-Regular SDF OutLine16"); section heads = the title font + its SoftOutline16 material; window titles (24 and up, as
+ * the game's Options / Rename titles) and text fields = the font's own plain material. mpm_look_material() decides. */
 static Obj tr_find(Obj t, const char *path);
 /* ---- i18n: the game's language and its fonts (research/i18n_plan.md 2, 4). Refactor.Setting.LanguageSetting, by name (Mac
  * and Windows): GetCurrentLanguage() (static, polled each frame: lang_poll) and GetFont(FontStyleType) (EasyRead 0 = body,
  * VeryDecorative 2 = titles; the language's own fonts: Lora / Cinzel, or the zh-Hans, zh-Hant, ja ones). */
-static void *ls_klass, *ls_lang_mi, *ls_font_mi; static int ls_tries; static int64_t ls_last_try = -100000;
+static void *ls_klass, *ls_lang_mi, *ls_font_mi, *ls_mat_mi; static int ls_tries; static int64_t ls_last_try = -100000;
 static int ls_ready(void) {                            /* class + methods found, its statics allocated */
     if (!ls_klass && ls_tries < 10 && frames - ls_last_try >= 300) {
         ls_last_try = frames; ls_tries++;
         ls_klass = class_by_name("Refactor.Setting", "LanguageSetting");
         if (ls_klass) { ls_lang_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetCurrentLanguage", 0);
-                        ls_font_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetFont", 1); }
-        rig_log("mpmenu: i18n: LanguageSetting %s (GetCurrentLanguage %s, GetFont %s)", ls_klass ? "found" : "NOT found",
-                ls_lang_mi ? "ok" : "missing", ls_font_mi ? "ok" : "missing");
+                        ls_font_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetFont", 1);
+                        ls_mat_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetMaterial", 2); }
+        rig_log("mpmenu: i18n: LanguageSetting %s (GetCurrentLanguage %s, GetFont %s, GetMaterial %s)", ls_klass ? "found" : "NOT found",
+                ls_lang_mi ? "ok" : "missing", ls_font_mi ? "ok" : "missing", ls_mat_mi ? "ok" : "missing");
     }
     return ls_klass && *(void **)((char *)ls_klass + 0xB8) != NULL;       /* Il2CppClass.static_fields */
 }
@@ -533,10 +536,38 @@ static Obj lang_font(int style) {                      /* 0 body, 2 titles; NULL
     return f;
 }
 static Obj title_font(void) { Obj f = lang_font(2); if (!f) f = u_gc_get(h_cinzel); return u_alive(f) ? f : NULL; }   /* the scan's Cinzel: fallback */
-/* Body text material (owner 2026-10-13: our texts had a black outline the game's windows do not have; the clones carried
- * the menu-button label's material). Body font = the language's EasyRead font (GetFont 0); fallback the stock window body
- * text, CommonNoticeView Panel_Notice/Txt_Notice (Lora 16). Material: the font asset's own (plain). Re-fetched when the
- * language changes. Cinzel titles use the title font's own material. */
+/* the SoftOutline16 material of the language's body (title 0) or title (title 1) font: LanguageSetting.GetMaterial(
+ * FontStyleType, FontMaterialType.SoftOutline16); NULL: not available (then the plain material) */
+static uintptr_t h_lmat[2]; static unsigned lmat_gen = ~0u;
+static Obj lang_mat16(int title) {
+    if (lmat_gen != dsi_generation()) { for (int i = 0; i < 2; i++) { u_gc_free(h_lmat[i]); h_lmat[i] = 0; } lmat_gen = dsi_generation(); }
+    Obj m = u_gc_get(h_lmat[title]);
+    if (u_alive(m)) return m;
+    if (!ls_ready() || !ls_mat_mi || !*(void **)*(void **)((char *)ls_klass + 0xB8)) return NULL;   /* _fontSO not loaded yet */
+    m = MCALL(ls_mat_mi, Obj, int32_t, int32_t, const void *)(title ? 2 : 0, 1, ls_mat_mi);
+    if (!u_alive(m)) return NULL;
+    u_gc_free(h_lmat[title]); h_lmat[title] = u_gc_new(m);
+    char nm[96] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), nm, sizeof nm);
+    rig_log("mpmenu: look: %s text material for %s: %s", title ? "title" : "body", dsi_code(), nm);
+    return m;
+}
+/* the game's material for a text in font f at size (head: a section head, whatever its size): the language's body font
+ * -> its SoftOutline16; its title font -> SoftOutline16 for heads and under 24, the plain material for window titles (24
+ * and up); any other font (chat fallback faces) -> its own plain material (the game has no preset for it) */
+Obj mpm_look_material(Obj f, float size, int head) {
+    if (!u_alive(f)) return NULL;
+    Obj m = NULL;
+    if (f == lang_font(0)) m = lang_mat16(0);
+    else if (f == title_font() && (head || size < 24)) m = lang_mat16(1);
+    return m ? m : font_material(f);
+}
+static void txt_mat(Obj t, Obj m) {                                         /* TMP_Text.fontSharedMaterial */
+    static void *ms; if (!ms) ms = mth("TMPro", "TMP_Text", "set_fontSharedMaterial", 1);
+    if (u_alive(m) && ms && mm_is(t, K_TMP)) MCALL(ms, void, Obj, Obj, const void *)(t, m, ms);
+}
+/* Body font = the language's EasyRead font (GetFont 0); fallback the stock window body text, CommonNoticeView
+ * Panel_Notice/Txt_Notice (Lora 16). body_material() = that font's own plain material (text fields); body texts take
+ * mpm_look_material (SoftOutline16). Re-fetched when the language changes. */
 static uintptr_t h_body_mat, h_body_font; static unsigned body_gen = ~0u;
 static Obj body_material(void) {
     Obj m = u_gc_get(h_body_mat);
@@ -550,28 +581,29 @@ static Obj body_material(void) {
         static void *k; if (!k) k = class_by_name("TMPro", "TMP_Text");
         Obj ty = k ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k)) : NULL;
         Obj t = nt && ty ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(nt, ty, NULL) : NULL;
-        /* that text's material is "Lora-Regular SDF OutLine16" (an outline preset): its font asset's own material instead */
         font = u_alive(t) ? F(0x4F0A59C, Obj (*)(Obj, void *))(t, NULL) : NULL; how = "CommonNoticeView Txt_Notice";
     }
     m = font_material(font);
     if (m) { h_body_mat = u_gc_new(m); h_body_font = u_gc_new(font); }
     if (body_gen != dsi_generation()) { body_gen = dsi_generation(); char nm[96] = ""; if (m) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), nm, sizeof nm);
-                                        rig_log("mpmenu: body text (%s): font from %s, its default material \"%s\"", dsi_code(), m ? how : "NOT found", nm); }
+                                        rig_log("mpmenu: body text (%s): font from %s, plain material (fields) \"%s\"", dsi_code(), m ? how : "NOT found", nm); }
     return m;
 }
-static void txt_body(Obj t) {                                             /* the language's body font + material, no outline */
+static void txt_body_as(Obj t, int field) {
     if (!mm_is(t, K_TMP)) return;
     Obj m = body_material(); if (!m) return;
     Obj f = u_gc_get(h_body_font); if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);
-    static void *ms; if (!ms) ms = mth("TMPro", "TMP_Text", "set_fontSharedMaterial", 1);
-    if (ms) MCALL(ms, void, Obj, Obj, const void *)(t, m, ms);
+    Obj g = field || !u_alive(f) ? NULL : mpm_look_material(f, 0, 0);
+    txt_mat(t, g ? g : m);
 }
+static void txt_body(Obj t) { txt_body_as(t, 0); }                         /* the language's body font, the game's body look */
+static void txt_field(Obj t) { txt_body_as(t, 1); }                        /* a text field: the plain material (as the game's) */
 static int lang_cjk(void) { const char *c = dsi_code(); return c && (!strncmp(c, "ja", 2) || !strncmp(c, "zh", 2) || !strncmp(c, "ko", 2)); }   /* see fit_min */
 void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
     if (!mm_is(t, K_TMP)) return;
     if (size < 14 && lang_cjk()) size = 14;                                 /* CJK floor (fit_min) */
     Obj f = cinzel ? title_font() : NULL;                                  /* titles: the language's title font (Cinzel in Latin languages) */
-    if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);   /* TMP takes the font's own material (other atlas) */
+    if (u_alive(f)) { F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL); txt_mat(t, mpm_look_material(f, size, 0)); }   /* head / window title */
     F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, false, NULL);
     F(0x4F0B340, void (*)(Obj, float, void *))(t, size, NULL);
     F(0x4F0B7BC, void (*)(Obj, int, void *))(t, align, NULL);              /* 513 middle-left, 514 centre, 516 middle-right */
@@ -969,11 +1001,11 @@ static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *
     field_area(f, 10, -1);                                                  /* the stock right inset on both sides */
     { static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
       Obj tc = mtc && mm_is(f, K_FIELD) ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
-      if (u_alive(tc)) { txt_body(tc); txt_style(tc, 0, 18, 513, 0); txt_color(tc, C_MAIN); } }
+      if (u_alive(tc)) { txt_field(tc); txt_style(tc, 0, 18, 513, 0); txt_color(tc, C_MAIN); } }
     (mm_is(f, K_FIELD) ? F(0x4EFC2D8, void (*)(Obj, int, void *))(f, 64, NULL) : (void)0);                   /* characterLimit */
     (mm_is(f, K_FIELD) ? F(0x4EFC75C, void (*)(Obj, int, void *))(f, 0, NULL) : (void)0);                    /* contentType Standard */
     Obj ph = (mm_is(f, K_FIELD) ? F(0x4EFB9CC, Obj (*)(Obj, void *))(f, NULL) : NULL);                    /* placeholder ("Save File Name" in the source) */
-    if (u_alive(ph) && strstr(cls_name(ph), "Text")) { tmp_set(ph, placeholder); txt_body(ph); txt_style(ph, 0, 16, 513, 0); txt_color(ph, C_SUB); }
+    if (u_alive(ph) && strstr(cls_name(ph), "Text")) { tmp_set(ph, placeholder); txt_field(ph); txt_style(ph, 0, 16, 513, 0); txt_color(ph, C_SUB); }
     (mm_is(f, K_FIELD) ? F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str_ok(text), NULL) : (void)0);       /* SetTextWithoutNotify */
     u_active(f, false);
     return f;
@@ -1245,7 +1277,7 @@ static void title_build(Obj v) {
         txt_style(l, 0, 22, 514, 1);                                        /* design #8: the stock menu size 22 (Credits is 24) */
         int plain = id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME || id == MPB_INFO || id == MPB_HEADER || id == MPB_DIVIDER || id == MPB_HOST || id == MPB_JOIN_HDR || id == MPB_JOIN_DIV;
         if (plain) images_off(u_tr(b), 0);
-        if (plain || id == MPB_SETTINGS) txt_body(l);                      /* text rows: the stock body material, no outline */
+        if (plain || id == MPB_SETTINGS) txt_body(l);                      /* text rows: the body font, the game's body look */
         /* approved mockup "Host page A": subtitle, Your name, field, Rules box, line, Host from a save (primary), ... Back */
         if (id == MPB_HEADER) { row_height(b, 262, 30); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB); }   /* the page title: as "Host a game" / "Join a game" */
         if (id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME) { row_height(b, 262, 18); txt_style(l, 0, 14, 513, 0); txt_color(l, C_SUB); }
@@ -1294,7 +1326,7 @@ static void title_build(Obj v) {
               Obj lr = u_tr(l);
               cnote_ap0[k] = mm_is(lr, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(lr, NULL) : (V2){ 0, 0 };   /* anchoredPosition */
               cnote_x[k] = (trow_lw[id] > 64 ? trow_lw[id] : 262) - 24;        /* the label's width inside its margins */
-              /* the game's small text: the language's body font (LanguageSetting.GetFont EasyRead, plain material), 12, the
+              /* the game's small text: the language's body font (LanguageSetting.GetFont EasyRead, its body look), 12, the
                  secondary colour; one line, auto size down to 0.75 when too long (txt_style) */
               Obj nt = mk_txt(tpl_txt, u_tr(b), 0, 12, 514, 0, 0, -14, cnote_x[k], CN_H, C_SUB);
               if (nt) u_active(nt, false);
@@ -3564,14 +3596,12 @@ static void ch_prepare(int k) {
     chist[k].font = ch_pick(chist[k].text, 1, &chist[k].missing); chist[k].gen = chf_gen; chist[k].hi = chist[k].hb = 0;
     if (chist[k].missing) rig_log("mpmenu: chat line %d: %d character(s) no game font has, shown as '?'", chist[k].id, chist[k].missing);
 }
-static void ch_font_set(Obj t, int fi) {                                      /* font + its own plain material */
+static void ch_font_set(Obj t, int fi, int field) {                          /* font + the game's look (a fallback face: plain) */
     if (!mm_is(t, K_TMP) || fi < 0 || fi >= nchf) return;
-    if (fi == 0) { txt_body(t); return; }
+    if (fi == 0) { txt_body_as(t, field); return; }
     Obj f = u_gc_get(h_chf[fi]); if (!u_alive(f)) return;
     F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);
-    Obj m = font_material(f);
-    static void *ms; if (!ms) ms = mth("TMPro", "TMP_Text", "set_fontSharedMaterial", 1);
-    if (m && ms) MCALL(ms, void, Obj, Obj, const void *)(t, m, ms);
+    txt_mat(t, field ? font_material(f) : mpm_look_material(f, 0, 0));
 }
 /* a chat text: wraps at its width, keeps its size (no text fit: the line grows instead, A1 / A2), no margins (A3) */
 typedef struct { float x, y, z, w; } ch_v4;
@@ -3589,7 +3619,7 @@ static float ch_measure(Obj t, float w) {                                     /*
 }
 /* a slot (idle line / box line) shows line k: text and font only when they changed */
 static void ch_slot_show(Obj t, int *slot_id, int *slot_font, int k) {
-    if (*slot_font != chist[k].font) { ch_font_set(t, chist[k].font); *slot_font = chist[k].font; *slot_id = 0; }
+    if (*slot_font != chist[k].font) { ch_font_set(t, chist[k].font, 0); *slot_font = chist[k].font; *slot_id = 0; }
     if (*slot_id != chist[k].id) { tmp_set(t, chist[k].text); *slot_id = chist[k].id; }
 }
 static int ch_idle_id[CH_IDLE], ch_idle_font[CH_IDLE], ch_box_id[CH_BOX_LINES], ch_box_font[CH_BOX_LINES], ch_typing_font = -1, ch_field_font = -1;
@@ -3659,7 +3689,7 @@ static void chat_build(Obj parent) {
             F(0x4EFC2D8, void (*)(Obj, int, void *))(f, DSNET_CHAT_MAX, NULL);                 /* characterLimit */
             static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
             Obj tc = mtc ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
-            if (u_alive(tc)) { txt_body(tc); txt_style(tc, 0, 15, 513, 0); txt_color(tc, C_MAIN); }
+            if (u_alive(tc)) { txt_field(tc); txt_style(tc, 0, 15, 513, 0); txt_color(tc, C_MAIN); }
             ch_field_font = -1;
             Obj ph = F(0x4EFB9CC, Obj (*)(Obj, void *))(f, NULL); if (u_alive(ph) && strstr(cls_name(ph), "Text")) tmp_set(ph, "");
             F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL);
@@ -3780,7 +3810,7 @@ static void chat_frame(const mpm_obs *o) {
               char tmp[CH_TEXT]; snprintf(tmp, sizeof tmp, "%s", chat_buf); int fi = ch_pick(tmp, 0, NULL);
               static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
               Obj tc = u_alive(f) && mtc ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
-              if (fi >= 0 && fi != ch_field_font && u_alive(tc)) { ch_font_set(tc, fi); ch_field_font = fi; } } }   /* a key changed the line: "is typing" (dsnet sends at most 1/s) */
+              if (fi >= 0 && fi != ch_field_font && u_alive(tc)) { ch_font_set(tc, fi, 1); ch_field_font = fi; } } }   /* a key changed the line: "is typing" (dsnet sends at most 1/s) */
         char in[256] = ""; if (istr && !u_alive(f)) str_utf8(istr(), in, sizeof in);
         size_t L = strlen(in), T = strlen(test_chat_in); if (T && L + T < sizeof in) { memcpy(in + L, test_chat_in, T + 1); } test_chat_in[0] = 0;
         for (char *q = in; *q; q++) {
@@ -3863,7 +3893,7 @@ static void chat_frame(const mpm_obs *o) {
       if (k) {
           static char shown[200]; static float th = 18;
           if (strcmp(shown, line) || ch_typing_font < 0) { snprintf(shown, sizeof shown, "%s", line); char tmp[CH_TEXT]; snprintf(tmp, sizeof tmp, "%s", line);
-              int fi = ch_pick(tmp, 1, NULL); if (fi >= 0 && fi != ch_typing_font) { ch_font_set(t, fi); ch_typing_font = fi; }
+              int fi = ch_pick(tmp, 1, NULL); if (fi >= 0 && fi != ch_typing_font) { ch_font_set(t, fi, 0); ch_typing_font = fi; }
               tmp_set(t, tmp); place(t, bx, 0, 410, 22); th = ch_measure(t, 410); }
           float ph = th + 6 > 22 ? th + 6 : 22;
           float y = chat_typing ? by + 135 + 4 + ph / 2 : by - 135 + ph / 2;
