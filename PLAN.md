@@ -503,3 +503,20 @@ multiplayer tag next to the name of the save and then just put the players that 
 - Green on this branch: src/build.sh (dsrig + custom-modes from the checkout), win/build_win.sh baselib + module, MP units
   (net, mp_test, mpmenu, trn, ui, teams, guard) + pvp_test 597 at the new path, ord_test 65607; CM suites with MP_ROOT = this
   worktree: My Units 148, fights run_eq 64/64, gallery 28, sg_cache 24, builder 300/300.
+
+## dsguard: owner-settings guard compares with a per-run snapshot (2026-10-24)
+- Bug: check_prefs() compared the owner's prefs plist + UserSetting.json with the fixed backup_prefs_2026-10-12 and, his game
+  closed, put that backup back with no copy: every setting he changed in his game since 10-11 was reverted at each test start
+  and end (16:54 today). Same code in ds_modloader loader/test/lrig.py.
+- Now (rig.py + lrig.py): the first check_prefs() or start() of a test process takes a snapshot (only while his game is closed)
+  in rig/prefs_snap/<time>-<pid>/; later calls compare with it. Different + his game stayed closed = the test did it: the current
+  file is kept in rig/prefs_overwritten/ (+ overwritten.log), then the snapshot is put back (extra keys removed: `defaults import`
+  merges). His game running or run since the snapshot (pgrep steamapps/common/Dungeon Settlers/ | DSModLauncher/games/, or his
+  ErrorLog.txt / eventcache / SaveHeaderCache.json / UserCampaignLog.json newer) = printed, never put back.
+- Also guarded: com.CanOpener.Dungeon-Settlers.Modded. gate13/dmg_start runs a copy with that bundle id; the owner's real
+  .Modded plist was written at 17:04:10 during its run, and test copies' own mp<X> domains land in the real ~/Library/Preferences
+  too: CFFIXED_USER_HOME does not move preferences. Unity's per-start counters (session count / id) are ignored.
+  Not guarded: DSModLauncher/profiles/*/data/UserSetting.json (no rig/lrig test copy writes there).
+- `rig.py check-prefs` in a new process takes a snapshot and prints identical (gates keep parsing it); the protection is in
+  each test process's start/end pair.
+- Test: rig/prefs_guard_test.py [rig.py|lrig.py] on fake owner files (DSRIG_PREFS_TEST_ROOT, DSRIG_PREFS_FAKE_GAME): 12/12 on both.
