@@ -225,6 +225,15 @@ const char *mpm_list_toggle_label(int mode);                              /* "Sh
  * macOS Local Network privacy blocks exactly these: the join page names the setting (join_poll, mpmenu.c). */
 int  mpm_lan_addr(const char *host);
 
+/* Player name (UX review M1, 2026-10-25): the name every other player sees. Typed on the Host / Join page > remembered
+ * (mp_menu.json) > Steam persona > "Player" and four digits. Never the computer account's full name, login name or home
+ * folder: a player who did not look at the field sent their real name to strangers. */
+const char *mpm_default_name(void);                       /* "Player 4821": one number per process */
+void mpm_fill_name(char *name, size_t cap);               /* "" or mp.json's "player" -> mpm_default_name() (the HELLO name) */
+/* the name at start: remembered (name_v = mp_menu.json "name_v"; files before 2 may hold the account's full name, the
+   old pre-fill: dropped) > steam > mpm_default_name() */
+void mpm_start_name(char *out, size_t cap, const char *remembered, int name_v, const char *steam);
+
 /* Multiplayer world tag (owner 2026-10-15): <app data>/mp_tags.txt, one line per tagged world, "<campaign guid>\t<name>\t<name>..."
  * = the players who were ever in that world together (a sidecar: the game's save is not touched). Line present = tag on. */
 #define MPM_TAG_NAMES 16

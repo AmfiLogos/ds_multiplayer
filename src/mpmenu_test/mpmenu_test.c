@@ -6,7 +6,15 @@
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <pwd.h>
 static int fails;
+/* a fake computer account for the player-name test: this getpwuid replaces libc's for mpmenu_model.c */
+struct passwd *getpwuid(uid_t uid) {
+    static char gecos[] = "Test RealName,,,", login[] = "trealname", home[] = "/home/trealname";
+    static struct passwd pw; (void)uid;
+    pw.pw_gecos = gecos; pw.pw_name = login; pw.pw_dir = home;
+    return &pw;
+}
 #define CHECK(c) do { if (!(c)) { printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); fails++; } } while (0)
 #define B(x) (1ull << (x))
 
@@ -419,6 +427,22 @@ int main(void) {
         CHECK(q.state == MPM_FAILED && !strcmp(q.notice, "<size=150%>Impossible de rejoindre la partie de Alex</size>\nLa partie est pleine."));
         mpm_label(&q, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer"));   /* the dropped entry: English */
         CHECK(dsi_set_lang(0) == 1); mpm_label(&q, MPB_BACK, l, sizeof l); CHECK(!strcmp(l, "Back"));
+    }
+    {   /* player name (UX review M1): without Steam the computer account's name went to strangers as the pre-fill and the
+           HELLO name. A fake account (getpwuid below, USER / LOGNAME) must never show up in either. */
+        setenv("USER", "trealname", 1); setenv("LOGNAME", "trealname", 1);
+#define NOT_REAL(s) ((s)[0] && !strstr(s, "RealName") && !strstr(s, "Test") && !strstr(s, "trealname"))
+        char nm[64]; const char *d = mpm_default_name(); CHECK(NOT_REAL(d));
+        mpm_start_name(nm, sizeof nm, "", 0, ""); CHECK(NOT_REAL(nm));                      /* no Steam, nothing remembered */
+        nm[0] = 0; mpm_fill_name(nm, sizeof nm); CHECK(NOT_REAL(nm));                       /* HELLO with an empty name */
+        strcpy(nm, "player"); mpm_fill_name(nm, sizeof nm); CHECK(NOT_REAL(nm));            /* mp.json's default */
+        mpm_start_name(nm, sizeof nm, "Test RealName", 0, ""); CHECK(NOT_REAL(nm));         /* the old pre-fill, remembered */
+        mpm_start_name(nm, sizeof nm, "Test RealName", 0, "Amfi"); CHECK(!strcmp(nm, "Amfi"));
+        /* names the player chose stay: an older file's own name, the Steam persona, a name typed after the fix */
+        mpm_start_name(nm, sizeof nm, "Ana", 0, "Amfi"); CHECK(!strcmp(nm, "Ana"));
+        mpm_start_name(nm, sizeof nm, "", 0, "Amfi"); CHECK(!strcmp(nm, "Amfi"));
+        mpm_start_name(nm, sizeof nm, "Test RealName", 2, ""); CHECK(!strcmp(nm, "Test RealName"));
+#undef NOT_REAL
     }
     /* local-network address (macOS Local Network privacy message): a wrong answer names the wrong cause to the player */
     CHECK(mpm_lan_addr("172.16.175.128") && mpm_lan_addr("172.31.0.1") && mpm_lan_addr("10.0.0.2") && mpm_lan_addr("192.168.1.20"));

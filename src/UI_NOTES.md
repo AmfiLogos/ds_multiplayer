@@ -4,6 +4,20 @@ In-game interface for the lockstep mod, build 25846389, arm64. Built from the ga
 (Object.Instantiate of real buttons and texts, the game's toast `HelpNoticeView.Show`) and 22 hooks.
 Nothing was run in the game. Everything below "Verify in game" is unproven.
 
+## RULE for every window (owner 2026-10-25: Escape; read before adding a window, box or panel)
+- Every window, panel or box of this mod follows the loader kit's Escape rule: one press acts on the TOP window only, as
+  its own button does, with the same cleanup: a sub-page with a Back button goes Back one level first, a confirm box =
+  Cancel, a focused text field = only leave the field (the chat closes itself), else the window's own Close / X / Cancel.
+  The game never gets that press (no Esc menu, the stock window under ours stays).
+- How: a window built with the kit or our own clones goes on the kit's stack while it shows (src/mp_esc.c `mpesc_sync`
+  every frame, close = its own button; `MPESC_BOX` for our boxes on the stock notice box); our own Escape checks skip a
+  press the kit takes (`mpesc_took`). A box of the in-game chain (lend menu, panel settings, viewer, mini overview) stays in
+  ui_game.c escape_ours. A HUD panel with no Close: `DSL_ESC_HUD`.
+- A new window without it is a bug: add a case to rig/esc_kit_test.py (one copy) or a pair test. In test copies the kit
+  logs `ESC-MISSING` for a kit root panel with no registration and esc_kit_test's sweep fails on it (windows built from our
+  own clones are not seen by that guard: their test case is the check).
+- Full rule and how-to: ds_modloader loader/NOTES.md "Escape".
+
 ## Files
 - `ui_model.h/.c`: the rules, with no game code: claims, order permission, vote view, status line, popup routing, story vote tally, address parsing.
 - `ui_test/`: `make -C src/ui_test test` (ASan + UBSan, under 1 s): 330 checks pass. Covers vote tally, claim rules (checked against a copy of the dsnet OWNERSHIP rule for every state of a 3-player game), popup routing, story votes (ties, a player leaving, determinism over 200 random command streams), wire format and addresses.
