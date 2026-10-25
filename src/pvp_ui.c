@@ -107,7 +107,7 @@ static int pre_naming; static char pre_msg[200];                      /* the nam
 static float pv_k = 1;                                                   /* the window's fit scale (pv_fit) */
 static uintptr_t h_pv_vsub, h_pv_root, h_pv_view, h_pv_area, h_pv_title, h_pv_hint, h_pv_teamh[3], h_pv_units[3], h_pv_rlab[PVR_N], h_pv_rval[PVR_N], h_pv_rrow[PVR_N], h_pv_note;
 static uintptr_t h_pr_root, h_pr_title, h_pr_score, h_pr_rounds;          /* result window */
-static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab;                        /* boss bar copy */
+static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab, h_hud_line;            /* boss bar copy (+ its bottom line) */
 static uintptr_t h_lab_yes, h_lab_no, h_lab_bring, h_hud_flab, h_prop_root, h_prop_txt, h_rs_root, h_rs_title, h_rs_score, h_rs_sub;    /* E4 fight button + proposal box, E9 round screen */
 static double rs_t0; static uint32_t rs_key; static char hud_last[400];
 #define HUD_INSET 84.0f                                                  /* the bars start this far right of the copy's own bar start (its end-cap stays there) */
@@ -690,7 +690,8 @@ static void hud_build(void) {
     { Obj rt = tr; if (mm_is(rt, K_RT)) { V2 p = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); p.y -= 215; p.x += 140; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, p, NULL); } }
     /* the panel's sprite fades out at the bottom: a copper line closes it (the copy's root is a 100 x 100 holder, so it is
        placed from the bars: the dark panel reaches ~27 past each bar end and ~38 under the lower bar, measured on shots) */
-    if (bl_par && bl_w > 100 && u_alive(head)) mk_img(head, bl_par, -1, C_COPPER, bl_x + bl_w / 2, bl_y - 38, bl_w + 54, 2);
+    { Obj ln = bl_par && bl_w > 100 && u_alive(head) ? mk_img(head, bl_par, -1, C_COPPER, bl_x + bl_w / 2, bl_y - 38, bl_w + 54, 2) : NULL;
+      u_gc_free(h_hud_line); h_hud_line = ln ? u_gc_new(ln) : 0; }
     Obj tpl_t = u_alive(name) ? name : NULL, labs[2] = { NULL, NULL }; float lab_pw = 0;
     for (int k = 0; k < 2 && tpl_t; k++) {                               /* "Blue" left of the top bar, "Red" left of the bottom one */
         Obj bar = k ? body : head; if (!u_alive(bar)) continue;
@@ -950,9 +951,71 @@ static void pvp_ui_frame(const mpm_obs *o) {
     Obj lw = u_gc_get(h_lw_root);                                       /* the lobby steps aside while Bring Units is open over it */
     if (br_open && br_lobby && u_alive(lw)) u_active(lw, false);
 }
+/* ---- layout probe (tests, UX review 2026-10-25): screen rects in pixels (x0, y0, x1, y1; y up) of our windows and HUD
+   parts, the game's UI scale, the Teams button, and how much of a given rect lies on the Players panel. */
+int ui_teams_button_rect(float *x, float *y, float *w, float *h) __attribute__((weak_import));   /* ui_teams.c */
+int ui_panel_hit(float x, float y) __attribute__((weak_import));                                  /* ui_game.c */
+#include "cm_il.h"
+const DSLUi *mu_kit(void);
+float mu_ui_scale(void);
+static float pv_ui_scale(void) { return mu_kit() ? mu_ui_scale() : 1.0f; }   /* the game's UI scale (1 without the loader's kit) */
+static void probe_rect(Buf *b, const char *k, Obj o) {
+    float r[4]; bput(b, ",\"%s\":", k);
+    if (u_alive(o) && u_on(o) && rect_of(o, r)) bput(b, "[%.1f,%.1f,%.1f,%.1f]", r[0], r[1], r[2], r[3]); else bput(b, "null");
+}
+static void rect_union(float u[4], Obj o, int *any) {
+    float r[4]; if (!u_alive(o) || !u_on(o) || !rect_of(o, r)) return;
+    if (!*any) { memcpy(u, r, sizeof r); *any = 1; return; }
+    if (r[0] < u[0]) u[0] = r[0]; if (r[1] < u[1]) u[1] = r[1]; if (r[2] > u[2]) u[2] = r[2]; if (r[3] > u[3]) u[3] = r[3];
+}
+static char *pv_probe(const char *line) {
+    Buf b = { 0 };
+    bput(&b, "{\"ok\":true,\"screen\":[%d,%d],\"ui_scale\":%.3f,\"pv_k\":%.3f", F(0x5092C94, int (*)(void *))(NULL), F(0x5092CD4, int (*)(void *))(NULL), pv_ui_scale(), pv_k);
+    probe_rect(&b, "window", pvt(h_pv_root)); probe_rect(&b, "close", pvb(PVB_CLOSE)); probe_rect(&b, "start", pvb(PVB_START));
+    probe_rect(&b, "win_right", pvb(PVB_ARROW0 + 2 * PVR_WIN + 1));
+    probe_rect(&b, "bring", pvt(h_br_root)); probe_rect(&b, "bring_back", pvb(PVB_BR_BACK));
+    probe_rect(&b, "result", pvt(h_pr_root)); probe_rect(&b, "result_ok", pvb(PVB_RESULT_OK));
+    probe_rect(&b, "ready", pvb(PVB_READY));
+    { float u[4] = { 0 }; int any = 0; Obj cl = u_gc_get(h_hud);           /* the score panel: its title line, the bars, its bottom line */
+      if (u_alive(cl) && u_go_active_self(cl)) { rect_union(u, u_gc_get(h_hud_name), &any); rect_union(u, u_gc_get(h_hud_bar[0]), &any); rect_union(u, u_gc_get(h_hud_bar[1]), &any); rect_union(u, u_gc_get(h_hud_line), &any); }
+      if (any) bput(&b, ",\"score_panel\":[%.1f,%.1f,%.1f,%.1f]", u[0], u[1], u[2], u[3]); else bput(&b, ",\"score_panel\":null"); }
+    { float x, y, w, h; if (ui_teams_button_rect && ui_teams_button_rect(&x, &y, &w, &h)) bput(&b, ",\"teams_btn\":[%.1f,%.1f,%.1f,%.1f]", x, y, x + w, y + h); else bput(&b, ",\"teams_btn\":null"); }
+    { static uintptr_t h_hn; static void *k_hn; Obj hv = find_view_x(&h_hn, &k_hn, "Refactor", "HelpNoticeView", true);   /* the game's centred notice */
+      static void *kt; if (!kt) kt = class_by_name("TMPro", "TMP_Text");
+      Obj ty = kt ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(kt)) : NULL;
+      Obj arr = hv && ty && u_on(hv) ? F(0x50EDFD0, Obj (*)(Obj, Obj, void *))(hv, ty, NULL) : NULL;   /* GetComponentsInChildren(Type): active ones */
+      int n = arr ? (int)AT(arr, 0x18, uintptr_t) : 0; bput(&b, ",\"stock_notice\":[");
+      for (int i = 0, k = 0; i < n && k < 4; i++) {
+          Obj t = AT((char *)arr + 0x20, i * 8, Obj); float r[4]; if (!u_alive(t) || !mm_is(t, K_TMP) || !rect_of(t, r)) continue;
+          void *vk = *(void **)t; Obj so = (*(Obj (**)(Obj, void *))((char *)vk + 0x548))(t, *(void **)((char *)vk + 0x550));   /* TMP_Text.text (slot 65) */
+          char tx[400] = ""; str_utf8(so, tx, sizeof tx);
+          bput(&b, "%s{\"text\":", k++ ? "," : ""); bstr(&b, tx); bput(&b, ",\"rect\":[%.1f,%.1f,%.1f,%.1f]}", r[0], r[1], r[2], r[3]);
+      }
+      bput(&b, "]"); }
+    double q[4] = { -1, -1, -1, -1 }; jnum(line, "x0", &q[0]); jnum(line, "y0", &q[1]); jnum(line, "x1", &q[2]); jnum(line, "y1", &q[3]);
+    if (q[2] > q[0] && q[3] > q[1]) {                                   /* points of that rect on the Players panel (16 x 6 grid) */
+        int hits = 0, n = 0;
+        for (int i = 0; i < 16; i++) for (int j = 0; j < 6; j++, n++) if (ui_panel_hit && ui_panel_hit((float)(q[0] + (q[2] - q[0]) * (i + 0.5) / 16), (float)(q[1] + (q[3] - q[1]) * (j + 0.5) / 6))) hits++;
+        bput(&b, ",\"panel_hits\":%d,\"panel_points\":%d", hits, n);
+    }
+    bput(&b, "}");
+    return b.p;
+}
+static int pv_set_ui_scale(float v) {                                   /* tests: Settings > UI scale, as the game sets it */
+    if (!mu_kit()) return -1;
+    static cm_m inst, set;
+    if (!set.fn) { inst = cm_il_method("Refactor", "UIScaleManager", "get_Instance", 0, NULL); set = cm_il_method("Refactor", "UIScaleManager", "SetScale", 2, NULL); }
+    Obj m = inst.fn ? CM_CALL(inst, Obj, const void *)(inst.mi) : NULL;
+    if (!cm_alive(m) || !set.fn) return -2;
+    CM_CALL(set, void, Obj, float, bool, const void *)(m, v, true, set.mi);
+    rig_log("pvp ui: test: UI scale set to %.2f (now %.3f)", v, pv_ui_scale());
+    return 0;
+}
 static char *pvp_ui_exec(const char *cmd, const char *line) {            /* tests: mpm_pvp {"action":"esc|close|start|ready|ok|player0..|arrow r d"} */
     if (strcmp(cmd, "mpm_pvp")) return NULL;
     char a[32] = ""; jstr(line, "action", a, sizeof a); double v = 0, d = 1;
+    if (!strcmp(a, "probe")) return pv_probe(line);
+    if (!strcmp(a, "uiscale")) { jnum(line, "v", &v); int rc = v > 0 ? pv_set_ui_scale((float)v) : -9; char o[64]; snprintf(o, sizeof o, "{\"ok\":%s,\"rc\":%d}", rc ? "false" : "true", rc); return strdup(o); }
     if (!strcmp(a, "esc")) pv_click = PVB_ESC;
     else if (!strcmp(a, "close")) pv_click = PVB_CLOSE;
     else if (!strcmp(a, "start")) pv_click = PVB_START;
@@ -998,6 +1061,9 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     bstr(&b, tip_now);
     bput(&b, ",\"columns\":[");                          /* unit names shown in the team columns */
     for (int i = 0; i < pv_ncol; i++) { bput(&b, "%s", i ? "," : ""); bstr(&b, pv_col_names[i]); }
+    bput(&b, "],\"shown_teams\":[");                    /* the team each present player is shown in (id, 1 Blue / 2 Red) */
+    { int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8);
+      for (int i = 0; i < n; i++) bput(&b, "%s[%d,%d]", i ? "," : "", ids[i], pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE); }
     bput(&b, "],");
     pre_status(&b);
     bput(&b, "}");
