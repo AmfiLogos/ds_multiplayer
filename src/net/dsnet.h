@@ -155,6 +155,14 @@ void dsnet_set_identity(const char *build_id, uint32_t mod_version);
 enum { DSNET_MATCH_MODS = 0, DSNET_MATCH_VANILLA = 1 };
 #define DSNET_MODLINES_MAX 4096
 void dsnet_set_modset(int rule, const char *modset, const char *lines);
+/* Lines of gameplay mods that run in this game but are not in its set now: custom difficulty mods (Hell: always loaded,
+ * counted only for a world on its level; loader export dsl_mp_optional_lines), same format, '\n'-joined, max
+ * DSNET_MODOPT_MAX - 1 bytes. Sent after the release in every HELLO ([NUL release] NUL lines: older servers stop the
+ * release at the NUL). The server lets a joiner whose set differs from the host's join when the joiner's lines plus some of
+ * these are exactly the host's lines (owner 2026-10-25: a guest with Hell joins a host on a Hell world with no refusal and
+ * no restart; the world it loads then puts Hell in its set, as on the host). "" = none. */
+#define DSNET_MODOPT_MAX 1024
+void dsnet_set_modset_optional(const char *lines);
 const char *dsnet_my_mod_lines(void);
 /* after a DSNET_REJ_MODSET refusal (process-wide, the newest one): host rule, host lines ('\n'-joined). 0 = filled, -1 none */
 int dsnet_reject_host_mods(int *host_rule, char *lines, size_t n);

@@ -989,7 +989,15 @@ __attribute__((visibility("default"))) int mp_game_rejoin_line(uint64_t steam_hi
     return dsmc_rejoin_format(&r, out, n) == 0;
 }
 
+/* the loader's lines of custom difficulty mods that run but are not counted now (dsl_mp_optional_lines, ds_modloader
+   2026-10-25): the HELLO offers them to a host on that difficulty (mp_core.c). An older loader: none (refused as before). */
+static int session_optional(char *out, size_t n) {
+    static int (*f)(char *, size_t); static int looked;
+    if (!looked) { looked = 1; f = (int (*)(char *, size_t))mpmenu_loader_sym("dsl_mp_optional_lines"); }
+    return f ? f(out, n) : 0;
+}
 void mp_game_install(void) {
+    mp_session_optional = session_optional;
     ui_color_resolver = color_of_slot;
     mp_set_log(mp_rig_log);
     dsnet_set_log(dsnet_rig_log);

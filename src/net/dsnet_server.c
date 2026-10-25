@@ -31,6 +31,8 @@ typedef struct sconn {
     char name[32];
     int rule; char modset[65], mods[200];         /* from the HELLO (proto 2); mods = "id@version, ..." for the words */
     char lines[DSNET_MODLINES_MAX];               /* the launcher's modset_lines, '\n'-joined */
+    char opt[DSNET_MODOPT_MAX];                   /* lines of mods it runs but does not count now (custom difficulty), HELLO tail */
+    int opt_used;                                 /* it joined with some of them counted (modset_refused) */
     char release[16];                             /* loader release after the name's NUL ("" = older peer) */
     uint32_t peer_ip; uint16_t peer_port;         /* TCP peer (host order; 0 = local socket pair or unknown): dsnet_server_peer */
     dsnet_blob_rx rx;
@@ -274,6 +276,40 @@ static int settings_diff(const char *hl, const char *gl, char *out, size_t n) {
     }
     return c;
 }
+/* the line l (len bytes) is one of the '\n'-joined lines of set */
+static int line_in(const char *set, const char *l, size_t len) {
+    for (const char *q = set; *q; ) {
+        size_t ql = strcspn(q, "\n");
+        if (ql == len && !memcmp(q, l, len)) return 1;
+        q += ql; if (*q) q++;
+    }
+    return 0;
+}
+/* A joiner whose set differs from the host's joins when its own lines plus some of its "run but not counted" lines (HELLO
+   tail: custom difficulty mods, Hell at the title) are exactly the host's lines: the host's world is on that difficulty
+   (the host's loader counts it only then) and the joiner runs the same files (the lines carry version + sha256s), so the
+   simulation is the same (owner 2026-10-25: no refusal, no restart). Both sets are compared line by line (the HELLO hash
+   is of the same sorted lines); a set that may be cut (full buffer) never matches. 1 = may join (used = the lines taken). */
+static int opt_covers(const char *hl, const char *gl, const char *ol, char *used, size_t un) {
+    size_t k = 0; int n = 0; if (un) used[0] = 0;
+    if (!ol[0] || strlen(hl) >= DSNET_MODLINES_MAX - 1 || strlen(gl) >= DSNET_MODLINES_MAX - 1) return 0;
+    for (const char *q = gl; *q; ) {                      /* nothing the host does not run */
+        size_t ql = strcspn(q, "\n");
+        if (ql && !line_in(hl, q, ql)) return 0;
+        q += ql; if (*q) q++;
+    }
+    for (const char *q = hl; *q; ) {                      /* every host line: the joiner counts it or runs it */
+        size_t ql = strcspn(q, "\n");
+        if (ql && !line_in(gl, q, ql)) {
+            if (!line_in(ol, q, ql)) return 0;
+            const char *c = memchr(q, ':', ql); size_t idl = c ? (size_t)(c - q) : ql;      /* "id@version" for the log */
+            int w = snprintf(used + k, k < un ? un - k : 0, "%s%.*s", n ? ", " : "", (int)idl, q); if (w > 0) k += (size_t)w;
+            n++;
+        }
+        q += ql; if (*q) q++;
+    }
+    return n > 0;
+}
 static const char *eff_modset(const sconn *c) { return c->modset[0] ? c->modset : DSNET_MODSET_NONE; }
 static const char *mods_or_none(const sconn *c) { return strcmp(eff_modset(c), DSNET_MODSET_NONE) ? (c->mods[0] ? c->mods : "unnamed mods") : "none"; }
 /* The host's HELLO is the reference (launcher rule, PLAN.md 2026-10-14 ~20:00: Vanilla check / Allow mods).
@@ -288,6 +324,12 @@ static int modset_refused(dsnet_server *s, const sconn *c, char *why, size_t n) 
         return 0;
     }
     if (strcmp(eff_modset(c), eff_modset(h))) {
+        char used[200];
+        if (opt_covers(h->lines, c->lines, c->opt, used, sizeof used)) {
+            ((sconn *)c)->opt_used = 1;
+            dsnet_logf("server: a joiner's set counts its loaded custom difficulty mods for the host's world: %s", used);
+            return 0;
+        }
         char rel[96]; size_t k = 0;
         if (dsnet_release_text_en(h->release, c->release, rel, sizeof rel)) k = (size_t)snprintf(why, n, "%s ", rel);   /* wire words: English */
         if (k >= n) return 1;
@@ -319,12 +361,15 @@ static void on_hello(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
     else if ((int)get32(p + 8) != s->round_mode) rej = DSNET_REJ_ROUNDING;
     else for (int i = 0; i < MAX_CONNS; i++)
         if (s->conn[i] && s->conn[i]->id >= 0 && !memcmp(s->conn[i]->uid, p + 12, 16)) rej = DSNET_REJ_DUP_ID;
-    c->release[0] = 0;
-    if (!rej) {                                    /* name[] [NUL release] */
+    c->release[0] = 0; c->opt[0] = 0; c->opt_used = 0;
+    if (!rej) {                                    /* name[] [NUL release [NUL optional lines]] */
         const uint8_t *z = memchr(p + name_at + 1, 0, n - name_at - 1);
         if (z) {
             uint32_t ro = (uint32_t)(z - p) + 1, rl = n - ro; if (rl > DSNET_RELEASE_MAX) rl = DSNET_RELEASE_MAX;
             snprintf(c->release, sizeof c->release, "%.*s", (int)rl, (const char *)p + ro);
+            const uint8_t *z2 = ro < n ? memchr(p + ro, 0, n - ro) : NULL;
+            uint32_t oo = z2 ? (uint32_t)(z2 - p) + 1 : n, ol = n - oo;
+            if (z2 && ol < sizeof c->opt) { memcpy(c->opt, p + oo, ol); c->opt[ol] = 0; }   /* too long (cut): none */
         }
     }
     int want_host = c->local && p[3] && !host_conn(s);
@@ -371,7 +416,8 @@ static void on_hello(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         if (late) spectator_send_state(s, c);
         return;
     }
-    dsnet_logf("server: player %d (%s) joined%s%s", id, c->name, c->is_host ? " as host" : "", late ? " late" : "");
+    dsnet_logf("server: player %d (%s) joined%s%s%s", id, c->name, c->is_host ? " as host" : "", late ? " late" : "",
+               c->opt_used ? " (its loaded custom difficulty mods count for this world)" : "");
     uint8_t jp[16 + 32]; size_t nl = strlen(c->name);
     memcpy(jp, c->uid, 16); memcpy(jp + 16, c->name, nl);
     issue(s, DSNET_PLAYER_JOIN, id, 0, jp, 16 + nl);

@@ -117,6 +117,7 @@ extern uint8_t  dsnet_uid[16];
 extern int      dsnet_uid_set;
 extern int      dsnet_match_rule;
 extern char     dsnet_modset[65], dsnet_mod_lines[DSNET_MODLINES_MAX], dsnet_reject_detail[400];
+extern char     dsnet_mod_opt[DSNET_MODOPT_MAX];
 /* bytes of s that fit a 32-byte name field (31 + NUL) without cutting a UTF-8 character (the wire size stays 32) */
 static inline size_t utf8_len31(const char *s) {
     size_t n = strnlen(s, 31);
