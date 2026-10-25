@@ -6,7 +6,8 @@ multiplayer build (build/dsrig.dylib) and lang tables. Shoots the screens the ux
 list of a first-time host), M8 (lobby, host Esc menu, its box), M11 (Title Case labels), M12 (refusal box).
   shoot_text.py <en|de|ru> <W>x<H> <ui scale> [parts=title,game]
 Take the lane's copy slot first (ext/dsuxmp/run_text.sh does). Shots (LOCAL ONLY, never commit):
-$DSUXMP_SHOTS/<lang>_<W>x<H>_ui<scale>/<state>.png, default ~/ToDelete_2026-10-25/dsuxmp/shots/text."""
+$DSUXMP_SHOTS/<lang>_<W>x<H>_ui<scale>/<state>.png, default <worktree>/build/shots_text (git-ignored; the rig writes
+only under ~/ds_*); run_text.sh then moves them to ~/ToDelete_2026-10-25/dsuxmp/shots/text."""
 import json, os, sys, time, glob, shutil, subprocess, threading, signal, traceback
 HERE = os.path.dirname(os.path.abspath(__file__))
 MPW = os.path.dirname(os.path.dirname(HERE))                                      # this worktree
@@ -16,7 +17,7 @@ LANG, SIZE, SCALE = sys.argv[1], sys.argv[2], float(sys.argv[3])
 PARTS = (sys.argv[4] if len(sys.argv) > 4 else 'title,game').split(',')
 W, H = (int(v) for v in SIZE.split('x'))
 TAG = f'{LANG}_{W}x{H}_ui{SCALE:.1f}'
-SHOTS = os.environ.get('DSUXMP_SHOTS', os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp/shots/text'))
+SHOTS = os.environ.get('DSUXMP_SHOTS', os.path.join(MPW, 'build', 'shots_text'))   # the rig writes only under ~/ds_* (run_text.sh moves them)
 OUT = os.path.join(SHOTS, TAG); os.makedirs(OUT, exist_ok=True)
 RUN = os.path.join(SHOTS, 'runs', TAG + time.strftime('_%H%M%S')); os.makedirs(RUN, exist_ok=True)
 os.environ['DSL_TEST_COPY'] = 'UXT'; os.environ['LRIG_SIZE'] = f'{W}x{H}'

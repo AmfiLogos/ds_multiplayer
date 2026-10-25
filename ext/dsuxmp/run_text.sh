@@ -11,3 +11,6 @@ echo "uxmp-text $(date +%H:%M:%S)" > $HOME/ToDelete_2026-10-25/dsuxmp/copies_hol
 L=$HOME/ToDelete_2026-10-25/dsuxmp/shots/text/runs; mkdir -p $L
 python3 shoot_text.py "$@" > $L/log_$1_$2_$3_$(date +%H%M%S).txt 2>&1
 echo "rc $?"
+rmdir $LOCK 2>/dev/null                                   # the slot is free before the shots are moved
+B=${0:A:h:h:h}/build/shots_text; D=$HOME/ToDelete_2026-10-25/dsuxmp/shots/text
+mkdir -p $D; for d in $B/*(N/); do mkdir -p $D/${d:t}; mv $d/*(N.) $D/${d:t}/; done
