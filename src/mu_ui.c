@@ -4,6 +4,7 @@
 #include "cm_il.h"
 #include "mu_look.h"
 #include "ds_i18n.h"
+#include "mp_worldsave.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -22,9 +23,25 @@ void mu_log(const char *fmt, ...) {
     H->log(ME, "%s", b);
 }
 void mu_ui_init(const DSLHost *host, DSLPlugin *self) { H = host; ME = self; U = NULL; }
+/* the mod's own worlds (Foreign Expedition hub, PvP world: mp_worldsave.h) never show in the game's Load list, in every
+   list and whatever its filters: multiplayer before 0.1.26 left MPHub_ / MPPvP_ files and the game's autosaves of those
+   worlds in the players' Saves folders, listed as real worlds (owner 2026-10-25). Hidden only: the files stay. The world
+   row's guid goes through the same name test as "_<32 hex>" (a save of that world with any name). No label: no toggle. */
+static int ws_show(void *ud, const char *guid, const char *save, int toggle_on) {
+    (void)ud; (void)toggle_on;
+    char g[40] = "_"; size_t k = 1;
+    for (const char *p = guid; p && *p && k + 1 < sizeof g; p++) if (*p != '-') g[k++] = *p;
+    g[k] = 0;
+    return !(save && mp_world_save_name(save)) && !mp_world_save_name(g);
+}
 /* the loader host of the multiplayer module: modules/multiplayer/mp_module.c (Mac, ds_modloader) finds this by dlsym,
    win/port/rig_main_win.c (Windows module) calls it. Without it (the rig's own dylib) there is no kit: text lists. */
-void mp_cards_host(const DSLHost *host, DSLPlugin *self) { mu_ui_init(host, self); }
+void mp_cards_host(const DSLHost *host, DSLPlugin *self) {
+    mu_ui_init(host, self);
+    static const DSLLoadFilter ws = { ws_show, NULL, NULL, NULL };
+    int r = dsl_loadlist_filter(host, self, &ws);
+    host->log(self, "load list: the mod's own worlds (hub, PvP) hidden: %s", r ? "NO (older loader)" : "yes");
+}
 
 /* ------------------------------------------------------------------ test record */
 #define DMAX 2048
