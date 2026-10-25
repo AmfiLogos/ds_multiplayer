@@ -23,6 +23,7 @@
 #include "fe_ui_api.h"                                  /* fe_mode_get: the hub lobby's hint line */
 #include "mp_worldsave.h"                                /* mp_hub_guid: the hub is never saved, tagged or listed */
 #include "mp_solo.h"                                     /* the single-player copy of a world new to multiplayer */
+#include "mp_esc.h"                                       /* Escape for our windows through the loader kit (kit 0.1.28) */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -957,6 +958,7 @@ static void observe(mpm_obs *o) {
         if (!looked) { looked = 1; keydown = (bool (*)(int))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::GetKeyDownInt(UnityEngine.KeyCode)");
                        rig_log("mpmenu: Escape key check %s", keydown ? "ready (Input.GetKeyDownInt)" : "NOT available"); }
         o->escape = ((keydown && keydown(27)) || test_escape) && !chat_typing && !chat_close_frames ? 1 : 0;   /* KeyCode.Escape (the open chat takes it: chatfix A6) */
+        if (o->escape && mpesc_took()) { o->escape = 0; rig_log("mpmenu: Escape taken by the kit for one of our windows (no Back, no other close)"); }   /* one press, one close */
         test_escape = 0;
     }
     if (host_failed) o->failed = 1;
@@ -2787,6 +2789,26 @@ static void leave_box_close(void) {                                         /* o
     int ours = lbox_ours(v);
     lbox_up = 0;
     if (ours) F(0xF65638, void (*)(Obj, void *))(v, NULL);                    /* OnClick_Cancle (through the ui lane's hook: not theirs) */
+}
+/* mp_esc.c: one of our boxes is up (they lie over every window of ours; the windows step off the kit's Escape stack) */
+int mpmenu_box_over(void) { return lbox_up != BX_NONE && lbox_ours(lbox_view()); }
+/* Escape on our boxes (owner 2026-10-25). The game's Escape event reaches mpmenu_escape_ours (InputEventHandler.OnEvent hook,
+ * ui_game.c), which presses the box's Cancel; but the title page's own Escape check (observe) also went Back on that same
+ * press (a box over the Multiplayer page: the box and the page closed). With the loader kit's Escape (kit 0.1.28) the box is
+ * on the kit's stack while it shows, title and world: it is on top (it shows last; our windows step off while it is up,
+ * mp_esc.c), Escape = its Cancel as before, the game sees no press and our own checks skip it (mpesc_took). It is the stock
+ * CommonNoticeView every box shares: dropped the frame our text leaves it, and the close checks it is still ours (else it
+ * does nothing). Without that kit: as before. */
+static void lbox_esc_close(void *ud);
+static mpesc_win esc_lbox = { .name = "our notice box", .close = lbox_esc_close };
+static void lbox_esc_close(void *ud) {
+    (void)ud; Obj v = lbox_view();
+    if (lbox_up != BX_NONE && lbox_ours(v)) { rig_log("mpmenu: Escape = Cancel in our box %d", lbox_up); F(0xF65638, void (*)(Obj, void *))(v, NULL); }
+    mpesc_drop(&esc_lbox);
+}
+static void lbox_esc_frame(void) {
+    Obj v = lbox_up != BX_NONE ? lbox_view() : NULL;
+    mpesc_sync(&esc_lbox, v, v && lbox_ours(v), MPESC_BOX);
 }
 static void leave_box_frame(void) {
     if (lbox_up != BX_LEAVE) return;
@@ -4757,6 +4779,7 @@ void mpmenu_frame(void) {
     solo_frame();
     hostmods_frame();
     lbox_fit_frame();
+    lbox_esc_frame();                                                       /* our box on the kit's Escape stack while it shows */
     rejoin_frame(&o);
     tag_frame(&o);
     tag_click_frame();

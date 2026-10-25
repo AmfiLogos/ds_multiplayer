@@ -5421,6 +5421,9 @@ static int escape_ours(void) {
     if (lmenu_n) { lmenu_close(); rig_log("ui: Escape closed the lend menu"); return 1; }
     if (pl_pop) { pl_pop = 0; plist_frame(); rig_log("ui: Escape closed the panel settings"); return 1; }
     if (viewer_on && !viewer_min && !viewer_hidden && !viewer_aside) { viewer_min = 1; viewer_frame(); rig_log("ui: Escape folded the viewer box"); return 1; }
+    /* the spectator's mini overview (owner 2026-10-25: Escape closes our windows): as its X (hidden until O). In this chain,
+       not on the loader kit's stack: it is a HUD panel like the boxes above, which keep their Escape order over it */
+    if (mini_on) { mini_hide(); rig_log("ui: Escape hid the mini overview"); return 1; }
     return 0;
 }
 static void hk_escape(Obj h, Obj msg, void *mi) {
@@ -5433,8 +5436,8 @@ static char *ui_escape_cmd(const char *line) {
     char a[16] = "state"; jstr(line, "action", a, sizeof a);
     if (!strcmp(a, "unfold")) { viewer_min = 0; viewer_frame(); }
     Obj b0 = u_gc_get(h_vbtn_b[0]);
-    Buf b = {0}; bput(&b, "{\"ok\":true,\"lend_menu\":%d,\"settings\":%d,\"viewer\":%d,\"viewer_folded\":%d,\"viewer_buttons\":%d,\"esc_menu\":%d}",
-                      lmenu_n, pl_pop, viewer_on, viewer_min, u_alive(b0) && u_go_active_self(u_go(b0)), popup_active(1));
+    Buf b = {0}; bput(&b, "{\"ok\":true,\"lend_menu\":%d,\"settings\":%d,\"viewer\":%d,\"viewer_folded\":%d,\"viewer_buttons\":%d,\"esc_menu\":%d,\"mini\":%d}",
+                      lmenu_n, pl_pop, viewer_on, viewer_min, u_alive(b0) && u_go_active_self(u_go(b0)), popup_active(1), mini_on);
     return b.p;
 }
 /* lan_v9 owner: a unit that is not mine and not lent to me can be selected and looked at, but its skill bar

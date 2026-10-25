@@ -27,7 +27,7 @@ nice -n 19 clang -arch arm64 -mmacosx-version-min=12.0 -O2 ${=EXTRA_CFLAGS} -Wal
   ui_game.c ui_model.c ui_tip.c ui_teams.c ui_teams_model.c ui_friends.c mpmenu.c mpmenu_model.c extaddr.c upnpport.c \
   trn_logic.c trn_game.c trn_mp.c ds_i18n.c \
   mp_modes.c fe_game.c fe_menu.c fe_hub.c fe_json.c fe_save.c fe_http.c pvp_core.c pvp_game.c pvp_modcheck.c pvp_mods.c pvp_ui.c pvp_units.c pvp_rules.c pvp_rules_core.c pvp_maps.c \
-  mu_bring.c mu_ui.c mu_tip.c mu_look.c mu_card.c mu_save.c mu_timer.c pvp_wiki.c cm_il.c \
+  mu_bring.c mu_ui.c mu_tip.c mu_look.c mu_card.c mu_save.c mu_timer.c pvp_wiki.c cm_il.c mp_esc.c \
   ../win/math/math_mac.c -I../win/math -DDSMATH_DEFAULT_ON=1 ../win/math/build/libdsmath_arm64.a -lz
 codesign -f -s - $OUT/dsrig.dylib.tmp 2>/dev/null
 mv -f $OUT/dsrig.dylib.tmp $OUT/dsrig.dylib     # new inode: never overwrite a mapped dylib
