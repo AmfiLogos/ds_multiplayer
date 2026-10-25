@@ -1,21 +1,30 @@
 #!/usr/bin/env python3
-"""The multiplayer chat box moves and resizes with the mouse, and keeps its place and size after a restart (owner 2026-10-25:
-"drag it off if we decide, and allow to make it bigger as well with drag & drop on corner & bottom").
+"""The multiplayer chat box without typing (owner 2026-10-25: "can't pause to read the chat"), its scrollbar, Top / Bottom,
+the bin, and its moves and resizes ("drag it off ... make it bigger with drag & drop on corner & bottom"), kept after a restart.
 
 ONE hidden loader test copy (background-only, small window, muted, notch fix off; never the owner's game, saves or screen),
-single player (no session): the Moonlight test save, local chat lines (mp_api v3 chat_local, as the Units Laboratory DPS log
-writes them), the open box (Enter). The chat reads the mouse through Unity icalls, so the rig control channel's
-`mpm_chat {drag, x0, y0, x1, y1, button}` plays a press, a move over some frames and a release through the chat's own drag
-code (opens only in DSRIG_CTL=1 copies). Fails when (the breaks this catches):
-  - a left drag on the title band does not move the box (or changes its size);
-  - a drag on the bottom-right corner does not make it wider and taller (top-left corner fixed);
-  - a drag on the bottom edge does not make it taller only;
+single player (no session = read only: the box has no entry field): the Moonlight test save, local chat lines (mp_api v3
+chat_local, as the Units Laboratory DPS log writes them). The chat reads the mouse through Unity icalls, so the rig control
+channel's `mpm_chat {drag, x0, y0, x1, y1, button, roll}` plays a press (button -1: none), a move with the wheel at `roll`
+over some frames and a release through the chat's own pointer code (opens only in DSRIG_CTL=1 copies). Keys are real
+AppKit key events (`mpm_key`). Fails when (the breaks this catches):
+  - the wheel over the chat lines does not open the box for reading (no typing), or does not scroll it;
+  - the box takes the keyboard there (the game's text focus is on), shows an entry field in single player, or Space does
+    not pause the game while the box is open and scrolled;
+  - the scrollbar thumb does not follow the scroll (oldest at the top of the track, newest at the bottom), or a thumb drag
+    does not scroll;
+  - Top does not show the oldest line, Bottom does not show the newest;
+  - a left drag on the title band does not move the box (or changes its size); a drag on the bottom-right corner does not
+    make it wider and taller (top-left corner fixed); a drag on the bottom edge does not make it taller only; all of it
+    with no typing;
   - the open box does not show more history lines when taller, or its lines do not follow its width;
   - it goes below 470 x 270, over 80 % of the screen width / 90 % of its height, or off the screen;
   - a right-click drag no longer moves it;
+  - the bin does not empty the history, or mp_api v4 chat_clears (read through the API table) does not count it;
+  - Escape does not close the box, or opens the game's Esc menu as well;
   - place or size are lost after the game restarts (mp_menu.json).
 Usage: HM_BUILD=<kit: dsload.dylib (dev key, silent) + mods/multiplayer> LD_ROOT=<ds_modloader checkout> python3 chat_drag_test.py
-       CD_OUT = output folder (results.json, shots, logs); CD_X = the copy's name (default CDR)."""
+       CD_OUT = output folder (results.json, shots, logs); CD_X = the copy's name (default CDR); CD_LOCK = a mkdir lock."""
 import json, os, shutil, sys, threading, time, traceback
 
 LD = os.path.expanduser(os.environ.get('LD_ROOT', '~/ds_launcher'))
@@ -28,6 +37,7 @@ OUT = os.path.abspath(os.environ.get('CD_OUT') or os.path.join(os.path.dirname(H
 os.makedirs(OUT, exist_ok=True)
 HP.SHOTS = OUT
 W0, H0 = 470, 270
+LINE_DW = 36                                                    # box lines: box width - 36 (12 left, the scrollbar column right)
 
 
 def mstatus():
@@ -35,8 +45,8 @@ def mstatus():
     return r.get('chat') or {}
 
 
-def drag(x0, y0, x1, y1, button=0, frames=10):
-    a = c(X, cmd='mpm_chat', drag=1, x0=x0, y0=y0, x1=x1, y1=y1, button=button, frames=frames)
+def drag(x0, y0, x1, y1, button=0, frames=10, roll=0):
+    a = c(X, cmd='mpm_chat', drag=1, x0=x0, y0=y0, x1=x1, y1=y1, button=button, frames=frames, roll=roll)
     if not a.get('ok'):
         raise RuntimeError(f'drag refused: {a}')
     t0 = time.time()
@@ -47,6 +57,14 @@ def drag(x0, y0, x1, y1, button=0, frames=10):
             time.sleep(0.4)                                       # the frame after the release shows the new place
             return mstatus()
     raise RuntimeError('the scripted drag did not finish')
+
+
+def click(r):                                                   # a left click in the middle of a screen rect
+    return drag((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, (r[0] + r[2]) / 2, (r[1] + r[3]) / 2, frames=1)
+
+
+def wheel(x, y, roll, frames=3):
+    return drag(x, y, x, y, button=-1, frames=frames, roll=roll)
 
 
 def near(a, b, tol=1.5):
@@ -61,6 +79,10 @@ def box_rows(ch):
     return [r for r in ch.get('rows') or [] if not r.get('idle')]
 
 
+def reading(ch):                                                # the box open for reading: no typing, the game keeps its keys
+    return ch.get('box') == 1 and ch.get('read') == 1 and ch.get('typing') == 0 and ch.get('hotkeys_blocked') == 0
+
+
 def to_world():
     lrig.wait_for(X, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title', timeout=1500)
     work = os.path.join(lrig.idir(X), 'save_in'); os.makedirs(work, exist_ok=True)
@@ -70,14 +92,18 @@ def to_world():
     time.sleep(5)
 
 
-def open_box(n_lines):
+def add_lines(n_lines):
     for i in range(n_lines):
         txt = f'Test line {i + 1}: ' + ('a longer local line that wraps onto a second row at the default width of the box ' if i % 7 == 3 else 'hit 123')
         r = c(X, cmd='mpm_chat', local=txt)
         if r.get('rc') != 0:
             log('chat_local', i, r)
+
+
+def open_box(n_lines):                                           # after a restart: Enter (single player: the read-only box)
+    add_lines(n_lines)
     c(X, cmd='mpm_chat', open=1)
-    return HP.wait('the open chat box', lambda: (lambda ch: ch if ch.get('typing') and ch.get('box') else None)(mstatus()), timeout=60, every=0.5)
+    return HP.wait('the open chat box', lambda: (lambda ch: ch if ch.get('box') else None)(mstatus()), timeout=60, every=0.5)
 
 
 def start_copy(extra):
@@ -87,12 +113,70 @@ def start_copy(extra):
     HP.start(X, 'http://127.0.0.1:9', extra)
 
 
+def speed():
+    s = HP.st(X)
+    return {k: s.get(k) for k in ('speed', 'requested_speed', 'speed_lock')}
+
+
+def read_state_checks():
+    """the box opened by the wheel, no typing; Space pauses; scrollbar, Top / Bottom, thumb drag"""
+    add_lines(40)
+    ch = mstatus()
+    idle = ch.get('rect')                                       # box closed: the newest idle line's plate
+    check('setup: 40 local lines, the idle lines show, the box is closed', ch.get('lines', 0) >= 40 and ch.get('idle_shown', 0) > 0 and not ch.get('box'),
+          {k: ch.get(k) for k in ('lines', 'idle_shown', 'box', 'rect')})
+    ch = wheel((idle[0] + idle[2]) / 2, (idle[1] + idle[3]) / 2, 1, frames=3)
+    sb = ch.get('sb') or {}
+    check('the wheel over the chat lines opens the box for reading (no typing, the game keeps its keys) and scrolls it',
+          reading(ch) and ch.get('scroll', 0) >= 1, {k: ch.get(k) for k in ('box', 'read', 'typing', 'hotkeys_blocked', 'scroll')})
+    check('single player: read only, no entry field in the box', ch.get('ro') == 1 and sb.get('field') is None and not (ch.get('field') or {}).get('focused'),
+          {'ro': ch.get('ro'), 'field': sb.get('field'), 'focused': (ch.get('field') or {}).get('focused')})
+    HP.shot(X, 'chat_0_read_wheel.png')
+    r = ch['rect']
+    ch = wheel((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, 1, frames=4)
+    s1 = ch.get('scroll', 0); th1 = (ch.get('sb') or {}).get('thumb')
+    check('the wheel over the open box scrolls further (no typing)', reading(ch) and s1 >= 5, s1)
+    # Space pauses the game with the box open and scrolled (a real key event through AppKit to Unity)
+    sp0 = speed()
+    k = c(X, cmd='mpm_key', key='space')
+    sp1 = HP.wait('the game paused', lambda: (lambda v: v if v.get('speed') == 0 else None)(speed()), timeout=15, every=0.5) if k.get('ok') else None
+    ch = mstatus()
+    check('Space pauses the game while the box is open for reading and scrolled; the box stays, same place in the history',
+          bool(sp1) and (sp0.get('speed') or 0) > 0 and reading(ch) and ch.get('scroll') == s1, {'before': sp0, 'after': sp1 or speed(), 'key': k, 'scroll': ch.get('scroll')})
+    HP.shot(X, 'chat_0b_paused.png')
+    if sp1:
+        c(X, cmd='mpm_key', key='space')                          # the game runs again for the rest
+        HP.wait('the game runs again', lambda: (speed().get('speed') or 0) > 0, timeout=15, every=0.5)
+    # Top / Bottom and the scrollbar
+    sb = ch.get('sb') or {}
+    ch = click(sb['top'])
+    sbt = ch.get('sb') or {}
+    check('Top shows the oldest line (scroll = the whole range); the thumb sits at the top of the track',
+          reading(ch) and ch.get('oldest') == 1 and ch.get('scroll') == sbt.get('S') and sbt.get('S', 0) > 0
+          and abs(sbt['thumb'][3] - sbt['track'][3]) <= 1.5 and sbt['thumb'][1] > th1[1],
+          {'scroll': ch.get('scroll'), 'S': sbt.get('S'), 'thumb': sbt.get('thumb'), 'track': sbt.get('track'), 'thumb_before': th1})
+    rows = box_rows(ch)
+    check('Top: the oldest line of the history (index 0) is in view', any(r.get('k') == 0 for r in rows), [(r.get('k'), r.get('text', '')[:24]) for r in rows[-2:]])
+    ch = click(sbt['bot'])
+    sbb = ch.get('sb') or {}
+    check('Bottom shows the newest line (scroll 0); the thumb sits at the bottom of the track',
+          reading(ch) and ch.get('scroll') == 0 and abs(sbb['thumb'][1] - sbb['track'][1]) <= 1.5, {'scroll': ch.get('scroll'), 'thumb': sbb.get('thumb'), 'track': sbb.get('track')})
+    th = sbb['thumb']; tk = sbb['track']
+    ch = drag((th[0] + th[2]) / 2, (th[1] + th[3]) / 2, (th[0] + th[2]) / 2, (th[1] + th[3]) / 2 + (tk[3] - tk[1]), frames=8)
+    sbd = ch.get('sb') or {}
+    check('dragging the thumb up to the top of the track scrolls to the oldest line', reading(ch) and ch.get('scroll') == sbd.get('S') and ch.get('thumb_drags', 0) >= 1,
+          {'scroll': ch.get('scroll'), 'S': sbd.get('S'), 'thumb_drags': ch.get('thumb_drags')})
+    click(sbd['bot'])
+    HP.shot(X, 'chat_0c_scrollbar.png')
+    return mstatus()
+
+
 def run(extra):
     start_copy(extra)
     to_world()
     dl = HP.flog(X, 'dsload.log')
     check('the copy is silent (AudioListener held at 0)', 'AudioListener held at 0' in dl, [l for l in dl.splitlines() if 'AudioListener' in l][:2])
-    ch = open_box(40)
+    ch = read_state_checks()
     info['screen'] = ch.get('screen'); info['default'] = {k: ch.get(k) for k in ('rect', 'size', 'pos', 'line_w')}
     r, sc = ch['rect'], (ch['rect'][2] - ch['rect'][0]) / ch['size'][0]
     cw = 1080.0 * ch['screen'][0] / ch['screen'][1]                # canvas width (the canvas is 1080 high)
@@ -104,27 +188,27 @@ def run(extra):
     # 1. left drag on the title band: moved by (+150, +100) units, same size
     ch1 = drag(r[0] + 150 * sc, r[3] - 12 * sc, r[0] + 300 * sc, r[3] + 88 * sc)
     r1 = ch1['rect']
-    check('left drag on the title band moves the box (+150, +100 units), its size stays', near(r1, [r[0] + 150 * sc, r[1] + 100 * sc, r[2] + 150 * sc, r[3] + 100 * sc], 2)
-          and size_is(ch1, W0, H0), json.dumps({'before': r, 'after': r1, 'size': ch1['size']}))
+    check('left drag on the title band moves the box (+150, +100 units), its size stays (no typing)', near(r1, [r[0] + 150 * sc, r[1] + 100 * sc, r[2] + 150 * sc, r[3] + 100 * sc], 2)
+          and size_is(ch1, W0, H0) and reading(ch1), json.dumps({'before': r, 'after': r1, 'size': ch1['size']}))
 
     # 2. corner drag: +200 wide, +150 tall, the top-left corner stays
     ch2 = drag(r1[2] - 3, r1[1] + 3, r1[2] - 3 + 200 * sc, r1[1] + 3 - 150 * sc)
     r2 = ch2['rect']
-    check('corner drag makes the box wider and taller (670 x 420), its top-left corner stays', size_is(ch2, W0 + 200, H0 + 150)
-          and near([r2[0], r2[3]], [r1[0], r1[3]], 1.5) and near([r2[2] - r2[0], r2[3] - r2[1]], [(W0 + 200) * sc, (H0 + 150) * sc], 2),
+    check('corner drag makes the box wider and taller (670 x 420), its top-left corner stays (no typing)', size_is(ch2, W0 + 200, H0 + 150)
+          and near([r2[0], r2[3]], [r1[0], r1[3]], 1.5) and near([r2[2] - r2[0], r2[3] - r2[1]], [(W0 + 200) * sc, (H0 + 150) * sc], 2) and reading(ch2),
           json.dumps({'before': r1, 'after': r2, 'size': ch2['size']}))
     rows2 = box_rows(ch2)
-    check('the taller box shows more history lines (40 in the history)', len(rows2) > rows0 + 4, (rows0, len(rows2)))
+    check('the taller box shows more history lines', len(rows2) > rows0 + 4, (rows0, len(rows2)))
     lw = max((rw['rect'][2] - rw['rect'][0] for rw in rows2), default=0)
-    check('its lines follow the width (box width - 24 = 646 units)', near(ch2.get('line_w'), [W0 + 200 - 60, W0 + 200 - 24], 1) and abs(lw - (W0 + 200 - 24) * sc) <= 2,
-          json.dumps({'line_w': ch2.get('line_w'), 'widest_row_px': lw}))
+    check(f'its lines follow the width (box width - {LINE_DW} = {W0 + 200 - LINE_DW} units)', near(ch2.get('line_w'), [W0 + 200 - 60, W0 + 200 - LINE_DW], 1)
+          and abs(lw - (W0 + 200 - LINE_DW) * sc) <= 2, json.dumps({'line_w': ch2.get('line_w'), 'widest_row_px': lw}))
     HP.shot(X, 'chat_2_corner.png')
 
     # 3. bottom edge drag: +60 tall only
     ch3 = drag((r2[0] + r2[2]) / 2, r2[1] + 2, (r2[0] + r2[2]) / 2 + 50 * sc, r2[1] + 2 - 60 * sc)
     r3 = ch3['rect']
-    check('bottom edge drag makes the box taller only (+60), top and width stay', size_is(ch3, W0 + 200, H0 + 210)
-          and near([r3[0], r3[2], r3[3]], [r2[0], r2[2], r2[3]], 1.5), json.dumps({'before': r2, 'after': r3, 'size': ch3['size']}))
+    check('bottom edge drag makes the box taller only (+60), top and width stay (no typing)', size_is(ch3, W0 + 200, H0 + 210)
+          and near([r3[0], r3[2], r3[3]], [r2[0], r2[2], r2[3]], 1.5) and reading(ch3), json.dumps({'before': r2, 'after': r3, 'size': ch3['size']}))
 
     # 4. minimum: the corner pushed far up-left -> 470 x 270
     ch4 = drag(r3[2] - 3, r3[1] + 3, r3[2] - 3 - 2000 * sc, r3[1] + 3 + 2000 * sc)
@@ -145,8 +229,8 @@ def run(extra):
     # 6. right-click drag still moves it (anywhere on the open box); then a middle size + place for the restart
     ch7 = drag((r6[0] + r6[2]) / 2, (r6[1] + r6[3]) / 2, (r6[0] + r6[2]) / 2 + 80 * sc, (r6[1] + r6[3]) / 2 - 40 * sc, button=1)
     r7 = ch7['rect']
-    check('right-click drag on the box still moves it', near(r7, [r6[0] + 80 * sc, r6[1] - 40 * sc, r6[2] + 80 * sc, r6[3] - 40 * sc], 2) and ch7['size'] == ch6['size'],
-          json.dumps({'before': r6, 'after': r7}))
+    check('right-click drag on the box moves it (no typing)', near(r7, [r6[0] + 80 * sc, r6[1] - 40 * sc, r6[2] + 80 * sc, r6[3] - 40 * sc], 2) and ch7['size'] == ch6['size']
+          and reading(ch7), json.dumps({'before': r6, 'after': r7}))
     ch8 = drag(r7[2] - 3, r7[1] + 3, r7[2] - 3 - (ch7['size'][0] - 760) * sc, r7[1] + 3 + (ch7['size'][1] - 520) * sc)
     check('corner drag back to 760 x 520', size_is(ch8, 760, 520), ch8['size'])
     HP.shot(X, 'chat_4_resized.png')
@@ -156,7 +240,25 @@ def run(extra):
     before = {k: ch8.get(k) for k in ('rect', 'size', 'pos')}
     info['before_restart'] = before
 
-    # 7. restart: the same place and size
+    # 7. the bin empties this screen's history; mp_api v4 chat_clears counts it (read through the table a mod gets)
+    k0 = c(X, cmd='mpm_chat', clears=1)
+    ch9 = click((ch8.get('sb') or {})['bin'])
+    k1 = c(X, cmd='mpm_chat', clears=1)
+    check('the bin empties the history (the box stays open, empty); chat_clears (mp_api v4) counts 1 more',
+          ch9.get('lines') == 0 and not box_rows(ch9) and reading(ch9) and k0.get('api') == 1 and k0.get('version', 0) >= 4
+          and k1.get('clears') == (k0.get('clears') or 0) + 1 and ch9.get('clears') == k1.get('clears'),
+          {'lines': ch9.get('lines'), 'rows': len(box_rows(ch9)), 'api_before': k0, 'api_after': k1})
+    HP.shot(X, 'chat_5_bin.png')
+
+    # 8. Escape closes the box (the loader kit's Escape stack), and the game's Esc menu does not open
+    reg = ch9.get('esc_reg')
+    c(X, cmd='mpm_key', key='escape', via='app')                   # through the app's event queue: read at the next frame start, as a real key
+    time.sleep(2)
+    ch10 = mstatus(); obs = c(X, cmd='mpm_status').get('obs') or {}
+    check('Escape closes the read box and the game does not open its Esc menu', reg == 1 and not ch10.get('box') and ch10.get('read') == 0 and obs.get('esc') == 0,
+          {'registered_before': reg, 'box': ch10.get('box'), 'read': ch10.get('read'), 'esc_menu': obs.get('esc')})
+
+    # 9. restart: the same place and size
     HP.stop(X)
     for f in ('dsload.log', 'player.log', 'rig.log'):
         p = os.path.join(lrig.idir(X), f)
@@ -164,11 +266,11 @@ def run(extra):
             shutil.copy2(p, os.path.join(OUT, 'run1_' + f))
     start_copy(extra)
     to_world()
-    ch9 = open_box(3)
-    info['after_restart'] = {k: ch9.get(k) for k in ('rect', 'size', 'pos')}
-    check('after a restart the box opens at the same place and size', ch9['size'] == before['size'] and near(ch9['pos'], before['pos'], 0.6)
-          and near(ch9['rect'], before['rect'], 1.5), json.dumps({'before': before, 'after': info['after_restart']}))
-    HP.shot(X, 'chat_5_after_restart.png')
+    ch11 = open_box(3)
+    info['after_restart'] = {k: ch11.get(k) for k in ('rect', 'size', 'pos')}
+    check('after a restart the box opens at the same place and size', ch11['size'] == before['size'] and near(ch11['pos'], before['pos'], 0.6)
+          and near(ch11['rect'], before['rect'], 1.5), json.dumps({'before': before, 'after': info['after_restart']}))
+    HP.shot(X, 'chat_6_after_restart.png')
 
 
 info = {}

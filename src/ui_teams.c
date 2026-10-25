@@ -19,6 +19,7 @@
 #include <dlfcn.h>
 #include "ds_i18n.h"
 #include "ui_utf8.h"
+#include "mp_esc.h"                                     /* mpesc_took: a press the loader kit took for a window over this one */
 
 /* ---------------------------------------------------------------- what we need from other lanes (weak) */
 #ifndef DSNET_EXPEDITION_READY
@@ -2374,7 +2375,9 @@ void ui_teams_frame(void) {
     if (opened && root() && !folded()) {                     /* owner lan_v8: Escape closes Teams (the menu / tip first); folded: the game's */
         static bool (*kd)(int); static int looked;
         if (!looked) { looked = 1; kd = (bool (*)(int))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::GetKeyDownInt(UnityEngine.KeyCode)"); }
-        if ((kd && kd(27)) || test_escape) {
+        /* one press, one close (owner rule 2026-10-25): a press the kit took for a window of ours over this one (the chat
+           read box draws above Teams) is not ours */
+        if ((kd && kd(27) && !mpesc_took()) || test_escape) {
             if (lpop_unit >= 0) { lpop_unit = -1; shown_sig = 0; }
             else { close_screen(); rig_log("teams: Escape closed the Teams window"); }
         }
