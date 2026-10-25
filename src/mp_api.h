@@ -29,10 +29,12 @@ enum { MP_CHAT_SHOWN = 0, MP_CHAT_NO_SESSION = 1,          /* 1: no multiplayer 
        MP_CHAT_OFF = -7 };                                 /* -7 (chat_local): the player's "Chat: Off": nothing shown */
 /* chat_local (v3): lines on this screen only, never sent, no rate limit, with or without a session (MP_API.md 2b) */
 enum { MP_CHATL_LINE = 0,                    /* append text as a line (the text only, no "<Mod> mod:") */
-       MP_CHATL_CLEAR = 1 };                 /* remove every local line from the chat history (text may be NULL) */
+       MP_CHATL_CLEAR = 1,                   /* remove every local line from the chat history (text may be NULL) */
+       MP_CHATL_RICH = 2 };                  /* with LINE: the text keeps its TMP rich-text tags (<b>, <color>, <indent>, <pos>...) */
 #define MP_CHAT_MOD_MAX        24            /* bytes of the mod name (cut) */
 #define MP_CHAT_TEXT_LOCAL     200           /* bytes of the text (cut, never inside a character) */
 #define MP_CHAT_TEXT_BROADCAST 160
+#define MP_CHAT_TEXT_CHATL     400           /* bytes of a chat_local text (v3; tags count) */
 
 typedef struct mp_player { int id; char name[32]; uint8_t uid[16]; } mp_player;
 typedef struct mp_menu_hooks mp_menu_hooks;  /* mpmenu_kit.h (the menu's building blocks; windows inside the menu) */
