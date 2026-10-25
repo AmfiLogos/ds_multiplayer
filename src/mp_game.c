@@ -614,9 +614,15 @@ static uint64_t g_deep(void *u) { (void)u; return rig_deep_hash(); }
    skipped), written as Saves/mp_fullcheck.json, read back, deleted (save list refreshed). One FNV hash per top-level
    section ("  \"Key\": ...", 2-space indent) and per second-level key (4 spaces), as "name hash" lines. Not compared
    (local to each player, not simulation): CampaignSaveHeader (the save's own time) and in CampaignSettingSaveData the
-   GameSpeed, CameraSettingSaveData and CampaignUISettingSaveData (soak 2026-10-14: the camera differed at once). */
+   GameSpeed, CameraSettingSaveData and CampaignUISettingSaveData (soak 2026-10-14: the camera differed at once), and
+   PlayerUnitsSaveData/SkillLearnNotices = UnitSkillContainer._skillLearnNotices, the red dot on the unit panel's skill
+   button: only EntitySummaryUIPresenter writes it (Observe / Clear for the units THIS player selects or opens the panel
+   of) and reads it (HasSelectedLearnableSkillNotice); no sim code uses it (decomp 25846389: the notice interfaces are used
+   by that presenter only; spawn / despawn only add / remove the unit's key, which SkillTrees also has). A guest's unit
+   click made the next check differ and forced a full resync (lane dslock probe 2026-10-25). */
 static int full_local(const char *top, const char *sub) {
     if (!strcmp(top, "CampaignSaveHeader")) return 1;
+    if (!strcmp(top, "PlayerUnitsSaveData")) return !strcmp(sub, "SkillLearnNotices");
     return !strcmp(top, "CampaignSettingSaveData") && (!strcmp(sub, "GameSpeed") || !strcmp(sub, "CameraSettingSaveData") || !strcmp(sub, "CampaignUISettingSaveData"));
 }
 #define FULL_NAME "mp_fullcheck"
