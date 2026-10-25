@@ -84,7 +84,7 @@ def main():
         tm(Y, action='tip', what='chip', guid=f[0]); tc = tm(Y)['tip']; time.sleep(1); shot(Y, 'tip_chip_guest')
         check('tooltip on the "From the owner" chip: "Lent by the owner"', tc == 'Lent by the owner', repr(tc))
         tm(Y, action='chip', guid=f[0]); b = settle(X, Y, lambda a, b: b['lpop'] != '', 'menu Y')[1]
-        check('borrower menu: "Give back"', b['lpop'] == 'Give back', repr(b['lpop']))
+        check('borrower menu: "Give Back"', b['lpop'] == 'Give Back', repr(b['lpop']))
         tm(Y, action='lpop', row=0)
         a, b = settle(X, Y, lambda a, b: wx(a, f[0])['controller'] == 0 and wx(b, f[0])['controller'] == 0, 'given back', timeout=60)
         check('give back: The owner controls f0 again on both', wx(a, f[0])['controller'] == 0 and wx(b, f[0])['controller'] == 0)
@@ -92,7 +92,7 @@ def main():
         settle(X, Y, lambda a, b: wx(a, f[0])['controller'] == 1 and wx(b, f[0])['controller'] == 1 and wx(a, f[0])['lent_to'] == 1, 'lent 2', timeout=60)
         time.sleep(2)                                                  # the lend is applied on every peer before the menu reads it
         tm(X, action='chip', guid=f[0]); a = settle(X, Y, lambda a, b: a['lpop'] != '', 'menu 3')[0]
-        check('owner menu on a lent unit: "Take back control"', a['lpop'] == 'Take back control', repr(a['lpop']))
+        check('owner menu on a lent unit: "Take Back Control"', a['lpop'] == 'Take Back Control', repr(a['lpop']))
         tm(X, action='lpop', row=0)
         a, b = settle(X, Y, lambda a, b: wx(a, f[0])['controller'] == 0 and wx(b, f[0])['controller'] == 0, 'taken back', timeout=60)
         check('take back: The owner controls f0 again on both', wx(a, f[0])['controller'] == 0 and wx(b, f[0])['controller'] == 0)

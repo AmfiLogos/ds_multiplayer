@@ -179,6 +179,8 @@ typedef struct mpm_model {
     /* appended (i18n: a whole Chinese / Japanese / Russian sentence did not fit the old slots, which keep the layout) */
     char msg[512];          /* last error / status for the title */
     char notice[1280];      /* session ended (host left...): text for the stock notice box on the title, "" none */
+    int mp_worlds;          /* Your save list: worlds with the Multiplayer tag in the open Load list (game side, lf_apply) */
+    int role;               /* last obs.role (labels: the host's Esc menu says Turn Off Multiplayer, a guest's Leave Multiplayer) */
 } mpm_model;
 void mpm_init(mpm_model *m);
 /* one frame: `click` = enum mpm_button or MPB_NONE. Returns MPA_* actions to run now. */
@@ -214,11 +216,12 @@ const char *mpm_fe_desc(const mpm_settings *s, int row);
 const char *mpm_fe_tip(int row);
 
 /* Load list filter (owner 2026-10-15): single player shows single-player worlds, hosting "Your save" shows multiplayer worlds
- * (= worlds with the Multiplayer tag); one toggle shows the other kind too. Picking a save for a Foreign Expedition shows all. */
+ * (= worlds with the Multiplayer tag); one toggle shows the other kind too. Picking a save for a Foreign Expedition shows all.
+ * Your save with no multiplayer world in the list (m->mp_worlds 0, a first-time host) shows all worlds, no toggle (UX M4). */
 enum { MPM_LIST_ALL = -1, MPM_LIST_SOLO = 0, MPM_LIST_MP = 1 };
 int  mpm_list_mode(const mpm_model *m);                                   /* which list the stock load list is now */
 int  mpm_list_show(int mode, int show_other, int tagged, int current);    /* 1 = show this world (current = the world being played) */
-const char *mpm_list_toggle_label(int mode);                              /* "Show multiplayer worlds" / "Show single-player worlds" / "" */
+const char *mpm_list_toggle_label(int mode);                              /* "Show Multiplayer Worlds" / "Show Single-Player Worlds" / "" */
 
 /* 1 = host is a literal local-network address: IPv4 10/8, 172.16/12, 192.168/16, 169.254/16, IPv6 fe80::/10, fc00::/7
  * (also as ::ffff:a.b.c.d). Loopback, 100.64/10 (carrier NAT, Tailscale) and names are 0. "[...]" and a "%zone" are allowed.

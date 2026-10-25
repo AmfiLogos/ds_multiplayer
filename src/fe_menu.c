@@ -87,7 +87,7 @@ static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
         Obj b = u_gc_get(reg[MPB_FE_SAVE0 + i]);
         for (int k = 0; b && k < 2; k++) { Obj t = mk_txt(tpl_txt, u_tr(b), 0, k ? 12 : 16, 513, 0, 4, k ? -11 : 9, 280, 22, k ? C_SUB : C_MAIN); txt_one_line(t); u_gc_free(W.rowt[i][k]); W.rowt[i][k] = t ? u_gc_new(t) : 0; }
     }
-    BTN(MPB_FE_SAVEPG, S_NBTN, WX(24 + 150), WY(156 + 56 * 6 + 14), 300, 26, 13, "More saves \xE2\x80\xBA", C_SUB);
+    BTN(MPB_FE_SAVEPG, S_NBTN, WX(24 + 150), WY(156 + 56 * 6 + 14), 300, 26, 13, "More Saves \xE2\x80\xBA", C_SUB);
     for (int i = 0; i < 8; i++) {                                           /* right column: unit cards (2 x 4) */
         float x = WX(344 + 290 * (i % 2) + 142), y = WY(156 + 66 * (i / 2) + 31);
         BTN(MPB_FE_UNIT0 + i, S_NBTN, x, y, 284, 62, 14, "", C_MAIN);
@@ -99,7 +99,7 @@ static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
             u_gc_free(W.cardt[i][k]); W.cardt[i][k] = t ? u_gc_new(t) : 0;
         }
     }
-    BTN(MPB_FE_UNITPG, S_NBTN, WX(344 + 100), WY(156 + 66 * 4 + 14), 200, 26, 13, "More units \xE2\x80\xBA", C_SUB);
+    BTN(MPB_FE_UNITPG, S_NBTN, WX(344 + 100), WY(156 + 66 * 4 + 14), 200, 26, 13, "More Units \xE2\x80\xBA", C_SUB);
     T(FT_COUNT, 0, 15, 516, 0, WX(936 - 150), WY(156 + 66 * 4 + 14), 300, 24, C_GOLD);
     T(FT_NOTE, 0, few_fs(13), 513, 1, 0, WY(486), 900, 66, C_SUB);
     /* results: table, loot, what will be applied, target, conflict */
@@ -110,8 +110,8 @@ static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
     BTN(MPB_FE_TGT_PREV, S_NBTN, WX(480 - 280), WY(486), 28, 28, 16, "\xE2\x80\xB9", C_MAIN);
     BTN(MPB_FE_TGT_NEXT, S_NBTN, WX(480 + 280), WY(486), 28, 28, 16, "\xE2\x80\xBA", C_MAIN);
     T(FT_CONFLICT, 0, few_fs(13), 513, 1, WX(24 + 300), WY(522), 600, 34, C_ORANGE);
-    BTN(MPB_FE_VER_EXP, S_NBTN, WX(700), WY(522), 170, 30, few_fs(13), "Expedition version", C_MAIN);
-    BTN(MPB_FE_VER_HOME, S_NBTN, WX(880), WY(522), 150, 30, few_fs(13), "Home version", C_MAIN);
+    BTN(MPB_FE_VER_EXP, S_NBTN, WX(700), WY(522), 170, 30, few_fs(13), "Expedition Version", C_MAIN);
+    BTN(MPB_FE_VER_HOME, S_NBTN, WX(880), WY(522), 150, 30, few_fs(13), "Home Version", C_MAIN);
     for (int i = 0; i < 6; i++) BTN(MPB_FE_RES0 + i, S_NBTN, 0, WY(160 + 54 * i + 25), 900, 50, 15, "", C_MAIN);
     T(FT_MSG, 0, 15, 514, 1, 0, WY(300), 820, 160, C_MAIN);
     /* bottom bar */
@@ -160,8 +160,8 @@ static void few_sync(void) {
     fe_mode_info m; fe_mode_get(&m);
     char b[2400], r[800], dy[64];
     few_show(MPB_FE_CANCEL, 1); few_show(MPB_FE_OK, 1);
-    few_label(MPB_FE_SAVEPG, TR("More saves \xE2\x80\xBA")); few_label(MPB_FE_UNITPG, TR("More units \xE2\x80\xBA"));
-    few_label(MPB_FE_VER_EXP, TR("Expedition version")); few_label(MPB_FE_VER_HOME, TR("Home version"));
+    few_label(MPB_FE_SAVEPG, TR("More Saves \xE2\x80\xBA")); few_label(MPB_FE_UNITPG, TR("More Units \xE2\x80\xBA"));
+    few_label(MPB_FE_VER_EXP, TR("Expedition Version")); few_label(MPB_FE_VER_HOME, TR("Home Version"));
     if (W.mode == FEW_BRING) {
         few_set(FT_TITLE, TR("Bring Units"));
         few_set(FT_SUB, TR("Pick one of your saves, then the units to bring. Copies travel: your units stay at home and keep working."));
@@ -208,8 +208,8 @@ static void few_sync(void) {
         if (W.err[0]) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "</color>"); }
         few_set(FT_NOTE, b);
         few_label(MPB_FE_CANCEL, cmt_game("TEXTKEY_CommonPopUp_Cancel", "Cancel"));
-        if (W.npicked) few_label(MPB_FE_OK, TR("Bring these units"));
-        else { snprintf(b, sizeof b, "<color=#A69085>%s</color>", TR("Bring these units")); few_label(MPB_FE_OK, b); }
+        if (W.npicked) few_label(MPB_FE_OK, TR("Bring These Units"));
+        else { snprintf(b, sizeof b, "<color=#A69085>%s</color>", TR("Bring These Units")); few_label(MPB_FE_OK, b); }
     }
     if (W.mode == FEW_LIST) {
         few_set(FT_TITLE, TR("Expedition Results"));
@@ -283,14 +283,14 @@ static void few_sync(void) {
         if (W.ntarget) {
             fe_save_info *t = &W.targets[W.target];
             cmt_day(dy, sizeof dy, t->day);
-            snprintf(b, sizeof b, "<color=#A69085>%s</color>   %s  <size=80%%><color=#A69085>%s \xC2\xB7 %s</color></size>", TR("Bring home to"), t->clan, dy, TR(t->folder)); few_set(FT_TARGET, b);
+            snprintf(b, sizeof b, "<color=#A69085>%s</color>   %s  <size=80%%><color=#A69085>%s \xC2\xB7 %s</color></size>", TR("Bring Home To"), t->clan, dy, TR(t->folder)); few_set(FT_TARGET, b);
             few_show(MPB_FE_TGT_PREV, W.ntarget > 1); few_show(MPB_FE_TGT_NEXT, W.ntarget > 1);
         } else { snprintf(b, sizeof b, "<color=#F16071>%s</color>", TR("The home save is not on this computer.")); few_set(FT_TARGET, b); }
         if (W.conflict) { few_set(FT_CONFLICT, TR("Units changed at home since they left. Bring home:")); few_show(MPB_FE_VER_EXP, 1); few_show(MPB_FE_VER_HOME, 1); }
         else if (W.err[0]) { cmt_msg(W.err, b, sizeof b); few_set(FT_CONFLICT, b); }   /* fe_save.c English: shown translated */
         few_set(FT_NOTE, "");
         few_label(MPB_FE_CANCEL, TR("Later"));
-        few_label(MPB_FE_OK, TR("Apply to a new save"));
+        few_label(MPB_FE_OK, TR("Apply to a New Save"));
     }
 }
 static int few_open_now;                                                    /* frames since opened (tests) */
@@ -405,7 +405,7 @@ static void few_tips(void) {
             if (s && !s->ok) snprintf(body, sizeof body, "%s\n\n%s", TR("In a dungeon: load it and return to the settlement first."), gen);
             else if (s && !few_version_ok(s, &m)) { char t[300]; snprintf(t, sizeof t, TR("Made with %s. Load and save it once in this build first."), s->version); snprintf(body, sizeof body, "%s\n\n%s", t, gen); }
             else snprintf(body, sizeof body, "%s", gen);
-            TIPW(MPB_FE_SAVE0 + i, TR("Your save"), body);
+            TIPW(MPB_FE_SAVE0 + i, TR("Your Save"), body);
         }
         for (int i = 0; i < 8; i++) {
             int k = W.upage * 8 + i; const char *gen = TR("Click to add or remove it. A copy travels with its gear and backpack; the unit itself stays at home and keeps working.");
@@ -413,20 +413,20 @@ static void few_tips(void) {
                 char gear[200], trees[300]; few_gear(&W.units[k], gear, sizeof gear); few_trees(&W.units[k], trees, sizeof trees);
                 snprintf(body, sizeof body, "%s\n%s\n\n%s", trees[0] ? trees : TR("No skill tree yet"), gear[0] ? gear : TR("No gear"), gen);
             } else snprintf(body, sizeof body, "%s", gen);
-            TIPW(MPB_FE_UNIT0 + i, TR("Bring this unit"), body);
+            TIPW(MPB_FE_UNIT0 + i, TR("Bring This Unit"), body);
         }
-        TIPW(MPB_FE_OK, TR("Bring these units"), TR("Sends copies of the picked units to the host. You can bring other units instead until the host presses Start."));
+        TIPW(MPB_FE_OK, TR("Bring These Units"), TR("Sends copies of the picked units to the host. You can bring other units instead until the host presses Start."));
         TIPW(MPB_FE_CANCEL, cmt_game("TEXTKEY_CommonPopUp_Cancel", "Cancel"), TR("Closes this window. Nothing is sent."));
     }
     if (W.mode == FEW_RESULTS) {
-        TIPW(MPB_FE_OK, TR("Apply to a new save"), TR("Writes the results into a NEW save next to your home save. Your old save is not changed, and the whole save folder is copied to a backup first. Results apply once."));
-        TIPW(MPB_FE_CANCEL, TR("Later"), TR("Keeps the results. Bring them home later from Multiplayer > Expedition results."));
-        TIPW(MPB_FE_TGT_PREV, TR("Bring home to"), TR("The save that gets the results: the units' home campaign, newest first."));
-        TIPW(MPB_FE_TGT_NEXT, TR("Bring home to"), TR("The save that gets the results: the units' home campaign, newest first."));
-        TIPW(MPB_FE_VER_EXP, TR("Expedition version"), TR("Units that changed at home since they left come back as they ended the expedition."));
-        TIPW(MPB_FE_VER_HOME, TR("Home version"), TR("Units that changed at home since they left keep their home progress; the expedition's is dropped."));
+        TIPW(MPB_FE_OK, TR("Apply to a New Save"), TR("Writes the results into a NEW save next to your home save. Your old save is not changed, and the whole save folder is copied to a backup first. Results apply once."));
+        TIPW(MPB_FE_CANCEL, TR("Later"), TR("Keeps the results. Bring them home later from Multiplayer > Expedition Results."));
+        TIPW(MPB_FE_TGT_PREV, TR("Bring Home To"), TR("The save that gets the results: the units' home campaign, newest first."));
+        TIPW(MPB_FE_TGT_NEXT, TR("Bring Home To"), TR("The save that gets the results: the units' home campaign, newest first."));
+        TIPW(MPB_FE_VER_EXP, TR("Expedition Version"), TR("Units that changed at home since they left come back as they ended the expedition."));
+        TIPW(MPB_FE_VER_HOME, TR("Home Version"), TR("Units that changed at home since they left keep their home progress; the expedition's is dropped."));
     }
-    if (W.mode == FEW_LIST) for (int i = 0; i < 6; i++) TIPW(MPB_FE_RES0 + i, TR("Expedition results"), TR("Open to see what your units bring home. Each result can be brought home once."));
+    if (W.mode == FEW_LIST) for (int i = 0; i < 6; i++) TIPW(MPB_FE_RES0 + i, TR("Expedition Results"), TR("Open to see what your units bring home. Each result can be brought home once."));
     #undef TIPW
 }
 #undef WX

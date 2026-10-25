@@ -1159,7 +1159,7 @@ static void messages_frame(void) {
         }
         { static int was_open; static uint32_t was_match;                     /* E4: a proposal closed without agreement */
           if (was_match != g.matches) { was_match = g.matches; was_open = 0; }
-          if (was_open && !g.vote_open && !g.countdown_at && g.placing) center("%s", TR("Not yet: the fight waits until everyone agrees."));
+          if (was_open && !g.vote_open && !g.countdown_at && g.placing) center("%s", TR("Not Yet: the fight waits until everyone agrees."));
           was_open = g.vote_open; }
         if (g.placing && !g.countdown_at && g.round <= 1 && seen_prep != g.matches) {   /* E8: the preparation starts */
             seen_prep = g.matches; center("%s", TR("Preparation: place your units, then propose the fight. It starts when every player agreed."));

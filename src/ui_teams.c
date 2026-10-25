@@ -980,10 +980,10 @@ static void lpop_draw(void) {                                /* the menu of the 
     char lab[8][80];
     if (owner == st.me && lt < 0) {
         for (int p = 0; p < TM_MAX_PLAYERS && nlrow < 8; p++) if ((st.present >> p & 1u) && p != st.me) {
-            char nm[40]; pname(p, nm); snprintf(lab[nlrow], 80, TR("Lend control to %s"), nm); lrow_act[nlrow] = LA_LEND; lrow_arg[nlrow++] = p; }
+            char nm[40]; pname(p, nm); snprintf(lab[nlrow], 80, TR("Lend Control to %s"), nm); lrow_act[nlrow] = LA_LEND; lrow_arg[nlrow++] = p; }
         if (!nlrow) { snprintf(lab[0], 80, "%s", TR("No other player")); lrow_act[0] = 0; nlrow = 1; }
-    } else if (owner == st.me) { snprintf(lab[0], 80, "%s", TR("Take back control")); lrow_act[0] = LA_TAKE; nlrow = 1; }
-    else { snprintf(lab[0], 80, "%s", TR("Give back")); lrow_act[0] = LA_GIVE; nlrow = 1; }
+    } else if (owner == st.me) { snprintf(lab[0], 80, "%s", TR("Take Back Control")); lrow_act[0] = LA_TAKE; nlrow = 1; }
+    else { snprintf(lab[0], 80, "%s", TR("Give Back")); lrow_act[0] = LA_GIVE; nlrow = 1; }
     size_t l = 0;
     float mx = ap.x - 23, dir = ap.y - 26 - (nlrow - 1) * 30 - 14 < -436 ? 1 : -1;   /* inside the window: right edge, else upwards */
     if (mx + 220 > 652) mx = 652 - 220;
@@ -1079,7 +1079,7 @@ static void layout(void) {
     int nh = 0;
     /* zone 1: your units */
     int mine = kme >= 0 ? cols[kme].n : 0, rdy_me = st.me >= 0 && (st.ready >> st.me & 1u);
-    section_header(nh++, st.me, LX + 10, 304, 220, 34, 24, 1, ui_col(C_MAIN, TR("Your units")));
+    section_header(nh++, st.me, LX + 10, 304, 220, 34, 24, 1, ui_col(C_MAIN, TR("Your Units")));
     /* owner rule (lan_v8): Teams only allocates units (take / free / lend); expeditions go through the game's
        own expedition window. No marks, no Ready, no Go here. */
     (void)rdy_me;
@@ -1124,7 +1124,7 @@ static void layout(void) {
                 u_gc_free(h_band); h_band = u_gc_new(band);
             }
             if (u_alive(band)) { rt_size(band, 556, 44); rt_pos(band, LX + 278, y - 22); u_go_active(u_go(band), true); }
-            section_header(nh++, TM_FREE, LX + 24, y - 22, 400, 44, 24, 1, ui_col(C_MAIN, TR("Free units")));
+            section_header(nh++, TM_FREE, LX + 24, y - 22, 400, 44, 24, 1, ui_col(C_MAIN, TR("Free Units")));
             if (c->n && !st.in_dungeon) p_text(LX + 570, y - 22, 300, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("Left-click to take")));   /* locked in a dungeon */
             y -= 46;
             int per = per_free(sf);
@@ -1182,7 +1182,7 @@ static void layout(void) {
         if (por[i].card && !por[i].used) { u_destroy(u_go(u_gc_get(por[i].card))); u_gc_free(por[i].card); u_gc_free(por[i].mark); por[i].card = por[i].mark = 0; }
     Obj o;
     if ((o = u_gc_get(h_title))) {
-        tmp_set(o, spect() ? TR("Teams (watching)") : TR("Teams"));
+        tmp_set(o, spect() ? TR("Teams (Watching)") : TR("Teams"));
         int np_ = 0, nr_ = 0;                                 /* "Ready n / m" in the title band (approved mockup Teams A) */
         for (int p = 0; p < TM_MAX_PLAYERS; p++) if (st.present >> p & 1u) { np_++; nr_ += st.ready >> p & 1u; }
         (void)nr_; (void)np_;                                 /* no "Ready n / m": Teams has no Ready (owner lan_v8) */
@@ -1204,7 +1204,7 @@ static void layout(void) {
         else if (st.me == 0 && hsel.target != TM_NO_TARGET) {
             char nm[40], lb[40]; ui_players pls; memset(&pls, 0, sizeof pls);
             if (hsel.target >= 0) { player_name(hsel.target, nm); snprintf(pls.name[hsel.target], 32, "%s", nm); }
-            snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
+            snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free Units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
         }
         else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>", TR("Pick your units."));   /* how: zone 1; also when opened by hand (review 32) */
         else if (st.me >= 0) snprintf(stl, sizeof stl, "%s", TR("To start an expedition, use the game's Enter Dungeon."));
@@ -2035,7 +2035,7 @@ static void stock_gear_frame(void) {
     /* owner lan_v7: the last button says what it does in multiplayer */
     Obj pr = u_gc_get(h_pres);
     if (pr && AT(pr, 0x38, int32_t) == 1) {
-        Obj nl = next_label(v); const char *want = stock_mode == 2 ? next_text() : TR("Send to friends");
+        Obj nl = next_label(v); const char *want = stock_mode == 2 ? next_text() : TR("Send to Friends");
         char cur[160] = ""; if (nl) str_utf8(tmp_get(nl), cur, sizeof cur);
         if (nl && strcmp(cur, want)) tmp_set(nl, want);
     }

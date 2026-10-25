@@ -303,8 +303,8 @@ static void draw_left(void) {
     if (!B.left) return;
     float y = 0;
     if (B.src == 1) {                                                 /* E3: My Units: the Unit Builder door */
-        DSLObj b = mu_button(B.left, 0, 0, 192, 40, TR("Build a unit"), on_build, NULL);
-        if (b) { U->tooltip(b, TR("Build a unit"), TR("Opens the Unit Builder. The unit you save goes to My Units and is ticked here.")); if (B.nleft < SMAX) B.left_btn[B.nleft++] = b; }
+        DSLObj b = mu_button(B.left, 0, 0, 192, 40, TR("Build a Unit"), on_build, NULL);
+        if (b) { U->tooltip(b, TR("Build a Unit"), TR("Opens the Unit Builder. The unit you save goes to My Units and is ticked here.")); if (B.nleft < SMAX) B.left_btn[B.nleft++] = b; }
         U->scroll_height(B.left, 44);
         return;
     }
