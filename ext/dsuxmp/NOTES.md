@@ -255,3 +255,25 @@ Decisions (question, pick, why):
   only the loader module sets up). Exported in mpmenu_kit.h for the other windows.
 - M5 the chat: CanvasScaler reference = 1920 x 1080 / scale (the brief's rule). The chat's places said "540" (half of a
   1080-high canvas) in 6 spots (clamp, default place, drag): now `ch_hh` = 540 / scale. Nothing else in the chat code.
+
+## dsuxmp2 (integration, 2026-10-25)
+
+Lane dsuxmp2 took over after dsuxmp stalled (17:45 session limit): merged the four uxmp branches (menu's work was
+uncommitted: committed without its chat part, lane dsdps owns the chat), then four sub-lanes finished the rest; notes in
+NOTES_pvp2.md, NOTES_hud2.md, NOTES_bring2.md, NOTES_menu2.md.
+
+| Row | State | Proof (BEFORE = origin/main build, AFTER = this branch) |
+|---|---|---|
+| M2, P1, P2, M5 PvP, M11 PvP | done | pvp_pair.py: before 4/27 (setup checks only), after 31/31 (de 960x540 UI 1.0, en 1728x1000 UI 1.4) |
+| M3, M5 menus, M6, M9 | done | menu_test.py: before FAIL, after PASS (en 960 UI 1.4, de 1728 UI 1.0, ru 960 UI 1.4, de 960 UI 1.4) |
+| M4, M8, M11, M12, M13 | done | mpmenu_test host checks (origin/main: 18 FAIL), en/de/ru shots |
+| M5 HUD, M7 | done | hud_test.py: before 4/16, after 16/16 (en 960 UI 1.4, de 1728 UI 1.0) |
+| M10 | done | menu_test M10 (long world name, de 960 and 1728): before FAIL, after PASS |
+| M1 | lane dsprivname (on main) | |
+| CLOSE (red X) | PvP Match / Bring list / result, Bring Units, Teams window, friends picker, title Expedition Results | pvp_pair, bring_test (before 4/6), hud_test C-checks, menu_test X check; guard tools/close_x_guard.py in src/build.sh |
+| MOVE | PvP windows, Teams window (dsl_movable); Players panel, Teams button, viewer box keep their own right-drag | pvp_pair, hud_test C3 |
+| CARD | Bring Units cards, FE rows: already whole buttons on main; PvP text Bring list tiles: fixed | bring_test CARD_* (pass on both), pvp_pair |
+| Lobby cog tooltip over the cog (de/ru 960x540 UI 1.4, found by the click check) | fixed in ui_tip.c | menu_test click checks |
+
+Not done here: the chat's UI Scale (lane dsdps; patch for its old code in the lane's ToDelete folder); the lobby Rules
+panel keeps its Done (no red X); lobby and in-session Expedition window have no red X (decisions in NOTES_menu2.md).
