@@ -1,6 +1,7 @@
 /* mp_worldsave.h - is a save file one of this mod's own worlds (Foreign Expedition hub, PvP world), by its file name?
  * The Bring Units save lists (card window mu_save.c, fe_game.c fe_list_saves, pvp_ui.c text list) show real worlds only
- * (owner 2026-10-20). Our worlds: the temp copies MPFE_ / mp_hub (MPHub_ before 0.1.26) / MPPvP_ / mp_sync / mp_fullcheck, and the game's own
+ * (owner 2026-10-20), and so does the game's Load list (mu_ui.c ws_show, a loader Load-list filter; owner 2026-10-25).
+ * Every list of saves uses this one test; never a second copy of these prefixes. Our worlds: the temp copies MPFE_ / mp_hub (MPHub_ before 0.1.26) / MPPvP_ / mp_sync / mp_fullcheck, and the game's own
  * saves of those worlds ("<clan>__AutoSave_<campaign guid, 32 hex>_<n>.json"), whose campaign guid starts with the mod's
  * world prefix: hub fe5ea00 (running) / fe5eb (template), PvP v1 b45e0 (fe_game.c FE_HUB_PREFIX, fe_hub.c). */
 #pragma once
