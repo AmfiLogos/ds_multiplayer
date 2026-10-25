@@ -57,8 +57,13 @@ functions[chk_lib]=${functions[chk]}
 # (no game, or one loader copy that never hosts, so never TCP 47777) runs under the lock GATE_PLAY_LOCK (one such check at a
 # time over every stream of this gate); every other check (pairs, menu hosts) waits until his game is closed, as before.
 NOHOST=" ${GATE_NOHOST:-} "; PLOCK=${GATE_PLAY_LOCK:-$OUT/play.lock}
-play_lock() { local n=0; while owner_plays; do
-    if mkdir $PLOCK 2>/dev/null; then echo $$ > $PLOCK/pid; return 0; fi
+load1() { sysctl -n vm.loadavg | awk '{ print int($2) }'; }
+test_on_47777() {   # a process that is not the owner's game listens on TCP 47777 (his game's default host port)
+  local p; for p in $(lsof -nP -t -iTCP:47777 -sTCP:LISTEN 2>/dev/null); do
+    ps -o command= -p $p | command grep -qE 'DSModLauncher/games/[^ ]*/MacOS/Dungeon Settlers|Dungeon Settlers Modded.app/Contents/MacOS/|steamapps/common/Dungeon Settlers/' || return 0; done; return 1; }
+play_lock() { local n=0; while owner_plays; do   # lead 2026-10-25: one copy / pair at a time, load < 15, no test on TCP 47777
+    if (( $(load1) < 15 )) && ! test_on_47777 && mkdir $PLOCK 2>/dev/null; then echo $$ > $PLOCK/pid; return 0; fi
+    [[ -d $PLOCK ]] || { (( n++ == 0 )) && print "$(date '+%T') owner's game runs: $1 waits (load $(load1), test on 47777: $(test_on_47777 && echo yes || echo no))" | tee -a $SUM; sleep 15; continue; }
     kill -0 "$(cat $PLOCK/pid 2>/dev/null)" 2>/dev/null || { mv $PLOCK $OUT/old_play_lock.$(date +%H%M%S) 2>/dev/null; continue; }
     (( n++ == 0 )) && print "$(date '+%T') owner's game runs: $1 waits for the one-copy lock" | tee -a $SUM; sleep 15; done; return 1; }
 play_unlock() { [[ "$(cat $PLOCK/pid 2>/dev/null)" == $$ ]] && mv $PLOCK $OUT/old_play_lock.$$.$(date +%H%M%S) 2>/dev/null; true; }
@@ -295,7 +300,7 @@ chk g027_hell_join 'RESULT PASS' $LD/loader python3 test/hell_join_pair.py   # a
 chk g027_locked_slots 'RESULT PASS' $LD/loader python3 test/locked_slots_test.py run $OUT/g027_locked_slots   # Locked Slots: menu, order, icon, file, Sort, return to base, save form
 chk g027_locked_slots_pair 'RESULT PASS' $LD/loader python3 test/locked_slots_pair.py $OUT/g027_locked_slots_pair   # host / guest locks on both players, dungeon trip, 0 desyncs
 chk g027_weapon_slot 'RESULT PASS' $LD/loader env WS_E1_SAVE=$HOME/ds_weaponslot/fixtures/elven_5slot_0.1.1_2026-10-25.json python3 test/weapon_slot_test.py run $OUT/g027_weapon_slot   # weapon-slot 0.1.2: stock 4-slot saves both ways
-chk g027_weapon_slot_pair 'RESULT PASS' $LD/loader python3 test/weapon_slot_pair.py $OUT/g027_weapon_slot_pair   # weapon slot in multiplayer, 0 desyncs
+chk g027_weapon_slot_pair 'RESULT PASS' $LD/loader env WS_OWNER_PLAY_OK=1 python3 test/weapon_slot_pair.py $OUT/g027_weapon_slot_pair   # weapon slot in multiplayer, 0 desyncs
 chk g027_worlds 'RESULT PASS' $CMR env HM_BUILD=$OUT/hm_build LD_ROOT=$LD WT_OUT=$OUT/g027_worlds python3 units/test/worlds_test.py   # Units Laboratory 0.1.16: team delete box, World units, snapshots (hm_build: dev-key loader of g027_look / g027_hostmods)
 chk g027_hub_nosave 'RESULT PASS' $WT python3 ext/dsmpsave/hub_nosave_test.py --dylib $D   # Foreign Expedition hub: no local save
 chk g027_solo_copy 'RESULT PASS' $WT python3 ext/dsmpsave/solo_copy_test.py --dylib $D   # solo copy box of a multiplayer world
