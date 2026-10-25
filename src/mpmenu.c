@@ -3812,11 +3812,11 @@ static void chat_build(Obj parent) {
         }
         u_gc_free(h_ch_field); h_ch_field = u_alive(f) ? u_gc_new(f) : 0;
         rig_log("mpmenu: chat text field %s", u_alive(f) ? "= the Rename popup's TMP_InputField" : "not found (typed keys only in tests)");
-        /* the corner grip: six small squares in a triangle (the game's pixel look, like the cog), 12 x 12 in the corner */
-        CH_KEEP(CL_GRIP, mk_img(tpl_img, B, -1, (Col){ 0, 0, 0, 0 }, 0, 0, 12, 12));
+        /* the corner grip: six small squares in a triangle (the game's pixel look, like the cog), 14 x 14 in the corner */
+        CH_KEEP(CL_GRIP, mk_img(tpl_img, B, -1, (Col){ 0, 0, 0, 0 }, 0, 0, 14, 14));
         if (o) { if (mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, false, NULL);
                  for (int a = 0; a < 3; a++) for (int c = 0; a + c < 3; c++) {
-                     Obj d = mk_img(tpl_img, u_tr(o), -1, C_SUB, 5 - 4 * a, -5 + 4 * c, 2, 2);
+                     Obj d = mk_img(tpl_img, u_tr(o), -1, C_SUB, 5.5f - 5 * a, -5.5f + 5 * c, 3, 3);
                      if (d && mm_is(d, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(d, false, NULL); } }
         /* clear strips under the bottom edge and right of the corner: a press there is a UI click (IsPointerOverUI), never
            a world click, and grabs the edge / the corner (the box itself has only 9 free units under the field) */
@@ -3851,7 +3851,7 @@ static void ch_layout(float W, float H) {
     { Obj in = u_gc_get(h_ch_input), f = u_gc_get(h_ch_field);
       if (in) place(in, fx, -hh + 23, fw - 16, 26);
       if (u_alive(f)) place(f, fx, -hh + 23, fw - 2, 28); }
-    CH_P(CL_GRIP, hw - 9, -hh + 9, 12, 12);
+    CH_P(CL_GRIP, hw - 10, -hh + 10, 14, 14);                              /* 3 from the corner; clear of the field (ends 15 in) */
     CH_P(CL_STRIPB, 0, -hh - 3, W, 6);
     CH_P(CL_STRIPR, hw + 3, -hh + 4, 6, 20);
 #undef CH_P
@@ -4146,7 +4146,7 @@ static void chat_frame(const mpm_obs *o) {
                 float ux = (mp.x - r[0]) / sc, uy = (mp.y - r[1]) / sc;     /* canvas units from the box's bottom-left */
                 int in = ux >= 0 && ux <= g.w && uy >= 0 && uy <= g.h;
                 if (in || pt_in(u_gc_get(h_ch_lay[CL_STRIPB]), mp) || pt_in(u_gc_get(h_ch_lay[CL_STRIPR]), mp)) {
-                    if (ux >= g.w - 14 && uy <= 14) kind = CHD_SIZE;        /* the grip corner (right of / under the field) */
+                    if (ux >= g.w - 15 && uy <= 16) kind = CHD_SIZE;        /* the grip corner (right of / under the field) */
                     else if (uy <= 8) kind = CHD_HEIGHT;                    /* the bottom edge: under the field */
                     else if (uy >= g.h - 31 || ux <= 3 || ux >= g.w - 3) kind = CHD_MOVE;   /* the title band, the frame */
                 }
