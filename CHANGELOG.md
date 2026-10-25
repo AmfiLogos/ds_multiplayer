@@ -29,6 +29,26 @@ Players and joining:
 - Get the host's mods: a mod that is on but did not start on your computer (for example after a crash at start) gets its
   own line with the reason. The "Get the host's mods" button does not show for it, because a restart cannot fix it.
   Before, you restarted and the host refused you again. Texts in 10 languages.
+Windows and boxes:
+- The multiplayer windows close with the game's red X: PvP Match, its Bring Units list, the PvP result, Bring Units,
+  the Teams window, the Steam friends picker and Expedition Results at the title.
+- The PvP windows and the Teams window move with a right-click drag and keep their place.
+- The multiplayer windows, the Players panel, the Teams button and the other multiplayer boxes follow the game's UI
+  Scale. A window that would not fit is drawn smaller, so it stays on the screen.
+- The Bring Units window shows above the Teams button. The multiplayer panels under it take no clicks.
+- The "Keep a single-player copy of this world?" box waits until the world shows, so it is never on a black screen.
+- In the Foreign Expedition hub lobby, the rules cog is hidden: the hub rules are set on the hub host page.
+- Box buttons grow to fit a long label, for example "Get the host's mods".
+- "Remove Tag" on a multiplayer world in Load Campaign is never cut: a long world name is cut with "..." instead.
+- Host from a Save: a first-time host (no world with the Multiplayer tag yet) sees every world.
+- The host's Esc menu button says "Turn Off Multiplayer". A guest keeps "Leave Multiplayer".
+- English buttons, rows and box buttons use Title Case.
+- Error lines start with a capital letter and end with a full stop, in every language.
+- Each language uses its own word for the hub.
+PvP:
+- Start Match with a team that has no unit or no player keeps the window open and says why, in red.
+- A guest's PvP window shows the host's rules and teams.
+- The match messages (countdown, "Fight!", preparation) show on a dark plate under the score panel.
 For mods:
 - Chat lines that show only on your own screen, also in single player (multiplayer API 3 and 4).
 
