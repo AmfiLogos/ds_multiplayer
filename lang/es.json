@@ -78,7 +78,7 @@
  "%s is free": "%s está libre",
  "%s is kept for a player who is away": "%s se guarda para un jugador ausente",
  "%s is not hosting this world right now.": "%s no está alojando este mundo ahora mismo.",
- "%s is on but did not start on this computer: %s": "%s está activado, pero no se inició en este equipo: %s",
+ "%s is on but did not start on this computer: %s": "El mod «%s» está activado, pero no se inició en este equipo: %s",
  "%s is playing another world now (%s), not %s.": "%s está jugando otro mundo ahora (%s), no %s.",
  "%s is playing another world now, not %s.": "%s está jugando otro mundo ahora, no %s.",
  "%s is reserved for %s": "%s está reservado para %s",
