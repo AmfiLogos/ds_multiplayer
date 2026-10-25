@@ -53,8 +53,14 @@ extaddr_test 13/0, ui test_ui 557/0, teams_test 0 failed, pvpr_test 28/0, rv_gat
 Windows module (multiplayer.dll) build.
 
 ### Shots
-ext/dsuxmp/shoot_text.py (one hidden copy UXT, ext/dsuxmp/make_instance_text.sh; run_text.sh takes the lane slot):
-~/ToDelete_2026-10-25/dsuxmp/shots/text/<lang>_1728x1000_ui1.0/ (local only).
+ext/dsuxmp/shoot_text.py (one hidden copy UXT, ext/dsuxmp/make_instance_text.sh; run_text.sh takes the lane slot) on
+the loader's multiplayer MODULE built from this tree (ext/dsuxmp/build_module_text.sh; the rig build of src/build.sh is
+refused by the loader: "no dsl_plugin_api_version", and then the loader's filter panel and Custom Modes cannot see it).
+~/ToDelete_2026-10-25/dsuxmp/shots/text/{en,de,ru}_1728x1000_ui1.0/ (local only), 13 states each: 01 Multiplayer page,
+04 join page, 09 host page, 13 refusal box, 19 Your save list, 21-23 lobby + Rules + Turn Off box, 25 cog list, 26 Teams,
+29 / 29b / 30 host Esc menu, its tooltip, its box. Results (notes.json): 19 = mode -1, 1 world shown, 0 hidden, no toggle
+(en/de/ru); 13 ru = "Игра заполнена."; 29 = Turn Off Multiplayer (de "Mehrspieler ausschalten", ru "Отключить
+мультиплеер"), 30 = the lobby's box; copy guard: never visible, never frontmost.
 
 ### Labels changed (English, old -> new)
 - "Host a game" -> "Host a Game"
