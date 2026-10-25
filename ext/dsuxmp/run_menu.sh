@@ -1,19 +1,18 @@
 #!/bin/zsh
-# Run menu_test.py combos while holding the dsuxmp lane's game-copy slot (one copy at a time for the whole lane).
-# usage: run_menu.sh "en 960x540 1.4 [parts] [--mp DYLIB --tag NAME]" ["de 1728x1000 1.0" ...]
-# The slot: load under 15, then mkdir ~/ds_multiplayer/rig/dsuxmp_copies.lock (taken = another sub-lane runs: exit 3);
-# released on exit, errors and signals. Logs: ~/ToDelete_2026-10-25/dsuxmp/menu/runs/log_*.txt
+# Run menu_test.py combos on the hidden copy UMN while holding one game-copy slot of lane dsuxmp2 (slot.sh: load < 15,
+# a free slot; released on exit, errors and signals). Max 25 min per hold: give at most about 6 combos per call.
+# usage: run_menu.sh "en 960x540 1.4 [parts] --mp DYLIB [--tag NAME]" ["de 1728x1000 1.0 ..." ...]
+# DYLIB: LOADER=~/ds_launcher_wt_dsuxmp2/loader zsh ext/dsuxmp/build_mouse.sh <out> (the fake mouse; SRC=<tree>/src for another tree).
+# Logs: ~/ToDelete_2026-10-25/dsuxmp2/dsuxmp2-menu/runs/log_*.txt
 cd ${0:A:h}
-L=$HOME/ds_multiplayer/rig/dsuxmp_copies.lock
-load=$(sysctl -n vm.loadavg | awk '{print int($2)}')
-(( load < 15 )) || { echo "load $load: not now"; exit 2; }
-mkdir $L 2>/dev/null || { echo "slot taken: $(cat $HOME/ToDelete_2026-10-25/dsuxmp/copies_holder.txt 2>/dev/null)"; exit 3; }
-echo "uxmp-menu $(date '+%H:%M:%S')" > $HOME/ToDelete_2026-10-25/dsuxmp/copies_holder.txt
-trap 'rmdir $L 2>/dev/null' EXIT INT TERM
-D=$HOME/ToDelete_2026-10-25/dsuxmp/menu/runs; mkdir -p $D
+S=$HOME/ToDelete_2026-10-25/dsuxmp2/slot.sh; WHO=dsuxmp2-menu
+$S take $WHO 1 1800 || exit 3
+trap "$S release $WHO >/dev/null" EXIT INT TERM
+D=$HOME/ToDelete_2026-10-25/dsuxmp2/dsuxmp2-menu/runs; mkdir -p $D
 for combo in "$@"; do
   a=(${=combo})
-  f=$D/log_${a[1]}_${a[2]}_${a[3]}_$(date +%H%M%S).txt
+  tag=${a[(r)--tag]:+_${a[$(( ${a[(i)--tag]} + 1 ))]}}
+  f=$D/log_${a[1]}_${a[2]}_${a[3]}${tag}_$(date +%H%M%S).txt
   python3 menu_test.py $a > $f 2>&1
   echo "$combo rc $? $f"; grep '^RESULT' $f | sort -u
 done

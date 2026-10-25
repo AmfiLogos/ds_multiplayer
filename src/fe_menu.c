@@ -23,7 +23,7 @@ enum { FT_TITLE, FT_SUB, FT_RULES, FT_LHEAD, FT_RHEAD, FT_COUNT, FT_NOTE, FT_TAB
 #define WY(y) (FEW_H / 2 - (y))
 static struct {
     int mode, esc, page, upage, sel_save, nsave, nunit, picked[64], npicked, ntarget, target, choice, applied, conflict, nres;
-    uintptr_t root, view, t[FT_N], rowt[8][3], cardt[8][4];
+    uintptr_t root, view, t[FT_N], rowt[8][3], cardt[8][4], foot[2];   /* foot: the bottom bar's band + line */
     fe_save_info saves[64]; fe_unit_info units[64]; fe_save_info targets[16]; fe_result_info res[16];
     char run[40], msg[1200], err[600];
 } W;
@@ -115,8 +115,8 @@ static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
     for (int i = 0; i < 6; i++) BTN(MPB_FE_RES0 + i, S_NBTN, 0, WY(160 + 54 * i + 25), 900, 50, 15, "", C_MAIN);
     T(FT_MSG, 0, 15, 514, 1, 0, WY(300), 820, 160, C_MAIN);
     /* bottom bar */
-    mk_img(tpl_img, R, -1, C_BAND, 0, WY(FEW_H - 34), FEW_W - 4, 64);
-    mk_img(tpl_img, R, -1, C_COPPER, 0, WY(FEW_H - 66), FEW_W - 4, 1);
+    { Obj f0 = mk_img(tpl_img, R, -1, C_BAND, 0, WY(FEW_H - 34), FEW_W - 4, 64), f1 = mk_img(tpl_img, R, -1, C_COPPER, 0, WY(FEW_H - 66), FEW_W - 4, 1);
+      u_gc_free(W.foot[0]); u_gc_free(W.foot[1]); W.foot[0] = f0 ? u_gc_new(f0) : 0; W.foot[1] = f1 ? u_gc_new(f1) : 0; }
     BTN(MPB_FE_CANCEL, S_NBTN, WX(24 + 100), WY(FEW_H - 34), 200, 36, 16, "Cancel", C_MAIN);
     BTN(MPB_FE_OK, S_RECRUIT, WX(936 - 130), WY(FEW_H - 34), 260, 44, 17, "", C_START);
     #undef T
@@ -129,7 +129,7 @@ static void few_show(int id, int on) { Obj b = few_btn(id); if (b) u_active(b, o
 static void few_set(int k, const char *s) { Obj t = few_t(k); if (t) { u_active(t, s && s[0]); cmt_set(t, s ? s : ""); } }
 static void few_hide_all(void) {
     for (int id = MPB_FE_SAVE0; id <= MPB_FE_RES5; id++) few_show(id, 0);
-    for (int k = FT_LHEAD; k < FT_N; k++) few_set(k, "");
+    for (int k = FT_RULES; k < FT_N; k++) few_set(k, "");                 /* the rules line too: the list page showed its template's word ("Credits") */
 }
 /* ---- data */
 static void few_load_units(void) {
@@ -150,6 +150,11 @@ static void few_open(int mode, const char *run) {
 static int few_version_ok(const fe_save_info *s, const fe_mode_info *m) { return !m->version[0] || !strcmp(s->version, m->version); }
 /* ---- per frame */
 int pvp_ui_window_open(void);                                               /* pvp_ui.c */
+static int few_x_on(void);                                                  /* the game's red X shows on this window (CLOSE RULE, below) */
+static void few_foot(void) {                                                /* the bottom bar only under a button (the list with the red X has none) */
+    Obj c = few_btn(MPB_FE_CANCEL), o = few_btn(MPB_FE_OK); int on = (c && u_on(c)) || (o && u_on(o));
+    for (int i = 0; i < 2; i++) { Obj f = u_gc_get(W.foot[i]); if (u_alive(f)) u_active(f, on); }
+}
 static void few_sync(void) {
     Obj root = u_gc_get(W.root);
     if (!u_alive(root)) return;
@@ -208,13 +213,14 @@ static void few_sync(void) {
         if (W.err[0]) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "</color>"); }
         few_set(FT_NOTE, b);
         few_label(MPB_FE_CANCEL, cmt_game("TEXTKEY_CommonPopUp_Cancel", "Cancel"));
+        if (few_x_on()) few_show(MPB_FE_CANCEL, 0);                         /* CLOSE RULE: a plain Cancel = the red X's action */
         if (W.npicked) few_label(MPB_FE_OK, TR("Bring These Units"));
         else { snprintf(b, sizeof b, "<color=#A69085>%s</color>", TR("Bring These Units")); few_label(MPB_FE_OK, b); }
     }
     if (W.mode == FEW_LIST) {
         few_set(FT_TITLE, TR("Expedition Results"));
         few_set(FT_SUB, TR("Each result can be brought home once."));
-        if (W.msg[0]) { few_set(FT_MSG, W.msg); few_label(MPB_FE_CANCEL, cmt_game("TEXTKEY_Shared_Back", "Back")); few_show(MPB_FE_OK, 0); return; }
+        if (W.msg[0]) { few_set(FT_MSG, W.msg); few_label(MPB_FE_CANCEL, cmt_game("TEXTKEY_Shared_Back", "Back")); few_show(MPB_FE_OK, 0); few_foot(); return; }
         for (int i = 0; i < 6; i++) {
             few_show(MPB_FE_RES0 + i, i < W.nres);
             if (i >= W.nres) continue;
@@ -228,6 +234,7 @@ static void few_sync(void) {
             few_label(MPB_FE_RES0 + i, b);
         }
         few_label(MPB_FE_CANCEL, cmt_game("TEXTKEY_Shared_Back", "Back")); few_show(MPB_FE_OK, 0);
+        if (few_x_on()) few_show(MPB_FE_CANCEL, 0);                         /* the list's Back closes the window: the red X's action */
     }
     if (W.mode == FEW_RESULTS) {
         fe_res_row rows[8]; fe_res_item items[40]; int ni = 0; fe_mode_info rr;
@@ -242,7 +249,7 @@ static void few_sync(void) {
         if (W.applied) {
             char t[1400]; snprintf(t, sizeof t, TR("Saved as \"%s\". Load it from Load campaign.\nYour old save is not changed, and a backup copy was made first."), W.msg);
             snprintf(b, sizeof b, "<size=130%%>%s</size>\n\n%s", TR("Brought home"), t);
-            few_set(FT_MSG, b); few_show(MPB_FE_CANCEL, 0); few_label(MPB_FE_OK, TR("OK")); return;
+            few_set(FT_MSG, b); few_show(MPB_FE_CANCEL, 0); few_label(MPB_FE_OK, TR("OK")); few_foot(); return;
         }
         size_t o = (size_t)snprintf(b, sizeof b, "<color=#A69085>%s<pos=26%%>%s<pos=42%%>%s<pos=56%%>%s</color>", TR("Unit"), cmt_game("TEXTKEY_STATUS_Level_NAME", "Level"), TR("XP"), TR("Status"));
         char ap[1600] = ""; size_t ao = 0;
@@ -292,6 +299,7 @@ static void few_sync(void) {
         few_label(MPB_FE_CANCEL, TR("Later"));
         few_label(MPB_FE_OK, TR("Apply to a New Save"));
     }
+    few_foot();
 }
 static int few_open_now;                                                    /* frames since opened (tests) */
 /* clicks (pending_click); returns 1 if consumed */
@@ -358,6 +366,16 @@ static int few_click(int c) {
    (mpmenu_escape_ours), as before. */
 static void few_esc_close(void *ud) { (void)ud; few_click(MPB_FE_CANCEL); }
 static mpesc_win esc_few = { .name = "the Foreign Expedition window (title)", .close = few_esc_close };
+/* CLOSE RULE (owner 2026-10-25): the game's red X in the title band's top-right corner (36 units, as the game's Load Campaign
+   window), on the title window only: a click = its Escape close above (Cancel / Back / Later; the "Already Brought Home"
+   page: Back to the list). With it, the plain Cancel of Bring Units and the list's Back (= close) go; Later, Apply to a New
+   Save, Bring These Units, OK and the message page's Back stay. In a session (Esc menu root) no X: that window stays on the
+   game's Escape path (mpmenu_escape_ours), because the Steam friends picker, not on the kit's stack, opens over it; a kit
+   registration there would let Escape close the window under the picker. Older kit / the rig's dylib: no X, Cancel stays. */
+static int few_x_on(void) {
+    Obj x = esc_few.xh ? u_gc_get(esc_few.xh) : NULL, root = u_gc_get(W.root);
+    return !W.esc && u_alive(x) && u_alive(root) && u_tr_parent(u_tr(x)) == u_tr(root);
+}
 /* every frame: where the window lives (session: Esc menu root; title: title view), auto-open on new results */
 static char few_seen_run[40];
 static void few_frame(const mpm_obs *o) {
@@ -371,6 +389,8 @@ static void few_frame(const mpm_obs *o) {
             Obj root0 = u_gc_get(W.root); if (u_alive(root0)) u_active(root0, false);
             few_build(u_tr(host), src, esc, tpl_img, tpl_txt);
             u_gc_free(W.view); W.view = u_gc_new(host);
+            Obj root = u_gc_get(W.root);
+            if (!esc && u_alive(root)) mpesc_close_x(&esc_few, root, FEW_W - 54, 14, 36, root);   /* the title window: the game's red X */
         }
     }
     /* new results in a session (the host ended the run): open them over the Esc menu */
