@@ -4042,6 +4042,7 @@ static mpesc_win esc_chat = { .name = "the chat", .close = chat_esc_close };   /
 static int ch_top_c, ch_top_id = -1, ch_top_n; static unsigned ch_top_gen; static float ch_top_bw, ch_top_av;
 static int ch_top_count(float bw, float avail) {
     int id0 = nch ? chist[0].id : 0;
+    if ((ch_drag == CHD_SIZE || ch_drag == CHD_HEIGHT) && ch_top_id >= 0) return ch_top_c > nch ? nch : ch_top_c;   /* resizing: measured again at the release */
     if (!ch_top_stale && id0 == ch_top_id && bw == ch_top_bw && avail == ch_top_av && chf_gen == ch_top_gen && (ch_top_c < ch_top_n || nch == ch_top_n))
         return ch_top_c > nch ? nch : ch_top_c;
     float used = 0; int n = 0;
