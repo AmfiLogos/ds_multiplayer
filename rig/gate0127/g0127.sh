@@ -53,7 +53,17 @@ owner_plays() {   # v0.1.21: match the GAME BINARY (launcher copy "Dungeon Settl
   pgrep -x DSModLauncher >/dev/null && return 0
   pgrep -fl 'DSModLauncher/games/[^ ]*/MacOS/Dungeon Settlers|Dungeon Settlers Modded.app/Contents/MacOS/' | command grep -vE '/instances/|/private/tmp/|/tmp/|ToDelete|/ds_rel0[0-9]+/|/test_env/|pgrep' | command grep -q .; }
 functions[chk_lib]=${functions[chk]}
-chk() { owner_wait; chk_lib "$@"; }
+# v0.1.27 (lead 2026-10-25: one hidden copy at a time while the owner plays): while his game runs, a check named in GATE_NOHOST
+# (no game, or one loader copy that never hosts, so never TCP 47777) runs under the lock GATE_PLAY_LOCK (one such check at a
+# time over every stream of this gate); every other check (pairs, menu hosts) waits until his game is closed, as before.
+NOHOST=" ${GATE_NOHOST:-} "; PLOCK=${GATE_PLAY_LOCK:-$OUT/play.lock}
+play_lock() { local n=0; while owner_plays; do
+    if mkdir $PLOCK 2>/dev/null; then echo $$ > $PLOCK/pid; return 0; fi
+    kill -0 "$(cat $PLOCK/pid 2>/dev/null)" 2>/dev/null || { mv $PLOCK $OUT/old_play_lock.$(date +%H%M%S) 2>/dev/null; continue; }
+    (( n++ == 0 )) && print "$(date '+%T') owner's game runs: $1 waits for the one-copy lock" | tee -a $SUM; sleep 15; done; return 1; }
+play_unlock() { [[ "$(cat $PLOCK/pid 2>/dev/null)" == $$ ]] && mv $PLOCK $OUT/old_play_lock.$$.$(date +%H%M%S) 2>/dev/null; true; }
+chk() { if [[ $NOHOST == *" $1 "* ]]; then local held=0 rc; play_lock $1 && held=1; chk_lib "$@"; rc=$?; (( held )) && play_unlock; return $rc; fi
+  owner_wait; chk_lib "$@"; }
 # held wine lock (Windows section): python tests via held_lock_run.py, wine_lease.py users (shell tests) on a private lock
 WH=($H/held_lock_run.py); WE=(WINE_LEASE_LOCK=$HOME/ds_multiplayer/rig/wine.lock.gate13-inner)
 LR=$H/ld_run.py
