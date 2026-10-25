@@ -17,6 +17,10 @@ Nothing was run in the game. Everything below "Verify in game" is unproven.
   logs `ESC-MISSING` for a kit root panel with no registration and esc_kit_test's sweep fails on it (windows built from our
   own clones are not seen by that guard: their test case is the check).
 - Full rule and how-to: ds_modloader loader/NOTES.md "Escape".
+- Keys (owner 2026-10-25, "can't pause to read the chat"): a window of ours that is not being typed in leaves the game its
+  keys (Space pauses); only a focused text field holds them. Its buttons are plain Images whose clicks we read, never a
+  Unity Selectable (a selected Button takes Space / Enter as Submit). Guard: the chat tests check `hotkeys_blocked` 0 and
+  that Space pauses with the box open (ext/dsdps/chat_drag_test.py).
 
 ## Files
 - `ui_model.h/.c`: the rules, with no game code: claims, order permission, vote view, status line, popup routing, story vote tally, address parsing.

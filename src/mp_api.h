@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define MP_API_VERSION 3                     /* 2 (2026-10-18): rand_*, chat_line; 3 (2026-10-25): chat_local */
+#define MP_API_VERSION 4                     /* 2 (2026-10-18): rand_*, chat_line; 3 (2026-10-25): chat_local; 4 (2026-10-25): chat_clears */
 
 enum { MP_ROLE_NONE = 0, MP_ROLE_HOST = 1, MP_ROLE_GUEST = 2 };
 /* ui_set_flag: game UI rules a mod sets (ui_game.c). Default off. */
@@ -114,6 +114,8 @@ typedef struct mp_api_table {
     int (*chat_line)(const char *mod_name, const char *text, int flags);      /* MP_CHAT_LOCAL / _BROADCAST; MP_CHAT_* */
     /* ---- v3 (2026-10-25; check version >= 3) */
     int (*chat_local)(const char *mod_name, const char *text, int flags);     /* MP_CHATL_*; MP_CHAT_SHOWN / _BAD_ARGS / _OFF */
+    /* ---- v4 (2026-10-25; check version >= 4) */
+    unsigned (*chat_clears)(void);                                            /* the player's clears ("/clear" or the bin) since the game started */
 } mp_api_table;
 
 /* exported by multiplayer: NULL if version > MP_API_VERSION */
@@ -152,6 +154,7 @@ int   mp_rand_shared(void);
 void  mp_rand_stats(uint64_t *shared, uint64_t *local);
 int   mpmenu_mod_chat(const char *mod_name, const char *text, int flags);
 int   mpmenu_chat_local(const char *mod_name, const char *text, int flags);    /* v3 chat_local */
+unsigned mpmenu_chat_clears(void);                                         /* v4 chat_clears */
 typedef struct { double tokens, t; } mpc_bucket;
 size_t mpc_clean(const char *in, char *out, size_t cap);                     /* UTF-8 safe cut, control bytes -> spaces */
 int   mpc_encode(const char *mod, const char *text, char *out, size_t cap);  /* broadcast wire text; -1 empty mod / text */
