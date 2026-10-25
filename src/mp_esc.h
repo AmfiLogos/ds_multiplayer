@@ -25,5 +25,5 @@ enum { MPESC_BOX = 1 };            /* flags: the window is one of our stock boxe
    Escape check skips. 0 = no kit Escape (older loader, the rig's own dylib, refused): the window's old Escape path. */
 int  mpesc_sync(mpesc_win *w, void *obj, int shown, int flags);
 void mpesc_drop(mpesc_win *w);     /* closed or hidden another way: off the kit's stack now */
-int  mpesc_took(void);             /* 1 = the kit takes (or just took) this frame's Escape for one of our windows */
+int  mpesc_took(void);             /* 1 = the kit takes (or just took) this frame's Escape: one of our windows, or any mod's (dsl_esc_taken) */
 int  mpesc_box_over(void);         /* 1 = one of our stock boxes (or the ui lane's prompt) is up over our windows */

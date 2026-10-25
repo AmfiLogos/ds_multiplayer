@@ -6,6 +6,7 @@
 
 int mpmenu_box_over(void);                     /* mpmenu.c: one of our boxes on the stock CommonNoticeView is up */
 int ui_modal_open(void);                       /* ui_game.c: the ui lane's prompt (player disconnected: Keep playing / Wait) */
+void *mpmenu_loader_sym(const char *n);        /* mpmenu.c: a loader export (Windows: baselib.dll) */
 
 #define W_MAX 16
 static mpesc_win *ws[W_MAX]; static int nws;   /* windows that show now: pushed, or held off the stack under a box */
@@ -62,6 +63,10 @@ int mpesc_sync(mpesc_win *w, void *obj, int shown, int flags) {
     return 1;                                        /* the kit has the key for this window */
 }
 int mpesc_took(void) {
+    /* the kit takes this press for a window of ANY mod (another mod's window or a kit notice over our title page): kit 0.1.28+ */
+    static int (*kit_took)(void); static int looked;
+    if (!looked) { looked = 1; kit_took = (int (*)(void))mpmenu_loader_sym("dsl_esc_taken"); }
+    if (kit_took && kit_took()) return 1;
     for (int i = 0; i < nws; i++) if (ws[i]->id) return 1;
     return rig_frames - took_at <= 1;
 }
