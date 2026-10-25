@@ -2,7 +2,7 @@
 # g0127.sh - the v0.1.27 Mac gate (lane dsrel027b, 2026-10-25): copy of gate0126 (g026_ -> g027_) + the v0.1.27 section at the
 # end: player mods (dspmod), Hell switch + Hell join (dshell2, dsmpsave), Locked Slots 0.1.0 (dslock), weapon-slot 0.1.2
 # (dswslot2), Units Laboratory 0.1.16 World units (dsunits), hub no local save + solo copy (dsmpsave), unit click no resync
-# (dsmpfix). mod_zip installs the new locked-slots zip on the app. (g0126 header:) the v0.1.26 Mac gate (lane dsrel026): copy of gate0125;
+# (dsmpfix). mod_zip installs the new custom-modes zip on the app. (g0126 header:) the v0.1.26 Mac gate (lane dsrel026): copy of gate0125;
 # Fixes tab, On in all worlds, fix-only worlds as Vanilla & Vanilla+, Show only active mods (dsfixes), multiplayer 0.1.25 pin
 # (Bring Units skill trees in the game's words), gcd-cdr 0.1.7 + sound-fix 0.1.1 zips. (g0125:) v0.1.25 = kit text look,
 # multiplayer 0.1.23 pin, Load list Mods line fit. (g0124:) v0.1.24 =
@@ -139,7 +139,7 @@ chk g027_kit_mods 'KIT MODS SAME' $WT kitmods
 chk g027_featsplit '([0-9]+)/\1 checks, violations 0' $LD/loader python3 $LR featsplit_test.py $OUT/g027_featsplit   # a launcher feature never refuses a world
 chk g027_hell_newgame 'RESULT PASS' $LD/loader python3 $LR hell_newgame_test.py $OUT/g027_hell_newgame   # new game on combat Hell reaches the world
 chk g027_dmg_start 'RESULT ([0-9]+)/\1 pass' $WT python3 $H/dmg_start.py $(print $REL/*.dmg) $OUT/g027_dmg_start
-chk g027_mod_zip 'RESULT ([0-9]+)/\1 pass' $WT python3 $H/dmg_start.py $(print $REL/*.dmg) $OUT/g027_mod_zip $(print $REL/locked-slots-*.zip(N[1]))
+chk g027_mod_zip 'RESULT ([0-9]+)/\1 pass' $WT python3 $H/dmg_start.py $(print $REL/*.dmg) $OUT/g027_mod_zip $(print $REL/custom-modes-*.zip(N[1]))   # a default-on mod (locked-slots is off by default: not opened)
 hell() {   # Hell on (copy Z): 20/20 patches + table half loaded from the delta, staff strip on Hell only (crossmods)
   python3 $WT/ext/crossmods13/mac_mods_test.py $LD/loader --game-s 120 || return 1
   local L=$HOME/ds_launcher/loader/test_env/instances/Z/dsload.log   # test copies live in ~/ds_launcher (lrig.py / make_instance.sh)
