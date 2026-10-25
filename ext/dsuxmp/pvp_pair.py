@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""uxmp-pvp pair test (lane dsuxmp, sub-lane uxmp-pvp; UX review 2026-10-25 rows M2, M5, P1, P2). Two hidden loader copies
-(UPA hosts as "Alex", UPB joins by address as "Sam") on a port the OS picks, with the loader and mods of the dsuxmp shared
-build (~/ds_launcher_wt_dsuxmp) and THIS multiplayer dylib (a fake-mouse build: ext/dsuxmp/build_mouse.sh).
+"""PvP pair test (lane dsuxmp, sub-lane uxmp-pvp: UX review 2026-10-25 rows M2, M5, P1, P2; lane dsuxmp2, sub-lane
+dsuxmp2-pvp: the owner's CLOSE, MOVE and CARD rules on the PvP windows). Two hidden loader copies (UPA hosts as "Alex", UPB
+joins by address as "Sam") on a port the OS picks, with the loader and mods of the dsuxmp2 shared build
+(~/ds_launcher_wt_dsuxmp2, ds_modloader 83636d0: the kit's red X, UI Scale, right-drag move) and THIS multiplayer dylib (a
+fake-mouse build: ext/dsuxmp/build_mouse.sh).
 
   pvp_pair.py --dylib <multiplayer.dylib> [--lang en|de|ru] [--size 960x540] [--scale 1.0] [--tag name] [--shots dir]
+              [--src <tree>]   (the tree whose lang/ goes with the dylib; default this worktree)
 
 Checks (each prints CHECK PASS|FAIL; the last line is RESULT PASS|FAIL <passed>/<checks>):
   P1  the guest's open PvP window shows the host's rules (all rule rows) and teams after the host changes them, and after
@@ -14,20 +17,29 @@ Checks (each prints CHECK PASS|FAIL; the last line is RESULT PASS|FAIL <passed>/
       score panel, at the start UI scale (run it at 1.0 and 1.4: the game's HUD keeps its layout when the scale is set while
       running)
   M2  Start Match with a team that has no unit: the window stays open, the reason shows in red, no match is set up
-Needs: the dsuxmp copy slot (~/ds_multiplayer/rig/dsuxmp_copies.lock, taken and released here), a rig pair lease, load < 15,
-instances UPA / UPB (ext/dsuxmp/make_instance_pvp.sh). Copies are hidden, muted, windowed; the owner's game is never touched."""
+  ESC   a plain mpm_esc (test command) opens the game's Esc menu (other tests open it so)
+  CLOSE the game's red X shows at the top-right of the title band of the PvP Match window, the text Bring Units list and the
+        result window (mpm_esc {list:1}); the PvP window's bottom Close is gone (the X does it); a fake-mouse click on the X
+        closes the window (Bring list: back to the PvP window)
+  MOVE  a fake right-drag moves the PvP Match window (by the drag) and it opens again at the moved place
+  CARD  in the text Bring list a click on a unit's portrait, and on the empty part of its tile, picks / unpicks it
+Needs: two dsuxmp2 copy slots + the pair lock (~/ToDelete_2026-10-25/dsuxmp2/slot.sh, taken and released here), a rig pair
+lease, load < 15, instances UPA / UPB (ext/dsuxmp/make_instance_pvp.sh). Copies are hidden, muted, windowed; the owner's
+game is never touched."""
 import argparse, json, os, sys, time, glob, shutil, subprocess, threading, signal, traceback, socket, hashlib, re
 
 ap = argparse.ArgumentParser()
 ap.add_argument('--dylib', required=True); ap.add_argument('--lang', default='en'); ap.add_argument('--size', default='960x540')
 ap.add_argument('--scale', type=float, default=1.0); ap.add_argument('--tag', default=''); ap.add_argument('--shots', default='')
+ap.add_argument('--src', default='')
 A = ap.parse_args()
 HERE = os.path.dirname(os.path.abspath(__file__)); WT = os.path.abspath(os.path.join(HERE, '..', '..'))
-LB = os.path.expanduser('~/ds_launcher_wt_dsuxmp/loader'); LT = os.path.join(LB, 'test')
+LB = os.path.expanduser('~/ds_launcher_wt_dsuxmp2/loader'); LT = os.path.join(LB, 'test')
+SRCT = os.path.abspath(os.path.expanduser(A.src)) if A.src else WT        # its lang/ goes with the dylib
 LANGS = {'en': 0, 'de': 3, 'ru': 4}
 W, H_ = (int(v) for v in A.size.split('x'))
 TAG = A.tag or f'{A.lang}_{W}x{H_}_ui{A.scale:.1f}'
-RUN = os.path.expanduser(f'~/ToDelete_2026-10-25/dsuxmp/pvp/runs/{TAG}' + time.strftime('_%H%M%S')); os.makedirs(RUN, exist_ok=True)
+RUN = os.path.expanduser(f'~/ToDelete_2026-10-25/dsuxmp2/pvp/runs/{TAG}' + time.strftime('_%H%M%S')); os.makedirs(RUN, exist_ok=True)
 SHOTS = A.shots
 os.environ['LRIG_SIZE'] = f'{W}x{H_}'
 sys.path.insert(0, LT)
@@ -35,13 +47,13 @@ import lrig as r                                           # noqa: E402  (instan
 sys.path.insert(1, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig as realrig                                      # noqa: E402  leases only
 HOST, GUEST = 'UPA', 'UPB'
-LANE = 'uxmp-pvp'
-SLOT = os.path.expanduser('~/ds_multiplayer/rig/dsuxmp_copies.lock')
+LANE = 'dsuxmp2-pvp'
+SLOTSH = os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp2/slot.sh')
 TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')
 SOLO_G = 'b0c0ffee-0000-4000-8000-0000000000a1'; SOLO_STEM = 'Brightwood__AutoSave_' + SOLO_G.replace('-', '') + '_0'
 MYPIDS = {}; violations = []; stop_guard = threading.Event(); RESULTS = []
 LOGF = open(os.path.join(RUN, 'log.txt'), 'a')
-TR = json.load(open(os.path.join(WT, 'lang', f'{A.lang}.json'))) if A.lang != 'en' else {}
+TR = json.load(open(os.path.join(SRCT, 'lang', f'{A.lang}.json'))) if A.lang != 'en' else {}
 def tr(k): return TR.get(k) or k
 PLAN_MSG = tr('Planning pause: give your orders, then press Ready')
 
@@ -90,7 +102,7 @@ def install(x):
     mj = json.load(open(os.path.join(mp, 'mod.json')))
     mj['platforms']['mac-arm64']['files']['multiplayer.dylib'] = hashlib.sha256(open(A.dylib, 'rb').read()).hexdigest()
     json.dump(mj, open(os.path.join(mp, 'mod.json'), 'w'), indent=1)
-    for f in glob.glob(os.path.join(WT, 'lang', '*.json')): shutil.copy2(f, os.path.join(mp, 'lang'))
+    for f in glob.glob(os.path.join(SRCT, 'lang', '*.json')): shutil.copy2(f, os.path.join(mp, 'lang'))
     subprocess.run(['codesign', '-f', '-s', '-', os.path.join(app, 'Contents', 'MacOS', 'Dungeon Settlers')], capture_output=True)
     if os.path.isdir(aside): os.replace(aside, ld)
     os.makedirs(ld, exist_ok=True)
@@ -118,7 +130,7 @@ def seed(x, name, port):
     old = os.path.join(I, 'old', time.strftime('%Y%m%d-%H%M%S')); os.makedirs(old, exist_ok=True)
     for p in ('data/Saves', 'mp_solo.txt', 'mp_tags.txt', 'mp_worlds.txt', 'mp_menu.json', 'mp.json', 'mp_history.json',
               'data/fe', 'data/mp_owners', 'data/SaveHeaderCache.json', 'data/Mods/worlds.json', 'data/Mods/save_copies',
-              'data/Mods/settings.json', 'data/ModData', 'rig.log', 'dsload.log', 'player.log'):
+              'data/Mods/settings.json', 'data/Mods/ui_places.tsv', 'data/ModData', 'rig.log', 'dsload.log', 'player.log'):
         q = os.path.join(I, p)
         if os.path.exists(q): shutil.move(q, os.path.join(old, p.replace('/', '_')))
     sv = os.path.join(I, 'data', 'Saves'); os.makedirs(sv)
@@ -349,7 +361,7 @@ def p2_measure(label):
 def m2_refused():
     """M2: the guest on the host's team: Red has no player and no unit. Start Match: window open, red reason, no match."""
     for x in (HOST,):
-        if not pv(x).get('window'): c(x, cmd='mpm_esc'); time.sleep(2); pv(x, action='press_esc'); time.sleep(2)
+        if not pv(x).get('window'): open_esc(x); pv(x, action='press_esc'); time.sleep(2)
     th = teams(HOST); gid = [t[0] for t in th if t[0] != 0]
     i = [t[0] for t in th].index(gid[0]) if gid else 1
     if dict(th).get(gid[0] if gid else 1) == 2: pv(HOST, action='player', i=i); time.sleep(1.2)
@@ -362,6 +374,107 @@ def m2_refused():
     check('M2 the reason shows in red', q.get('note') in want and q.get('note_err') == 1, f'note {q.get("note")!r} red {q.get("note_err")}')
     check('M2 no match was set up', not s.get('active') and s.get('phase', 0) == 0, {k: s.get(k) for k in ('phase', 'active', 'arena')})
     pv(HOST, action='player', i=i); time.sleep(1.0)
+
+
+# ------------------------------------------------------------------ CLOSE / MOVE / CARD (dsuxmp2-pvp, owner rules 2026-10-25)
+WIN_H = {'window': 906, 'bring': 700, 'result': 360}                     # window heights at scale 1 (pvp_ui.c PV_H, br_build, pr_build)
+
+
+def rect(p, k):                                           # a screen rect of the probe (origin/main has no probe: its status has "window": 0|1)
+    v = p.get(k); return v if isinstance(v, list) and len(v) == 4 else None
+
+
+def open_esc(x):                                          # the Esc menu: this branch's test action, else the plain mpm_esc (origin/main)
+    pv(x, action='esc_menu'); time.sleep(1.5)
+    if not pv(x).get('esc_menu'): c(x, cmd='mpm_esc'); time.sleep(1.5)
+
+
+def red_x(x, name):
+    """our window whose name has `name`, as mpm_esc {list:1} lists it (name, x = its red X shows, x_rect = its screen rect)"""
+    try: q = c(x, cmd='mpm_esc', list=1)
+    except Exception as e: log('mpm_esc list', repr(e)); return None
+    for w in (q.get('windows') or []) if isinstance(q, dict) else []:
+        if name in w.get('name', ''): return w
+    log('mpm_esc list: no', repr(name), json.dumps(q)[:300]); return None
+
+
+def x_on_band(w, win, key):
+    """the red X shows, inside the window, at its top-right, in the title band (60 units from the top)"""
+    r = (w or {}).get('x_rect')
+    if not (w and w.get('x') and r and win and r[2] > r[0]): return False
+    k = (win[3] - win[1]) / WIN_H[key]; cx, cy = (r[0] + r[2]) / 2, (r[1] + r[3]) / 2
+    return win[0] - 1 <= r[0] and r[2] <= win[2] + 1 and r[3] <= win[3] + 1 and cy >= win[3] - 62 * k and cx >= win[2] - 0.15 * (win[2] - win[0])
+
+
+def drag(x, sx, sy, dx, dy, button=1, frames=20):         # fake mouse: press at sx, sy, move by dx, dy over frames, let go
+    a = c(x, cmd='ui_teams', action='mouse', x=sx, y=sy, button=button, x1=sx + dx, y1=sy + dy, frames=frames)
+    log('mouse drag', button, sx, sy, '->', sx + dx, sy + dy, a); time.sleep(2.5)
+
+
+def pvp_window_rules(sw, sh):
+    """CLOSE + MOVE on the PvP Match window (host)."""
+    p = probe(HOST); r0 = rect(p, 'window')
+    w = red_x(HOST, 'PvP Match window')
+    check('CLOSE the PvP Match window shows the game\'s red X at the top-right of its title band', x_on_band(w, r0, 'window'), f'{w} window {r0}')
+    check('CLOSE the PvP Match window\'s bottom Close button is gone (the red X closes it)', r0 is not None and p.get('close') is None, p.get('close'))
+    shot(HOST, 'X1_pvp_window_red_x', 0.3)
+    if not r0: check('MOVE a right-drag moves the PvP Match window', False, 'no window rect'); return
+    k = (r0[3] - r0[1]) / WIN_H['window']
+    sx, sy = r0[0] + 300 * k, r0[3] - 84 * k                            # the hint row under the title (no button there)
+    left, right, down, up = r0[0], sw - r0[2], r0[1], sh - r0[3]
+    dx = -min(120, left - 4) if left >= right else min(120, right - 4)
+    dy = (-min(10, down - 2) if down >= up else min(10, up - 2)) if max(down, up) > 4 else 0
+    drag(HOST, sx, sy, dx, dy)
+    r1 = rect(probe(HOST), 'window')
+    moved = r1 and abs((r1[0] - r0[0]) - dx) <= 3 and abs((r1[1] - r0[1]) - dy) <= 3 and abs((r1[2] - r1[0]) - (r0[2] - r0[0])) <= 2
+    check(f'MOVE a right-drag by {dx:.0f}, {dy:.0f} px moves the PvP Match window by that much', moved, f'{r0} -> {r1}')
+    shot(HOST, 'X2_pvp_window_moved', 0.3)
+    w = red_x(HOST, 'PvP Match window')
+    if w and w.get('x') and w.get('x_rect'):
+        click(HOST, w['x_rect'], 'red X of the PvP Match window')
+        q = pv(HOST)
+        check('CLOSE a mouse click on the red X closes the PvP Match window', q.get('window') == 0 and not (q.get('roots') or {}).get('window'), {k_: q.get(k_) for k_ in ('window', 'roots')})
+    else:
+        check('CLOSE a mouse click on the red X closes the PvP Match window', False, f'no red X: {w}')
+        pv(HOST, action='close'); time.sleep(1.2)
+    if not pv(HOST).get('esc_menu', 1): open_esc(HOST)
+    pv(HOST, action='press_esc'); time.sleep(2)
+    r2 = rect(probe(HOST), 'window')
+    check('MOVE the PvP Match window opens again at the moved place', bool(moved) and r2 and all(abs(a - b) <= 2 for a, b in zip(r1, r2)), f'moved {r1} | again {r2}')
+
+
+def bring_list_rules():
+    """CLOSE + CARD on the text Bring Units list (host: it has a save with units). With the loader's kit the PvP window's
+    Bring opens the card window (mu_bring.c); the text list is its fallback, opened here by the test action bring_text."""
+    pv(HOST, action='bring_text'); time.sleep(1.5)
+    if not (pv(HOST).get('bring') or {}).get('open'):
+        for n in ('CLOSE the text Bring Units list shows the red X at the top-right of its title band', "CARD a click on a unit's portrait in the text Bring list picks it",
+                  "CARD a click on the empty part of a unit's tile in the text Bring list unpicks it", 'CLOSE a mouse click on the red X of the text Bring list goes back to the PvP window'):
+            check(n, False, 'the text Bring list did not open')
+        return
+    p = probe(HOST); w = red_x(HOST, 'PvP Bring Units window')
+    check('CLOSE the text Bring Units list shows the red X at the top-right of its title band', x_on_band(w, rect(p, 'bring'), 'bring'), f'{w} list {p.get("bring")}')
+    pv(HOST, action='br_save', i=0); time.sleep(1.5)
+    def pick0():
+        u = (pv(HOST).get('bring') or {}).get('units') or []; return u[0][3] if u else None
+    a0 = pick0(); tile = rect(probe(HOST), 'br_tile0')
+    if a0 is None or not tile:
+        check("CARD a click on a unit's portrait in the text Bring list picks it", False, f'no unit (pick {a0}, tile {tile})'); return
+    k = (tile[3] - tile[1]) / 108; cx, py = (tile[0] + tile[2]) / 2, tile[3] - 26 * k   # the portrait spot (pvp_ui.c br_build)
+    shot(HOST, 'X3_bring_list_red_x', 0.3)
+    click(HOST, [cx - 2, py - 2, cx + 2, py + 2], 'unit 0 portrait'); a1 = pick0()
+    check("CARD a click on a unit's portrait in the text Bring list picks it", a1 is not None and a1 != a0, f'{a0} -> {a1}')
+    ex = tile[0] + 8 * k                                                  # left of the portrait, inside the tile
+    click(HOST, [ex - 2, py - 2, ex + 2, py + 2], 'empty part of unit 0 tile'); a2 = pick0()
+    check("CARD a click on the empty part of a unit's tile in the text Bring list unpicks it", a1 != a0 and a2 == a0, f'{a0} -> {a1} -> {a2}')
+    w = red_x(HOST, 'PvP Bring Units window')
+    if w and w.get('x') and w.get('x_rect'):
+        click(HOST, w['x_rect'], 'red X of the text Bring list'); q = pv(HOST)
+        check('CLOSE a mouse click on the red X of the text Bring list goes back to the PvP window', not q['bring'].get('open') and q.get('window') == 1 and (q.get('roots') or {}).get('window') == 1,
+              {k_: q.get(k_) for k_ in ('window', 'roots')})
+    else:
+        check('CLOSE a mouse click on the red X of the text Bring list goes back to the PvP window', False, f'no red X: {w}')
+        pv(HOST, action='br_back'); time.sleep(1.2)
 
 
 # ------------------------------------------------------------------ the run
@@ -392,11 +505,15 @@ def run(port):
     for x in (HOST, GUEST): c(x, cmd='ui_teams', action='close')        # a player who arrived with no unit gets the Teams window
     time.sleep(1)
     sw, sh = probe(HOST).get('screen', [W, H_])
+    c(HOST, cmd='mpm_esc'); time.sleep(2); q = pv(HOST)                    # the plain command (other tests open the menu so)
+    check('ESC a plain mpm_esc opens the Esc menu', q.get('esc_menu', q.get('esc_entry')) == 1, {k_: q.get(k_) for k_ in ('esc_menu', 'esc_entry')})
     for x in (HOST, GUEST):
-        c(x, cmd='mpm_esc'); time.sleep(2); pv(x, action='press_esc'); time.sleep(2)
+        open_esc(x); pv(x, action='press_esc'); time.sleep(2)
     check('setup: the PvP window is open on both copies', pv(HOST).get('window') == 1 and pv(GUEST).get('window') == 1)
     safe('P1', p1_rules); touch_lease()
     safe('M5 PvP window', lambda: m5_pvp(sw, sh)); touch_lease()
+    safe('CLOSE/MOVE PvP window', lambda: pvp_window_rules(sw, sh)); touch_lease()
+    safe('CLOSE/CARD Bring list', bring_list_rules); touch_lease()
     # the match: best of 1, 1:00, planning pause, here; the guest on Red
     q = pv(HOST); log('match rules', {k: q.get(k) for k in ('mode', 'bo', 'secs', 'pause')}, teams(HOST))
     log('Start Match', pv(HOST, action='press_start'))
@@ -442,7 +559,14 @@ def run(port):
             check('M5 a mouse click on the scaled result window works (Back to the World closes it)', not pv(HOST).get('result'), p['result_ok'])
         else: check('M5 a mouse click on the scaled result window works (Back to the World closes it)', False, 'no button rect')
         set_scale(HOST, A.scale)
-        pv(GUEST, action='press_ok'); time.sleep(2)
+        w = red_x(GUEST, 'PvP result window'); pg = probe(GUEST)
+        check('CLOSE the result window shows the red X at the top-right of its title band (guest)', x_on_band(w, rect(pg, 'result'), 'result'), f'{w} window {pg.get("result")}')
+        shot(GUEST, 'X4_result_red_x', 0.3)
+        if w and w.get('x') and w.get('x_rect'):
+            click(GUEST, w['x_rect'], 'red X of the result window')
+            check('CLOSE a mouse click on the red X closes the result window (guest)', not pv(GUEST).get('result'), w['x_rect'])
+        else: check('CLOSE a mouse click on the red X closes the result window (guest)', False, f'no red X: {w}')
+        if pv(GUEST).get('result'): pv(GUEST, action='press_ok'); time.sleep(2)
     except Exception as e:
         check('the match ends and the result window shows', False, repr(e)); log(traceback.format_exc())
     touch_lease()
@@ -456,10 +580,9 @@ def main():
         if subprocess.run(['pgrep', '-f', os.path.join(idir(x), r.EXE_REL)], capture_output=True).returncode == 0: raise SystemExit(f'copy {x} already running')
     owner = subprocess.run(['pgrep', '-f', 'DSModLauncher/games/[^ ]*/MacOS/Dungeon Settlers'], capture_output=True, text=True).stdout.split()
     log('owner game pids (never touched):', owner, '| load', os.getloadavg(), '| dylib', A.dylib, hashlib.sha256(open(A.dylib, 'rb').read()).hexdigest()[:12])
-    if os.getloadavg()[0] >= 15: raise SystemExit(f'load {os.getloadavg()[0]:.1f} >= 15: not started')
-    try: os.mkdir(SLOT)
-    except FileExistsError: raise SystemExit('the dsuxmp copy slot is taken (another sub-lane runs a copy): try again later')
-    open(os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp/copies_holder.txt'), 'w').write(f'{LANE} {time.strftime("%H:%M:%S")} {TAG}\n')
+    sl = subprocess.run(['zsh', SLOTSH, 'take', LANE, '2', '1800'], capture_output=True, text=True)   # waits for load < 15 and 2 free slots
+    log('slots:', sl.stdout.strip(), sl.stderr.strip()[:200])
+    if sl.returncode != 0: raise SystemExit('no 2 free copy slots (slot.sh): not started')
     pair = None; g = threading.Thread(target=guard, daemon=True)
     try:
         pair = realrig.lease(LANE, os.getpid())
@@ -492,8 +615,7 @@ def main():
         if pair:
             try: log('released', realrig.release(pair, LANE))
             except Exception as e: log('release', repr(e))
-        try: os.rmdir(SLOT)
-        except OSError: pass
+        log('slots released:', subprocess.run(['zsh', SLOTSH, 'release', LANE], capture_output=True, text=True).stdout.strip())
         n = sum(1 for _, ok in RESULTS if ok)
         log(f'RESULT {"PASS" if RESULTS and n == len(RESULTS) else "FAIL"} {n}/{len(RESULTS)}', TAG, RUN)
 
