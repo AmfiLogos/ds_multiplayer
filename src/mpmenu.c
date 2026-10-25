@@ -4294,7 +4294,7 @@ static void chat_frame(const mpm_obs *o) {
     /* the pointer this frame: the real mouse (Input icalls), or the test's scripted one (ch_fk: rig control channel only):
        2 frames resting at (x0, y0), the press, n frames moving to (x1, y1) with the wheel at `wheel`, the release */
     V3 mp = { 0, 0, 0 }; int held[2] = { 0, 0 }; float wy = 0, br[4] = { 0 };
-    int have_ptr = ch_fk.on || (mb && mpos);
+    int have_ptr = ch_fk.on || (mb && mpos), scripted = ch_fk.on;
     if (ch_fk.on) {
         int i = ch_fk.i++, n = ch_fk.n;
         float t = i <= 2 ? 0 : i >= 3 + n ? 1 : (float)(i - 2) / n;
@@ -4309,12 +4309,15 @@ static void chat_frame(const mpm_obs *o) {
     float sc = br[2] > br[0] ? (br[2] - br[0]) / g.w : 0;                   /* screen px per canvas unit */
     int over_box = box_open && u_on(box) && mp.x >= br[0] && mp.x <= br[2] && mp.y >= br[1] && mp.y <= br[3], over_idle = 0;
     if (!box_open) for (int i = 0; i < CH_IDLE; i++) over_idle |= pt_in(u_gc_get(h_ch_idlebg[i]), mp);
-    /* linked lines (pings): hover = tooltip, left click = ui_chat_link_click */
-    for (int i = 0; have_ptr && i < nchat_shown; i++) {
+    /* linked lines (pings): hover = tooltip, left click = ui_chat_link_click. The managed Input getters as before (the
+       mouse test build feeds its fake mouse there), the scripted pointer when a test plays one */
+    V3 lm = scripted ? mp : F(0x51AD4DC, V3 (*)(void *))(NULL);                /* Input.mousePosition */
+    int ldown = scripted ? down0 : F(0x51ACDD0, bool (*)(int, void *))(0, NULL);   /* Input.GetMouseButtonDown(0) */
+    for (int i = 0; i < nchat_shown; i++) {
         int k = chat_shown_k[i]; float r[4]; Obj t = u_gc_get(*chat_shown_h[i]);
-        if (!chist[k].link || !u_on(t) || !rect_of(t, r) || mp.x < r[0] || mp.x > r[2] || mp.y < r[1] || mp.y > r[3]) continue;
+        if (!chist[k].link || !u_on(t) || !rect_of(t, r) || lm.x < r[0] || lm.x > r[2] || lm.y < r[1] || lm.y > r[3]) continue;
         if (tip_ready()) game_tip_show(TR("Ping"), TR("Click to move your camera there."));
-        if (down0) {
+        if (ldown) {
             static int (*fn)(int); static int looked2; if (!looked2) { looked2 = 1; fn = (int (*)(int))dlsym(RTLD_DEFAULT, "ui_chat_link_click"); }
             int acted = fn ? fn(chist[k].link) : 0; chat_link_clicks++; consumed = 1;
             rig_log("mpmenu: chat link %d clicked: %s", chist[k].link, acted ? "camera moved" : "ping gone (plain line now)");
