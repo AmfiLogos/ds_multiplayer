@@ -123,10 +123,22 @@ Not tested: anything in the real game (mp_game.c is only syntax checked; the gam
   `steam_ready()` retries every 2 s until libsteam_api is loaded, SteamAPI is up and the user is logged on.
 - Host: dsnet server (port 0) + friends-only lobby (dsmp_proto / dsmp_build / dsmp_mod / dsmp_host); each Steam peer is bridged to the
   server's loopback port. Guest: lobby -> owner SteamID -> ConnectP2P; `mp_start` runs only once SNS reports Connected (30 s limit).
-- Accepted invites: hook on Steamworks.NET `NativeMethods.SteamAPI_ManualDispatch_GetNextCallback` (RVA 0x1141AAC); the game registers
-  no lobby callbacks, so GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) go to `dsnet_steam_feed_callback`.
+- Accepted invites (steamaccept 2026-10-20): the game's `CallbackDispatcher.RunFrame` has the P/Invoke wrapper
+  `NativeMethods.SteamAPI_ManualDispatch_GetNextCallback` inlined and calls the wrapper's static slot itself, so the old hook on the
+  wrapper (RVA 0x1141AAC, until v0.1.19) never ran. Now the mod writes its own function into that slot (`steamcb_frame`, a data write,
+  no code hook; found by name -> the wrapper's first slot load; the rv() wrapper address only as fallback; Mac slot +0x696EB38,
+  Windows +0x51F3A78). Every callback goes on to the game unchanged; the game registers no lobby callbacks, so
+  GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) also go to `dsnet_steam_feed_callback`. Test without Steam:
+  `rig/steamaccept_test.py` (synthetic queue through the real slot; title join + in-world "Join <host>?").
   Launch argument `+connect_lobby <id>` is read too, BUT Steam launches the normal game (same app id), not the MP app, when the friend
   accepts while the game is closed. So the friend opens Dungeon Settlers MP first, then accepts (or uses the friends list / join).
+- Invite (steaminv, 2026-10-20): the modded game is not started by Steam, so the overlay is not loaded and
+  `ActivateGameOverlayInviteDialog` shows nothing. "Steam invite" (lobby + Esc menu) keeps the overlay dialog only when
+  `ISteamUtils::IsOverlayEnabled` is true; else it opens the in-game friends picker (`src/ui_friends.c`): Steam friends (plays DS,
+  online, away/busy, offline; A-Z), 8 a page, click = `InviteUserToLobby` (friend gets a Steam chat invite). The lobby line under the
+  button says the friend must open Dungeon Settlers Modded first. dsnet lines ("dsnet: steam: lobby N created", invite results) go
+  to rig.log (`dsnet_set_log`, max 40/s). Windows: Steam stubbed, the picker never opens. Test path without Steam:
+  `DSRIG_TEST_STEAMFRIENDS=1` (fake list, fake invite, Steam never called), `ext/steaminv/picker_test.py`.
 - Host leaves (or the Steam link drops): guest session ends, state ended "The host left the game", then quit to title
   (`SystemMenuView.QuitToTitleSceneCallback` 0xF2F234 on FindObjectOfType(SystemMenuView), once `rig_det_mp_ready`). Not tested in the game.
 - Guest leaves: the host's server sees the TCP side close -> PLAYER_LEAVE -> host continues. Units released by dsnet on PLAYER_LEAVE
@@ -199,6 +211,21 @@ Not tested: anything in the real game (mp_game.c is only syntax checked; the gam
   (units already owned, guest claims refused, "owned by the host"). Proven: left_prompt Start variant with that stale table
   planted (all PASS), and `leave_rejoin_test.py --only-e` (table saved at 8939050 restored at 8939112).
 - Tests: mp_test `leave_rejoin` (mock); `rig/leave_rejoin_test.py` (pair, TCP, owner menu flow).
+- Auto rejoin (owner 2026-10-20, lane autorejoin; mp_game.c `ar_*`): a guest's OWN link drop in a running world
+  (MPM_END_LINK_LOST: receive silence DSNET_RX_TIMEOUT_MS, TCP reset, Steam link; no BYE) no longer goes to the title.
+  `session_teardown(1)` keeps det locked (no session = the world stands still), mpmenu shows the stock box
+  "Connection lost, rejoining..." with one Cancel (BX_REJOIN; `mp_game_autorejoin` 0/1 trying/2 loading,
+  `mp_game_autorejoin_cancel` = title at once, no notice). Every 2 s a new try the way it joined (TCP address + port via
+  dsnet_connect_start, or the Steam lobby), same uid, expect_world = the running campaign; the game thread never waits
+  (`mp_start_begin` + `mp_start_poll`, mp_core.c). Refusals end it at once except DSNET_REJ_DUP_ID (the host has not
+  seen the old link close yet). After DSMP_AUTOREJOIN_MS (60000; 0 = off): the old way (title + "Connection to the
+  host lost", Recent worlds rejoin). Never for a BYE (host Leave / quit), the guest's own Leave, save failures,
+  spectators off. mpmenu: obs.rejoining keeps the PLAYING state (else it went idle and the give-up notice never showed).
+  Two host-side faults found with it: (a) the host's OWN local link (socket pair) hit the receive-silence limit after a
+  stall of its own process and ended its session ("join point wanted but no host"): the silence limit now skips the
+  local link (dsnet_client `local`, dsnet_server `!c->local`). (b) The leaver's PLAYER_LEAVE + PLAYER_JOIN can land in
+  one step and the host's HOLD runs after the JOIN: a HOLD PLAYER_LEFT for a uid that is present again is now ignored
+  in the sim (test_dsnet `hold_late`, fails on the old code). Proof: `rig/autorejoin_pair.py` (host SIGSTOP 15 s, Cancel, host Leave, host SIGKILL).
 
 ## Host reload hung on the title after return-to-base (bug 2026-10-13, fixed)
 - Cause (pair IJ ErrorLog 03:02:06 "Save became unavailable before campaign transition ... mp_sync.json does not exist"): the

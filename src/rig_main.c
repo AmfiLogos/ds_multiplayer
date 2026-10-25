@@ -54,7 +54,7 @@ static void uuid_of(const struct mach_header_64 *h, char *out, size_t n) {
     }
 }
 
-/* ---- Custom Modes (custom-modes.dylib, M4 split): loaded the way the loader loads a module: dlopen RTLD_LOCAL, then its
+/* ---- Units Laboratory (custom-modes.dylib; a launcher mod, its My Units test commands only): loaded the way the loader loads a module: dlopen RTLD_LOCAL, then its
    dsl_module_load / dsl_module_early with a host that has what the rig can give (hooks through rig_hook, module_loaded:
    "multiplayer" = this dylib). File: DSRIG_CUSTOM=<path>, else custom-modes.dylib next to this dylib; DSRIG_CUSTOM=0 = none. */
 struct DSLPlugin { int unused; };
@@ -81,7 +81,7 @@ static void custom_modes_start(void) {
     else { Dl_info di; if (!dladdr((void *)rig_log, &di) || !di.dli_fname) return; snprintf(p, sizeof p, "%s", di.dli_fname);
            char *sl = strrchr(p, '/'); if (sl) sl[1] = 0; else p[0] = 0; strlcat(p, "custom-modes.dylib", sizeof p); }
     snprintf(cm_dir, sizeof cm_dir, "%s", p); { char *sl = strrchr(cm_dir, '/'); if (sl) *sl = 0; }
-    if (access(p, R_OK)) { rig_log("custom-modes: %s not found: Foreign Expedition and PvP are off", p); return; }
+    if (access(p, R_OK)) { rig_log("custom-modes: %s not found (Units Laboratory not loaded)", p); return; }
     void *h = dlopen(p, RTLD_NOW | RTLD_LOCAL);
     if (!h) { rig_log("custom-modes: dlopen failed: %s", dlerror()); return; }
     const uint32_t *api = dlsym(h, "dsl_plugin_api_version");
@@ -140,7 +140,7 @@ static void on_image(const struct mach_header *mh, intptr_t slide) {
     ui_install();                       /* multiplayer UI (title + campaign) */
     ui_teams_install();                 /* Teams UI hooks at load (ui_teams_frame keeps a late fallback) */
     mpmenu_install();                   /* Multiplayer menu: title, lobby, Esc entries */
-    custom_modes_start();               /* Custom Modes (FE, PvP: its own dylib, registers through mp_api.h) */
+    custom_modes_start();               /* Units Laboratory, when next to this dylib (Foreign Expedition / PvP are in mpmenu_install) */
     char sp[1100]; snprintf(sp, sizeof sp, "%s/ctl.sock", rig_dir);
     rig_sock_start(sp);
 }

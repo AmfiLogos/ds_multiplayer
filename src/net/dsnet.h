@@ -155,6 +155,14 @@ void dsnet_set_identity(const char *build_id, uint32_t mod_version);
 enum { DSNET_MATCH_MODS = 0, DSNET_MATCH_VANILLA = 1 };
 #define DSNET_MODLINES_MAX 4096
 void dsnet_set_modset(int rule, const char *modset, const char *lines);
+/* Lines of gameplay mods that run in this game but are not in its set now: custom difficulty mods (Hell: always loaded,
+ * counted only for a world on its level; loader export dsl_mp_optional_lines), same format, '\n'-joined, max
+ * DSNET_MODOPT_MAX - 1 bytes. Sent after the release in every HELLO ([NUL release] NUL lines: older servers stop the
+ * release at the NUL). The server lets a joiner whose set differs from the host's join when the joiner's lines plus some of
+ * these are exactly the host's lines (owner 2026-10-25: a guest with Hell joins a host on a Hell world with no refusal and
+ * no restart; the world it loads then puts Hell in its set, as on the host). "" = none. */
+#define DSNET_MODOPT_MAX 1024
+void dsnet_set_modset_optional(const char *lines);
 const char *dsnet_my_mod_lines(void);
 /* after a DSNET_REJ_MODSET refusal (process-wide, the newest one): host rule, host lines ('\n'-joined). 0 = filled, -1 none */
 int dsnet_reject_host_mods(int *host_rule, char *lines, size_t n);
@@ -210,6 +218,13 @@ typedef struct dsnet_server_stats {
 } dsnet_server_stats;
 extern uint32_t dsnet_log_trim_min;   /* trim the server log in chunks of at least this many entries (default 4096; tests) */
 void dsnet_server_get_stats(dsnet_server *s, dsnet_server_stats *out);
+/* Host only: how player `player` is connected (enum dsnet_via) and, for DSNET_VIA_DIRECT / STEAM, its TCP peer as
+ * "a.b.c.d:port" in out ("" otherwise). Players only (no spectators); DSNET_VIA_UNKNOWN when not connected. */
+int  dsnet_server_peer(dsnet_server *s, int player, char *out, size_t n);
+/* Relay bridges (Steam P2P) reach the server over loopback TCP: they mark their loopback source port here, and a
+ * server connection from 127.0.0.1:<port> then counts as DSNET_VIA_STEAM. on = 0 removes the mark. Any thread. */
+void dsnet_relay_port_mark(uint16_t port, int on);
+int  dsnet_relay_port_is(uint16_t port);
 
 /* ---- client side ---- */
 typedef void (*dsnet_cmd_cb)(const dsnet_cmd *cmd, void *user);
@@ -370,6 +385,11 @@ enum { DSNET_MARK_ADD = 1, DSNET_MARK_DEL = 2 };
 typedef struct dsnet_mark_ev { int from, op, owner, id; uint32_t map_key; int x, y; } dsnet_mark_ev;
 int dsnet_mark_send(dsnet_client *c, int op, int owner, int id, uint32_t map_key, int x, int y); /* 0 sent */
 int dsnet_mark_poll(dsnet_client *c, dsnet_mark_ev *out);   /* 1 = one event (ring of 64), 0 none; own sends NOT echoed */
+/* unitsel B1: selected units of each player, outside the sim (P_SEL). send: 0 sent (n is cut to DSNET_SEL_MAX);
+   of: units of that player (n, -1 nothing known yet), the map key it was sent for and its age */
+#define DSNET_SEL_MAX 24
+int dsnet_sel_send(dsnet_client *c, uint32_t map_key, const uint8_t (*guids)[16], int n);
+int dsnet_sel_of(dsnet_client *c, int player, uint32_t *map_key, uint8_t (*out)[16], int max, double *age_ms);
 #define DSNET_MARK_SPAM_N  4                    /* server: at most 4 adds per sender in any 5 s (deletes never dropped) */
 #define DSNET_MARK_SPAM_MS 5000
 /* marks of a player, up to max (dsnet_marked_of copies at most 3, for older callers) */
@@ -400,6 +420,10 @@ size_t   dsnet_save_overhead(dsnet_client *c);       /* bytes dsnet would put in
 /* Player list (from the server, ~5 Hz). state: enum dsnet_net_state. 0 ok, -1 absent. */
 enum dsnet_net_state { DSNET_NET_ABSENT = 0, DSNET_NET_IN_SYNC, DSNET_NET_RESYNCING, DSNET_NET_LOADING };
 int      dsnet_player_net(dsnet_client *c, int player, int *ping_ms, int *ticks_behind, int *state);
+/* How a player reaches the host (owner 2026-10-20: the players rows say "Steam" or "Direct"). From the server's player
+ * list, the same on every peer: guests learn the kind only, never an address (dsnet_server_peer, host only). */
+enum dsnet_via { DSNET_VIA_UNKNOWN = 0, DSNET_VIA_HOST, DSNET_VIA_DIRECT, DSNET_VIA_STEAM };
+int      dsnet_player_via(dsnet_client *c, int player);
 /* Host lobby settings from the WELCOME. With allow_pause 0 the game hook should also stop local
  * popups (letters, dialogs) from pausing the game. */
 int      dsnet_allow_speedup(dsnet_client *c);
@@ -410,8 +434,13 @@ uint32_t    dsnet_present_mask(dsnet_client *c);                 /* bit per play
 uint32_t    dsnet_busy_mask(dsnet_client *c);
 /* Barrier (transitions_design.md 3.7): set while a local flow holds this peer mid-step. The server
  * stops its timer while any playing peer is busy, so everyone stops within a few steps; it
- * restarts when all are done. Holding the remaining ticks of the step is the game hook's job. */
+ * restarts when all are done. Holding the remaining ticks of the step is the game hook's job.
+ * busy 2 = held by a window the player must close (a stock Yes/No box holds the game's event queue). */
 void        dsnet_set_busy(dsnet_client *c, int busy);
+/* Players held by a window (dsnet_set_busy 2), from the server with the busy mask. A guest waiting for the
+ * join save while the host (player 0) is held does not time out (up to dsnet_save_held_ms, 10 min). */
+uint32_t    dsnet_window_mask(dsnet_client *c);
+int         dsnet_save_held_ms(void);
 uint32_t    dsnet_story_pause_mask(dsnet_client *c);             /* bit per player with a story popup open */
 int         dsnet_vote_of(dsnet_client *c, int player, int *speed, int *pause);   /* 0 ok, -1 not present */
 const char *dsnet_player_name(dsnet_client *c, int player);      /* NULL if not present; copy it, the
@@ -493,6 +522,7 @@ int dsnet_upload_save_failed(dsnet_client *c);
 enum { DSNET_SAVE_FAIL_HOST = 1, DSNET_SAVE_FAIL_TIMEOUT = 2 };
 int dsnet_save_failed(dsnet_client *c);
 void dsnet_set_save_wait_ms(int ms);
+void dsnet_set_save_held_ms(int ms);              /* tests: how long a held host (busy) stops the save wait */
 
 /* Mail (Foreign Expedition, plan F3): an addressed message outside the simulation (never stamped, never in saves or
  * hashes), any size up to DSNET_MAIL_MAX, sent in 1 KB fragments. to_uid NULL = the host. The server stamps the sender's

@@ -32,6 +32,7 @@ static int a_players(mp_player *out, int max) {
     }
     return n;
 }
+__attribute__((visibility("default"))) int (*mp_setting_int_fn)(const char *id, int dflt);   /* mpmenu.h mpm_host_port; set by the loader glue */
 const char *mp_session_busy_reason(void) {
     if (mp_game_session()) return TR("a multiplayer game is running");      /* shown by the loader (same process, same language) */
     switch (M.state) {
@@ -203,6 +204,7 @@ static const mp_api_table api = {
     .register_host_choice2 = a_register_host_choice2, .host_choice_now = mpmenu_host_choice_now,
     .rand_u32 = mp_rand_u32, .rand_range = mp_rand_range, .rand_value = mp_rand_value, .rand_shared = mp_rand_shared,
     .chat_line = mpmenu_mod_chat,
+    .chat_local = mpmenu_chat_local,
 };
 const mp_api_table *mp_api_get(uint32_t version) {
     if (version > MP_API_VERSION) { rig_log("mp_api: version %u asked, this multiplayer has %d", version, MP_API_VERSION); return NULL; }

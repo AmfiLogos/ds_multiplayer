@@ -28,8 +28,16 @@ DIVE_S = int(sys.argv[sys.argv.index('--dive') + 1]) if '--dive' in sys.argv els
 DEATH = int(sys.argv[sys.argv.index('--death') + 1]) if '--death' in sys.argv else 1     # rule: death permanent 1 / 0
 WEAK = '--weak' in sys.argv          # the guest's 2nd unit leaves home at 3 % health (test copy only): it should die
 RECRUIT = int(sys.argv[sys.argv.index('--recruit') + 1]) if '--recruit' in sys.argv else 0   # host rule Recruiting in the hub 0 Off / 1 On
+BUFF = '--no-buff' not in sys.argv   # test copies only: brought units get +BUFF_N Strength / Constitution / Agility. WHY: v0.1.20-21 every
+                                     # hub dive ended in the stock game over (3 level-1 units vs ~18 enemies, down ~40 s after the first fight,
+                                     # also after going home: the enemies follow to the portal), so XP / loot / return were never tested
+BUFF_N = float(sys.argv[sys.argv.index('--buff') + 1]) if '--buff' in sys.argv else 60.0   # +20 was not enough: 20 enemies took 290 of 474 hp in 5 s
+HUBMAP = '--base-map' not in sys.argv   # the hub map (maps/hub_<build>.json next to the dylib: a full base, no units); --base-map = without it
+SHOT = sys.argv[sys.argv.index('--shot') + 1] if '--shot' in sys.argv else None   # copy of the in-game hub frame (after the start)
 FEED = '--feed' in sys.argv          # test copies only: brought units leave home fed and rested (Hunger, Energy 1.0)
 LANE = f'fepvp-{os.getpid()}'
+STEP_S = 5                           # fight loop step (was 15 s: units went from 50 % to down between two looks)
+HURT = 0.5                           # a moved unit under this share of its max health (or down): no new fight, the run goes home
 SI = dict(HealthHead=12, HealthBody=13, Energy=14, Hunger=15, Level=17, Exp=18)   # fe_stats index (StatType - 1)
 
 
@@ -120,7 +128,8 @@ def run(H, G):
             if os.path.exists(d): os.replace(d, d + '_' + time.strftime('%Y%m%d-%H%M%S'))
     gdir = os.path.join(OUT, 'game_saves'); os.makedirs(gdir)       # DSRIG_FE_GAME_SAVES: what the Bring window lists as "Game folder"
     os.environ['DSRIG_FE_GAME_SAVES'] = gdir
-    gsave = os.path.join(gdir, 'guest_home_Elven.json'); shutil.copy2(os.path.join(ROOT, 'fixtures', 'home_Elven.json'), gsave)
+    gsave = os.path.join(gdir, 'guest_home_base.json')   # owner rule 2026-10-21: dives bring the wiki BASE save's units (buffed, cannot die)
+    open(gsave, 'w').write(open(TPL).read().replace('"Version":"DS_B.0.4.11"', '"Version":"DS_B.0.4.29"').replace('"Version": "DS_B.0.4.11"', '"Version": "DS_B.0.4.29"'))   # a save of today's game (Bring refuses other game versions)
     hsave = os.path.join(gdir, 'host_home_Moonlight.json'); shutil.copy2(os.path.join(ROOT, 'fixtures', 'hub_Moonlight_mp.json'), hsave)
     cache = os.path.join(rig.idir(H), 'data', 'Mods', 'custom-modes', 'wiki', 'saves'); os.makedirs(cache, exist_ok=True)
     shutil.copy2(TPL, os.path.join(cache, os.path.basename(TPL)))          # the wiki cache (the game downloads it once)
@@ -131,11 +140,18 @@ def run(H, G):
         ss = fe.comp(fe.ec_of(home)[gpick[1]], 0)['StateStats']; ss['HealthHead'] = ss['HealthBody'] = 0.03
     if FEED:
         for g in gpick: fe.comp(fe.ec_of(home)[g], 0)['StateStats'].update(Hunger=1.0, Energy=1.0)
-    if WEAK or FEED: json.dump(home, open(gsave, 'w'), indent=2)
+    def buff(sv, g):
+        gs = fe.comp(fe.ec_of(sv)[g], 0).setdefault('GeneratedStats', {})
+        for k in ('Strength', 'Constitution', 'Agility'): gs[k] = gs.get(k, 0.0) + BUFF_N
+    if BUFF:
+        for g in gpick: buff(home, g)
+    if WEAK or FEED or BUFF: json.dump(home, open(gsave, 'w'), indent=2)
     hpick = [fe.clan_units(fe.load(hsave))[0][0]]
+    if BUFF:
+        hs = fe.load(hsave); buff(hs, hpick[0]); json.dump(hs, open(hsave, 'w'), indent=2)
     if FEED:
         hs = fe.load(hsave); fe.comp(fe.ec_of(hs)[hpick[0]], 0)['StateStats'].update(Hunger=1.0, Energy=1.0); json.dump(hs, open(hsave, 'w'), indent=2)
-    log('args', dict(dive=DIVE_S, death=DEATH, weak=WEAK, recruit=RECRUIT, feed=FEED))
+    log('args', dict(dive=DIVE_S, death=DEATH, weak=WEAK, recruit=RECRUIT, feed=FEED, buff=BUFF))
 
     rig.start(H, fps=30, window=True); rig.start(G, fps=30, window=True)
     rig.wait_for(H, lambda s: s.get('scene') == 1 and not s.get('busy'), 'host title', timeout=1500)
@@ -158,7 +174,26 @@ def run(H, G):
     check('hub: no load list / new campaign screen (Start builds the neutral hub)', c(H, cmd='mpm_status').get('state') in ('pick_save', 'host_loading', 'lobby'), c(H, cmd='mpm_status').get('state'))
     wait('host session + lock', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('started'))(st(H)))
     port = c(H, cmd='mpm_status').get('port')
+    hub_pre = None
+    if HUBMAP:   # owner 2026-10-21: the hub = a player's full base, no units before the start, everything unlocked
+        rl = open(os.path.join(rig.idir(H), 'rig.log'), errors='replace').read()
+        check('hub map: the hub was built from the shipped hub map', f'map ' in rl and 'hub_25846389.json' in rl and 'built from the hub map' in rl,
+              next((l for l in rl.splitlines()[::-1] if 'fe hub:' in l and 'built from' in l), '')[:200])
+        sv = os.path.join(rig.idir(H), 'data', 'fe', 'hub_built.json')   # 0.1.26: the hub leaves no file in Saves; test copies keep the built hub here
+        w0 = json.load(open(sv)); hub_pre = w0
+        rd = w0['ResearchSaveData']['ResearchDatas']
+        check('hub map: every research done, every region open, no player units in the hub file (the Guild Merchant stays, 0.1.20)',
+              all(r['Workload'] >= r['RequiredWorkload'] and not r['IsLocked'] for r in rd.values())
+              and all(not r['IsLocked'] for r in w0['ClanSaveData']['ExpeditionMapData'] if r.get('Region', -1) >= 0)
+              and not w0['EntityContainerSaveData']['UnitContainerSaveData']['Base'].get('PlayerGuidList') and 'MPHubTemplate' not in w0,
+              f"{len(rd)} research, {len(w0['EntityContainerSaveData']['BuildingContainerSaveData']['Base']['BuildingSaveData'])} buildings")
+        lu0 = [u for u in c(H, cmd='list_units', map=0)['units'] if u['faction'] == 1]
+        check('hub map: 0 player units in the hub before the start', len(lu0) == 0, str(len(lu0)))
     join_guest(port)
+    if HUBMAP:
+        time.sleep(20)
+        go = {x: (st(x).get('scene'), bool(c(x, cmd='ui_result').get('open'))) for x in (H, G)}
+        check('hub map: no game over in the empty hub (both peers still in the world 20 s after the join)', all(v == (2, False) for v in go.values()), str(go))
     # F4 Bring units window (board FEBringA), driven like a player: lobby button, pick the save, click unit cards, Bring
     try: wait('guest knows the FE mode (host mail)', lambda: c(G, cmd='mpm_fewin').get('fe_mode') == 1, timeout=60, every=1)
     except RuntimeError:
@@ -196,13 +231,22 @@ def run(H, G):
     check('F4: Start in the Foreign Expedition lobby built the hub with the host page rules', bool(run_id) and len(hub_units) == 3, fh.get('msg'))
     its = {x: c(x, cmd='ui_items', map=0).get('items', []) for x in (H, G)}
     ht = {x: sum(i.get('amount', 1) for i in its[x] if i.get('key') == 'ITEM_Hardtack') for x in (H, G)}
-    check('hub: the storage stock is in the hub on both peers (Hardtack 100+ on the ground)', all(v >= 100 for v in ht.values()) and len(its[H]) == len(its[G]), f'{ht}, items {len(its[H])}/{len(its[G])}')
+    if HUBMAP:   # the hub map's own storage (the player's base), no added stock
+        check('hub map: the same ground items in the hub on both peers', len(its[H]) == len(its[G]), f'items {len(its[H])}/{len(its[G])}')   # ui_items = ground items only; storage is in the buildings
+        hint = [(int(p_['x']), int(p_['y'])) for p_ in json.load(open(os.path.join(os.path.dirname(rig.DYLIB), 'hub_25846389.json')))['MPHubTemplate']['spawn']]
+        cells = [u['cell'] for u in c(H, cmd='list_units', map=0)['units'] if u['faction'] == 1 and 'cell' in u]
+        check('hub map: the brought units stand where the map\'s units stood (spawn cells)', len(cells) == 3 and all(min(abs(cl[0] - h_[0]) + abs(cl[1] - h_[1]) for h_ in hint) <= 8 for cl in cells), f'{cells} vs {hint}')
+    else:
+        check('hub: the storage stock is in the hub on both peers (Hardtack 100+ on the ground)', all(v >= 100 for v in ht.values()) and len(its[H]) == len(its[G]), f'{ht}, items {len(its[H])}/{len(its[G])}')
     gu = c(G, cmd='fe_status')['uid']
     mine = {H: [h['hub'] for h in hub_units if h['player'] != gu], G: [h['hub'] for h in hub_units if h['player'] == gu]}
     own = {h['hub'][:8]: (c(H, cmd='mp_owner', guid=h['hub']).get('owner'), c(G, cmd='mp_owner', guid=h['hub']).get('owner'), 'guest' if h['player'] == gu else 'host') for h in hub_units}
     check('F5 (menu Start): owners = the players who brought them, same on both peers',
           all(a == b and a == (1 if who == 'guest' else 0) for a, b, who in own.values()), str(own))
     wait('both running', lambda: not mp(H).get('paused') and not mp(G).get('paused'), timeout=180)
+    if HUBMAP and SHOT:                                         # the hub in game, after the reload, with the brought units
+        time.sleep(5); c(H, cmd='ui_capture', path=os.path.join(OUT, 'hub_ingame.png')); time.sleep(2)
+        if os.path.exists(os.path.join(OUT, 'hub_ingame.png')): shutil.copy2(os.path.join(OUT, 'hub_ingame.png'), SHOT); log('hub shot', SHOT)
     tick0 = st(H)['tick']
     # recruiting in the hub (host option): Off = the recruitment window never opens and a replayed recruit order is refused
     # on every peer; On = allowed like a normal multiplayer world
@@ -252,9 +296,9 @@ def run(H, G):
     wait('both in the dungeon', lambda: all(st(x).get('map', 0) != 0 and not st(x).get('busy') for x in (H, G)), timeout=600, every=3)
     check('dive: both peers in the dungeon with the moved units', True, f"map {st(H).get('map')}")
     c(H, cmd='ui_capture', path=os.path.join(OUT, 'dungeon_host.png'))
-    t_end = time.time() + DIVE_S; picked = set(); exp0 = [s_hub0[g][18] for g in mine[G]]
+    t_end = time.time() + DIVE_S; picked = set(); exp0 = [s_hub0[g][18] for g in mine[G]]; hp0 = {}
     while time.time() < t_end:
-        time.sleep(15)
+        time.sleep(STEP_S)
         dmap = st(G).get('map', 1)
         if dmap == 0 or c(H, cmd='ui_result').get('open'): break
         f = c(H, cmd='fe_status')
@@ -264,11 +308,13 @@ def run(H, G):
         us = c(H, cmd='list_units')['units']
         enemies = [u for u in us if u['faction'] == 3 and not u['dead'] and 'cell' in u]
         d2 = lambda a, b: (a['cell'][0] - b['cell'][0]) ** 2 + (a['cell'][1] - b['cell'][1]) ** 2
-        for x in (H, G):                                        # each side sends its own idle units to the nearest enemy
+        hurt = [g[:8] for g in mine[H] + mine[G] if g in alive and not alive[g]['dead'] and (alive[g].get('downed') or
+                alive[g].get('hp', 0) < HURT * max(alive[g].get('max_hp') or 0, hp0.setdefault(g, alive[g].get('hp', 0))))]
+        for x in (H, G):                                        # each side sends its own idle, healthy units to the nearest enemy
             lv = live(x)
             for g in mine[x]:
                 u = lv.get(g)
-                if u and enemies and u.get('task') == 0:
+                if u and enemies and u.get('task') == 0 and g[:8] not in hurt:
                     e = min(enemies, key=lambda e: d2(u, e)); log('fight:', x, g[:8], '->', e['cell'], order_move(x, g, e['cell']))
         if up and items:                                        # the guest's unit picks up a dungeon item (PickUpItemRequested, mp order)
             it = items[0]; picked.add(it['guid'])
@@ -279,6 +325,7 @@ def run(H, G):
             alive.get(g, {}).get('task'), 'hunger %.2f energy %.2f' % (fs[g][SI['Hunger']], fs[g][SI['Energy']])) for g in mine[H] + mine[G]],
             '| guest exp', exp, '| enemies', sum(1 for u in c(H, cmd='list_units')['units'] if u['faction'] not in (1,) and not u['dead']))
         if not WEAK and f.get('loot', 0) > 0 and any(e > e0 for e, e0 in zip(exp, exp0)): log('XP and loot: going home'); break
+        if not WEAK and hurt: log('moved unit(s) hurt or down', hurt, ': going home before the stock game over'); break
     c(H, cmd='ui_capture', path=os.path.join(OUT, 'dungeon_host_end.png'))
     # back to the base: portal -> Return screen -> Return -> confirm
     if st(G).get('map', 1) != 0:
@@ -291,22 +338,24 @@ def run(H, G):
             for x in (G, H):
                 for g in mine[x]:
                     if g in live(x): log(x, 'to portal', g[:8], order_move(x, g, pc))
-            t9 = time.time()
-            while time.time() - t9 < 180:
-                time.sleep(10)
-                allu = {u['guid']: u for x in (G, H) for u in c(x, cmd='list_units')['units']}
-                far = [(g[:8], allu.get(g, {}).get('cell')) for x in (G, H) for g in mine[x]
-                       if g in allu and not allu[g]['dead'] and (not allu[g].get('cell') or abs(allu[g]['cell'][0] - pc[0]) + abs(allu[g]['cell'][1] - pc[1]) > 3)]
-                log('gathering at the portal', pc, 'still away', far)
+            t9 = time.time(); near = lambda cl: cl and max(abs(cl[0] - pc[0]), abs(cl[1] - pc[1])) <= 4
+            while time.time() - t9 < 90:
+                time.sleep(5)
+                if c(H, cmd='ui_result').get('open'): game_over = True; log('game over while going to the portal (every unit down)'); break
+                lv = {x: live(x) for x in (G, H)}
+                far = [(g[:8], lv[x][g].get('cell')) for x in (G, H) for g in mine[x] if g in lv[x] and not near(lv[x][g].get('cell'))]
+                log('gathering at the portal', pc, 'live units still away', far)
                 if not far: break
-                for x in (G, H):
-                    for g, u in live(x).items():
-                        if g in mine[x] and u.get('task') == 0 and abs(u['cell'][0] - pc[0]) + abs(u['cell'][1] - pc[1]) > 3: order_move(x, g, pc)
+                for x in (G, H):                                # a player clicks again: units in a fight get the move again
+                    for g, u in lv[x].items():
+                        if g in mine[x] and not near(u.get('cell')): order_move(x, g, pc)
+            alive_end = [] if game_over else [g for x in (G, H) for g in mine[x] if g in live(x)]
+            log('live at the portal use', [g[:8] for g in alive_end])
             c(H, cmd='ui_capture', path=os.path.join(OUT, 'dungeon_at_portal_host.png'))
         # ONE live unit uses the portal (two at the same step open nothing); sometimes the use opens nothing (unit busy in
         # a fight?): try again every 20 s with the next unit
         tries = [(x, g) for x in (H, G) for g in mine[x]]
-        for k in range(0 if game_over else 12):
+        for k in range(0 if game_over or not alive_end else 12):
             x, g = tries[k % len(tries)]
             if g not in live(x) or not pc: continue
             log(x, 'portal use', g[:8], c(x, cmd='ui_interact', unit=g, building=bl['buildings'][0]['guid'], map=st(x).get('map', 1)))
@@ -330,8 +379,10 @@ def run(H, G):
     c(H, cmd='ui_capture', path=os.path.join(OUT, 'base_after_return_host.png'))
     if 'alive_end' in dir() or True:
         ae = locals().get('alive_end', [])
-        if not locals().get('game_over'):
-            check('return: every moved unit alive at the portal is on the base', ae and all(g in lu and not lu[g]['dead'] for g in ae), f'{len(ae)} alive at the end')
+        if locals().get('game_over') or not ae:                # the run's own setup failed: say it, never pass silently
+            check('dive: a moved unit is still up when the run goes home (test setup: retreat earlier / stronger units)', False, 'every moved unit down, stock game over')
+        else:
+            check('return: every moved unit alive at the portal is on the base', all(g in lu and not lu[g]['dead'] for g in ae), f'{len(ae)} alive at the portal use')
     n, first = fp_equal_from(tick0)
     check('dive: fingerprints equal over the whole run', n >= 100 and first is None and not mp(G).get('desyncs'), f'{n} common, first diff {first}')
     s_hub1 = {g: c(H, cmd='fe_stats', guid=g).get('stats') for g in mine[G]}

@@ -1,6 +1,18 @@
-// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_launcher main d14859a, 2026-10-15) for builds without the loader tree:
-// Custom Modes (custom/cm_module.c) and the rig host of it (src/rig_main.c). The loader build passes its own SDK=<loader>/sdk.
-// dsl_sdk.h - module SDK for the Dungeon Settlers mod loader (dsload.dylib), API version 3.
+// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_modloader feat/esc-close e5d6583, 2026-10-25) for builds without the loader tree:
+// the rig host of Units Laboratory (src/rig_main.c) and the Bring Units card window (src/mu_*.c). The loader build passes its own SDK=<loader>/sdk.
+// dsl_sdk.h - module SDK for the Dungeon Settlers mod loader (dsload.dylib), API version 6.
+// API 6 = API 5 + mod_data_dir (appended to DSLHost): <game data>/ModData/<mod id>/, a folder of this mod that a mod
+// update or a disable / enable never touches (the mod's own folder is replaced by an update). mod.json "sync" lists
+// the files there that are gameplay: a multiplayer guest gets the host's copy of them for the session (../NOTES.md
+// "Mod data folder"). Wrapper dsl_mod_data_dir (NULL from an older loader).
+// API 5 = API 4 + mod settings (appended to DSLHost): a module declares its settings in mod.json "settings" and reads
+// them with dsl_get_bool / dsl_get_int / dsl_get_choice (wrappers below: an older loader gives the default back).
+// API 4 = API 3, same DSLHost layout, plus one behaviour: title_add_button called again with the same self, click
+// and ud relabels that button (new label / tip) instead of adding a second one. A module that relabels after a
+// language change checks host->api_version >= 4 first (an API 3 loader would add a second button).
+// The loader loads every module whose dsl_plugin_api_version (and mod.json "api") is 1..DSL_API_VERSION, so API 1,
+// 2 and 3 modules load exactly as before. DSL_PLUGIN() still exports 3 (DSL_PLUGIN_API): API 4 adds no field, a module
+// checks host->api_version at run time, so a module built with this header also loads in an API 3 loader.
 // API 3 = API 2 + soft restart, session busy, Mods window tabs, title buttons, load-list rows / filter and the
 // dsl_ui widget kit (all appended to DSLHost; check host->size before use, or use the dsl_* wrappers below).
 // API 2 = API 1 (~/DungeonSettlersMods/loader/sdk/dsl_sdk.h) + fields appended to DSLHost + two optional
@@ -23,15 +35,29 @@
 // Hooks may be installed in any phase; after il2cpp_init they go to a separate stub page.
 //
 // mod.json "scope": "gameplay" (default: every multiplayer player needs it) or "client" (only this player).
+// mod.json "category": absent / "game" = a game mod (per world), "fix" = a fix for a bug of the game (per world, own
+// tab, "On in all worlds" box, never makes a world "Modded" in the Load list filters), "feature" = a launcher mod (on for
+// every world, never in a world's mod set). See ../NOTES.md "Fixes" and "Launcher features vs game mods".
 // A module may export `int dsl_world_check_skip(void)`: 1 = the world check (mods per world) lets the current load
 // through (multiplayer guest loading the host's world).
+// A module may export `int dsl_world_temporary(const char *guid)`: 1 = a temporary world of the mod (multiplayer: the
+// Foreign Expedition hub, made new for each session), never registered in worlds.json.
+// The loader exports `int dsl_world_copy_mods(const char *from, const char *to)` (kit 0.1.27): world `to` (a copy the mod
+// wrote, e.g. multiplayer's single-player copy) plays with the mods of `from`. 0 ok.
+// A module that hides world rows of the stock Load list itself may export `int dsl_loadlist_hidden(int *kind)`: the
+// number of world rows it hides in the open list now; *kind 1 = multiplayer worlds, 2 = single-player worlds, else 0.
+// The loader writes one line under the list ("5 multiplayer worlds are hidden ...") so a player knows they are not lost.
+// The loader's filter panel on the right of the Load list (kit v0.1.23: Vanilla & Vanilla+, Modded, Multiplayer, Latest
+// save only) asks two more optional exports: `int dsl_loadlist_world_mp(const char *guid)` 1 = a multiplayer world (the
+// panel's Multiplayer kind; no module with it = no Multiplayer box), and `int dsl_loadlist_own(void)` 1 = this module
+// filters the open list itself now, so the panel stays away. The loader exports `int dsl_loadlist_panel(void)` (1).
 //
 // Log: <log dir>/dsload.log (DSL_LOG_DIR, else ~/Library/Application Support/CanOpener/Dungeon Settlers).
 #pragma once
 #include <stdint.h>
 #include <stddef.h>
 
-#define DSL_API_VERSION 3
+#define DSL_API_VERSION 6
 
 #ifdef __cplusplus
 extern "C" {
@@ -107,7 +133,26 @@ typedef struct DSLUi {
     /* appended (check size): preferred height of a text widget's text at width w (0 = its own width), at its design
        size, so a caller can grow the box to its text (the game's way for long text; CJK lines are taller) */
     float (*text_height)(DSLObj text, float w);
+    /* appended (check size; API 5): the game's own slider (clone of the Options window's): label  ===o===  value.
+       Whole numbers min..max by step; change(ud, w) after the player moved it to another step (read slider_get).
+       NULL when the game's slider is not available (use value_row then). */
+    DSLObj (*slider)(DSLObj parent, float x, float y, float w, const char *label, int min, int max, int step, int value,
+                     dsl_ui_cb change, void *ud);
+    int (*slider_get)(DSLObj s);
+    void (*slider_set)(DSLObj s, int value);  /* no change callback */
+    /* appended (check size, or use the wrappers below; kit 0.1.28): the Escape key. The kit owns it: one press closes
+       the top-most open window of the ones pushed here (the last pushed that is still shown), and the game does not see
+       that press (no pause menu, a stock window under it stays). With none of them shown, Escape goes to the game as
+       before. close(ud) runs on the main thread between frames; it does exactly what the window's own Close / Cancel /
+       X does, cleanup included, and calls esc_drop (or destroys `win`). A notice box of this kit is pushed by the kit
+       itself (Escape = its Cancel; OK when it has one button). A text field with the keyboard: that Escape only leaves
+       the field (the game's field drops the typed text); flags DSL_ESC_EDIT = the window is an edit row or box whose
+       Cancel drops the edit, so that same Escape also closes it. Push a window again when it shows again (it goes on
+       top). 0 = ok. */
+    int (*esc_push)(DSLObj win, void (*close)(void *ud), void *ud, int flags);
+    void (*esc_drop)(DSLObj win);            /* the window closed (or hid) another way */
 } DSLUi;
+enum { DSL_ESC_EDIT = 1 };
 
 typedef struct DSLHost {
     /* ---- API 1 (layout frozen) */
@@ -170,7 +215,10 @@ typedef struct DSLHost {
     int (*menu_open)(const char *tab_id);     /* open the Mods window at that tab (NULL = Mods); 0 = ok */
 
     /* Title screen button in the stock column style (clone of SubUI_TitleMenuButton), below the stock column and the
-       multiplayer clones. order: lower = higher up (the loader's "Mods" = 100). tip = game tooltip body or NULL. */
+       multiplayer clones. order: lower = higher up (the loader's "Mods" = 100). tip = game tooltip body or NULL.
+       Calling it again with the same self, click and ud gives that button a new label / tip (e.g. after the game's
+       language changed) instead of adding a second button: API 4 (host->api_version >= 4); an API 3 loader adds
+       a second button, so do not call it again there. */
     int (*title_add_button)(DSLPlugin *self, const char *label, int order, const char *tip,
                             void (*click)(void *ud), void *ud);
 
@@ -187,9 +235,51 @@ typedef struct DSLHost {
 
     const struct DSLUi *ui;                   /* widget kit, NULL until il2cpp_init returned */
     const char *(*data_dir)(void);            /* <game data>/Mods (profiles, groups.json, worlds.json, units/) */
-} DSLHost;
 
-#define DSL_PLUGIN() __attribute__((visibility("default"))) const uint32_t dsl_plugin_api_version = DSL_API_VERSION
+    /* ---- appended after API 4 (no version change: check DSL_HAS(host, title_button_icon), or use the wrapper) */
+    /* A picture at the left of this module's title button (the one of title_add_button with the same self, click and
+       ud). The loader keeps a size x size box (units) at the button's left edge, centred in height, and the label in
+       the rest of the button (its text centred there), from the first frame the button is drawn: the button never
+       changes size or moves. fill(ud, box, fresh) runs right before a frame is drawn: fresh = 1 with a new, empty box
+       (a new title view, a language change), 0 each time the button shows again after it was hidden (a sub-page's
+       Back); the module puts its picture under box (a RectTransform; a picture there must not take clicks). Call it
+       after title_add_button. 0 = ok, -1 = no such button. */
+    int (*title_button_icon)(DSLPlugin *self, void (*click)(void *ud), void *ud, float size,
+                             void (*fill)(void *ud, DSLObj box, int fresh));
+
+    /* ---- API 5 (appended): mod settings. mod.json "settings": [{"id", "type": "toggle" | "int" | "choice", "default",
+       "min" / "max" / "step" (int), "input": "number" (int, optional: a typed number field instead of the slider, for
+       exact values in a wide range such as a port; digits only, values outside min..max are refused), "choices": [{"id", "label", "i18n": {"<code>": "..."}}] (choice), "scope":
+       "gameplay" (default: the simulation uses it; every multiplayer player needs the same value, part of the mod-set
+       check) | "local" (display only), "label", "help", "i18n": {"<code>": {"label", "help"}}}]. Ids: a-z 0-9 _ . -
+       The player changes them in the Mods window (Settings of that mod). Values come from files: these work in every
+       phase, dsl_module_load included. A gameplay value never changes in a running process (a change applies with the
+       next Apply, a soft restart); a local value changes live. `dflt` is returned for an id mod.json does not declare
+       (or a value of the wrong type). get_choice returns the choice id (valid until the next change of that setting). */
+    int (*settings_get_bool)(DSLPlugin *self, const char *id, int dflt);
+    int (*settings_get_int)(DSLPlugin *self, const char *id, int dflt);
+    const char *(*settings_get_choice)(DSLPlugin *self, const char *id, const char *dflt);
+    /* changed(ud, id) on the game's main thread after a local setting of this module changed (Settings page). Several
+       calls add several callbacks. 0 = ok. */
+    int (*settings_on_change)(DSLPlugin *self, void (*changed)(void *ud, const char *id), void *ud);
+
+    /* ---- API 6 (appended): this mod's data folder, <game data>/ModData/<mod id> (made if missing), in the form the
+       module's own fopen opens. Kept when the mod is updated, turned off or on (put settings, progress, campaign files
+       there, never in module_dir). mod.json "sync": a list of patterns (examples in ../NOTES.md) = files of this folder
+       that every multiplayer player needs the same (relative, '/' only; * and ? inside a name, ** = any folders; names
+       A-Z a-z 0-9 . _ - and inner spaces; no program files). A guest gets the host's copy of them when it joins
+       (at most 1 MB and 256 files per mod) and its own come back after the session; a module reads them again when a
+       world loads. The same folder for .NET mods: env DSML_MOD_DATA (= <game data>/ModData), else
+       Application.persistentDataPath + "/ModData"; <game data>/ModData/moddata.json lists the folders and the
+       session ("guest" = the host's files are in place). NULL = no folder (bad id). */
+    const char *(*mod_data_dir)(DSLPlugin *self);
+} DSLHost;
+#define DSL_HAS_TITLE_BUTTON_ICON 1               /* this header has title_button_icon (older copies of it do not) */
+
+#ifndef DSL_PLUGIN_API
+#define DSL_PLUGIN_API 3                      /* the API a module needs from its loader (API 4 = runtime check only) */
+#endif
+#define DSL_PLUGIN() __attribute__((visibility("default"))) const uint32_t dsl_plugin_api_version = DSL_PLUGIN_API
 
 typedef int (*dsl_plugin_init_fn)(const DSLHost *host, DSLPlugin *self);
 typedef int (*dsl_module_load_fn)(const DSLHost *host, DSLPlugin *self);
@@ -213,6 +303,26 @@ static inline int dsl_loadrow_add(const DSLHost *h, DSLPlugin *self, const DSLLo
 static inline int dsl_loadlist_filter(const DSLHost *h, DSLPlugin *self, const DSLLoadFilter *f) {
     return DSL_HAS(h, loadlist_filter) ? h->loadlist_filter(self, f) : -1; }
 static inline const DSLUi *dsl_ui(const DSLHost *h) { return DSL_HAS(h, ui) ? h->ui : NULL; }
+static inline int dsl_title_button_icon(const DSLHost *h, DSLPlugin *self, void (*click)(void *), void *ud, float size,
+                                        void (*fill)(void *ud, DSLObj box, int fresh)) {
+    return DSL_HAS(h, title_button_icon) ? h->title_button_icon(self, click, ud, size, fill) : -1; }
+/* API 5 wrappers (mod settings): dflt when the loader is older than API 5 or the id is not in mod.json */
+static inline int dsl_get_bool(const DSLHost *h, DSLPlugin *self, const char *id, int dflt) {
+    return DSL_HAS(h, settings_get_bool) ? h->settings_get_bool(self, id, dflt) : dflt; }
+static inline int dsl_get_int(const DSLHost *h, DSLPlugin *self, const char *id, int dflt) {
+    return DSL_HAS(h, settings_get_int) ? h->settings_get_int(self, id, dflt) : dflt; }
+static inline const char *dsl_get_choice(const DSLHost *h, DSLPlugin *self, const char *id, const char *dflt) {
+    return DSL_HAS(h, settings_get_choice) ? h->settings_get_choice(self, id, dflt) : dflt; }
+/* API 6 wrapper: NULL when the loader is older than API 6 */
+static inline const char *dsl_mod_data_dir(const DSLHost *h, DSLPlugin *self) {
+    return DSL_HAS(h, mod_data_dir) ? h->mod_data_dir(self) : NULL; }
+static inline int dsl_on_setting_change(const DSLHost *h, DSLPlugin *self, void (*changed)(void *ud, const char *id), void *ud) {
+    return DSL_HAS(h, settings_on_change) ? h->settings_on_change(self, changed, ud) : -1; }
+/* Escape wrappers (kit 0.1.28): -1 / nothing with an older kit, whose Escape does nothing for these windows */
+#define DSL_UI_HAS(ui, field) ((ui) && (ui)->size >= offsetof(DSLUi, field) + sizeof((ui)->field) && (ui)->field)
+static inline int dsl_esc_push(const DSLUi *ui, DSLObj win, void (*close)(void *ud), void *ud, int flags) {
+    return DSL_UI_HAS(ui, esc_push) ? ui->esc_push(win, close, ud, flags) : -1; }
+static inline void dsl_esc_drop(const DSLUi *ui, DSLObj win) { if (DSL_UI_HAS(ui, esc_drop)) ui->esc_drop(win); }
 
 #ifdef __cplusplus
 }

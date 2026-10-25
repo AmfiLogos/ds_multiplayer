@@ -8,7 +8,14 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#ifdef _WIN32   /* win/build_steam_check.sh: steam_check.exe [path of the game's steam_api64.dll] (read only) */
+#define GAME_LIB "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Dungeon Settlers\\DungeonSettlers_Data\\Plugins\\x86_64\\steam_api64.dll"
+#define GAME_APPID NULL
+#else
 #define GAME "~/Library/Application Support/Steam/steamapps/common/Dungeon Settlers/DungeonSettlers.app/Contents"
+#define GAME_LIB GAME "/PlugIns/steam_api.bundle/Contents/MacOS/libsteam_api.dylib"
+#define GAME_APPID GAME "/MacOS/steam_appid.txt"
+#endif
 
 static int got_order;
 static void on_cmd(const dsnet_cmd *c, void *u) {
@@ -20,13 +27,13 @@ static void run_ticks(dsnet_client *c, uint32_t *timer, int bit) {
 }
 
 int main(int argc, char **argv) {
-    const char *lib = argc > 1 ? argv[1] : GAME "/PlugIns/steam_api.bundle/Contents/MacOS/libsteam_api.dylib";
+    const char *lib = argc > 1 ? argv[1] : GAME_LIB;
     if (dsnet_steam_load(lib)) { printf("load: %s\n", dsnet_steam_error()); return 1; }
     printf("loaded %s\n", lib);
     if (!dsnet_steam_is_running()) { printf("Steam is not running: nothing to test, exit 0\n"); return 0; }
 
     uint32_t appid = 2798330;
-    FILE *f = fopen(GAME "/MacOS/steam_appid.txt", "r");
+    FILE *f = GAME_APPID ? fopen(GAME_APPID, "r") : NULL;
     if (f) { if (fscanf(f, "%u", &appid) != 1) appid = 2798330; fclose(f); }
     if (dsnet_steam_init_standalone(appid)) { printf("Steam running but init failed: %s\n", dsnet_steam_error()); return 0; }
     int online = dsnet_steam_logged_on();

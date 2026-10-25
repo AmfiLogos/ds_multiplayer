@@ -168,7 +168,7 @@ def main():
               f"sorting {a['modal_sorting']}/{b['modal_sorting']} raycaster {a['modal_raycaster']}/{b['modal_raycaster']} over_ui {a['over_ui']}")
         tm(X, action='tip', what='info'); time.sleep(0.5); ti = tm(X)                 # the rules: the info icon's tooltip (old plain box removed, lan_v9)
         check('texts: Teams only allocates (take / free); expeditions via Go to dungeon; no Ready / Go button',
-              ti['tip'] == 'How Teams Work' and 'Left-click' in ti['tip_body'] and 'Go to dungeon' in ti['tip_body']
+              ti['tip'] == 'How Teams Work' and 'Left-click' in ti['tip_body'] and ('Go to dungeon' in ti['tip_body'] or 'Enter Dungeon' in ti['tip_body'])
               and ('Go to dungeon' in a['hint'] or 'take a free unit' in a['hint']), repr(ti['tip_body'][:200]) + ' / ' + repr(a['hint']))
         tips = {}
         for w_, kw in (('hud', {}), ('info', {}), ('header', {'player': 0}), ('header', {'player': -1}), ('header', {'player': 1})):

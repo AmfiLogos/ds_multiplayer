@@ -32,8 +32,9 @@ enum { PS_ROLLBACK = 0, PS_ABSOLUTE = 1 };   /* SwitchPauseState */
 #define MP_SAVE_NAME "mp_sync"
 #define TI_QUIT_TITLE_REQ   0x6652F28   /* QuitToTitleSceneRequested */
 #define VA_QUIT_TITLE_CTOR  0xD61E50    /* .ctor(bool autoSaveBeforeQuit) */
-/* Steamworks.NET (in GameAssembly): NativeMethods.SteamAPI_ManualDispatch_GetNextCallback, the P/Invoke stub the
-   game's CallbackDispatcher.RunFrame (0x1167898) pulls every callback of its pipe through (dump.cs 25846389). */
+/* Steamworks.NET (in GameAssembly): NativeMethods.SteamAPI_ManualDispatch_GetNextCallback, the P/Invoke wrapper.
+   Only the fallback when the name lookup fails (steamcb_find): IL2CPP inlined it into CallbackDispatcher.RunFrame
+   (0x1167898), which reads the wrapper's native-function slot itself, so a hook on this address never runs. */
 #define VA_STEAM_GETNEXT 0x1141AAC  /* bool (HSteamPipe pipe, IntPtr pCallbackMsg) */
 /* SystemMenuView.QuitToTitleSceneCallback: the confirmed "Quit to title" (UIInput 0x5c on the view's stream +0x28) */
 #define VA_QUIT_TO_TITLE 0xF2F234
@@ -63,7 +64,6 @@ static int host_reload;             /* host: reload its own join-point save afte
 static bool (*o_setspeed)(Obj, int, int, void *);
 static bool (*o_addpause)(Obj, int, void *);
 static bool (*o_rempause)(Obj, int, void *);
-static bool (*o_getnext)(int32_t, void *, void *);
 
 static Obj speed_setting(void) { Obj s = mf ? AT(mf, 0xD8, Obj) : NULL; return s ? AT(s, 0x10, Obj) : NULL; }
 /* Not ready = loading (join, resync, host reload) or title: the load flow's own SetSpeed / pause calls stay local.
@@ -112,16 +112,95 @@ static bool h_rempause(Obj gs, int reason, void *mi) {
     }
 }
 
-/* Every callback the game's Steam dispatcher takes. The game registers no lobby/invite callbacks, so
-   GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) would be dropped: hand them to dsnet_steam. */
+/* ---------------------------------------------------------------- accepted Steam invites (steamaccept, 2026-10-20)
+   Every callback the game's Steam dispatcher takes. The game registers no lobby/invite callbacks, so
+   GameLobbyJoinRequested (333) / GameRichPresenceJoinRequested (337) would be dropped: hand them to dsnet_steam.
+   The game's CallbackDispatcher.RunFrame has the P/Invoke wrapper of SteamAPI_ManualDispatch_GetNextCallback inlined:
+   it loads the wrapper's lazily filled static slot (the native libsteam_api function) and calls it directly (Mac
+   RunFrame 0x1167c3c / 0x1167c68 read slot 0x696eb38; Windows 0xe317db reads 0x51f3a78). Until v0.1.19 we hooked the
+   wrapper (never called: no invite ever arrived). Now the SLOT holds cb_wrap: a data write, no code hook.
+   The slot is found by name (NativeMethods.SteamAPI_ManualDispatch_GetNextCallback -> its methodPointer = the wrapper ->
+   its first slot load), the rv() address of the wrapper only when the name fails; both decoded the same way.
+   The game fills the slot at its first Steam frame; steamcb_frame (main thread, like RunFrame) swaps it then, and
+   again if anything ever writes another function there (that one becomes the original). */
 typedef struct { int32_t user, id; uint8_t *param; int32_t cub; } steam_cbmsg;   /* CallbackMsg_t */
-static bool h_getnext(int32_t pipe, void *msg, void *mi) {
-    bool r = o_getnext(pipe, msg, mi);
+typedef bool (*steam_getnext_fn)(int32_t pipe, void *msg);                        /* T2: bool, never int */
+static void **cb_slot;                    /* the slot in GameAssembly's data */
+static int cb_state;                      /* 0 not looked up, 1 found, -1 not found (log once, invites only by +connect_lobby) */
+static const char *cb_by = "";            /* "name" / "rv" */
+static steam_getnext_fn cb_orig;          /* the native function the game put in the slot */
+static uint64_t cb_total, cb_fed, cb_swaps;
+static bool cb_wrap(int32_t pipe, void *msg) {
+    steam_getnext_fn o = cb_orig;
+    bool r = o ? o(pipe, msg) : false;
     if (r && msg) {
         steam_cbmsg *m = msg;
-        if (m->id == 333 || m->id == 337) dsnet_steam_feed_callback(m->id, m->param, m->cub);
+        cb_total++;
+        if (m->id == 333 || m->id == 337) { cb_fed++; dsnet_steam_feed_callback(m->id, m->param, m->cub); }
     }
     return r;
+}
+/* the wrapper's first load of a static pointer slot (the cached native function): arm64 adrp + ldr x, [x, #imm];
+   x64 mov rax, [rip + disp32]. NULL when the code does not look like that (a game update changed it). */
+static void **slot_of_wrapper(const uint8_t *fn) {
+    if (!fn) return NULL;
+#if defined(__aarch64__)
+    const uint32_t *w = (const uint32_t *)fn;
+    for (int i = 0; i < 24; i++) {
+        uint32_t a = w[i], b = w[i + 1];
+        if ((a & 0x9F000000u) != 0x90000000u) continue;                          /* adrp */
+        if ((b & 0xFFC00000u) != 0xF9400000u || ((b >> 5) & 31) != (a & 31)) continue;   /* ldr Xt, [Xn(adrp's), #imm*8] */
+        int64_t imm = (int64_t)(((a >> 29) & 3) | (((a >> 5) & 0x7FFFF) << 2));
+        imm = (imm << 43) >> 43;                                                  /* 21-bit signed page count */
+        uintptr_t page = ((uintptr_t)(w + i) & ~(uintptr_t)0xFFF) + (uintptr_t)(imm * 4096);
+        return (void **)(page + ((b >> 10) & 0xFFF) * 8);
+    }
+#elif defined(__x86_64__) || defined(_M_X64)
+    for (int i = 0; i < 64; i++)
+        if (fn[i] == 0x48 && fn[i + 1] == 0x8B && fn[i + 2] == 0x05) {           /* mov rax, [rip + disp32] */
+            int32_t d; memcpy(&d, fn + i + 3, 4);
+            return (void **)(fn + i + 7 + d);
+        }
+#endif
+    return NULL;
+}
+static int slot_sane(void **s) { return s && (uintptr_t)s > ds_base && (uintptr_t)s - ds_base < ((uintptr_t)192 << 20); }   /* inside GameAssembly */
+void *class_by_name(const char *ns, const char *name);      /* mpmenu.c */
+static void steamcb_find(void) {
+    void *k = class_by_name("Steamworks", "NativeMethods");
+    void *mi = k ? F(0x6F8C1C, void *(*)(void *, const char *, int))(k, "SteamAPI_ManualDispatch_GetNextCallback", 2) : NULL;
+    void **by_name = mi ? slot_of_wrapper(*(const uint8_t **)mi) : NULL;           /* MethodInfo->methodPointer = the wrapper */
+    void **by_rv = slot_of_wrapper((const uint8_t *)(ds_base + rv(VA_STEAM_GETNEXT)));
+    if (slot_sane(by_name)) { cb_slot = by_name; cb_by = "name"; }
+    else if (slot_sane(by_rv)) { cb_slot = by_rv; cb_by = "rv"; }
+    cb_state = cb_slot ? 1 : -1;
+    if (cb_slot) rig_log("mp: Steam callback slot at +0x%lx (found by %s%s): accepted invites come through it", (unsigned long)((uintptr_t)cb_slot - ds_base),
+                         cb_by, slot_sane(by_name) && slot_sane(by_rv) && by_name != by_rv ? "; the rv() table says otherwise" : "");
+    else rig_log("mp: Steam callback slot NOT found (method %s): accepted invites only work through +connect_lobby", mi ? "found, code changed" : "not found");
+}
+/* test (mp_test_steamcb only): a native GetNextCallback with a fixed queue: PersonaStateChange 304, UserStatsReceived
+   1101, GameLobbyJoinRequested 333 (lobby, friend), UserStatsStored 1102 (the stock ones must reach the game unchanged) */
+static const int test_ids[] = { 304, 1101, 333, 1102 };
+static uint8_t test_bufs[4][24]; static uint8_t *test_param[4]; static int test_q; static uint64_t test_lobby;
+static bool test_getnext(int32_t pipe, void *msg) {
+    (void)pipe;
+    if (test_q >= 4) return false;
+    int i = test_q++; steam_cbmsg *m = msg;
+    memset(test_bufs[i], 0, sizeof test_bufs[i]);
+    if (test_ids[i] == 333) { uint64_t fr = 76561190000000001ULL; memcpy(test_bufs[i], &test_lobby, 8); memcpy(test_bufs[i] + 8, &fr, 8); }
+    test_param[i] = test_bufs[i];
+    m->user = 1; m->id = test_ids[i]; m->param = test_bufs[i]; m->cub = test_ids[i] == 333 ? 16 : 12;
+    return true;
+}
+static void steamcb_frame(void) {
+    if (!cb_state) steamcb_find();
+    if (cb_state != 1) return;
+    void *cur = __atomic_load_n(cb_slot, __ATOMIC_ACQUIRE);
+    if (!cur || cur == (void *)cb_wrap) return;                                   /* not filled yet (no Steam frame) / ours */
+    cb_orig = (steam_getnext_fn)cur;
+    __atomic_store_n(cb_slot, (void *)cb_wrap, __ATOMIC_RELEASE);
+    cb_swaps++;
+    rig_log("mp: Steam callbacks now pass through the multiplayer mod (slot swap %llu)", (unsigned long long)cb_swaps);
 }
 
 /* ---------------------------------------------------------------- the world's save lives only on the host (owner 2026-10-13)
@@ -208,14 +287,30 @@ static void owners_restore(void) {
     rig_log("mp: owners restored from the world (%ld bytes): rc %d", n, rc);
     free(b);
 }
+int fe_world_hub_any(void);                                 /* fe_game.c: a Foreign Expedition hub is open */
+static uint64_t hub_saves_blocked;
 static bool h_save(Obj ld, Obj name, bool is_auto, Obj disp, void *mi) {
     if (!mp_saving && (guest_world || (S && !cfg.host))) {
         saves_blocked++;
         rig_log("mp: guest save blocked (%s): the world's save lives on the host", is_auto ? "auto" : "manual");
         return false;
     }
+    /* the hub is made new for each session from the map in the mod (fe_hub.c) and never saved, on the host too (owner
+       2026-10-25: "Foreign Expedition Hub shouldn't create a local save as well"): autosave, manual save, save on exit.
+       The join point and the checks save through mp_saving (mp_sync / mp_fullcheck, deleted after use). */
+    if (!mp_saving && fe_world_hub_any()) {
+        hub_saves_blocked++;
+        rig_log("mp: hub save blocked (%s): the hub is never saved", is_auto ? "auto" : "manual");
+        return false;
+    }
     bool ok = o_save(ld, name, is_auto, disp, mi);
     if (ok && !mp_saving) owners_store();
+    return ok;
+}
+/* a temporary save of the open world that the caller moves out of Saves/ or deletes at once (Foreign Expedition end,
+   test reads): allowed in the hub, no owners table, no iron-mode cleanup. 1 ok. */
+int mp_game_save_temp(const char *name) {
+    mp_saving = 1; int ok = rig_save_campaign(name); mp_saving = 0;
     return ok;
 }
 /* In iron mode Save(isAutoSave = true) keeps ONLY the save just written and deletes the campaign's others: the
@@ -519,9 +614,15 @@ static uint64_t g_deep(void *u) { (void)u; return rig_deep_hash(); }
    skipped), written as Saves/mp_fullcheck.json, read back, deleted (save list refreshed). One FNV hash per top-level
    section ("  \"Key\": ...", 2-space indent) and per second-level key (4 spaces), as "name hash" lines. Not compared
    (local to each player, not simulation): CampaignSaveHeader (the save's own time) and in CampaignSettingSaveData the
-   GameSpeed, CameraSettingSaveData and CampaignUISettingSaveData (soak 2026-10-14: the camera differed at once). */
+   GameSpeed, CameraSettingSaveData and CampaignUISettingSaveData (soak 2026-10-14: the camera differed at once), and
+   PlayerUnitsSaveData/SkillLearnNotices = UnitSkillContainer._skillLearnNotices, the red dot on the unit panel's skill
+   button: only EntitySummaryUIPresenter writes it (Observe / Clear for the units THIS player selects or opens the panel
+   of) and reads it (HasSelectedLearnableSkillNotice); no sim code uses it (decomp 25846389: the notice interfaces are used
+   by that presenter only; spawn / despawn only add / remove the unit's key, which SkillTrees also has). A guest's unit
+   click made the next check differ and forced a full resync (lane dslock probe 2026-10-25). */
 static int full_local(const char *top, const char *sub) {
     if (!strcmp(top, "CampaignSaveHeader")) return 1;
+    if (!strcmp(top, "PlayerUnitsSaveData")) return !strcmp(sub, "SkillLearnNotices");
     return !strcmp(top, "CampaignSettingSaveData") && (!strcmp(sub, "GameSpeed") || !strcmp(sub, "CameraSettingSaveData") || !strcmp(sub, "CampaignUISettingSaveData"));
 }
 #define FULL_NAME "mp_fullcheck"
@@ -766,6 +867,15 @@ static const mp_game_api api = { NULL, g_ready, g_tick, g_scope, g_fp, g_move, g
 
 /* ---------------------------------------------------------------- entry points */
 static void mp_rig_log(const char *line) { rig_log("mp: %s", line); }
+/* dsnet lines ("steam: lobby N created", invite results, joins) into rig.log; at most 40 a second (a lagging link
+   logs per command), the rest counted. Called from the Steam pump thread too: rig_log has its own lock. */
+static void dsnet_rig_log(const char *line) {
+    static volatile long win_s, n_in_win, dropped;
+    long now = (long)time(NULL);
+    if (now != win_s) { if (dropped) rig_log("dsnet: %ld lines not logged (over 40/s)", (long)dropped); win_s = now; n_in_win = 0; dropped = 0; }
+    if (++n_in_win > 40) { dropped++; return; }
+    rig_log("dsnet: %s", line);
+}
 
 /* Quitting the app (stock Quit, Cmd-Q, window close) closes the session first: the socket is closed cleanly and the
    server issues PLAYER_LEAVE at once, instead of the others waiting until the process is gone. */
@@ -773,14 +883,19 @@ static void mp_rig_log(const char *line) { rig_log("mp: %s", line); }
 #define VA_APP_QUIT_I  0x507B150    /* static void UnityEngine.Application.Quit(int exitCode) */
 static void (*o_app_quit)(void *);
 static void (*o_app_quit_i)(int, void *);
+void upnpport_quit(void);                                 /* upnpport.c: delete the router mapping this process added */
 static void leave_for_quit(const char *why) {
+    upnpport_quit();
     if (!S && !steam_join && !steam_host) return;
     rig_log("mp: %s: leaving the session first", why);
     mp_steam_leave();
 }
 static void h_app_quit(void *mi) { leave_for_quit("Application.Quit"); o_app_quit(mi); }
 static void h_app_quit_i(int code, void *mi) { leave_for_quit("Application.Quit(code)"); o_app_quit_i(code, mi); }
-static void mp_atexit(void) { if (S) { mp_stop(S); S = NULL; } }
+static void mp_atexit(void) {
+    if (S) { mp_stop(S); S = NULL; }
+    if (cb_swaps) rig_log("mp: Steam callbacks through the slot: %llu (invites %llu)", (unsigned long long)cb_total, (unsigned long long)cb_fed);
+}
 
 /* The stock "Quit to title" (system menu confirm -> InputEventFactory) and ReturnTitleAction both build a
    QuitToTitleSceneRequested; the load path does not. Building one while in a session = leave NOW (the title takes ~1 s
@@ -810,8 +925,6 @@ static void install_hooks(void) {
     if (rig_hook(VA_SAVE, (void *)h_save, (void **)&o_save, "CampaignSaveLoader.Save") ||
         rig_hook(VA_KEEPONLY, (void *)h_keeponly, (void **)&o_keeponly, "CampaignSaveLoader.KeepOnlyRetainedCampaignSave"))
         rig_log("mp: SAVE HOOKS FAILED: a guest could write the mp world, an iron-mode host could lose its saves");
-    if (rig_hook(VA_STEAM_GETNEXT, (void *)h_getnext, (void **)&o_getnext, "Steamworks ManualDispatch_GetNextCallback"))
-        rig_log("mp: Steam invite hook failed: accepted invites only work through +connect_lobby");
     if (rig_hook(VA_LOAD_CHECKPOINT, (void *)h_checkpoint, (void **)&o_checkpoint, "CampaignLoadingEventHandler.LogLoadCheckpoint") ||
         rig_hook(VA_STABILIZE_NEXT, (void *)h_stabilize, (void **)&o_stabilize, "WaitUntilGameStabilizes.MoveNext") ||
         rig_hook(VA_DEFTICKS_NEXT, (void *)h_defticks, (void **)&o_defticks, "WaitForDefaultTicks.MoveNext"))
@@ -876,9 +989,18 @@ __attribute__((visibility("default"))) int mp_game_rejoin_line(uint64_t steam_hi
     return dsmc_rejoin_format(&r, out, n) == 0;
 }
 
+/* the loader's lines of custom difficulty mods that run but are not counted now (dsl_mp_optional_lines, ds_modloader
+   2026-10-25): the HELLO offers them to a host on that difficulty (mp_core.c). An older loader: none (refused as before). */
+static int session_optional(char *out, size_t n) {
+    static int (*f)(char *, size_t); static int looked;
+    if (!looked) { looked = 1; f = (int (*)(char *, size_t))mpmenu_loader_sym("dsl_mp_optional_lines"); }
+    return f ? f(out, n) : 0;
+}
 void mp_game_install(void) {
+    mp_session_optional = session_optional;
     ui_color_resolver = color_of_slot;
     mp_set_log(mp_rig_log);
+    dsnet_set_log(dsnet_rig_log);
     install_hooks();
     sync_file_delete("left over from an earlier run");
     mp_moddata_init();                                       /* mod data sync files in the join point (mp_moddata.c) */
@@ -906,13 +1028,22 @@ static int steam_ready(void) {
     return ok;
 }
 
-static void end_session_c(int code, const char *why) {
-    rig_log("mp: session ended (%d): %s", code, why);
-    snprintf(ended_msg, sizeof ended_msg, "%s", why); dsi_utf8_fix_end(ended_msg); ended = 1; ended_code = code;
+static void ar_off(void);
+static int ar_on(void);
+/* keep_world 1 (auto rejoin): det stays locked, so the world on screen stands still until the rejoin's save comes */
+static void session_teardown(int keep_world) {
     if (S) { ord_mp_attach(NULL); mp_bridge_attach(NULL); mp_stop(S); S = NULL; }
+    trn_clear_role();
+    if (!keep_world) rig_det_disarm();                    /* fully off: the world (if one stays) runs as single player */
     if (steam_join) { dsnet_steam_join_close(steam_join); steam_join = NULL; }
     if (steam_host) { dsnet_steam_host_stop(steam_host); steam_host = NULL; }
     cfg_ok = 0; start_failed = 0; host_reload = 0; join_lobby_id = 0; played = 0; owners_restored = 0;
+}
+static void end_session_c(int code, const char *why) {
+    rig_log("mp: session ended (%d): %s", code, why);
+    snprintf(ended_msg, sizeof ended_msg, "%s", why); dsi_utf8_fix_end(ended_msg); ended = 1; ended_code = code;
+    if (ar_on()) ar_off();                                 /* an auto rejoin (below) ends with it */
+    session_teardown(0);
 }
 
 static void end_session(const char *why) { end_session_c(MPM_END_OTHER, why); }
@@ -1102,6 +1233,7 @@ __attribute__((visibility("default"))) void mp_game_expect_world(const char *cam
 __attribute__((visibility("default"))) const char *mp_game_other_world(void) { return mp_last_other_world(); }
 int mp_game_join(const mp_config *c) {
     if (S || steam_join) return -1;
+    if (ar_on()) { rig_log("mp: a join replaces the auto rejoin"); ar_off(); rig_det_disarm(); }
     cfg = *c; cfg.host = 0; cfg_ok = 1; start_failed = 0;
     if (expect_next[0]) { snprintf(cfg.expect_world, sizeof cfg.expect_world, "%s", expect_next); expect_next[0] = 0; }
     cfg.need_save = 1;                                       /* a lobby joiner is on the title screen: no campaign */
@@ -1120,10 +1252,30 @@ int mp_game_join(const mp_config *c) {
 
 int mp_game_steam_invite(void) { return steam_host ? dsnet_steam_host_invite(steam_host) : -1; }
 
+/* conninfo (owner 2026-10-20): how `player` is connected, as this copy may say it (enum dsnet_via).
+   Host: itself = DSNET_VIA_HOST; a guest = DIRECT / STEAM with its "ip:port" in addr (only the host has guests' addresses).
+   Guest: the kind from the host's player list. Its own row and the host's row (player 0) = how this copy reached the host;
+   addr (host's row only) = the address it joined for a direct join. Another guest's address is never known here. */
+__attribute__((visibility("default"))) int mp_game_conn(int player, char *addr, size_t n) {
+    if (addr && n) addr[0] = 0;
+    if (!S) return steam_join && !cfg.host ? DSNET_VIA_STEAM : DSNET_VIA_UNKNOWN;
+    if (cfg.host) return player == 0 ? DSNET_VIA_HOST : dsnet_server_peer(mp_server(S), player, addr, n);
+    dsnet_client *c = mp_client(S); int me = c ? dsnet_player_id(c) : -1;
+    if (player != 0 && player != me) return c ? dsnet_player_via(c, player) : DSNET_VIA_UNKNOWN;
+    int v = me >= 0 ? dsnet_player_via(c, me) : DSNET_VIA_UNKNOWN;   /* how the host sees this copy's link */
+    if (v != DSNET_VIA_STEAM && v != DSNET_VIA_DIRECT) v = steam_join ? DSNET_VIA_STEAM : DSNET_VIA_DIRECT;
+    if (v == DSNET_VIA_DIRECT && player == 0 && addr && n) {
+        if (strchr(cfg.host_addr, ':')) snprintf(addr, n, "[%s]:%u", cfg.host_addr, (unsigned)cfg.port);
+        else snprintf(addr, n, "%s:%u", cfg.host_addr, (unsigned)cfg.port);
+    }
+    return v;
+}
+
 /* ux_flow F9: an invite accepted while a single-player world runs never replaces it on its own. The join waits for the
    player's answer (mpmenu shows "Join <host>? Your unsaved progress here will be lost." with Save and join / Join / Cancel):
    mp_game_invite_pending gives the host's name, mp_game_invite_answer the choice. On the title it joins at once. */
 static int invite_open; static mp_config invite_cfg; static char invite_host[48];
+static int cb_test_join;               /* test (mp_test_steamcb): take join requests without Steam (the rig has none) */
 static void invite_accepted(const mp_config *c, const char *host, const char *how) {
     if (scene() == 2 && !guest_world) {
         invite_cfg = *c; snprintf(invite_host, sizeof invite_host, "%s", host && *host ? host : TR("your friend")); dsi_utf8_fix_end(invite_host); invite_open = 1;
@@ -1152,6 +1304,144 @@ __attribute__((visibility("default"))) int mp_game_invite_answer(int choice) {
     int rc = mp_game_join(&invite_cfg);
     rig_log("mp: joining %s (%s): rc %d", invite_host, invite_cfg.host_addr, rc);
     return rc;
+}
+
+/* ---------------------------------------------------------------- auto rejoin (owner 2026-10-20, lane autorejoin)
+   A guest's own link drops (receive silence DSNET_RX_TIMEOUT_MS, a TCP reset, the Steam link; no BYE from the host)
+   while it plays: no title. The world on screen stands still (det stays locked, no session) under "Connection lost,
+   rejoining..." with Cancel (mpmenu, mp_game_autorejoin / _cancel), and this copy joins the same host again the way it
+   joined (TCP address + port, or the Steam lobby), for the same world (expect_world = the running campaign), the same uid
+   (its RESERVED units come back; the host's hold ends). Tries every 2 s for DSMP_AUTOREJOIN_MS (60000; 0 = off). Never
+   waits on the game thread: the TCP connect runs on dsnet's helper thread, the HELLO / WELCOME through mp_start_poll.
+   A refusal other than "already in this game" (the host has not seen the old link close yet) ends it at once (mods,
+   full, other world...). Out of time: the old way, title + "Connection to the host lost" (Recent worlds rejoin stays).
+   Not for a BYE (host Leave / quit: "The host left the game"), the guest's own Leave, a save failure, spectators-off. */
+enum { AR_OFF, AR_WAIT, AR_CONNECT, AR_STEAM, AR_HELLO, AR_LOADING };
+static struct {
+    int phase, tries, done, failed;
+    double t0, next, att_t0;
+    mp_config cfg;                  /* the join to repeat (host_addr "steam:<lobby>" or an address) */
+    dsnet_connector *k;
+    dsnet_steam_join *sj;
+    mp_session *ps;                 /* HELLO sent, WELCOME not yet */
+} AR;
+static int ar_on(void) { return AR.phase != AR_OFF; }
+static int ar_budget_ms(void) {
+    const char *e = getenv("DSMP_AUTOREJOIN_MS");
+    return e && *e ? atoi(e) : 60000;
+}
+static void ar_attempt_free(void) {
+    if (AR.k) { dsnet_connect_free(AR.k); AR.k = NULL; }
+    if (AR.sj) { dsnet_steam_join_close(AR.sj); AR.sj = NULL; }
+    if (AR.ps) { mp_stop(AR.ps); AR.ps = NULL; }
+}
+static void ar_off(void) { ar_attempt_free(); AR.phase = AR_OFF; }
+/* in a running world this copy received (or still loading the host's world during an auto rejoin) */
+static int ar_wanted(void) { return !cfg.host && scene() == 2 && (played || ar_on()) && ar_budget_ms() > 0; }
+static void ar_start(void) {
+    double now = mono_ms();
+    mp_config c = cfg;
+    c.need_save = 1;                                     /* the host's world comes as a join point (resync) */
+    Obj cd = cdc(); Obj clan = cd ? AT(cd, 0x50, Obj) : NULL;
+    if (clan) { Guid g = AT(clan, 0x10, Guid); if (g.lo || g.hi) guid_str(g, c.expect_world); }
+    if (!ar_on()) { AR.t0 = now; AR.tries = 0; }
+    ar_attempt_free();
+    AR.cfg = c; AR.phase = AR_WAIT; AR.next = now + 1000;
+    rig_log("mp: connection to the host lost: rejoining by itself (%s, world %s, %.0f s left)",
+            c.host_addr, c.expect_world[0] ? c.expect_world : "any", (ar_budget_ms() - (now - AR.t0)) / 1000);
+    session_teardown(1);
+    ended = 0; quit_pending = 0;
+}
+static void ar_retry(const char *why) {
+    rig_log("mp: rejoin try %d failed (%s)", AR.tries, why);
+    ar_attempt_free();
+    AR.phase = AR_WAIT; AR.next = mono_ms() + 2000;
+}
+static void ar_give_up(int code, const char *why) {
+    rig_log("mp: rejoin: gave up after %.1f s, %d tries: %s", (mono_ms() - AR.t0) / 1000, AR.tries, why);
+    ar_off(); AR.failed++;
+    rig_det_disarm();
+    snprintf(ended_msg, sizeof ended_msg, "%s", why); dsi_utf8_fix_end(ended_msg); ended = 1; ended_code = code;
+    quit_pending = 1;                                    /* the title, as before this feature */
+}
+static void ar_hello(const char *addr, uint16_t port) {
+    mp_config c = AR.cfg;
+    snprintf(c.host_addr, sizeof c.host_addr, "%s", addr); c.port = port;
+    set_uid();                                           /* the same uid as before: RESERVED units back */
+    AR.ps = mp_start_begin(&c, &api);
+    if (!AR.ps) { ar_retry("no connection"); return; }
+    AR.phase = AR_HELLO;
+}
+static int ar_final_reject(int why) { return why && why != DSNET_REJ_DUP_ID; }
+static void ar_frame(void) {
+    if (!ar_on()) return;
+    double now = mono_ms();
+    if (AR.phase == AR_LOADING) {                        /* rejoined: until the host's world runs here */
+        if (S && rig_det_mp_ready() && !dsnet_needs_state(mp_client(S))) {
+            rig_log("mp: rejoined by itself after %.1f s (%d tries)", (now - AR.t0) / 1000, AR.tries);
+            AR.phase = AR_OFF; AR.done++;
+        } else if (!S) AR.phase = AR_OFF;               /* ended another way (end_session_c said why) */
+        return;
+    }
+    if (now - AR.t0 > ar_budget_ms()) { ar_give_up(MPM_END_LINK_LOST, TR("Connection to the host lost")); return; }
+    if (AR.phase == AR_WAIT) {
+        if (now < AR.next) return;
+        AR.tries++; AR.att_t0 = now;
+        if (!strncmp(AR.cfg.host_addr, "steam:", 6)) {
+            if (!steam_ready()) { AR.next = now + 2000; AR.tries--; return; }
+            uint64_t lobby = strtoull(AR.cfg.host_addr + 6, NULL, 10);
+            AR.sj = lobby ? dsnet_steam_join_lobby(lobby, MP_BUILD_ID, MP_MOD_VERSION) : NULL;
+            if (!AR.sj) { ar_retry("Steam lobby join did not start"); return; }
+            AR.phase = AR_STEAM;
+        } else {
+            AR.k = dsnet_connect_start(AR.cfg.host_addr, AR.cfg.port, 4000);
+            if (!AR.k) { ar_retry("connect did not start"); return; }
+            AR.phase = AR_CONNECT;
+        }
+        rig_log("mp: rejoin try %d (%s:%u)", AR.tries, AR.cfg.host_addr, (unsigned)AR.cfg.port);
+        return;
+    }
+    if (AR.phase == AR_CONNECT) {
+        int r = dsnet_connect_poll(AR.k);
+        if (!r) return;
+        if (r != 1) { char w[32]; snprintf(w, sizeof w, "connect %d", r); ar_retry(w); return; }
+        dsnet_connect_adopt(AR.k); dsnet_connect_free(AR.k); AR.k = NULL;
+        ar_hello(AR.cfg.host_addr, AR.cfg.port);
+        return;
+    }
+    if (AR.phase == AR_STEAM) {
+        uint16_t port = 0;
+        int r = dsnet_steam_join_poll(AR.sj, &port);
+        if (!r) { if (now - AR.att_t0 > 20000) ar_retry("Steam lobby: no answer in 20 s"); return; }
+        if (r < 0) { char e[160]; ar_retry(dsnet_steam_join_error_text(AR.sj, e, sizeof e)); return; }
+        ar_hello("127.0.0.1", port);
+        return;
+    }
+    if (AR.phase == AR_HELLO) {
+        int why = 0, r = mp_start_poll(&AR.ps, &why);
+        if (!r) { if (now - AR.att_t0 > 20000) ar_retry("no WELCOME in 20 s"); return; }
+        if (r < 0) {
+            if (ar_final_reject(why)) { ar_give_up(MPM_END_REFUSED, reject_text(why)); return; }
+            char w[48]; snprintf(w, sizeof w, "no WELCOME (reject reason %d)", why); ar_retry(w); return;
+        }
+        rig_det_disarm();                               /* then armed again: lock, the host's join point loads */
+        S = AR.ps; AR.ps = NULL;
+        cfg = AR.cfg; cfg_ok = 1; start_failed = 0; last_reject = 0; modset_unshown = 0; ended = 0;
+        if (AR.sj) { steam_join = AR.sj; AR.sj = NULL; join_lobby_id = strtoull(cfg.host_addr + 6, NULL, 10); }
+        S_gen++; ord_mp_attach(S); mp_bridge_attach(S); trn_set_role(0); rig_det_arm();
+        AR.phase = AR_LOADING;
+        rig_log("mp: rejoin try %d: in (player %d), waiting for the host's world", AR.tries, dsnet_player_id(mp_client(S)));
+    }
+}
+/* mpmenu (dlsym): 0 none, 1 trying to rejoin, 2 rejoined, loading the host's world */
+__attribute__((visibility("default"))) int mp_game_autorejoin(void) { return !ar_on() ? 0 : AR.phase == AR_LOADING ? 2 : 1; }
+/* mpmenu (dlsym): the Cancel of "Connection lost, rejoining...": the title at once, no notice */
+__attribute__((visibility("default"))) void mp_game_autorejoin_cancel(void) {
+    if (!ar_on()) return;
+    rig_log("mp: rejoin cancelled by the player (try %d, %.1f s)", AR.tries, (mono_ms() - AR.t0) / 1000);
+    ar_off();
+    if (S || steam_join) mp_steam_leave();
+    rig_det_disarm(); ended = 0; quit_pending = 1;
 }
 
 /* Every frame, title screen too (rig_frame): Steam bridge for a joiner, accepted Steam invites. */
@@ -1225,12 +1515,14 @@ void mp_game_poll(void) {
         int sf = dsnet_save_failed(mp_client(S));
         int code = sf ? MPM_END_OTHER : dsnet_bye_reason(mp_client(S)) == DSNET_BYE_SPECTATORS_OFF ? MPM_END_SPECT_OFF
                  : dsnet_host_left(mp_client(S)) ? MPM_END_HOST_LEFT : MPM_END_LINK_LOST;
-        end_session_c(code, sf == DSNET_SAVE_FAIL_HOST ? TR("The host's game could not save the world for you. Try to join again")
+        if (code == MPM_END_LINK_LOST && ar_wanted()) ar_start();   /* owner 2026-10-20: rejoin by itself, no title */
+        else { end_session_c(code, sf == DSNET_SAVE_FAIL_HOST ? TR("The host's game could not save the world for you. Try to join again")
                     : sf == DSNET_SAVE_FAIL_TIMEOUT ? TR("The host's world did not arrive. Try to join again")
                     : code == MPM_END_SPECT_OFF ? TR("The host turned spectators off")
                     : code == MPM_END_HOST_LEFT ? TR("The host left the game") : TR("Connection to the host lost"));
-        quit_pending = 1;
+        quit_pending = 1; }
     }
+    ar_frame();
     /* host gone: back to the title as soon as the game is not mid-load (a load in progress is finished first) */
     if (quit_pending) {
         int sc = scene();
@@ -1242,7 +1534,8 @@ void mp_game_poll(void) {
         }
     }
     if (S) mpx_frame(MP_FRAME_SESSION);                /* Custom Modes (FE poll + mailbox) */
-    if (!S && !steam_join && steam_ready()) {
+    steamcb_frame();
+    if (!S && !steam_join && (steam_ready() || cb_test_join)) {
         uint64_t lobby = dsnet_steam_take_join_request();
         if (lobby) {
             mp_config c; mp_config_defaults(&c);
@@ -1281,8 +1574,43 @@ int mp_steam_host(const char *save, const mp_config *lobby_cfg) {
     return 0;
 }
 int mp_steam_invite(void) { return mp_game_steam_invite(); }
-int mp_steam_invite_friend(uint64_t id) { return steam_host ? dsnet_steam_host_invite_friend(steam_host, id) : -1; }
-int mp_steam_friends(dsnet_steam_friend *out, int max) { return steam_ready() ? dsnet_steam_friends(out, max) : 0; }
+int mp_steam_test_friends(void) {
+    static int t = -1;
+    if (t < 0) { const char *e = getenv("DSRIG_TEST_STEAMFRIENDS"); t = e && *e == '1' && (getenv("DSRIG_BATCH") || getenv("DSRIG_HIDEWIN") || getenv("DSMP_TEST")); }
+    return t;
+}
+/* fake friends for the test path: ids 1001.. (never real Steam ids), mixed states, unsorted */
+static const struct { const char *name; int state, in_game; } test_fr[] = {
+    { "Offline Olaf", 0, 0 }, { "Busy Bea", 2, 0 }, { "Playing Pia", 1, 1 }, { "Away Ana", 3, 0 }, { "zed online", 1, 0 },
+    { "Offline Bob", 0, 0 }, { "Fails Fred", 1, 0 }, { "Offline Cy", 0, 0 }, { "Online Al", 1, 0 }, { "Snooze Sam", 4, 0 },
+    { "Offline Dee", 0, 0 }, { "Offline Eve", 0, 0 }, { "Online Uli", 6, 0 }, { "Offline Gus", 0, 0 }, { "Offline Hal", 0, 0 },
+    { "Offline Ivy", 0, 0 }, { "Offline Jo", 0, 0 }, { "Offline Kit", 0, 0 }, { "Offline Lu", 0, 0 },
+    { "\xE5\xB1\xB1\xE7\x94\xB0 Long Name Friend Number Twenty", 1, 0 } };
+int mp_steam_invite_friend(uint64_t id) {
+    if (mp_steam_test_friends()) {                           /* test path: Steam is never called */
+        int rc = id == 1007 ? -1 : 0;
+        rig_log("mp: test invite to fake friend %llu: rc %d (Steam not called)", (unsigned long long)id, rc);
+        return rc;
+    }
+    int rc = steam_host ? dsnet_steam_host_invite_friend(steam_host, id) : -1;
+    rig_log("mp: Steam invite to a friend: rc %d%s", rc, steam_host ? "" : " (no Steam lobby)");
+    return rc;
+}
+int mp_steam_friends(dsnet_steam_friend *out, int max) {
+    if (mp_steam_test_friends()) {
+        int n = 0;
+        for (size_t i = 0; i < sizeof test_fr / sizeof *test_fr && n < max; i++, n++) {
+            memset(&out[n], 0, sizeof out[n]); out[n].steamid = 1001 + i; out[n].state = test_fr[i].state; out[n].in_game = test_fr[i].in_game;
+            snprintf(out[n].name, sizeof out[n].name, "%s", test_fr[i].name);
+        }
+        return n;
+    }
+    return steam_ready() ? dsnet_steam_friends(out, max) : 0;
+}
+int mp_steam_overlay_enabled(void) {
+    if (mp_steam_test_friends()) return 0;
+    return steam_ready() ? dsnet_steam_overlay_enabled() : -1;
+}
 int mp_steam_join(uint64_t lobby) {
     mp_config c; mp_config_defaults(&c);
     if (cfg_ok) c = cfg;
@@ -1306,10 +1634,17 @@ __attribute__((visibility("default"))) void mp_game_leave_to_title(void) {
     mp_steam_leave();
     if (guest) { quit_pending = 1; rig_log("mp: guest left: back to the title"); }
 }
+/* lobby Quit (owner 2026-10-20): leave the session (host: every guest gets "The host left the game"), then the title for
+   the host too. The same no-autosave quit as above: the stock "Quit to title" asks no save question (SystemMenuView
+   OnQuitToTitlePressed = a Yes/No box only), and the lobby runs before Start (the world is still the loaded save). */
+__attribute__((visibility("default"))) void mp_game_quit_to_title(void) {
+    mp_steam_leave();
+    quit_pending = 1; rig_log("mp: Quit: left the session, back to the title");
+}
 
 void mp_steam_state(mp_steam_info *o) {
     memset(o, 0, sizeof *o);
-    o->steam = steam_ok == 1; o->player = -1;
+    o->steam = steam_ok == 1 || (mp_steam_test_friends() && S && cfg.host); o->player = -1;   /* test path: a TCP host's lobby looks like Steam's */
     o->is_host = (S && cfg.host) || steam_host;
     o->lobby = steam_host ? dsnet_steam_host_lobby(steam_host) : join_lobby_id;
     if (o->lobby == ~0ull) o->lobby = 0;
@@ -1333,10 +1668,11 @@ void mp_steam_state(mp_steam_info *o) {
         int ready = o->player >= 0 && !dsnet_needs_state(dc) && rig_det_mp_ready();
         o->state = ready ? MP_STEAM_IN_GAME : MP_STEAM_JOINING;
         o->phase = ready ? MP_PH_IN_GAME : o->player < 0 ? MP_PH_CONNECTING : dsnet_needs_state(dc) ? MP_PH_WAITING_SAVE : MP_PH_LOADING;
+        if (o->phase == MP_PH_WAITING_SAVE && dsnet_window_mask(dc) & 1u) o->phase = MP_PH_HOST_WINDOW;   /* the host must close a box first */
     }
 }
 
-int mp_game_active(void) { return cfg_ok || S; }
+int mp_game_active(void) { return cfg_ok || S || ar_on(); }
 
 int mp_game_frame(void) {
     if (!cfg_ok) return 0;
@@ -1412,8 +1748,10 @@ static char *merr(const char *m) { Buf b = {0}; bput(&b, "{\"ok\":false,\"error\
 static char *mok(int rc) { Buf b = {0}; bput(&b, "{\"ok\":%s,\"rc\":%d}", rc == 0 ? "true" : "false", rc); return b.p; }
 
 void mp_game_status(Buf *b) {
-    if (!cfg_ok) return;
-    if (!S) { bput(b, ",\"mp\":{\"started\":false,\"failed\":%s}", start_failed ? "true" : "false"); return; }
+    if (!cfg_ok && !ar_on() && !AR.done && !AR.failed) return;
+    if (!S) { bput(b, ",\"mp\":{\"started\":false,\"failed\":%s,\"autorejoin\":%d,\"ar_tries\":%d,\"ar_done\":%d,\"ar_failed\":%d}",
+                   start_failed ? "true" : "false", mp_game_autorejoin(), AR.tries, AR.done, AR.failed); return; }
+    bput(b, ",\"ar\":{\"autorejoin\":%d,\"tries\":%d,\"done\":%d,\"failed\":%d}", mp_game_autorejoin(), AR.tries, AR.done, AR.failed);
     mp_stats st; mp_get_stats(S, &st);
     bput(b, ",\"mp\":{\"started\":true,\"host\":%s,\"player\":%d,\"timer\":%u,\"ticks\":%llu,\"speed\":\"%s\",\"paused\":%s,"
             "\"desynced\":%s,\"needs_state\":%s,\"loading\":%s,\"orders\":%u,\"orders_dropped_owner\":%u,\"orders_bad\":%u,"
@@ -1427,8 +1765,8 @@ void mp_game_status(Buf *b) {
     bput(b, ",\"partials\":%u,\"partial_fails\":%u,\"reports_sent\":%u,\"reports_saved\":%u,\"patch_state\":%d,\"report_seq\":%u,\"report_path\":",
          st.partials, st.partial_fails, st.reports_sent, st.reports_saved, dsnet_patch_state(mp_client(S)), report_seq);
     bstr(b, report_path);
-    bput(b, ",\"guest_world\":%s,\"saves_blocked\":%llu,\"sync_files_deleted\":%llu,\"sync_file_pending\":%s,\"cache_refreshes\":%llu,\"game_deletes_blocked\":%llu,\"load_retries\":%d",
-         guest_world ? "true" : "false", (unsigned long long)saves_blocked, (unsigned long long)sync_files_deleted, sync_file_pending ? "true" : "false", (unsigned long long)cache_refreshes, (unsigned long long)game_deletes_blocked, load_retries);
+    bput(b, ",\"guest_world\":%s,\"saves_blocked\":%llu,\"hub_saves_blocked\":%llu,\"sync_files_deleted\":%llu,\"sync_file_pending\":%s,\"cache_refreshes\":%llu,\"game_deletes_blocked\":%llu,\"load_retries\":%d",
+         guest_world ? "true" : "false", (unsigned long long)saves_blocked, (unsigned long long)hub_saves_blocked, (unsigned long long)sync_files_deleted, sync_file_pending ? "true" : "false", (unsigned long long)cache_refreshes, (unsigned long long)game_deletes_blocked, load_retries);
     bput(b, ",\"load_stab_skips\":%u,\"load_poll_frames\":%u,\"join_fast\":%d,\"load_fade_skips\":%u", stab_skips, poll_frames, fast_opt(), fade_skips);
     dsnet_client *dc = mp_client(S);
     {   /* owner tables (cross-play check: same on every peer) and why a desync was flagged (bit 1 game, 2 owners) */
@@ -1478,6 +1816,31 @@ char *mp_game_exec(const char *cmd, const char *line) {
         mp_config c; mp_config_defaults(&c); c.host = 0; snprintf(c.host_addr, sizeof c.host_addr, "%s", h); c.port = (uint16_t)port; snprintf(c.name, sizeof c.name, "Guest");
         invite_accepted(&c, nm, "test");
         Buf b = {0}; bput(&b, "{\"ok\":true,\"pending\":%d,\"session\":%d}", invite_open, S != NULL); return b.p;
+    }
+    if (!strcmp(cmd, "mp_steamcb")) {                     /* test: the Steam callback slot (where, swapped, counts) */
+        Buf b = {0};
+        bput(&b, "{\"ok\":true,\"state\":%d,\"by\":\"%s\",\"slot_rva\":\"0x%lx\",\"wrapped\":%d,\"swaps\":%llu,\"total\":%llu,\"fed\":%llu}",
+             cb_state, cb_by, cb_slot ? (unsigned long)((uintptr_t)cb_slot - ds_base) : 0UL, cb_slot && *cb_slot == (void *)cb_wrap,
+             (unsigned long long)cb_swaps, (unsigned long long)cb_total, (unsigned long long)cb_fed);
+        return b.p;
+    }
+    if (!strcmp(cmd, "mp_test_steamcb")) {                /* test (steamaccept): a synthetic GameLobbyJoinRequested through the REAL slot */
+        char lb[32] = "109775241000000001"; jstr(line, "lobby", lb, sizeof lb);
+        steamcb_frame();
+        if (cb_state != 1) return merr("Steam callback slot not found");
+        if (*cb_slot && *cb_slot != (void *)cb_wrap && cb_orig != test_getnext) return merr("the game's real Steam fills the slot: not in a test copy");
+        if (!*cb_slot) *cb_slot = (void *)test_getnext;    /* the rig has no Steam: stands in for the game's lazy fill */
+        steamcb_frame();                                  /* the same swap as every frame */
+        test_lobby = strtoull(lb, NULL, 10); test_q = 0;
+        uint64_t t0 = cb_total, f0 = cb_fed;
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"wrapped\":%d,\"in\":[", *cb_slot == (void *)cb_wrap);
+        for (int i = 0; i < (int)(sizeof test_ids / sizeof test_ids[0]); i++) bput(&b, "%s%d", i ? "," : "", test_ids[i]);
+        bput(&b, "],\"out\":[");
+        steam_cbmsg m; int n = 0;                          /* RunFrame's loop: call what the slot holds until false */
+        while (n < 16 && ((steam_getnext_fn)*cb_slot)(1, &m)) bput(&b, "%s[%d,%d,%d]", n++ ? "," : "", m.id, m.cub, m.param == test_param[test_q - 1]);
+        cb_test_join = 1;
+        bput(&b, "],\"through\":%llu,\"fed\":%llu,\"scene\":%d}", (unsigned long long)(cb_total - t0), (unsigned long long)(cb_fed - f0), scene());
+        return b.p;
     }
     if (!strcmp(cmd, "mp_invite_answer")) { double v; if (!jnum(line, "choice", &v)) return merr("need choice 0|1|2"); return mok(mp_game_invite_answer((int)v)); }
     if (!strcmp(cmd, "mp_expect_world")) {                /* test (F17): the next join is for this campaign id */

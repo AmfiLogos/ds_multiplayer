@@ -15,7 +15,7 @@ enum {
                          u8 max_spectators */
     P_CMD,            /* c->s  u8 type, u8 scope, u16 len, payload */
     P_SCMD,           /* s->c  u32 seq, u8 type, u32 tick, u8 player, u8 scope, u16 len, payload */
-    P_TIMECTL,        /* s->c  u32 timer, u32 sent_cmds, u32 time_per_tick_us, u32 busy_mask */
+    P_TIMECTL,        /* s->c  u32 timer, u32 sent_cmds, u32 time_per_tick_us, u32 busy_mask, u32 window_mask */
     P_KEEPALIVE,      /* c->s  u32 timer, u32 tick_until */
     P_FRAMETIME,      /* c->s  u32 avg frame time us */
     P_FP,             /* host c->s, then s->c relay: u32 tick, u64 game hash, u64 owner-table hash,
@@ -46,6 +46,11 @@ enum {
     P_SPECT,          /* s->c  u8 allow, u8 max, u8 count, then per spectator: u8 id, u8 state, u16 ping ms, name[32] (~5 Hz) */
     P_SPECT_RULE,     /* c->s (host) u8 allow: spectators on / off during play (off: BYE reason 2 to each spectator) */
     P_SAVE_FAIL,      /* host c->s: the game could not make the join-point save; s->c to every guest waiting for it (it leaves) */
+    P_HELD,           /* s->c  u32 busy_mask, u32 window_mask, to players still loading (P_TIMECTL skips them): a guest waiting
+                         for the join save sees the host held by a window and waits (~2 Hz and on change) */
+    P_SEL,            /* c->s  u32 map_key, u8 n (<= DSNET_SEL_MAX), n x guid[16]: the units this player has selected (unitsel B1).
+                         s->c u8 from + same. Outside the sim (like P_VIEW): relayed to every other player that is not
+                         loading, never stamped, never in saves or hashes; n 0 = nothing selected */
 };
 /* SAVE: host -> server -> joiners (join point). PATCH: host -> server -> the players of a PATCH_POINT (partial resync).
    REPORT: guest -> server -> host, outside the sim (desync report part; the server stamps seq_after = the sender's slot). */
@@ -112,6 +117,7 @@ extern uint8_t  dsnet_uid[16];
 extern int      dsnet_uid_set;
 extern int      dsnet_match_rule;
 extern char     dsnet_modset[65], dsnet_mod_lines[DSNET_MODLINES_MAX], dsnet_reject_detail[400];
+extern char     dsnet_mod_opt[DSNET_MODOPT_MAX];
 /* bytes of s that fit a 32-byte name field (31 + NUL) without cutting a UTF-8 character (the wire size stays 32) */
 static inline size_t utf8_len31(const char *s) {
     size_t n = strnlen(s, 31);

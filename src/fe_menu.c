@@ -1,0 +1,508 @@
+/* Foreign Expedition windows (Custom Modes, custom-modes-mp.dylib). Before the M4 split this file was included by mpmenu.c;
+ * it now uses the menu's exported helpers and click registries (src/mpmenu_kit.h) and is called through the menu hooks
+ * (fe_menu_hooks, registered by custom/cm_mp.c). Boards:
+ *   FEBringA          Bring Units: your saves on the left, unit cards on the right (lobby, every player)
+ *   FEResultsA / B    Back from the Expedition: one row per unit, dungeon loot, what will be applied, Bring home to
+ *   FEResultsApplied  Expedition Results list (Multiplayer page) and the "Already Brought Home" refusal
+ * One window at a time, 960 x 620, on the lobby's parent (Esc menu root) in a session or on the title view. Buttons are
+ * registered by id in h_lwr (Esc menu clones) or h_tb (title clones); the click hooks queue the id (pending_click). */
+#include "mpmenu_kit.h"
+#include "mp_modes_text.h"
+#include "mp.h"
+#include "mp_steam.h"
+#include "fe_ui_api.h"
+#include "mp_esc.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+enum { FEW_NONE, FEW_BRING, FEW_RESULTS, FEW_LIST };
+enum { FT_TITLE, FT_SUB, FT_RULES, FT_LHEAD, FT_RHEAD, FT_COUNT, FT_NOTE, FT_TABLE, FT_LOOT, FT_APPLY, FT_TARGET, FT_CONFLICT, FT_MSG, FT_N };
+#define FEW_W 960.0f
+#define FEW_H 620.0f
+#define WX(x) ((x) - FEW_W / 2)
+#define WY(y) (FEW_H / 2 - (y))
+static struct {
+    int mode, esc, page, upage, sel_save, nsave, nunit, picked[64], npicked, ntarget, target, choice, applied, conflict, nres;
+    uintptr_t root, view, t[FT_N], rowt[8][3], cardt[8][4];
+    fe_save_info saves[64]; fe_unit_info units[64]; fe_save_info targets[16]; fe_result_info res[16];
+    char run[40], msg[1200], err[600];
+} W;
+/* review_ja #2: CJK (ko, zh-Hans, zh-Hant, ja) is never designed below 14 (smaller kanji turn to blobs at 960x540) */
+static float few_fs(float s) { int l = dsi_lang(); return (l == 1 || (l >= 5 && l <= 7)) && s < 14 ? 14 : s; }
+static Obj few_t(int k) { Obj o = u_gc_get(W.t[k]); return u_alive(o) ? o : NULL; }
+static uintptr_t *few_reg(void) { return W.esc ? h_lwr : h_tb; }
+static Obj few_btn(int id) { Obj o = u_gc_get(few_reg()[id]); return u_alive(o) ? o : NULL; }
+static void few_txt(const char *key, char *out, size_t cap) {             /* TextKeyExtensions.GetText (the game's language) */
+    out[0] = 0;
+    if (!key || !key[0]) return;
+    Obj s = F(0x80EBAC, Obj (*)(Obj, void *))(u_str(key), NULL);
+    if (s) utf16_to_utf8(s, out, cap);
+    if (!out[0] || !strcmp(out, key)) snprintf(out, cap, "%s", key);
+}
+static void few_item_name(const char *key, char *out, size_t cap) { char k[128]; snprintf(k, sizeof k, "TEXTKEY_%s_NAME", key); few_txt(k, out, cap); }
+/* "Spear · Water · Nature": the skill trees' names as the game's own skill tab shows them (TEXTKEY_EntitySkillUI_<tree>,
+   "Water" for WaterMagic), else its tree title (TEXTKEY_SKILLTREE_<tree>_NAME), else the key; u->trees holds the keys */
+static void few_trees(const fe_unit_info *u, char *out, size_t cap) {
+    char keys[sizeof u->trees]; snprintf(keys, sizeof keys, "%s", u->trees); size_t o = 0; out[0] = 0;
+    for (char *t = keys, *nx; t && *t && o + 8 < cap; t = nx) {
+        nx = strstr(t, " \xC2\xB7 "); if (nx) { *nx = 0; nx += 4; }
+        char k[128], nm[96]; snprintf(k, sizeof k, "TEXTKEY_EntitySkillUI_%s", t); few_txt(k, nm, sizeof nm);
+        if (!strcmp(nm, k)) { snprintf(k, sizeof k, "TEXTKEY_SKILLTREE_%s_NAME", t); few_txt(k, nm, sizeof nm); }
+        if (!strcmp(nm, k)) snprintf(nm, sizeof nm, "%s", t);
+        o += (size_t)snprintf(out + o, cap - o, "%s%s", o ? " \xC2\xB7 " : "", nm);
+    }
+}
+static void few_gear(const fe_unit_info *u, char *out, size_t cap) {      /* "Sword, Helmet, ..." in the game's language; "" = none */
+    size_t o = 0; out[0] = 0;
+    for (int g = 0; g < u->ngear && o + 40 < cap; g++) { char in[64]; few_item_name(u->gear_keys[g], in, sizeof in); o += (size_t)snprintf(out + o, cap - o, "%s%s", g ? ", " : "", in); }
+}
+static void few_rules_line(const fe_mode_info *m, char *out, size_t cap) {
+    char who[160], each[96]; int nu = m->units > 0 ? m->units : 3;
+    if (m->host[0]) snprintf(who, sizeof who, TR("%s's hub rules:"), m->host); else snprintf(who, sizeof who, "%s", TR("The host's hub rules:"));
+    snprintf(each, sizeof each, TRN("%d unit each", "%d units each", nu), nu);
+    snprintf(out, cap, "%s  <color=#D9BE8F>%s  \xC2\xB7  %s  \xC2\xB7  %s  \xC2\xB7  %s</color>", who,
+             m->death ? TR("Death is permanent") : TR("Death is not permanent"), m->xp ? TR("XP counts") : TR("XP does not count"),
+             m->loot ? TR("Dungeon loot comes back") : TR("Loot stays in the hub"), each);
+    dsi_utf8_fix_end(out);
+}
+static void few_build(Obj parent, Obj src, int esc, Obj tpl_img, Obj tpl_txt) {
+    Obj root = mk_img(tpl_img, parent, S_BOX, C_WHITE, 0, 0, FEW_W, FEW_H);
+    if (!root) return;
+    Obj R = u_tr(root);
+    u_gc_free(W.root); W.root = u_gc_new(root);
+    W.esc = esc;
+    uintptr_t *reg = few_reg();
+    #define T(k, cz, sz, al, wr, x, y, w, h, c) { Obj t_ = mk_txt(tpl_txt, R, cz, sz, al, wr, x, y, w, h, c); u_gc_free(W.t[k]); W.t[k] = t_ ? u_gc_new(t_) : 0; }
+    #define BTN(id, spr_, x, y, w, h, fs, lab, col) { Obj b_ = mk_button(src, R, esc, spr_, C_WHITE, x, y, w, h, fs, lab, col); u_gc_free(reg[id]); reg[id] = b_ ? u_gc_new(b_) : 0; }
+    mk_img(tpl_img, R, -1, C_BAND, 0, WY(32), FEW_W - 4, 60);
+    mk_img(tpl_img, R, -1, C_COPPER, 0, WY(62), FEW_W - 4, 1);
+    T(FT_TITLE, 1, 30, 514, 0, 0, WY(32), 900, 50, C_MAIN);
+    T(FT_SUB, 0, 15, 514, 1, 0, WY(82), 900, 26, C_SUB);
+    T(FT_RULES, 0, 15, 514, 0, 0, WY(108), 900, 24, C_MAIN);
+    T(FT_LHEAD, 1, 18, 513, 0, WX(24 + 150), WY(138), 300, 26, C_GOLD);
+    T(FT_RHEAD, 1, 18, 513, 0, WX(344 + 290), WY(138), 580, 26, C_GOLD);
+    for (int i = 0; i < 6; i++) {                                           /* left column: saves (Bring) / results rows (List) */
+        float y = WY(156 + 56 * i + 26);
+        BTN(MPB_FE_SAVE0 + i, S_NBTN, WX(24 + 150), y, 300, 52, 14, "", C_MAIN);
+        Obj b = u_gc_get(reg[MPB_FE_SAVE0 + i]);
+        for (int k = 0; b && k < 2; k++) { Obj t = mk_txt(tpl_txt, u_tr(b), 0, k ? 12 : 16, 513, 0, 4, k ? -11 : 9, 280, 22, k ? C_SUB : C_MAIN); txt_one_line(t); u_gc_free(W.rowt[i][k]); W.rowt[i][k] = t ? u_gc_new(t) : 0; }
+    }
+    BTN(MPB_FE_SAVEPG, S_NBTN, WX(24 + 150), WY(156 + 56 * 6 + 14), 300, 26, 13, "More saves \xE2\x80\xBA", C_SUB);
+    for (int i = 0; i < 8; i++) {                                           /* right column: unit cards (2 x 4) */
+        float x = WX(344 + 290 * (i % 2) + 142), y = WY(156 + 66 * (i / 2) + 31);
+        BTN(MPB_FE_UNIT0 + i, S_NBTN, x, y, 284, 62, 14, "", C_MAIN);
+        Obj b = u_gc_get(reg[MPB_FE_UNIT0 + i]);
+        static const float ys[4] = { 15, -2, -18, 15 };
+        for (int k = 0; b && k < 4; k++) {
+            Obj t = mk_txt(tpl_txt, u_tr(b), 0, k == 0 ? 15 : k == 3 ? 18 : 12, k == 3 ? 514 : 513, 0, k == 3 ? -126 : 18, ys[k], k == 3 ? 24 : 240, 20, k == 3 ? C_GOLD : k == 0 ? C_MAIN : C_SUB);
+            if (k < 3) txt_one_line(t);                                     /* name / trees / gear: one line, "..." (the full text in the card's tip) */
+            u_gc_free(W.cardt[i][k]); W.cardt[i][k] = t ? u_gc_new(t) : 0;
+        }
+    }
+    BTN(MPB_FE_UNITPG, S_NBTN, WX(344 + 100), WY(156 + 66 * 4 + 14), 200, 26, 13, "More units \xE2\x80\xBA", C_SUB);
+    T(FT_COUNT, 0, 15, 516, 0, WX(936 - 150), WY(156 + 66 * 4 + 14), 300, 24, C_GOLD);
+    T(FT_NOTE, 0, few_fs(13), 513, 1, 0, WY(486), 900, 66, C_SUB);
+    /* results: table, loot, what will be applied, target, conflict */
+    T(FT_TABLE, 0, 15, 513, 1, 0, WY(140 + 105), 900, 210, C_MAIN);
+    T(FT_LOOT, 0, few_fs(13), 513, 1, 0, WY(372), 900, 40, C_SUB);
+    T(FT_APPLY, 0, few_fs(13), 513, 1, 0, WY(430), 900, 64, C_MAIN);
+    T(FT_TARGET, 0, 15, 514, 0, 0, WY(486), 520, 26, C_MAIN);
+    BTN(MPB_FE_TGT_PREV, S_NBTN, WX(480 - 280), WY(486), 28, 28, 16, "\xE2\x80\xB9", C_MAIN);
+    BTN(MPB_FE_TGT_NEXT, S_NBTN, WX(480 + 280), WY(486), 28, 28, 16, "\xE2\x80\xBA", C_MAIN);
+    T(FT_CONFLICT, 0, few_fs(13), 513, 1, WX(24 + 300), WY(522), 600, 34, C_ORANGE);
+    BTN(MPB_FE_VER_EXP, S_NBTN, WX(700), WY(522), 170, 30, few_fs(13), "Expedition version", C_MAIN);
+    BTN(MPB_FE_VER_HOME, S_NBTN, WX(880), WY(522), 150, 30, few_fs(13), "Home version", C_MAIN);
+    for (int i = 0; i < 6; i++) BTN(MPB_FE_RES0 + i, S_NBTN, 0, WY(160 + 54 * i + 25), 900, 50, 15, "", C_MAIN);
+    T(FT_MSG, 0, 15, 514, 1, 0, WY(300), 820, 160, C_MAIN);
+    /* bottom bar */
+    mk_img(tpl_img, R, -1, C_BAND, 0, WY(FEW_H - 34), FEW_W - 4, 64);
+    mk_img(tpl_img, R, -1, C_COPPER, 0, WY(FEW_H - 66), FEW_W - 4, 1);
+    BTN(MPB_FE_CANCEL, S_NBTN, WX(24 + 100), WY(FEW_H - 34), 200, 36, 16, "Cancel", C_MAIN);
+    BTN(MPB_FE_OK, S_RECRUIT, WX(936 - 130), WY(FEW_H - 34), 260, 44, 17, "", C_START);
+    #undef T
+    #undef BTN
+    u_active(root, false);
+    rig_log("fe: window built (%s)", esc ? "Esc menu root" : "title");
+}
+static void few_label(int id, const char *s) { Obj b = few_btn(id); if (b) cmt_set(btn_label(b, W.esc), s); }
+static void few_show(int id, int on) { Obj b = few_btn(id); if (b) u_active(b, on); }
+static void few_set(int k, const char *s) { Obj t = few_t(k); if (t) { u_active(t, s && s[0]); cmt_set(t, s ? s : ""); } }
+static void few_hide_all(void) {
+    for (int id = MPB_FE_SAVE0; id <= MPB_FE_RES5; id++) few_show(id, 0);
+    for (int k = FT_LHEAD; k < FT_N; k++) few_set(k, "");
+}
+/* ---- data */
+static void few_load_units(void) {
+    W.nunit = W.sel_save >= 0 && W.sel_save < W.nsave ? fe_list_units(W.saves[W.sel_save].path, W.units, 64) : 0;
+    W.npicked = 0; W.upage = 0;
+}
+static void few_open(int mode, const char *run) {
+    W.mode = mode; W.err[0] = W.msg[0] = 0; W.page = W.upage = 0; W.applied = 0; W.conflict = 0; W.choice = 0;
+    if (mode == FEW_BRING) {
+        W.nsave = fe_list_saves(W.saves, 64); W.sel_save = -1;
+        for (int i = 0; i < W.nsave && W.sel_save < 0; i++) if (W.saves[i].ok) W.sel_save = i;
+        few_load_units();
+    }
+    if (mode == FEW_RESULTS) { snprintf(W.run, sizeof W.run, "%s", run ? run : ""); W.ntarget = fe_result_targets(W.run, W.targets, 16); W.target = 0; }
+    if (mode == FEW_LIST) W.nres = fe_list_results(W.res, 16);
+    rig_log("fe: window %d opened%s%s", mode, run ? " run " : "", run ? run : "");
+}
+static int few_version_ok(const fe_save_info *s, const fe_mode_info *m) { return !m->version[0] || !strcmp(s->version, m->version); }
+/* ---- per frame */
+int pvp_ui_window_open(void);                                               /* pvp_ui.c */
+static void few_sync(void) {
+    Obj root = u_gc_get(W.root);
+    if (!u_alive(root)) return;
+    int hid = pvp_ui_window_open();                                         /* a PvP window on the same Esc menu: one window at a time */
+    u_active(root, W.mode != FEW_NONE && !hid);
+    if (W.mode == FEW_NONE || hid) return;
+    few_hide_all();
+    fe_mode_info m; fe_mode_get(&m);
+    char b[2400], r[800], dy[64];
+    few_show(MPB_FE_CANCEL, 1); few_show(MPB_FE_OK, 1);
+    few_label(MPB_FE_SAVEPG, TR("More saves \xE2\x80\xBA")); few_label(MPB_FE_UNITPG, TR("More units \xE2\x80\xBA"));
+    few_label(MPB_FE_VER_EXP, TR("Expedition version")); few_label(MPB_FE_VER_HOME, TR("Home version"));
+    if (W.mode == FEW_BRING) {
+        few_set(FT_TITLE, TR("Bring Units"));
+        few_set(FT_SUB, TR("Pick one of your saves, then the units to bring. Copies travel: your units stay at home and keep working."));
+        few_rules_line(&m, r, sizeof r); few_set(FT_RULES, r);
+        few_set(FT_LHEAD, TR("Your Saves"));
+        for (int i = 0; i < 6; i++) {
+            int k = W.page * 6 + i; few_show(MPB_FE_SAVE0 + i, k < W.nsave);
+            if (k >= W.nsave) continue;
+            fe_save_info *s = &W.saves[k]; int ok = s->ok && few_version_ok(s, &m);
+            cmt_day(dy, sizeof dy, s->day);
+            snprintf(b, sizeof b, "%s%s  <size=80%%><color=#A69085>%s</color></size>", k == W.sel_save ? "<color=#D9BE8F>" : "", s->clan, dy);
+            cmt_set(u_gc_get(W.rowt[i][0]), b);
+            if (!s->ok) snprintf(b, sizeof b, "<color=#A69085>%s</color>", TR("In a dungeon: load it and return to the settlement first."));
+            else if (!ok) { char t[300]; snprintf(t, sizeof t, TR("Made with %s. Load and save it once in this build first."), s->version); snprintf(b, sizeof b, "<color=#F16071>%s</color>", t); }
+            else snprintf(b, sizeof b, TRN("%s \xC2\xB7 %d unit", "%s \xC2\xB7 %d units", s->units), TR(s->folder), s->units);
+            cmt_set(u_gc_get(W.rowt[i][1]), b);
+        }
+        few_show(MPB_FE_SAVEPG, W.nsave > 6);
+        if (W.sel_save >= 0) {
+            snprintf(b, sizeof b, TR("Units in %s"), W.saves[W.sel_save].clan); few_set(FT_RHEAD, b);
+            for (int i = 0; i < 8; i++) {
+                int k = W.upage * 8 + i; few_show(MPB_FE_UNIT0 + i, k < W.nunit);
+                if (k >= W.nunit) continue;
+                fe_unit_info *u = &W.units[k]; char nm[64], gear[200];
+                few_txt(u->name_key, nm, sizeof nm);
+                int on = 0; for (int p = 0; p < W.npicked; p++) if (W.picked[p] == k) on = 1;
+                char lv[64]; cmt_level(lv, sizeof lv, u->level);
+                snprintf(b, sizeof b, "%s  <size=80%%><color=#A69085>%s</color></size>", nm, lv); cmt_set(u_gc_get(W.cardt[i][0]), b);
+                char trees[300]; few_trees(u, trees, sizeof trees);
+                cmt_set(u_gc_get(W.cardt[i][1]), trees[0] ? trees : TR("No skill tree yet"));
+                few_gear(u, gear, sizeof gear);
+                cmt_set(u_gc_get(W.cardt[i][2]), gear[0] ? gear : TR("No gear"));
+                cmt_set(u_gc_get(W.cardt[i][3]), on ? "\xE2\x9C\x93" : "");
+            }
+            few_show(MPB_FE_UNITPG, W.nunit > 8);
+        } else few_set(FT_RHEAD, TR("No save at the settlement"));
+        int cap = m.units > 0 ? m.units : 3;
+        snprintf(b, sizeof b, TR("%d / %d picked"), W.npicked, cap); few_set(FT_COUNT, b);
+        snprintf(b, sizeof b, TR("<color=#CCBEB8>At home:</color> your units stay and keep working. Nothing changes until you bring the results home.   "
+                 "<color=#CCBEB8>In the hub:</color> their copies play. %s   <color=#CCBEB8>If a copy dies:</color> %s%s%s"),
+                 m.xp ? TR("XP, levels and dungeon loot can come back.") : TR("Experience does not count here."),
+                 m.death ? TR("death is permanent here: that unit and its gear are removed at home.") : TR("it comes home as it was at the last hub save."),
+                 W.err[0] ? "\n<color=#F16071>" : "", W.err[0] ? W.err : "");
+        if (W.err[0]) { size_t l = strlen(b); snprintf(b + l, sizeof b - l, "</color>"); }
+        few_set(FT_NOTE, b);
+        few_label(MPB_FE_CANCEL, cmt_game("TEXTKEY_CommonPopUp_Cancel", "Cancel"));
+        if (W.npicked) few_label(MPB_FE_OK, TR("Bring these units"));
+        else { snprintf(b, sizeof b, "<color=#A69085>%s</color>", TR("Bring these units")); few_label(MPB_FE_OK, b); }
+    }
+    if (W.mode == FEW_LIST) {
+        few_set(FT_TITLE, TR("Expedition Results"));
+        few_set(FT_SUB, TR("Each result can be brought home once."));
+        if (W.msg[0]) { few_set(FT_MSG, W.msg); few_label(MPB_FE_CANCEL, cmt_game("TEXTKEY_Shared_Back", "Back")); few_show(MPB_FE_OK, 0); return; }
+        for (int i = 0; i < 6; i++) {
+            few_show(MPB_FE_RES0 + i, i < W.nres);
+            if (i >= W.nres) continue;
+            fe_result_info *x = &W.res[i];
+            char hub[160], nu[64], st[200];
+            if (strcmp(x->host, "the host")) snprintf(hub, sizeof hub, TR("%s's hub"), x->host); else snprintf(hub, sizeof hub, "%s", TR("The host's hub"));   /* fe_game.c: "the host" = no name */
+            snprintf(nu, sizeof nu, TRN("%d unit", "%d units", x->units), x->units);
+            if (x->applied) snprintf(st, sizeof st, TR("Brought home %s"), x->applied_date); else snprintf(st, sizeof st, "%s", TR("Ready to bring home"));
+            snprintf(b, sizeof b, x->applied ? "%s  <size=80%%><color=#A69085>%s \xC2\xB7 %s</color></size>  \xC2\xB7  <color=#A69085>%s</color>"
+                                             : "%s  <size=80%%><color=#A69085>%s \xC2\xB7 %s</color></size>  \xC2\xB7  <color=#8FD18F>%s</color>", hub, x->date, nu, st);
+            few_label(MPB_FE_RES0 + i, b);
+        }
+        few_label(MPB_FE_CANCEL, cmt_game("TEXTKEY_Shared_Back", "Back")); few_show(MPB_FE_OK, 0);
+    }
+    if (W.mode == FEW_RESULTS) {
+        fe_res_row rows[8]; fe_res_item items[40]; int ni = 0; fe_mode_info rr;
+        int n = fe_result_rows(W.run, rows, 8, items, 40, &ni, &rr);
+        few_set(FT_TITLE, TR("Back from the Expedition"));
+        if (rr.host[0]) snprintf(b, sizeof b, TR("%s ended the expedition. Here is what your units bring home."), rr.host);
+        else snprintf(b, sizeof b, "%s", TR("The host ended the expedition. Here is what your units bring home."));
+        few_set(FT_SUB, b);
+        snprintf(r, sizeof r, "%s  <color=#D9BE8F>%s  \xC2\xB7  %s  \xC2\xB7  %s</color>", TR("Rules:"), rr.death ? TR("death is permanent") : TR("death is not permanent"),
+                 rr.xp ? TR("XP counts") : TR("XP does not count"), rr.loot ? TR("dungeon loot comes back") : TR("loot stays in the hub"));
+        few_set(FT_RULES, r);
+        if (W.applied) {
+            char t[1400]; snprintf(t, sizeof t, TR("Saved as \"%s\". Load it from Load campaign.\nYour old save is not changed, and a backup copy was made first."), W.msg);
+            snprintf(b, sizeof b, "<size=130%%>%s</size>\n\n%s", TR("Brought home"), t);
+            few_set(FT_MSG, b); few_show(MPB_FE_CANCEL, 0); few_label(MPB_FE_OK, TR("OK")); return;
+        }
+        size_t o = (size_t)snprintf(b, sizeof b, "<color=#A69085>%s<pos=26%%>%s<pos=42%%>%s<pos=56%%>%s</color>", TR("Unit"), cmt_game("TEXTKEY_STATUS_Level_NAME", "Level"), TR("XP"), TR("Status"));
+        char ap[1600] = ""; size_t ao = 0;
+        for (int i = 0; i < n && o < sizeof b - 200; i++) {
+            char nm[64]; few_txt(rows[i].name_key, nm, sizeof nm);
+            char lv[80], xp[120], stt[300];
+            if (rows[i].lv1 != rows[i].lv0) snprintf(lv, sizeof lv, "%.0f \xE2\x86\x92 <color=#D9BE8F>%.0f</color>", rows[i].lv0, rows[i].lv1); else snprintf(lv, sizeof lv, "%.0f", rows[i].lv0);
+            if (!rr.xp) snprintf(xp, sizeof xp, "<color=#A69085>%s</color>", TR("does not count"));
+            else if (rows[i].lv1 == rows[i].lv0 && rows[i].exp1 > rows[i].exp0) snprintf(xp, sizeof xp, TR("+%.0f XP"), rows[i].exp1 - rows[i].exp0);
+            else if (rows[i].lv1 > rows[i].lv0) snprintf(xp, sizeof xp, TR("+%.0f levels"), rows[i].lv1 - rows[i].lv0);
+            else snprintf(xp, sizeof xp, "<color=#A69085>%s</color>", TR("none"));
+            if (!rows[i].dead) snprintf(stt, sizeof stt, "<color=#8FD18F>%s</color>", TR("Alive"));
+            else if (rows[i].removed) snprintf(stt, sizeof stt, "<color=#F16071>%s</color>", TR("Died \xC2\xB7 removed at home, with its gear"));
+            else snprintf(stt, sizeof stt, "<color=#EA9F3D>%s</color>", TR("Died \xC2\xB7 home as at the last hub save"));
+            o += (size_t)snprintf(b + o, sizeof b - o, "\n%s<pos=26%%>%s<pos=42%%>%s<pos=56%%>%s", nm, lv, xp, stt);   /* Status: the widest column (a death note wrapped under Unit) */
+            if (ao < sizeof ap - 160) {
+                char one[400];
+                if (rows[i].removed) snprintf(one, sizeof one, TR("%s: removed from your save, with its gear."), nm);
+                else if (rows[i].dead && !rows[i].lv1) snprintf(one, sizeof one, TR("%s: comes home as before."), nm);
+                else if (rr.xp && rows[i].lv1 != rows[i].lv0) snprintf(one, sizeof one, TR("%s: level %.0f \xE2\x86\x92 %.0f."), nm, rows[i].lv0, rows[i].lv1);
+                else if (rr.xp && rows[i].exp1 > rows[i].exp0) snprintf(one, sizeof one, TR("%s: +%.0f XP."), nm, rows[i].exp1 - rows[i].exp0);
+                else snprintf(one, sizeof one, TR("%s: unchanged."), nm);
+                ao += (size_t)snprintf(ap + ao, sizeof ap - ao, "%s  ", one);
+            }
+        }
+        few_set(FT_TABLE, b);
+        { char t[160]; snprintf(t, sizeof t, TRN("Dungeon loot \xC2\xB7 %d item", "Dungeon loot \xC2\xB7 %d items", ni), ni);
+          o = (size_t)snprintf(b, sizeof b, "<color=#D9BE8F>%s</color>  ", t); }
+        /* at most 8 names, then "+N": a long list ran over the table and the next block (the box holds two lines) */
+        for (int i = 0; i < ni && i < 8 && o < sizeof b - 80; i++) { char in[64]; few_item_name(items[i].key, in, sizeof in); o += (size_t)snprintf(b + o, sizeof b - o, "%s%s%s", i ? ", " : "", in, items[i].amount > 1 ? "" : ""); if (items[i].amount > 1) o += (size_t)snprintf(b + o, sizeof b - o, " \xC3\x97%d", items[i].amount); }
+        if (ni > 8 && o < sizeof b) o += (size_t)snprintf(b + o, sizeof b - o, "  +%d", ni - 8);
+        if (!ni) o += (size_t)snprintf(b + o, sizeof b - o, "%s", TR("none"));
+        if (o < sizeof b) snprintf(b + o, sizeof b - o, "\n<color=#A69085>%s</color>", TR("Items made from hub stock stay in the hub."));
+        few_set(FT_LOOT, b);
+        if (ni && ao < sizeof ap - 160) ao += (size_t)snprintf(ap + ao, sizeof ap - ao, TRN("%d dungeon item: storage first, then backpacks.", "%d dungeon items: storage first, then backpacks.", ni), ni);
+        dsi_utf8_fix_end(ap);
+        snprintf(b, sizeof b, "<color=#D9BE8F>%s</color>\n%s", TR("What will be applied"), ap); few_set(FT_APPLY, b);
+        if (W.ntarget) {
+            fe_save_info *t = &W.targets[W.target];
+            cmt_day(dy, sizeof dy, t->day);
+            snprintf(b, sizeof b, "<color=#A69085>%s</color>   %s  <size=80%%><color=#A69085>%s \xC2\xB7 %s</color></size>", TR("Bring home to"), t->clan, dy, TR(t->folder)); few_set(FT_TARGET, b);
+            few_show(MPB_FE_TGT_PREV, W.ntarget > 1); few_show(MPB_FE_TGT_NEXT, W.ntarget > 1);
+        } else { snprintf(b, sizeof b, "<color=#F16071>%s</color>", TR("The home save is not on this computer.")); few_set(FT_TARGET, b); }
+        if (W.conflict) { few_set(FT_CONFLICT, TR("Units changed at home since they left. Bring home:")); few_show(MPB_FE_VER_EXP, 1); few_show(MPB_FE_VER_HOME, 1); }
+        else if (W.err[0]) { cmt_msg(W.err, b, sizeof b); few_set(FT_CONFLICT, b); }   /* fe_save.c English: shown translated */
+        few_set(FT_NOTE, "");
+        few_label(MPB_FE_CANCEL, TR("Later"));
+        few_label(MPB_FE_OK, TR("Apply to a new save"));
+    }
+}
+static int few_open_now;                                                    /* frames since opened (tests) */
+/* clicks (pending_click); returns 1 if consumed */
+static int few_click(int c) {
+    if (c < MPB_FE_SAVE0 || c > MPB_FE_RES5 || W.mode == FEW_NONE) return 0;
+    fe_mode_info m; fe_mode_get(&m); int cap = m.units > 0 ? m.units : 3;
+    if (c == MPB_FE_CANCEL) {
+        if (W.mode == FEW_LIST && W.msg[0]) { W.msg[0] = 0; return 1; }
+        rig_log("fe: window %d closed (Cancel / Later)", W.mode); W.mode = FEW_NONE; return 1;
+    }
+    if (W.mode == FEW_BRING) {
+        if (c >= MPB_FE_SAVE0 && c <= MPB_FE_SAVE5) { int k = W.page * 6 + c - MPB_FE_SAVE0; if (k < W.nsave && W.saves[k].ok && few_version_ok(&W.saves[k], &m)) { W.sel_save = k; few_load_units(); W.err[0] = 0; } return 1; }
+        if (c == MPB_FE_SAVEPG) { W.page = (W.page + 1) * 6 < W.nsave ? W.page + 1 : 0; return 1; }
+        if (c == MPB_FE_UNITPG) { W.upage = (W.upage + 1) * 8 < W.nunit ? W.upage + 1 : 0; return 1; }
+        if (c >= MPB_FE_UNIT0 && c <= MPB_FE_UNIT7) {
+            int k = W.upage * 8 + c - MPB_FE_UNIT0, at = -1;
+            for (int p = 0; p < W.npicked; p++) if (W.picked[p] == k) at = p;
+            if (at >= 0) { W.picked[at] = W.picked[--W.npicked]; W.err[0] = 0; }
+            else if (W.npicked < cap) { W.picked[W.npicked++] = k; W.err[0] = 0; }
+            else snprintf(W.err, sizeof W.err, TRN("Up to %d unit each in this hub.", "Up to %d units each in this hub.", cap), cap);
+            return 1;
+        }
+        if (c == MPB_FE_OK && W.npicked && W.sel_save >= 0) {
+            char g[64][40]; for (int p = 0; p < W.npicked; p++) snprintf(g[p], 40, "%s", W.units[W.picked[p]].guid);
+            int rc = fe_bring_units(W.saves[W.sel_save].path, (const char (*)[40])g, W.npicked, W.err, sizeof W.err);
+            rig_log("fe: Bring these units (%d from %s): rc %d", W.npicked, W.saves[W.sel_save].clan, rc);
+            if (!rc) W.mode = FEW_NONE;
+            return 1;
+        }
+        return 1;
+    }
+    if (W.mode == FEW_LIST && c >= MPB_FE_RES0 && c <= MPB_FE_RES5) {
+        fe_result_info *x = &W.res[c - MPB_FE_RES0];
+        if (c - MPB_FE_RES0 >= W.nres) return 1;
+        if (x->applied) {
+            const char *f = strrchr(x->applied_file, '/'); char stem[300]; snprintf(stem, sizeof stem, "%s", f ? f + 1 : x->applied_file);
+            char *dot = strstr(stem, ".json"); if (dot) *dot = 0;
+            char t[800]; snprintf(t, sizeof t, TR("These results were brought home on %s.\nSaved as \"%s\". Load it from Load campaign."), x->applied_date, stem);
+            snprintf(W.msg, sizeof W.msg, "<size=130%%>%s</size>\n\n%s\n\n<color=#A69085>%s</color>", TR("Already Brought Home"), t, TR("Results apply once, so units cannot come home twice."));
+            dsi_utf8_fix_end(W.msg);
+        } else few_open(FEW_RESULTS, x->run);
+        return 1;
+    }
+    if (W.mode == FEW_RESULTS) {
+        if (c == MPB_FE_TGT_PREV && W.ntarget) { W.target = (W.target + W.ntarget - 1) % W.ntarget; return 1; }
+        if (c == MPB_FE_TGT_NEXT && W.ntarget) { W.target = (W.target + 1) % W.ntarget; return 1; }
+        if (c == MPB_FE_OK && W.applied) { W.mode = FEW_NONE; return 1; }
+        if ((c == MPB_FE_OK && !W.conflict) || c == MPB_FE_VER_EXP || c == MPB_FE_VER_HOME) {
+            int choice = c == MPB_FE_VER_EXP ? 1 : c == MPB_FE_VER_HOME ? 2 : 0; char out[600];
+            int rc = fe_apply_run(W.run, W.ntarget ? W.targets[W.target].path : "", choice, out, sizeof out, W.err, sizeof W.err);
+            rig_log("fe: Apply to a new save (choice %d): rc %d %s", choice, rc, rc ? W.err : out);
+            if (rc == 0) { const char *f = strrchr(out, '/'); snprintf(W.msg, sizeof W.msg, "%s", f ? f + 1 : out); char *d = strstr(W.msg, ".json"); if (d) *d = 0; W.applied = 1; W.conflict = 0; }
+            else if (rc == 1) W.conflict = 1;
+            return 1;
+        }
+        return 1;
+    }
+    return 1;
+}
+/* Escape (owner 2026-10-25). TITLE (Expedition Results list from the Multiplayer page, a result opened from it): the window is
+   on the loader kit's Escape stack while it shows (mp_esc.h): one press = its Cancel / Back / Later, and the page under it
+   stays (before, the game's Escape event closed it through few_escape and the page's own Escape check went Back on that same
+   press). Without that kit: as before. In a session (Esc menu root) the game's Escape event asks few_escape
+   (mpmenu_escape_ours), as before. */
+static void few_esc_close(void *ud) { (void)ud; few_click(MPB_FE_CANCEL); }
+static mpesc_win esc_few = { .name = "the Foreign Expedition window (title)", .close = few_esc_close };
+/* every frame: where the window lives (session: Esc menu root; title: title view), auto-open on new results */
+static char few_seen_run[40];
+static void few_frame(const mpm_obs *o) {
+    Obj ev = o->scene == 2 ? esc_view() : NULL, tv = o->scene == 1 ? title_view() : NULL;
+    Obj host = ev && u_on(ev) ? ev : tv && u_on(tv) ? tv : NULL;
+    if (W.mode != FEW_NONE && host && u_gc_get(W.view) != host) {           /* (re)build on the view that shows now */
+        int esc = host == ev;
+        Obj src = esc ? AT(host, 0x70, Obj) : AT(host, 0x50, Obj);
+        if (u_alive(src)) {
+            Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = esc ? AT(src, 0x28, Obj) : AT(src, 0x130, Obj);
+            Obj root0 = u_gc_get(W.root); if (u_alive(root0)) u_active(root0, false);
+            few_build(u_tr(host), src, esc, tpl_img, tpl_txt);
+            u_gc_free(W.view); W.view = u_gc_new(host);
+        }
+    }
+    /* new results in a session (the host ended the run): open them over the Esc menu */
+    if (o->role && frames % 60 == 0) {
+        fe_result_info r[16]; int n = fe_list_results(r, 16);
+        for (int i = 0; i < n; i++) if (!r[i].applied && strcmp(r[i].run, few_seen_run)) {
+            snprintf(few_seen_run, sizeof few_seen_run, "%s", r[i].run);
+            if (W.mode == FEW_NONE) { few_open(FEW_RESULTS, r[i].run); if (!o->esc_open) popup_activate(1); }
+            break;
+        }
+    }
+    if (o->scene == 1 && frames % 120 == 0) { fe_result_info r[16]; M.fe_results = fe_list_results(r, 16); }
+    if (M.state == MPM_LOBBY) {                                              /* host: the lobby's mode goes to the guests */
+        mp_steam_info in; mp_steam_state(&in);
+        fe_host_mode(M.set.fe, M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.units, M.set.fe_recruit, my_name);
+    }
+    few_sync();
+    { Obj root = u_gc_get(W.root); mpesc_sync(&esc_few, root, W.mode != FEW_NONE && !W.esc && u_on(root), 0); }   /* title: Escape = its Cancel / Back */
+    Obj lw = u_gc_get(h_lw_root);                                           /* the lobby steps aside while ours is open */
+    if (W.mode != FEW_NONE && W.esc && u_alive(lw)) u_active(lw, false);
+    few_open_now = W.mode == FEW_NONE ? 0 : few_open_now + 1;
+}
+static void few_tips(void) {
+    #define TIPW(id, t, b) tip_try(few_btn(id), (t), (b))
+    if (W.mode == FEW_NONE) return;
+    if (W.mode == FEW_BRING) {
+        fe_mode_info m; fe_mode_get(&m);
+        char body[900];                                                     /* a line cut with "..." on the card / row: in full here */
+        for (int i = 0; i < 6; i++) {
+            int k = W.page * 6 + i; const char *gen = TR("Units come from this save. It is only read: nothing in it changes until you bring the results home.");
+            fe_save_info *s = k < W.nsave ? &W.saves[k] : NULL;
+            if (s && !s->ok) snprintf(body, sizeof body, "%s\n\n%s", TR("In a dungeon: load it and return to the settlement first."), gen);
+            else if (s && !few_version_ok(s, &m)) { char t[300]; snprintf(t, sizeof t, TR("Made with %s. Load and save it once in this build first."), s->version); snprintf(body, sizeof body, "%s\n\n%s", t, gen); }
+            else snprintf(body, sizeof body, "%s", gen);
+            TIPW(MPB_FE_SAVE0 + i, TR("Your save"), body);
+        }
+        for (int i = 0; i < 8; i++) {
+            int k = W.upage * 8 + i; const char *gen = TR("Click to add or remove it. A copy travels with its gear and backpack; the unit itself stays at home and keeps working.");
+            if (W.sel_save >= 0 && k < W.nunit) {
+                char gear[200], trees[300]; few_gear(&W.units[k], gear, sizeof gear); few_trees(&W.units[k], trees, sizeof trees);
+                snprintf(body, sizeof body, "%s\n%s\n\n%s", trees[0] ? trees : TR("No skill tree yet"), gear[0] ? gear : TR("No gear"), gen);
+            } else snprintf(body, sizeof body, "%s", gen);
+            TIPW(MPB_FE_UNIT0 + i, TR("Bring this unit"), body);
+        }
+        TIPW(MPB_FE_OK, TR("Bring these units"), TR("Sends copies of the picked units to the host. You can bring other units instead until the host presses Start."));
+        TIPW(MPB_FE_CANCEL, cmt_game("TEXTKEY_CommonPopUp_Cancel", "Cancel"), TR("Closes this window. Nothing is sent."));
+    }
+    if (W.mode == FEW_RESULTS) {
+        TIPW(MPB_FE_OK, TR("Apply to a new save"), TR("Writes the results into a NEW save next to your home save. Your old save is not changed, and the whole save folder is copied to a backup first. Results apply once."));
+        TIPW(MPB_FE_CANCEL, TR("Later"), TR("Keeps the results. Bring them home later from Multiplayer > Expedition results."));
+        TIPW(MPB_FE_TGT_PREV, TR("Bring home to"), TR("The save that gets the results: the units' home campaign, newest first."));
+        TIPW(MPB_FE_TGT_NEXT, TR("Bring home to"), TR("The save that gets the results: the units' home campaign, newest first."));
+        TIPW(MPB_FE_VER_EXP, TR("Expedition version"), TR("Units that changed at home since they left come back as they ended the expedition."));
+        TIPW(MPB_FE_VER_HOME, TR("Home version"), TR("Units that changed at home since they left keep their home progress; the expedition's is dropped."));
+    }
+    if (W.mode == FEW_LIST) for (int i = 0; i < 6; i++) TIPW(MPB_FE_RES0 + i, TR("Expedition results"), TR("Open to see what your units bring home. Each result can be brought home once."));
+    #undef TIPW
+}
+#undef WX
+#undef WY
+/* test read-back: mpm_fewin {} */
+static char *few_status(void) {
+    Buf b = {0}; fe_mode_info m; int on = fe_mode_get(&m);
+    bput(&b, "{\"ok\":true,\"mode\":%d,\"esc\":%d,\"fe_mode\":%d,\"version\":", W.mode, W.esc, on); bstr(&b, m.version);
+    bput(&b, ",\"sel_save\":%d,\"picked\":%d,\"applied\":%d,\"conflict\":%d,\"err\":", W.sel_save, W.npicked, W.applied, W.conflict); bstr(&b, W.err);
+    bput(&b, ",\"msg\":"); bstr(&b, W.msg); bput(&b, ",\"run\":"); bstr(&b, W.run);
+    bput(&b, ",\"saves\":[");
+    for (int i = 0; i < W.nsave; i++) { bput(&b, "%s{\"clan\":", i ? "," : ""); bstr(&b, W.saves[i].clan); bput(&b, ",\"path\":"); bstr(&b, W.saves[i].path); bput(&b, ",\"ok\":%d,\"version\":", W.saves[i].ok && few_version_ok(&W.saves[i], &m)); bstr(&b, W.saves[i].version); bput(&b, "}"); }
+    bput(&b, "],\"units\":[");
+    for (int i = 0; i < W.nunit; i++) { bput(&b, "%s{\"guid\":\"%s\",\"level\":%d}", i ? "," : "", W.units[i].guid, W.units[i].level); }
+    bput(&b, "],\"results\":%d,\"ntarget\":%d,\"target\":", W.nres, W.ntarget); bstr(&b, W.ntarget ? W.targets[W.target].path : ""); bput(&b, "}");
+    return b.p;
+}
+
+/* ---- menu hooks (mpmenu.c calls them where these windows were called before the split) */
+static int few_escape(void) {
+    if (W.mode == FEW_NONE || pvp_ui_window_open()) return 0;            /* hidden under a PvP window: Escape is that window's */
+    rig_log("mpmenu: Escape closed the Foreign Expedition window");
+    return MPB_FE_CANCEL;
+}
+/* Bring Units = the card window (mu_bring.h: this player's own saves, Compact Plus cards with the game's icons); the picks
+   go to the host in one send. Without the loader's widget kit (the rig's own dylib) the FE Bring text window opens. */
+#include "mu_bring.h"
+int fe_bring_picks(const mu_pick *picks, int n, char *err, size_t errn);
+void ui_notice(const char *text);
+static mu_pick fe_last_picks[8]; static int fe_nlast;
+static int fe_bring_saves(mu_save_ref *out, int max, void *ud) {   /* this player's saves of the hub's game version */
+    (void)ud; static fe_save_info si[64]; fe_mode_info m; fe_mode_get(&m);
+    int n = fe_list_saves(si, 64), k = 0;
+    for (int i = 0; i < n && k < max; i++) {
+        if (!si[i].ok || (m.version[0] && strcmp(si[i].version, m.version))) continue;
+        snprintf(out[k].path, sizeof out[k].path, "%s", si[i].path); snprintf(out[k].name, sizeof out[k].name, "%s", si[i].clan);
+        cmt_day(out[k].when, sizeof out[k].when, si[i].day); k++;
+    }
+    return k;
+}
+static void fe_bring_done(const mu_pick *picks, int n, void *ud) {
+    (void)ud; if (n < 0) return;
+    char err[300] = "";
+    if (fe_bring_picks(picks, n, err, sizeof err)) { rig_log("fe: Bring Units: %s", err); ui_notice(err); return; }
+    fe_nlast = n < 8 ? n : 8; memcpy(fe_last_picks, picks, sizeof picks[0] * (size_t)fe_nlast);
+    rig_log("fe: Bring Units: %d unit(s) sent", n);
+}
+static int fe_bring_open(void) {
+    fe_mode_info m; fe_mode_get(&m); char sub[400]; few_rules_line(&m, sub, sizeof sub);
+    mu_bring_req r = { .title = TR("Bring Units"), .subtitle = sub, .max_units = m.units > 0 ? m.units : 3,
+                       .ticked = fe_last_picks, .nticked = fe_nlast, .list_saves = fe_bring_saves, .done = fe_bring_done };
+    return mu_bring_open(&r);
+}
+static void few_action(int a) {
+    fe_mode_info fm;
+    if ((a & MPA_FE_BRING) && fe_mode_get(&fm) && fe_bring_open()) few_open(FEW_BRING, NULL);   /* the hub lobby: units from this player's own saves */
+    if (a & MPA_FE_RESULTS) few_open(FEW_LIST, NULL);
+}
+static int few_lobby_bring(void) { fe_mode_info fm; return fe_mode_get(&fm) && W.mode == FEW_NONE; }
+static int few_lobby_name(int id, const char *nmn, char *t2, size_t cap) {   /* "2 units brought" / "Choosing units..." */
+    fe_mode_info fm; if (!fe_mode_get(&fm)) return 0;
+    int nb = fe_brought_of(id);
+    char t[160];
+    if (nb > 0) snprintf(t, sizeof t, TRN("%d unit brought", "%d units brought", nb), nb);
+    else snprintf(t, sizeof t, "%s", TR("Choosing units..."));
+    snprintf(t2, cap, nb > 0 ? "%s  <size=78%%><color=#8FD18F>%s</color></size>" : "%s  <size=78%%><color=#A69085>%s</color></size>", nmn, t);
+    dsi_utf8_fix_end(t2);
+    return 1;
+}
+static char *few_exec(const char *cmd, const char *line) {               /* Foreign Expedition window read-back; the Bring Units card window */
+    (void)line;
+    if (!strcmp(cmd, "mpm_fewin")) return few_status();
+    if (!strcmp(cmd, "mpm_bring_state")) { char *s = malloc(4096); if (s) mu_bring_test_state(s, 4096); return s; }
+    if (!strcmp(cmd, "mpm_bring_close")) { mu_bring_close(); char *s = malloc(16); if (s) snprintf(s, 16, "{\"ok\":true}"); return s; }
+    return NULL;
+}
+static const mp_menu_hooks fe_hooks = { .click = few_click, .escape = few_escape, .action = few_action, .frame = few_frame,
+    .lobby_bring = few_lobby_bring, .lobby_name = few_lobby_name, .tips = few_tips, .exec = few_exec };
+const mp_menu_hooks *fe_menu_hooks(void) { return &fe_hooks; }

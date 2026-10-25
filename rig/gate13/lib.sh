@@ -2,8 +2,17 @@
 #   chk <name> <pass-regex> <cwd> <command...>   runs the command (nice 19), log $OUT/<name>.log;
 #   PASS = exit 0 AND the log matches <pass-regex> AND no Traceback AND no prefs leak line ("PREFS CHANGED", "prefs
 #   DIFFERENT", "prefs identical after: False": rig.py check_prefs() restores the owner's prefs and only prints that, so a
-#   later prefs check would see them restored). A FAIL is run once more (gate rule: red twice = red).
+#   later prefs check would see them restored).
+#   Second try (v0.1.22): a FAIL is run once more ONLY when try1's log shows an environment error (machine load, no free
+#   pair, nothing ran, owner check, prefs leak: GATE_ENV_RE) and try1 did not print a result with failed checks
+#   (GATE_RESFAIL_RE) or a hard error (GATE_HARD_RE). WHY (v0.1.19-21): 45 of 58 second tries failed again (1.7 h of
+#   check time in v0.1.21); the 13 saves were all load / harness / owner-check cases. A retry also runs on copies that try1
+#   changed, and can hide try1's real fault. GATE_RETRY_ALL=1 = the old rule (every FAIL gets a second try).
 #   GATE_ONLY="a b": run only those checks (a rerun); the others keep their last line in $SUM.
+#   First list (v0.1.22): the checks named in GATE_FIRST="a b" or in first.list next to the gate script (names, # comments)
+#   run BEFORE all other checks (a child run of the same script with GATE_ONLY = that list, at the first chk), then the
+#   script runs the rest. Put there the newest release's tests and the last release's red / dropped checks. WHY: in
+#   v0.1.21 the newest tests ran last, 5-7 h after their merges, and their faults cost a rerun round.
 # verdict <gate script...>: the expected checks are read from the scripts themselves (every `chk <name>` line and every
 #   `print "<name> $(` line). A gate is ALL GREEN only when every expected check has a line in $SUM and its LAST line is
 #   PASS, and no "group_* FAIL" line exists (a g*.sh that exited non-zero). Missing = FAIL.
@@ -33,13 +42,52 @@ _once() {   # <name> <regex> <cwd> <cmd...> -> 0 pass / 1 fail
   [[ $rc == 0 ]] && grep -qE -- "$re" $OUT/$n.log && ! grep -q Traceback $OUT/$n.log && \
     ! { command grep -v '^--- ' $OUT/$n.log; cat ${sub:#} /dev/null 2>/dev/null; } | command grep -qiE 'PREFS CHANGED|prefs DIFFERENT|prefs identical after: False'
 }
+# second-try rule: environment signs (retry) / a finished run with failed checks / hard errors (never retry)
+GATE_ENV_RE=${GATE_ENV_RE:-'took too long|timed? ?out|timeout|process died|no room|no free pair|[^0-9]0 PASS, 0 FAIL|ok 0 fails 0|CalledProcessError|owner is playing|owner.s game runs|PREFS CHANGED|prefs DIFFERENT|prefs identical after: False'}
+GATE_RESFAIL_RE=${GATE_RESFAIL_RE:-'RESULT:? FAIL|[0-9]+ PASS, [1-9][0-9]* FAIL|passed, [1-9][0-9]* failed|\([1-9][0-9]* failed\)|[0-9]+ passed; [1-9][0-9]* failed|test result: FAILED'}
+GATE_HARD_RE=${GATE_HARD_RE:-'no cmd|unknown cmd|linker command failed|^skip:|does not trust'}
+retry_why() {   # <try1 log> -> prints the reason and returns 0 when a second try is allowed
+  local L=$1 body; body=$(command grep -v '^--- ' $L)
+  [[ ${GATE_RETRY_ALL:-0} == 1 ]] && { print "GATE_RETRY_ALL=1"; return 0; }
+  local h=$(print -r -- $body | command grep -m1 -E -- "$GATE_HARD_RE")
+  [[ -n $h ]] && { print -r -- "no: hard error: ${h:0:100}"; return 1; }
+  local r=$(print -r -- $body | command grep -m1 -E -- "$GATE_RESFAIL_RE")
+  [[ -n $r ]] && { print -r -- "no: the run ended with failed checks: ${r:0:100}"; return 1; }
+  local e=$(print -r -- $body | command grep -m1 -iE -- "$GATE_ENV_RE")
+  [[ -n $e ]] && { print -r -- "env: ${e:0:100}"; return 0; }
+  print "no: no environment error in the log"; return 1
+}
+# first list: GATE_FIRST, else first.list next to the gate script ($ZSH_ARGZERO)
+GATE_SCRIPT=${GATE_SCRIPT:-${ZSH_ARGZERO:A}}; GATE_ARGV=("$@")
+if [[ -z ${GATE_FIRST:-} && -f ${GATE_SCRIPT:h}/first.list ]]; then
+  GATE_FIRST=${(j: :)${(f)"$(sed -e 's/#.*//' ${GATE_SCRIPT:h}/first.list | tr -s ' \t' '\n' | command grep .)"}}
+fi
+_first_done=0
+_run_first() {   # once, at the first chk of a full run: the first-list checks in a child run of the same script
+  (( _first_done )) && return 0; _first_done=1
+  [[ -z ${GATE_FIRST:-} || -n ${GATE_ONLY:-} || -n ${GATE_PHASE:-} ]] && return 0
+  print "first list $(date '+%F %T'): $GATE_FIRST" | tee -a $SUM
+  GATE_PHASE=first GATE_ONLY="$GATE_FIRST" GATE_DIR=$OUT zsh $GATE_SCRIPT "${GATE_ARGV[@]}"
+  print "first list done $(date '+%F %T'); the other checks now" | tee -a $SUM
+}
 chk() {
-  local n=$1 re=$2; local try=1
+  local n=$1 re=$2; local try=1 why=''
+  _run_first
   [[ -n ${GATE_ONLY:-} && " $GATE_ONLY " != *" $n "* ]] && return 0   # GATE_ONLY="a b": rerun only those checks
+  [[ -z ${GATE_PHASE:-} && -n ${GATE_FIRST:-} && -z ${GATE_ONLY:-} && " $GATE_FIRST " == *" $n "* ]] && return 0   # ran in the first list
   [[ -f $OUT/$n.log ]] && { mkdir -p $OUT/old; mv $OUT/$n.log $OUT/old/$n-$(date +%H%M%S).log; }
-  if ! _once "$@"; then sleep 2; mkdir -p $OUT/old; mv $OUT/$n.log $OUT/old/$n-try1-$(date +%H%M%S).log; try=2; _once "$@"; fi
-  local v=$?; local last=$(grep -E -- "$re" $OUT/$n.log | tail -1 | cut -c1-140)
-  print "$n $([[ $v == 0 ]] && echo PASS || echo FAIL) try$try  ${last:-$(tail -1 $OUT/$n.log | cut -c1-140)}  log $OUT/$n.log" | tee -a $SUM
+  _once "$@"; local v=$?
+  if (( v )); then
+    why=$(retry_why $OUT/$n.log)
+    if [[ $? == 0 ]]; then
+      sleep 2; mkdir -p $OUT/old; local t1=$OUT/old/$n-try1-$(date +%H%M%S).log; mv $OUT/$n.log $t1; try=2
+      (( $+functions[owner_wait] )) && owner_wait       # a prefs leak / owner sign: wait while the owner plays
+      print -r -- "--- second try ($why); try1 log $t1" >> $OUT/$n.log
+      _once "$@"; v=$?
+    fi
+  fi
+  local last=$(grep -E -- "$re" $OUT/$n.log | tail -1 | cut -c1-140)
+  print -r -- "$n $([[ $v == 0 ]] && echo PASS || echo FAIL) try$try  ${last:-$(tail -1 $OUT/$n.log | cut -c1-140)}  log $OUT/$n.log${why:+  [retry $why]}" | tee -a $SUM
   return $v
 }
 prefs() { (cd $HOME/ds_multiplayer/rig && python3 rig.py check-prefs); }
@@ -58,6 +106,7 @@ expected() { { command grep -hoE '^[[:space:]]*(chk|print "?)[[:space:]]*[a-z][a
 # a gate script arms its verdict at top level (a trap set inside a function fires when that function returns):
 #   trap "verdict ${0:A}" EXIT      -> the verdict also runs when the script exits early (missing checks = FAIL)
 verdict() {   # <gate script...> -> last line "ALL GREEN ..." / "NOT GREEN ..." appended to $SUM; exit 0 only when green
+  [[ ${GATE_PHASE:-} == first ]] && return 0          # the first-list child: the parent run gives the verdict
   zsh $GATE_LIB_DIR/gate_clean.sh $OUT 2>/dev/null   # every run, passed or failed: the copies it left (bottle, check folders)
   local e=(${(f)"$(expected "$@")"}) bad=() np=0 n st
   for n in $e; do

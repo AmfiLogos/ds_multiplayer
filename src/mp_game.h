@@ -25,6 +25,8 @@ int    rig_order_move(Guid g, int x, int y);   /* body of inject_orders for one 
 int    rig_save_campaign(const char *name);    /* CampaignSaveLoader.Save 0x814890 (this = mf+0x180, campaignName = name,
                                                   isAutoSave = iron-mode flag, displayName = name) -> writes
                                                   data/Saves/<name>.json synchronously; 1 ok. See MP_NOTES.md. */
+int    mp_game_save_temp(const char *name);    /* the same as a temporary file the caller moves out of Saves/ or deletes
+                                                  at once: allowed in the hub (which is never saved), no owners table */
 int    rig_load_save_file(const char *path);   /* c_load_save {"file":path,"det":1} without JSON: copy into
                                                   data/Saves/<SaveName>.json, rig_det_on_load(), LoadCampaignRequested.
                                                   rig_det_mp_ready() must read 0 from this call until the auto-lock. */

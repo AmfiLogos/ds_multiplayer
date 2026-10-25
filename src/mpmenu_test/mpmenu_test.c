@@ -116,6 +116,11 @@ int main(void) {
     for (int i = 0; i < 20; i++) mpm_step(&m, &o, MPB_NONE);
     o.loading = 1; mpm_step(&m, &o, MPB_NONE); CHECK(m.state == MPM_HOST_LOADING); o.loading = 0;
     m.state = MPM_TITLE_HOST;
+    /* a new campaign with the tutorial on: no session (Foctopus 2026-10-20); the world stays single player */
+    { mpm_model t = m; mpm_obs q = o;
+      mpm_step(&t, &q, MPB_NEW_CAMPAIGN); q.scene = 0; mpm_step(&t, &q, MPB_NONE); q.scene = 2; q.campaign_ready = 1; q.tutorial = 1;
+      int ta = mpm_step(&t, &q, MPB_NONE);
+      CHECK(t.state == MPM_FAILED && !(ta & MPA_HOST_START) && strstr(t.notice, "tutorial")); }
     /* new campaign -> scene changes -> loading -> ready -> lobby with host start */
     CHECK(mpm_step(&m, &o, MPB_NEW_CAMPAIGN) & MPA_OPEN_NEW);
     o.title_visible = 0; mpm_step(&m, &o, MPB_NONE);
@@ -144,7 +149,13 @@ int main(void) {
     o.steam = 1; CHECK(mpm_step(&m, &o, MPB_INVITE) == MPA_INVITE && m.state == MPM_LOBBY); o.steam = 0;
     /* lobby Leave (host): the same confirm box */
     { mpm_model q = m; int aa = mpm_step(&q, &o, MPB_LEAVE); CHECK(q.state == MPM_LOBBY && (aa & MPA_CONFIRM_LEAVE) && !(aa & MPA_LEAVE));
-      aa = mpm_step(&q, &o, MPB_LEAVE_CONFIRM); CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_LOBBY_HIDE)); }
+      aa = mpm_step(&q, &o, MPB_LEAVE_CONFIRM); CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_LOBBY_HIDE) && !(aa & MPA_QUIT_TITLE)); }   /* Turn off multiplayer: the host stays in the world */
+    /* lobby Quit (owner 2026-10-20): the same box, then the session ends AND the host goes to the title; Cancel keeps the lobby */
+    { mpm_model q = m; CHECK(mpm_is_visible(&q, &o, MPB_LOBBY_QUIT));
+      int aa = mpm_step(&q, &o, MPB_LOBBY_QUIT); CHECK(q.state == MPM_LOBBY && (aa & MPA_CONFIRM_LEAVE) && !(aa & MPA_LEAVE));
+      aa = mpm_step(&q, &o, MPB_LEAVE_CANCEL); CHECK(q.state == MPM_LOBBY && !q.confirm_leave && !(aa & MPA_LEAVE));
+      mpm_step(&q, &o, MPB_LOBBY_QUIT); aa = mpm_step(&q, &o, MPB_LEAVE_CONFIRM); CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_QUIT_TITLE) && (aa & MPA_LOBBY_HIDE));
+      mpm_step(&q, &o, MPB_NONE); CHECK(!mpm_is_visible(&q, &o, MPB_LOBBY_QUIT)); }
     a = mpm_step(&m, &o, MPB_START); CHECK(m.state == MPM_PLAYING && (a & MPA_LOBBY_HIDE) && (a & MPA_START_GAME));
     /* Esc menu: host sees Invite + Leave, guest only Leave */
     CHECK(mpm_visible(&m, &o) == 0);
@@ -191,6 +202,8 @@ int main(void) {
     /* host still in the lobby (ux #14): the guest gets the waiting panel; Start on the host ends it */
     o.esc_open = 0; o.host_lobby = 1; a = mpm_step(&m, &o, MPB_NONE);
     CHECK(m.state == MPM_GUEST_LOBBY && (a & MPA_LOBBY_SHOW) && mpm_visible(&m, &o) == B(MPB_LEAVE));
+    { mpm_model q = m; int aa = mpm_step(&q, &o, MPB_LOBBY_QUIT);           /* guest lobby Quit: no box, straight to the title */
+      CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_QUIT_TITLE) && (aa & MPA_LOBBY_HIDE)); }
     { const char *gn[] = { "Alex", "Ben" }; char gt[512]; mpm_lobby_text(&m, gn, 2, gt, sizeof gt);
       char tl[64]; mpm_lobby_title(&m, tl, sizeof tl);
       CHECK(!strcmp(tl, "In Alex's lobby") && strstr(gt, "The game starts when Alex presses Start.") && strstr(gt, "\xC2\xB7 Alex (host)\n\xC2\xB7 Ben") && !strstr(gt, "Pause:") && !strstr(gt, "<b>")); }
@@ -274,7 +287,7 @@ int main(void) {
         CHECK(mpm_is_visible(&h, &t, MPB_HOST_SAVE) && mpm_is_visible(&h, &t, MPB_HOST_NEW) && mpm_is_visible(&h, &t, MPB_HOST_FE));
         mpm_label(&h, MPB_HOST_SAVE, s, sizeof s); CHECK(!strcmp(s, "Your save"));
         mpm_label(&h, MPB_HOST_NEW, s, sizeof s); CHECK(!strcmp(s, "New save"));
-        mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Foreign Expedition"));
+        mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Hub: Co-op or PvP"));
         mpm_model k = h; mpm_step(&k, &t, MPB_HOST_SAVE); uint64_t v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)) && !mpm_is_visible(&k, &t, MPB_HOST_SAVE));
         mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host your save"));
@@ -285,7 +298,7 @@ int main(void) {
         CHECK(mpm_step(&k, &t, MPB_NEW_CAMPAIGN) & MPA_OPEN_NEW);
         k = h; mpm_step(&k, &t, MPB_HOST_FE); v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && k.set.fe == 1 && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)));
-        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a Foreign Expedition"));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host the Hub"));
         mpm_step(&k, &t, MPB_BACK); mpm_step(&k, &t, MPB_HOST); CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && !k.host_new);   /* the old path: Your save */
     }
     {   /* Foreign Expedition (ext lane, board FESettingsA): chosen on the Multiplayer page, FE rules, summary, Start builds the hub first */

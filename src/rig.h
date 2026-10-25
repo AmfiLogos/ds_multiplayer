@@ -106,6 +106,7 @@ int rig_det_locked(void);
 RState rig_det_sim_state(void);
 void rig_det_on_load(void);
 void rig_det_arm(void);               /* mp session start: det on, auto-lock on a runnable campaign */
+void rig_det_disarm(void);            /* mp session end: unlock, the game's own clock runs again */
 int rig_order_move(Guid g, int x, int y);
 int rig_save_campaign(const char *name);
 int rig_load_save_file(const char *path);

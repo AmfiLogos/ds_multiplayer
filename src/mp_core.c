@@ -572,6 +572,7 @@ int mp_is_spectator(mp_session *s) { return s && s->c && dsnet_is_spectator(s->c
 int mp_set_spectators(mp_session *s, int allow) { return s && s->c ? dsnet_set_spectators(s->c, allow) : -1; }
 int mp_server_stats(mp_session *s, dsnet_server_stats *out) { if (!s || !s->srv) return -1; dsnet_server_get_stats(s->srv, out); return 0; }
 uint16_t mp_server_port(mp_session *s) { return s->srv ? dsnet_server_port(s->srv) : 0; }
+dsnet_server *mp_server(mp_session *s) { return s ? s->srv : NULL; }
 
 void mp_get_stats(mp_session *s, mp_stats *o) {
     *o = s->st;
@@ -583,9 +584,10 @@ void mp_get_stats(mp_session *s, mp_stats *o) {
     o->player = dsnet_player_id(s->c);
 }
 
+int (*mp_session_optional)(char *out, size_t n);
 /* ---------------------------------------------------------------- session */
-mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) {
-    if (reject) *reject = 0;
+/* mp_start in two halves: begin connects and sends the HELLO (no wait); the WELCOME part runs in start_welcomed. */
+mp_session *mp_start_begin(const mp_config *cfg, const mp_game_api *api) {
     mp_session *s = calloc(1, sizeof *s);
     s->cfg = *cfg; s->api = *api;
     s->handlers[MP_ORDER_MOVE] = order_move_default;
@@ -597,6 +599,14 @@ mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) 
         dsnet_set_modset(van ? DSNET_MATCH_VANILLA : DSNET_MATCH_MODS, ms, mods);
         if (!rc) { int nm = 0; for (const char *q = mods; *q; q++) nm += *q == '\n'; if (mods[0]) nm++;
                    mlog("launcher session: rule %s, %d gameplay mod(s), set %.12s", van ? "vanilla" : "mods", nm, ms[0] ? ms : "-"); }
+        /* custom difficulty mods that run but are not counted now (Hell at the title): the host lets this guest join a
+           world on that level with them (dsnet.h dsnet_set_modset_optional) */
+        static char opt[DSNET_MODOPT_MAX]; int no = mp_session_optional ? mp_session_optional(opt, sizeof opt) : 0;
+        if (no <= 0) opt[0] = 0;
+        dsnet_set_modset_optional(opt);
+        if (no > 0) { char ids[200]; size_t k = 0; ids[0] = 0;
+                      for (const char *q = opt; *q && k + 2 < sizeof ids; ) { size_t l = strcspn(q, ":\n"); k += (size_t)snprintf(ids + k, sizeof ids - k, "%s%.*s", k ? ", " : "", (int)l, q); q += strcspn(q, "\n"); if (*q) q++; }
+                      mlog("launcher session: also running, not counted now (a host on that difficulty counts them): %s", ids); }
     }
     if (cfg->host) {
         dsnet_cfg d = dsnet_cfg_defaults();
@@ -621,13 +631,11 @@ mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) 
     dsnet_set_patch_cb(s->c, on_patch, s);
     dsnet_set_partial_resync(s->c, cfg->partial_resync && cfg->auto_resync && api->patch && !cfg->spectator);   /* a spectator
                                                          resyncs from the server's cached save: no work for the host */
-    int w = dsnet_wait_welcome(s->c, cfg->connect_timeout_ms > 0 ? cfg->connect_timeout_ms : 5000);
-    if (w) {
-        int why = dsnet_reject_reason(s->c);
-        if (reject) *reject = why;
-        mlog("join %s (reject reason %d)", w == -2 ? "refused" : "timed out", why);
-        mp_stop(s); return NULL;
-    }
+    return s;
+}
+
+static mp_session *start_welcomed(mp_session *s, int *reject) {
+    const mp_config *cfg = &s->cfg;
     if (!cfg->host && cfg->expect_world[0]) {          /* F17: a Recent worlds row must not land in another world */
         uint8_t id[16]; char nm[32];
         if (dsnet_host_world(s->c, id, nm) == 0) {
@@ -655,6 +663,36 @@ mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) 
     mlog("%s: player %d, allow_speedup %d, allow_pause %d, %s", cfg->host ? "host" : dsnet_is_spectator(s->c) ? "spectator" : "client", dsnet_player_id(s->c),
          dsnet_allow_speedup(s->c), dsnet_allow_pause(s->c), dsnet_needs_state(s->c) ? "waiting for the host's save" : "starting at step 0");
     return s;
+}
+
+mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject) {
+    if (reject) *reject = 0;
+    mp_session *s = mp_start_begin(cfg, api);
+    if (!s) return NULL;
+    int w = dsnet_wait_welcome(s->c, cfg->connect_timeout_ms > 0 ? cfg->connect_timeout_ms : 5000);
+    if (w) {
+        int why = dsnet_reject_reason(s->c);
+        if (reject) *reject = why;
+        mlog("join %s (reject reason %d)", w == -2 ? "refused" : "timed out", why);
+        mp_stop(s); return NULL;
+    }
+    return start_welcomed(s, reject);
+}
+
+/* the WELCOME of mp_start_begin's session, without waiting: 0 not yet, 1 started, -1 failed (*ps freed + NULL, *reject = why) */
+int mp_start_poll(mp_session **ps, int *reject) {
+    if (reject) *reject = 0;
+    mp_session *s = *ps;
+    int w = dsnet_wait_welcome(s->c, 0);
+    if (w == -1 && !dsnet_is_disconnected(s->c)) return 0;
+    if (w) {
+        int why = dsnet_reject_reason(s->c);
+        if (reject) *reject = why;
+        mlog("join %s (reject reason %d)", w == -2 ? "refused" : "closed", why);
+        mp_stop(s); *ps = NULL; return -1;
+    }
+    *ps = start_welcomed(s, reject);
+    return *ps ? 1 : -1;
 }
 
 void mp_stop(mp_session *s) {

@@ -10,7 +10,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define MP_API_VERSION 2                     /* 2 (2026-10-18): rand_*, chat_line */
+#define MP_API_VERSION 3                     /* 2 (2026-10-18): rand_*, chat_line; 3 (2026-10-25): chat_local */
 
 enum { MP_ROLE_NONE = 0, MP_ROLE_HOST = 1, MP_ROLE_GUEST = 2 };
 /* ui_set_flag: game UI rules a mod sets (ui_game.c). Default off. */
@@ -25,10 +25,16 @@ enum { MP_CHAT_LOCAL = 0,                    /* a system line on this screen onl
        MP_CHAT_BROADCAST = 1 };              /* a line every player sees, after the sender's name */
 enum { MP_CHAT_SHOWN = 0, MP_CHAT_NO_SESSION = 1,          /* 1: no multiplayer session = no chat on screen */
        MP_CHAT_BAD_ARGS = -1, MP_CHAT_SPECTATOR = -2,      /* -2: spectators cannot broadcast mod lines */
-       MP_CHAT_RATE_LIMITED = -5, MP_CHAT_NOT_SENT = -6 }; /* -5: too many lines (see MP_API.md); -6: no connection */
+       MP_CHAT_RATE_LIMITED = -5, MP_CHAT_NOT_SENT = -6,   /* -5: too many lines (see MP_API.md); -6: no connection */
+       MP_CHAT_OFF = -7 };                                 /* -7 (chat_local): the player's "Chat: Off": nothing shown */
+/* chat_local (v3): lines on this screen only, never sent, no rate limit, with or without a session (MP_API.md 2b) */
+enum { MP_CHATL_LINE = 0,                    /* append text as a line (the text only, no "<Mod> mod:") */
+       MP_CHATL_CLEAR = 1,                   /* remove every local line from the chat history (text may be NULL) */
+       MP_CHATL_RICH = 2 };                  /* with LINE: the text keeps its TMP rich-text tags (<b>, <color>, <indent>, <pos>...) */
 #define MP_CHAT_MOD_MAX        24            /* bytes of the mod name (cut) */
 #define MP_CHAT_TEXT_LOCAL     200           /* bytes of the text (cut, never inside a character) */
 #define MP_CHAT_TEXT_BROADCAST 160
+#define MP_CHAT_TEXT_CHATL     400           /* bytes of a chat_local text (v3; tags count) */
 
 typedef struct mp_player { int id; char name[32]; uint8_t uid[16]; } mp_player;
 typedef struct mp_menu_hooks mp_menu_hooks;  /* mpmenu_kit.h (the menu's building blocks; windows inside the menu) */
@@ -106,6 +112,8 @@ typedef struct mp_api_table {
     float (*rand_value)(const char *mod_id, uint32_t stream);                 /* [0, 1), 24 bits */
     int (*rand_shared)(void);                                                 /* 1 = a draw now is the shared one */
     int (*chat_line)(const char *mod_name, const char *text, int flags);      /* MP_CHAT_LOCAL / _BROADCAST; MP_CHAT_* */
+    /* ---- v3 (2026-10-25; check version >= 3) */
+    int (*chat_local)(const char *mod_name, const char *text, int flags);     /* MP_CHATL_*; MP_CHAT_SHOWN / _BAD_ARGS / _OFF */
 } mp_api_table;
 
 /* exported by multiplayer: NULL if version > MP_API_VERSION */
@@ -136,13 +144,14 @@ void mp_moddata_init(void);                                       /* registers t
 int  mp_moddata_refused(char *why, size_t n);                     /* guest: the last block was refused (MD_* code), why = English */
 void mp_moddata_clear_refusal(void);
 void mp_moddata_session_over(void);                               /* title, no session: the guest's own files back */
-/* v2 bodies (mp_rand.c, mp_modchat.c, mpmenu.c); also behind the dsmp_bridge_* exports */
+/* v2 / v3 bodies (mp_rand.c, mp_modchat.c, mpmenu.c); v2 also behind the dsmp_bridge_* exports */
 uint32_t mp_rand_u32(const char *mod_id, uint32_t stream);
 int   mp_rand_range(const char *mod_id, uint32_t stream, int lo, int hi);
 float mp_rand_value(const char *mod_id, uint32_t stream);
 int   mp_rand_shared(void);
 void  mp_rand_stats(uint64_t *shared, uint64_t *local);
 int   mpmenu_mod_chat(const char *mod_name, const char *text, int flags);
+int   mpmenu_chat_local(const char *mod_name, const char *text, int flags);    /* v3 chat_local */
 typedef struct { double tokens, t; } mpc_bucket;
 size_t mpc_clean(const char *in, char *out, size_t cap);                     /* UTF-8 safe cut, control bytes -> spaces */
 int   mpc_encode(const char *mod, const char *text, char *out, size_t cap);  /* broadcast wire text; -1 empty mod / text */

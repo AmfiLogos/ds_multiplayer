@@ -20,6 +20,7 @@ enum { ST_NEW = 0, ST_PLAYING, ST_LOADING, ST_CATCHUP, ST_DESYNCED };
 typedef struct sconn {
     dsnet_link link;
     int local, id, status, is_host, closing, busy, resync, ping_ms;
+    int desync_seen;     /* its P_DESYNC came before this resync (a real desync); FE start / PvP snapshot reloads: 0 */
     int spectator;                                  /* watches: outside the sim, never holds the timer, commands dropped */
     int patch_wanted, patching, auto_paused;
     double mark_t[DSNET_MARK_SPAM_N]; int mark_i;   /* times of this sender's last ping adds (spam limit) */   /* lan_v10 partial resync: asked / in the issued PATCH_POINT; desync pause sent */
@@ -30,7 +31,10 @@ typedef struct sconn {
     char name[32];
     int rule; char modset[65], mods[200];         /* from the HELLO (proto 2); mods = "id@version, ..." for the words */
     char lines[DSNET_MODLINES_MAX];               /* the launcher's modset_lines, '\n'-joined */
+    char opt[DSNET_MODOPT_MAX];                   /* lines of mods it runs but does not count now (custom difficulty), HELLO tail */
+    int opt_used;                                 /* it joined with some of them counted (modset_refused) */
     char release[16];                             /* loader release after the name's NUL ("" = older peer) */
+    uint32_t peer_ip; uint16_t peer_port;         /* TCP peer (host order; 0 = local socket pair or unknown): dsnet_server_peer */
     dsnet_blob_rx rx;
 } sconn;
 
@@ -45,8 +49,10 @@ struct dsnet_server {
     dsnet_server_stats stats;
 
     sconn *conn[MAX_CONNS];
+    struct { uint8_t via; uint32_t ip; uint16_t port; } peer[DSNET_MAX_PLAYERS];   /* by player id, under mu (dsnet_server_peer) */
     uint32_t timer, sent_snapshot, held;
     int started, jp_pending, max_behind_seen, patch_pending;
+    uint32_t held_last[2]; int held_n;          /* last P_HELD masks sent to loading players, frames since */
     int has_world; uint8_t world[48];          /* host's world: id[16] + name[32] (P_WORLD), in every WELCOME */
     float tpt;
     double last_list, last_ping;
@@ -270,6 +276,40 @@ static int settings_diff(const char *hl, const char *gl, char *out, size_t n) {
     }
     return c;
 }
+/* the line l (len bytes) is one of the '\n'-joined lines of set */
+static int line_in(const char *set, const char *l, size_t len) {
+    for (const char *q = set; *q; ) {
+        size_t ql = strcspn(q, "\n");
+        if (ql == len && !memcmp(q, l, len)) return 1;
+        q += ql; if (*q) q++;
+    }
+    return 0;
+}
+/* A joiner whose set differs from the host's joins when its own lines plus some of its "run but not counted" lines (HELLO
+   tail: custom difficulty mods, Hell at the title) are exactly the host's lines: the host's world is on that difficulty
+   (the host's loader counts it only then) and the joiner runs the same files (the lines carry version + sha256s), so the
+   simulation is the same (owner 2026-10-25: no refusal, no restart). Both sets are compared line by line (the HELLO hash
+   is of the same sorted lines); a set that may be cut (full buffer) never matches. 1 = may join (used = the lines taken). */
+static int opt_covers(const char *hl, const char *gl, const char *ol, char *used, size_t un) {
+    size_t k = 0; int n = 0; if (un) used[0] = 0;
+    if (!ol[0] || strlen(hl) >= DSNET_MODLINES_MAX - 1 || strlen(gl) >= DSNET_MODLINES_MAX - 1) return 0;
+    for (const char *q = gl; *q; ) {                      /* nothing the host does not run */
+        size_t ql = strcspn(q, "\n");
+        if (ql && !line_in(hl, q, ql)) return 0;
+        q += ql; if (*q) q++;
+    }
+    for (const char *q = hl; *q; ) {                      /* every host line: the joiner counts it or runs it */
+        size_t ql = strcspn(q, "\n");
+        if (ql && !line_in(gl, q, ql)) {
+            if (!line_in(ol, q, ql)) return 0;
+            const char *c = memchr(q, ':', ql); size_t idl = c ? (size_t)(c - q) : ql;      /* "id@version" for the log */
+            int w = snprintf(used + k, k < un ? un - k : 0, "%s%.*s", n ? ", " : "", (int)idl, q); if (w > 0) k += (size_t)w;
+            n++;
+        }
+        q += ql; if (*q) q++;
+    }
+    return n > 0;
+}
 static const char *eff_modset(const sconn *c) { return c->modset[0] ? c->modset : DSNET_MODSET_NONE; }
 static const char *mods_or_none(const sconn *c) { return strcmp(eff_modset(c), DSNET_MODSET_NONE) ? (c->mods[0] ? c->mods : "unnamed mods") : "none"; }
 /* The host's HELLO is the reference (launcher rule, PLAN.md 2026-10-14 ~20:00: Vanilla check / Allow mods).
@@ -284,6 +324,12 @@ static int modset_refused(dsnet_server *s, const sconn *c, char *why, size_t n) 
         return 0;
     }
     if (strcmp(eff_modset(c), eff_modset(h))) {
+        char used[200];
+        if (opt_covers(h->lines, c->lines, c->opt, used, sizeof used)) {
+            ((sconn *)c)->opt_used = 1;
+            dsnet_logf("server: a joiner's set counts its loaded custom difficulty mods for the host's world: %s", used);
+            return 0;
+        }
         char rel[96]; size_t k = 0;
         if (dsnet_release_text_en(h->release, c->release, rel, sizeof rel)) k = (size_t)snprintf(why, n, "%s ", rel);   /* wire words: English */
         if (k >= n) return 1;
@@ -315,12 +361,15 @@ static void on_hello(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
     else if ((int)get32(p + 8) != s->round_mode) rej = DSNET_REJ_ROUNDING;
     else for (int i = 0; i < MAX_CONNS; i++)
         if (s->conn[i] && s->conn[i]->id >= 0 && !memcmp(s->conn[i]->uid, p + 12, 16)) rej = DSNET_REJ_DUP_ID;
-    c->release[0] = 0;
-    if (!rej) {                                    /* name[] [NUL release] */
+    c->release[0] = 0; c->opt[0] = 0; c->opt_used = 0;
+    if (!rej) {                                    /* name[] [NUL release [NUL optional lines]] */
         const uint8_t *z = memchr(p + name_at + 1, 0, n - name_at - 1);
         if (z) {
             uint32_t ro = (uint32_t)(z - p) + 1, rl = n - ro; if (rl > DSNET_RELEASE_MAX) rl = DSNET_RELEASE_MAX;
             snprintf(c->release, sizeof c->release, "%.*s", (int)rl, (const char *)p + ro);
+            const uint8_t *z2 = ro < n ? memchr(p + ro, 0, n - ro) : NULL;
+            uint32_t oo = z2 ? (uint32_t)(z2 - p) + 1 : n, ol = n - oo;
+            if (z2 && ol < sizeof c->opt) { memcpy(c->opt, p + oo, ol); c->opt[ol] = 0; }   /* too long (cut): none */
         }
     }
     int want_host = c->local && p[3] && !host_conn(s);
@@ -367,7 +416,8 @@ static void on_hello(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         if (late) spectator_send_state(s, c);
         return;
     }
-    dsnet_logf("server: player %d (%s) joined%s%s", id, c->name, c->is_host ? " as host" : "", late ? " late" : "");
+    dsnet_logf("server: player %d (%s) joined%s%s%s", id, c->name, c->is_host ? " as host" : "", late ? " late" : "",
+               c->opt_used ? " (its loaded custom difficulty mods count for this world)" : "");
     uint8_t jp[16 + 32]; size_t nl = strlen(c->name);
     memcpy(jp, c->uid, 16); memcpy(jp + 16, c->name, nl);
     issue(s, DSNET_PLAYER_JOIN, id, 0, jp, 16 + nl);
@@ -459,7 +509,7 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         if (n < 5) return;
         int partial = n >= 6 && p[5];             /* a partial resync comes first: no pause for it (~1 s, no reload) */
         if (c->status == ST_PLAYING || c->status == ST_CATCHUP) {
-            c->status = ST_DESYNCED;
+            c->status = ST_DESYNCED; c->desync_seen = 1;
             uint8_t cause = c->id;
             if (auto_pause(s) && !partial && !c->spectator) { issue(s, DSNET_PAUSE_ALL, DSNET_NO_PLAYER, 0, &cause, 1); c->auto_paused = 1; }
         }
@@ -535,6 +585,16 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         }
         break;
     }
+    case P_SEL: {                              /* unitsel B1: selected units, to the others that are not loading */
+        if (n < 6 || c->spectator) return;
+        uint32_t k = p[5]; if (k > DSNET_SEL_MAX || 6 + 16 * k > n) return;
+        uint8_t b[7 + 16 * DSNET_SEL_MAX]; b[0] = P_SEL; b[1] = (uint8_t)c->id; memcpy(b + 2, p + 1, 5 + 16 * k);
+        for (int i = 0; i < MAX_CONNS; i++) {
+            sconn *o = s->conn[i];
+            if (o && o != c && o->id >= 0 && !o->closing && o->status != ST_LOADING && o->status != ST_NEW) dsnet_link_send(&o->link, b, 7 + 16 * k);
+        }
+        break;
+    }
     case P_MARK: {                             /* ping add / delete: to the others; adds limited per sender */
         if (n < 12 || (p[1] != DSNET_MARK_ADD && p[1] != DSNET_MARK_DEL)) return;
         if (p[1] == DSNET_MARK_ADD) {
@@ -560,11 +620,11 @@ static void on_frame(dsnet_server *s, sconn *c, const uint8_t *p, uint32_t n) {
         if (n >= 5) c->ping_ms = (int)(ms32() - get32(p + 1));
         break;
     case P_BUSY:
-        if (n >= 2 && !c->spectator) c->busy = p[1] != 0;
+        if (n >= 2 && !c->spectator) c->busy = p[1] == 2 ? 2 : p[1] != 0;   /* 2 = held by a window */
         break;
     case P_READY:
         if (c->status == ST_CATCHUP) {
-            c->status = ST_PLAYING; c->ticks_behind = 0; c->behind_at = s->timer; c->resync = 0; c->auto_paused = 0;
+            c->status = ST_PLAYING; c->ticks_behind = 0; c->behind_at = s->timer; c->resync = 0; c->auto_paused = 0; c->desync_seen = 0;
             dsnet_logf("server: player %d caught up at timer %u", c->id, s->timer);
         }
         break;
@@ -648,6 +708,8 @@ static void add_conn(dsnet_server *s, int fd, int local) {
         sconn *c = calloc(1, sizeof *c);
         dsnet_link_init(&c->link, dsnet_fd_transport(fd));
         c->local = local; c->id = -1; c->last_rx = c->born = dsnet_now_ms();
+        if (!local) { struct sockaddr_in a; socklen_t al = sizeof a; memset(&a, 0, sizeof a);
+                      if (!getpeername(fd, (struct sockaddr *)&a, &al) && a.sin_family == AF_INET) { c->peer_ip = ntohl(a.sin_addr.s_addr); c->peer_port = ntohs(a.sin_port); } }
         s->conn[i] = c;
         return;
     }
@@ -689,8 +751,16 @@ static void advance_timer(dsnet_server *s, double *real) {
 }
 
 /* player list for the UI: state, ping, ticks behind; pings once a second */
+/* enum dsnet_via: the host's own socket pair, a Steam bridge (loopback from a marked port) or direct TCP */
+static int conn_via(const sconn *c) {
+    if (c->local) return DSNET_VIA_HOST;
+    if (!c->peer_port) return DSNET_VIA_UNKNOWN;
+    return (c->peer_ip >> 24) == 127 && dsnet_relay_port_is(c->peer_port) ? DSNET_VIA_STEAM : DSNET_VIA_DIRECT;
+}
+
 static void send_players(dsnet_server *s, int ping) {
-    uint8_t b[2 + MAX_CONNS * 6], *p = b + 2; int cnt = 0;
+    uint8_t b[2 + MAX_CONNS * 7], *p = b + 2; int cnt = 0;
+    uint8_t via[MAX_CONNS];                                         /* appended after the 6-byte entries (older clients stop at 2 + 6 n) */
     uint8_t sb[4 + MAX_CONNS * 36], *q = sb + 4; int scnt = 0;      /* spectators: their own list (never "players") */
     uint8_t pg[5]; put8(pg, P_PING); put32(pg + 1, ms32());
     for (int i = 0; i < MAX_CONNS; i++) {
@@ -699,20 +769,23 @@ static void send_players(dsnet_server *s, int ping) {
         if (ping) dsnet_link_send(&c->link, pg, 5);
         if (c->spectator) {
             if (c->closing) continue;
-            int st = c->status == ST_PLAYING ? DSNET_NET_IN_SYNC : c->status == ST_DESYNCED || c->resync ? DSNET_NET_RESYNCING : DSNET_NET_LOADING;
+            int st = c->status == ST_PLAYING ? DSNET_NET_IN_SYNC : c->status == ST_DESYNCED || (c->resync && c->desync_seen) ? DSNET_NET_RESYNCING : DSNET_NET_LOADING;
             q = put8(q, c->id); q = put8(q, st); q = put16(q, c->ping_ms > 65535 ? 65535 : c->ping_ms);
             memset(q, 0, 32); memcpy(q, c->name, utf8_len31(c->name)); q += 32;
             scnt++;
             continue;
         }
         int st = c->status == ST_PLAYING ? DSNET_NET_IN_SYNC
-               : c->status == ST_DESYNCED || c->resync ? DSNET_NET_RESYNCING : DSNET_NET_LOADING;
+               : c->status == ST_DESYNCED || (c->resync && c->desync_seen) ? DSNET_NET_RESYNCING   /* a real desync */
+               : DSNET_NET_LOADING;                                     /* loading, also a planned reload (FE start, PvP snapshot) */
         int tb = c->status == ST_PLAYING ? ext_behind(s, c) : 0;
         if (tb < 0) tb = 0;
         if (tb > 65535) tb = 65535;
         p = put8(p, c->id); p = put8(p, st); p = put16(p, c->ping_ms > 65535 ? 65535 : c->ping_ms); p = put16(p, tb);
+        via[cnt] = (uint8_t)conn_via(c);
         cnt++;
     }
+    memcpy(p, via, (size_t)cnt); p += cnt;
     b[0] = P_PLAYERS; b[1] = cnt;
     send_all_live(s, b, p - b, -1);
     sb[0] = P_SPECT; sb[1] = s->cfg.allow_spectators != 0; sb[2] = (uint8_t)s->cfg.max_spectators; sb[3] = (uint8_t)scnt;
@@ -720,16 +793,27 @@ static void send_players(dsnet_server *s, int ping) {
 }
 
 static void net_tick(dsnet_server *s) {
-    uint32_t busy = 0;
+    uint32_t busy = 0, window = 0;
     for (int i = 0; i < MAX_CONNS; i++) {
         sconn *c = s->conn[i];
         if (c && c->id >= 0 && !c->spectator && (c->busy || c->status == ST_LOADING || c->status == ST_CATCHUP || c->status == ST_DESYNCED))
             busy |= 1u << c->id;
+        if (c && c->id >= 0 && c->id < 32 && !c->spectator && c->busy == 2) window |= 1u << c->id;
     }
-    uint8_t b[20], *p = b;
+    uint8_t b[24], *p = b;
     p = put8(p, P_TIMECTL); p = put32(p, s->timer); p = put32(p, s->sent_snapshot); p = put32(p, (uint32_t)(s->tpt * 1000));
-    p = put32(p, busy);
+    p = put32(p, busy); p = put32(p, window);
     send_all_live(s, b, p - b, -1);
+    /* players still loading get no TIMECTL: tell them who holds the game (a guest waiting for the join save must
+       not time out while the host has a Yes/No box open) */
+    if (busy != s->held_last[0] || window != s->held_last[1] || ++s->held_n >= 15) {
+        uint8_t h[9], *q = h; q = put8(q, P_HELD); q = put32(q, busy); q = put32(q, window);
+        for (int i = 0; i < MAX_CONNS; i++) {
+            sconn *c = s->conn[i];
+            if (c && c->id >= 0 && c->status == ST_LOADING && !c->closing) dsnet_link_send(&c->link, h, q - h);
+        }
+        s->held_last[0] = busy; s->held_last[1] = window; s->held_n = 0;
+    }
     float m = 0;
     for (int i = 0; s->cfg.slow_to_frame_time && i < MAX_CONNS; i++)
         if (s->conn[i] && s->conn[i]->status == ST_PLAYING && !s->conn[i]->spectator && s->conn[i]->frame_ms > m) m = s->conn[i]->frame_ms;
@@ -781,7 +865,7 @@ static void *server_main(void *arg) {
             while (dsnet_link_next(&c->link, &body, &n)) { on_frame(s, c, body, n); c->last_rx = t; }
             /* silent guest (keep-alive every 100 ms): drop it so it leaves instead of holding the timer */
             int tmo = dsnet_rx_timeout_ms();
-            if (c->id >= 0 && tmo && t - c->last_rx > tmo && !c->link.dead) {
+            if (c->id >= 0 && !c->local && tmo && t - c->last_rx > tmo && !c->link.dead) {   /* never the host's own link (a stalled host) */
                 dsnet_logf("server: player %d silent for %d ms, dropped", c->id, (int)(t - c->last_rx));
                 c->link.dead = 1;
             }
@@ -813,6 +897,9 @@ static void *server_main(void *arg) {
         pthread_mutex_lock(&s->mu);
         int np2 = 0, ns2 = 0;
         for (int i = 0; i < MAX_CONNS; i++) if (s->conn[i] && s->conn[i]->id >= 0) { if (s->conn[i]->spectator) ns2++; else np2++; }
+        memset(s->peer, 0, sizeof s->peer);
+        for (int i = 0; i < MAX_CONNS; i++) { sconn *c = s->conn[i];
+            if (c && c->id >= 0 && c->id < DSNET_MAX_PLAYERS && !c->spectator) { s->peer[c->id].via = (uint8_t)conn_via(c); s->peer[c->id].ip = c->peer_ip; s->peer[c->id].port = c->peer_port; } }
         s->stats = (dsnet_server_stats){ s->timer, s->log_n, np2, s->held, s->tpt, s->max_behind_seen, s->log_base, ns2, s->spect_saves, s->spect_jps };
         pthread_mutex_unlock(&s->mu);
     }
@@ -877,6 +964,17 @@ uint16_t dsnet_server_port(dsnet_server *s) { return s->port; }
 
 void dsnet_server_get_stats(dsnet_server *s, dsnet_server_stats *out) {
     pthread_mutex_lock(&s->mu); *out = s->stats; pthread_mutex_unlock(&s->mu);
+}
+
+int dsnet_server_peer(dsnet_server *s, int player, char *out, size_t n) {
+    if (out && n) out[0] = 0;
+    if (!s || player < 0 || player >= DSNET_MAX_PLAYERS) return DSNET_VIA_UNKNOWN;
+    pthread_mutex_lock(&s->mu);
+    int via = s->peer[player].via; uint32_t ip = s->peer[player].ip; uint16_t port = s->peer[player].port;
+    pthread_mutex_unlock(&s->mu);
+    if (out && n && port && (via == DSNET_VIA_DIRECT || via == DSNET_VIA_STEAM))
+        snprintf(out, n, "%u.%u.%u.%u:%u", ip >> 24, ip >> 16 & 255, ip >> 8 & 255, ip & 255, port);
+    return via;
 }
 
 /* used by dsnet_client_connect_local */

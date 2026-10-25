@@ -16,7 +16,9 @@ int32_t trn_floor_seed(int64_t tick, int32_t region, int32_t floor, int32_t cur_
 void  trn_install(void);                          /* from the add-image callback, after rig_det_install() */
 char *trn_exec(const char *cmd, const char *line);/* "trn_*" socket commands; NULL = not ours */
 int   trn_flow_busy(void);                        /* a multi-frame flow runs: EventQueue async busy || transition || loading */
+int   trn_flow_window(void);                      /* only the EventQueue is held (a stock Yes/No box waits for its answer) */
 void  trn_set_role(int is_host);                  /* mp glue: clients never autosave; host diverts the game-hour autosave */
+void  trn_clear_role(void);                       /* mp glue: session over, the stock autosave path again */
 /* trn_mp.c (needs mp_game.h): */
 int   trn_submit_map_change(const uint8_t *order, size_t len);   /* ui lane, host on accept: send as a host order */
 void  trn_flow_frame(void);                       /* once per MainFlow.Update in multiplayer: busy edges -> dsnet busy

@@ -86,7 +86,7 @@ so the other lane's own `DSI_IMPLEMENTATION` in its harness gives no duplicate. 
   the same frame in the new language and fonts. Campaign UI (lobby, Esc buttons, chat) is built per scene, and the
   language cannot change in a campaign. The other lane only compares `dsi_generation()`.
 - Fonts: `LanguageSetting.GetFont(style)` by name (0 = body, 2 = titles). It is cached per `dsi_generation()` and called
-  only after the game has loaded `_fontSO`. Body material = the font asset's own material (as before: no outline).
+  only after the game has loaded `_fontSO`. Body material: since 2026-10-24 the game's SoftOutline16 (mpm_look_material; it was the plain material).
   Fallbacks: the old sources (Txt_Notice font, Cinzel found by name). `txt_style(cinzel=1)` (exported, also used by
   Custom Modes) now gets the language's title font. The lobby title uses it too.
 - Game words (`mpm_word` in the model, `game_word` on the game side: `TextKeyExtensions.GetText` by name, cached per

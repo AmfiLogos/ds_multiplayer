@@ -41,6 +41,16 @@ static void plan_json(void) {
     CHECK(dsmc_plan_parse(k, &pl) == 1 && pl.can_fix == 0, "not_official: no button (can_fix %d)", pl.can_fix);
     dsmc_hostmods_text(&pl, 0, t, sizeof t, 6);
     CHECK(strstr(t, "it cannot be downloaded") && !strstr(t, "\"Get the host's mods\" downloads"), "not_official text: %s", t);
+    /* the host's version, on, but it does not run here (crash guard): its own line with the loader's reason, never the
+       button (a soft restart leaves it off: refused again, restart again), never "you have it, turned off" */
+    const char *nr = "{\"rows\":[{\"id\":\"gcd-cdr\",\"name\":\"Global cooldown fix\",\"host_ver\":\"0.1.7\",\"my_ver\":\"0.1.7\",\"my_on\":0,"
+                     "\"official\":1,\"action\":\"not_running\",\"host_set\":\"\",\"my_set\":\"\",\"why\":\"it stopped the game while starting last time, so it stays off until it is updated\"}],"
+                     "\"can_fix\":1,\"downloads\":0}";
+    CHECK(dsmc_plan_parse(nr, &pl) == 1 && pl.can_fix == 0, "not_running: no button (can_fix %d)", pl.can_fix);
+    dsmc_hostmods_text(&pl, 0, t, sizeof t, 6);
+    CHECK(strstr(t, "Global cooldown fix</color> is on but did not start on this computer: it stopped the game while starting last time")
+          && strstr(t, "cannot fix a mod that does not start on this computer") && !strstr(t, "turned off") && !strstr(t, "downloads what is missing")
+          && !strstr(t, "not one of our official mods"), "not_running text: %s", t);
     CHECK(dsmc_plan_parse("{\"error\":\"x\"}", &pl) < 0 && dsmc_plan_parse("{\"rows\":[{\"id\":\"a\"", &pl) < 0, "bad JSON refused");
 }
 

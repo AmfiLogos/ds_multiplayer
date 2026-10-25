@@ -40,6 +40,12 @@ void dsnet_set_modset(int rule, const char *modset, const char *lines) {
     snprintf(dsnet_mod_lines, sizeof dsnet_mod_lines, "%s", lines ? lines : "");
 }
 const char *dsnet_my_mod_lines(void) { return dsnet_mod_lines; }
+char dsnet_mod_opt[DSNET_MODOPT_MAX];
+void dsnet_set_modset_optional(const char *lines) {
+    size_t n = lines ? strlen(lines) : 0;
+    if (n >= sizeof dsnet_mod_opt) n = 0;                  /* cut lines would never match the host's: none */
+    memcpy(dsnet_mod_opt, lines ? lines : "", n); dsnet_mod_opt[n] = 0;
+}
 char dsnet_reject_host_rel[16];
 static char my_rel[16]; static int my_rel_set;
 static void rel_clean(char *out, size_t n, const char *s) {        /* keep [0-9A-Za-z._-], drop a leading 'v' */
@@ -107,6 +113,9 @@ void dsnet_set_tx_stall_ms(int ms) { tx_stall = ms < 0 ? 0 : ms; }
 static int save_wait = -1;
 int  dsnet_save_wait_ms(void) { return env_ms(&save_wait, "DSNET_SAVE_WAIT_MS", 90000); }
 void dsnet_set_save_wait_ms(int ms) { save_wait = ms < 0 ? 0 : ms; }
+static int save_held = -1;
+int  dsnet_save_held_ms(void) { return env_ms(&save_held, "DSNET_SAVE_HELD_MS", 600000); }
+void dsnet_set_save_held_ms(int ms) { save_held = ms < 0 ? 0 : ms; }
 
 double dsnet_now_ms(void) {
     struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -282,4 +291,18 @@ int dsnet_blob_feed(dsnet_blob_rx *rx, const uint8_t *p, uint32_t n) {
     memcpy(rx->buf + off, p + BLOB_HDR, dlen);
     rx->got += dlen;
     return rx->got == rx->total;
+}
+
+/* ---- relay ports (dsnet.h: dsnet_relay_port_mark): loopback source ports of the Steam bridges ---- */
+static uint16_t relay_ports[64];
+void dsnet_relay_port_mark(uint16_t port, int on) {
+    if (!port) return;
+    if (!on) { for (int i = 0; i < 64; i++) { uint16_t v = port; __atomic_compare_exchange_n(&relay_ports[i], &v, 0, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE); } return; }
+    if (dsnet_relay_port_is(port)) return;
+    for (int i = 0; i < 64; i++) { uint16_t z = 0; if (__atomic_compare_exchange_n(&relay_ports[i], &z, port, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) return; }
+}
+int dsnet_relay_port_is(uint16_t port) {
+    if (!port) return 0;
+    for (int i = 0; i < 64; i++) if (__atomic_load_n(&relay_ports[i], __ATOMIC_ACQUIRE) == port) return 1;
+    return 0;
 }

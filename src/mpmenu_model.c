@@ -164,8 +164,7 @@ int mpm_choice_of_btn(int b) { return b == MPB_HOST_FE ? 0 : b >= MPB_HOST_C1 &&
    Fight or Capture the Flag (pvp/pvp_ui.c). Another mod's choice: no line. */
 const char *mpm_choice_note(const char *id) {
     if (!id) return NULL;
-    if (!strcmp(id, "foreign-expedition")) return TR("Co-op: your units in a shared hub");
-    if (!strcmp(id, "pvp")) return TR("Team battle or Capture the Flag");
+    if (!strcmp(id, "foreign-expedition")) return TR("Co-op expeditions or PvP matches");
     return NULL;
 }
 int mpm_choice_register(mpm_choices *l, const char *id, const char *label, const char *tip, const mpm_choice *fn, int check_len) {
@@ -199,7 +198,7 @@ static const mpm_obs *cur;
 /* a failed start or join (lan_v10, ux_flow F8): the reason goes to the stock notice box (game side), not in small type
  * in brackets on the Multiplayer button; the button stays plain. head and why: already translated. */
 static int fail(mpm_model *m, const char *head, const char *why) {
-    char r[200]; snprintf(r, sizeof r, "%s", cur && cur->msg[0] ? cur->msg : why);
+    char r[640]; snprintf(r, sizeof r, "%s", cur && cur->msg[0] ? cur->msg : why);   /* 200 cut a Russian reason (213 bytes) mid-word */
     /* the title line says "Could not join" already: drop that start of a refusal. Both texts come from the same
        TR("Could not join: %s") (mp_game), so this compares one translated text with itself, in any language */
     const char *f = TR("Could not join: %s"), *ps = strstr(f, "%s");
@@ -268,7 +267,7 @@ static int rule_arrow(mpm_model *m, int c) {
 }
 int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
     int a = 0; cur = o;
-    m->steam = o->steam; m->spect = o->spectator;
+    m->steam = o->steam; m->spect = o->spectator; m->host_window = o->host_window;
     /* Escape = Back on every title page. Host page: the Rules are always open (owner v12 item 5), nothing to close first */
     if (o->escape && c == MPB_NONE && o->scene == 1) {
         /* one rule (ux_flow F16): Escape = the visible Cancel if there is one, else Back */
@@ -346,6 +345,10 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         else if (m->picker_seen && ++m->closed_frames > 90) return go(m, MPM_TITLE_HOST);   /* closed, nothing loads: back */
         break;
     case MPM_HOST_LOADING:
+        /* the tutorial is single-player: one unit, scripted steps and pop-ups per player (Foctopus 2026-10-20). The
+           session does not start; the world stays a single-player game. */
+        if (o->campaign_ready && o->tutorial) return fail(m, TR("Multiplayer could not start"), TR("The tutorial is single-player only: you play it alone. To play together, start a campaign without the tutorial"));
+        if (o->campaign_ready && o->solo_hold) { m->closed_frames = 0; break; }   /* the single-player copy box first (owner 2026-10-25) */
         if (o->campaign_ready) { m->closed_frames = 0; return go(m, MPM_LOBBY) | MPA_HOST_START | MPA_LOBBY_SHOW; }
         if (o->scene == 1 && o->title_visible && !o->loading && ++m->closed_frames > 300) return fail(m, TR("Multiplayer could not start"), TR("Loading the campaign failed"));
         break;
@@ -367,8 +370,10 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (m->lobby_settings_open && (c == MPB_SPECT_PREV || c == MPB_SPECT_NEXT)) return MPA_SPECTATORS | MPA_REFRESH;   /* game side: confirm box / mp_set_spectators */
         if (m->lobby_settings_open && rule_arrow(m, c)) return MPA_RULES | MPA_REFRESH;   /* host changes the rules in the lobby */
         /* host Leave ends everyone's session (ux_flow F7): ask first */
+        /* owner 2026-10-20: Quit = the same + back to the title; Leave (Turn off multiplayer) = the host keeps playing alone */
         if (c == MPB_LEAVE && !m->confirm_leave) { m->confirm_leave = 1; return MPA_CONFIRM_LEAVE | MPA_REFRESH; }
-        if (c == MPB_LEAVE_CONFIRM && m->confirm_leave) return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE;
+        if (c == MPB_LOBBY_QUIT && !m->confirm_leave) { m->confirm_leave = 2; return MPA_CONFIRM_LEAVE | MPA_REFRESH; }
+        if (c == MPB_LEAVE_CONFIRM && m->confirm_leave) { int q = m->confirm_leave == 2; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE | (q ? MPA_QUIT_TITLE : 0); }
         if (c == MPB_LEAVE_CANCEL && m->confirm_leave) { m->confirm_leave = 0; return MPA_LEAVE_BOX_CLOSE | MPA_REFRESH; }
         break;
     case MPM_PLAYING:
@@ -379,6 +384,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (c == MPB_LEAVE && o->role == 1 && !m->confirm_leave) { m->confirm_leave = 1; return MPA_CONFIRM_LEAVE | MPA_REFRESH; }   /* host: ask first (F7) */
         if (c == MPB_LEAVE_CANCEL && m->confirm_leave) { m->confirm_leave = 0; return MPA_LEAVE_BOX_CLOSE | MPA_REFRESH; }
         if ((c == MPB_LEAVE && o->role != 1) || (c == MPB_LEAVE_CONFIRM && m->confirm_leave)) { m->msg[0] = 0; return go(m, MPM_IDLE) | MPA_LEAVE; }
+        if (o->rejoining) break;                                             /* auto rejoin: not ended yet (its box, mpmenu.c) */
         if (o->role == 0 && m->confirm_leave) a |= MPA_LEAVE_BOX_CLOSE;    /* the session ended under the box */
         if (o->role == 0) {                                                  /* steamnet's reason ("The host left the game"); own quit: none */
             if (!o->msg[0]) { m->msg[0] = 0; return go(m, MPM_IDLE) | a; }
@@ -391,7 +397,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         if (o->scene == 1 && o->title_visible && !o->loading) {
             if (++m->closed_frames > 90) { m->closed_frames = 0; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE; }
         } else m->closed_frames = 0;
-        if (c == MPB_LEAVE) { m->msg[0] = 0; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE; }
+        if (c == MPB_LEAVE || c == MPB_LOBBY_QUIT) { m->msg[0] = 0; return go(m, MPM_IDLE) | MPA_LEAVE | MPA_LOBBY_HIDE | MPA_QUIT_TITLE; }   /* guest: Quit (the world is the host's) */
         if (c == MPB_FE_BRINGWIN) return MPA_FE_BRING;
         if (o->role == 0) return (o->msg[0] ? ended(m, o) : go(m, MPM_IDLE)) | MPA_LOBBY_HIDE;
         if (!o->host_lobby) return go(m, MPM_PLAYING) | MPA_LOBBY_HIDE;
@@ -415,6 +421,7 @@ int mpm_is_visible(const mpm_model *m, const mpm_obs *o, int b) {
     { int k = mpm_choice_of_btn(b); if (k >= 0) return m->state == MPM_TITLE_MENU && k < nch(m); }   /* only once a mod registered it */
     if (b == MPB_HOST_START) return m->state == MPM_TITLE_HOST && cur_v2(m);
     if (b == MPB_JOIN_DIV || b == MPB_JOIN_HDR) return m->state == MPM_TITLE_MENU;   /* Host a game ... | divider | Join a game ... */
+    if (b == MPB_LOBBY_QUIT) return m->state == MPM_LOBBY || m->state == MPM_GUEST_LOBBY;
     if (b < 0 || b >= 64) return 0;
     return (int)(mpm_visible(m, o) >> b & 1u);
 }
@@ -457,12 +464,16 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
         break;
     case MPB_LABEL_ADDR: snprintf(out, cap, "%s", TR("Host address")); break;
     case MPB_HEADER:
+        if (m->state == MPM_TITLE_HOST && cur_v2(m) && m->choice == 1) { snprintf(out, cap, "%s", TR("Host the Hub")); break; }   /* choice 1 = the hub (mp_modes.c) */
         if (m->state == MPM_TITLE_HOST && cur_v2(m)) { snprintf(out, cap, TR("Host: %s"), m->choice_label[m->choice - 1]); break; }
         snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? TR("Join a multiplayer world") : m->state == MPM_TITLE_FRIENDS ? TR("Join a friend on Steam")
-                                          : m->set.fe ? TR("Host a Foreign Expedition") : m->host_new ? TR("Host a new save") : TR("Host your save")); break;
+                                          : m->set.fe ? TR("Host the Hub") : m->host_new ? TR("Host a new save") : TR("Host your save")); break;
     case MPB_JOIN_FRIEND:
         if (m->steam) snprintf(out, cap, "%s", TR("Join a friend on Steam"));
-        else snprintf(out, cap, "<color=#A69085><line-height=80%%>%s\n<size=65%%>%s</size></line-height></color>", TR("Join a friend on Steam"), TR("Needs the Steam version"));
+        else {                                                              /* the small line in points: 65% of the auto-sized label was ~9.6 */
+            const char *lc = dsi_code(); int cjk = lc && (!strncmp(lc, "ja", 2) || !strncmp(lc, "zh", 2) || !strncmp(lc, "ko", 2));
+            snprintf(out, cap, "<color=#A69085><line-height=80%%>%s\n<size=%d>%s</size></line-height></color>", TR("Join a friend on Steam"), cjk ? 14 : 12, TR("Needs the Steam version"));
+        }
         break;
     case MPB_FRIEND0: case MPB_FRIEND1: case MPB_FRIEND2: case MPB_FRIEND3: case MPB_FRIEND4: case MPB_FRIEND5:
         if (m->friends[b - MPB_FRIEND0][0]) snprintf(out, cap, TR("Join %s's world"), m->friends[b - MPB_FRIEND0]);
@@ -485,10 +496,11 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
             const char *f = m->spect ? (m->state == MPM_GUEST_LOADING ? TR("Joining %s's game as a spectator... loading") : TR("Joining %s's game as a spectator..."))
                                      : (m->state == MPM_GUEST_LOADING ? TR("Joining %s's game... loading") : TR("Joining %s's game..."));
             snprintf(tmp, sizeof tmp, f, m->host[0] ? m->host : TR("the host"));
-            snprintf(out, cap, "<size=75%%>%s</size>", tmp);
+            if (m->host_window) snprintf(out, cap, "%s\n%s", tmp, TR("Waiting for the host to close a window..."));   /* the line's own size (Lora 14): */
+            else snprintf(out, cap, "%s", tmp);                             /* at 75% it was unreadable at 960 x 540 */
         }
         else if (m->connecting[0]) { snprintf(tmp, sizeof tmp, m->watch ? TR("Connecting to %s to watch...") : TR("Connecting to %s..."), m->connecting);
-                                     snprintf(out, cap, "<size=70%%>%s</size>", tmp); }
+                                     snprintf(out, cap, "%s", tmp); }
         else if (m->msg[0]) snprintf(out, cap, "<color=#F16071>%s</color>", m->msg);   /* Lora 14 (game side) */
         else if (m->no_field) snprintf(out, cap, "<size=60%%>%s</size>", TR("Copy the host's address, then press Connect"));
         else out[0] = 0;
@@ -499,7 +511,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_HOST_SAVE: snprintf(out, cap, "%s", TR("Your save")); break;
     case MPB_HOST_NEW: snprintf(out, cap, "%s", TR("New save")); break;
     /* host choices: the registering mod's own text (Custom Modes registers it translated, again on a language change) */
-    case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : TR("Foreign Expedition")); break;
+    case MPB_HOST_FE: snprintf(out, cap, "%s", m->nchoice ? m->choice_label[0] : m->host_choice_label[0] ? m->host_choice_label : TR("Hub: Co-op or PvP")); break;
     case MPB_HOST_C1: case MPB_HOST_C2: case MPB_HOST_C3: snprintf(out, cap, "%s", m->choice_label[mpm_choice_of_btn(b)]); break;
     case MPB_HOST_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start"))); break;
     case MPB_FE_RESLIST: snprintf(out, cap, "%s", TR("Expedition results")); break;
@@ -515,6 +527,7 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_COPY_ADDR: snprintf(out, cap, "%s", TR("Copy direct address")); break;
     case MPB_START: snprintf(out, cap, "%s", mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start"))); break;
     case MPB_LEAVE: snprintf(out, cap, "%s", TR("Leave multiplayer")); break;
+    case MPB_LOBBY_QUIT: snprintf(out, cap, "%s", TR("Quit")); break;
     case MPB_CANCEL_JOIN: snprintf(out, cap, "%s", mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel"))); break;
     case MPB_WATCH: case MPB_HISTW0: case MPB_HISTW1: case MPB_HISTW2: case MPB_HISTW3: case MPB_HISTW4: case MPB_HISTW5: snprintf(out, cap, "%s", TR("Watch")); break;
     case MPB_SPECT_PREV: case MPB_SPECT_NEXT: out[0] = 0; break;

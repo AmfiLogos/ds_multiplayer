@@ -16,7 +16,7 @@ static inline int getifaddrs(struct ifaddrs **out) {
     if (GetAdaptersAddresses(AF_INET, GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER, NULL, aa, &sz) != NO_ERROR) { free(aa); return -1; }
     struct ifaddrs **tail = out; int k = 0, kv = 0, kt = 0;
     static const wchar_t *const tun[] = { L"TAP-", L"Tunnel", L"WireGuard", L"Tailscale", L"ZeroTier", L"Hamachi", L"OpenVPN", L"VPN" };
-    static const wchar_t *const virt[] = { L"Virtual", L"VMware", L"VirtualBox", L"Hyper-V" };
+    static const wchar_t *const virt[] = { L"Virtual", L"VMware", L"VirtualBox", L"Hyper-V", L"Docker", L"WSL", L"Loopback" };
     for (IP_ADAPTER_ADDRESSES *a = aa; a; a = a->Next) {
         int kind = a->IfType == IF_TYPE_PPP || a->IfType == IF_TYPE_TUNNEL ? 2 : 0;
         for (size_t t = 0; !kind && a->Description && t < sizeof tun / sizeof tun[0]; t++) if (wcsstr(a->Description, tun[t])) kind = 2;

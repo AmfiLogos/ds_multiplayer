@@ -18,6 +18,12 @@
 #define DSMC_TR(s) TR(s)                                 /* ds_modcheck.h: the hostmods box in the player's language */
 #include "net/ds_modcheck.h"                             /* "Get the host's mods": plan JSON -> box text, DSMP_REJOIN line */
 #include "mp_api.h"                                      /* mod chat lines (chat_line, mp_modchat.c) */
+#include "extaddr.h"                                     /* the host's internet address for the lobby (background lookup) */
+#include "upnpport.h"                                    /* the router port for friends outside the home (UPnP, background) */
+#include "fe_ui_api.h"                                  /* fe_mode_get: the hub lobby's hint line */
+#include "mp_worldsave.h"                                /* mp_hub_guid: the hub is never saved, tagged or listed */
+#include "mp_solo.h"                                     /* the single-player copy of a world new to multiplayer */
+#include "mp_esc.h"                                       /* Escape for our windows through the loader kit (kit 0.1.28) */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,6 +71,25 @@ int rect_of(Obj comp, float r[4]);
 static double mono_s(void);
 static const char *palette_color(int idx);
 static const char *cls_name(Obj o) { return o ? *(const char **)((char *)*(void **)o + 0x10) : ""; }
+/* DASText._useTextKey / _textKey by name: Mac 0x7C0 / 0x7C8, Windows 0x7C8 / 0x7D0 (MSVC puts no subclass field in the
+   base's tail padding). The Mac 0x7C0 on Windows cleared the low byte of TextMeshProUGUI.materialIndexPairs: v0.1.21 F1,
+   a guest crashed at the title load (Unity's asset GC walked a chat text of the chat canvas kept across scenes). */
+static int das_off(int k) {                                                 /* 0 _useTextKey, 1 _textKey, 2 _text; -1 = not found */
+    static int off[3] = { -2, -2, -2 }; static const char *const nm[3] = { "_useTextKey", "_textKey", "_text" };
+    if (off[k] == -2) {
+        void *c = class_by_name("Refactor.UI", "DASText"); if (!c) return -1;   /* not loaded yet: again next time */
+        void *f = F(0x6F8C14, void *(*)(void *, const char *))(c, nm[k]);      /* il2cpp_class_get_field_from_name */
+        off[k] = f ? (int)F(0x6F949C, size_t (*)(void *))(f) : -1;            /* il2cpp_field_get_offset */
+        if (off[k] < 0) rig_log("mpmenu: DASText.%s not found: its text key is left as is", nm[k]);
+        else rig_log("mpmenu: DASText.%s at %#x", nm[k], off[k]);
+    }
+    return off[k];
+}
+static int das_at(Obj t, int k) { return t && !strcmp(cls_name(t), "DASText") ? das_off(k) : -1; }
+bool das_key_on(Obj t) { int o = das_at(t, 0); return o > 0 && AT(t, o, bool); }
+void das_key_set(Obj t, bool on) { int o = das_at(t, 0); if (o > 0) AT(t, o, bool) = on; }
+void das_key_clear(Obj t) { das_key_set(t, false); int o = das_at(t, 1); if (o > 0) AT(t, o, Obj) = NULL; }   /* our text, no key */
+void das_text_keep(Obj t, Obj s) { int o = das_at(t, 2); if (o > 0) F(0x6F95C8, void (*)(Obj, void **, Obj))(t, (void **)((char *)t + o), s); }   /* _text = s (write barrier) */
 /* TMP_Text.text: virtual slots 65 (get, +0x548) / 66 (set, +0x558) */
 static Obj tmp_get(Obj t) {
     if (!u_alive(t) || !mm_is(t, K_TMP)) return NULL;
@@ -87,7 +112,7 @@ static void fit_dirty(Obj t);
 static void fit_style(Obj t, float size, int wrap);
 void tmp_set(Obj t, const char *s) {
     if (!u_alive(t) || !mm_is(t, K_TMP)) return;
-    if (!strcmp(cls_name(t), "DASText")) AT(t, 0x7C0, bool) = false;     /* DASText._useTextKey: keep our raw text */
+    das_key_set(t, false);                                                  /* DASText._useTextKey: keep our raw text */
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x558))(t, u_str_ok(s), *(void **)((char *)k + 0x560));
     fit_text(t, s);
@@ -122,37 +147,96 @@ void *class_by_name(const char *ns, const char *name) {
     }
     return NULL;
 }
-/* fastboot_mp (2026-10-17): an ABSENT view is looked up again at most every FV_RETRY frames per call site (handle +
-   names). FindObjectOfType walks the scene's objects and ran every frame for views the scene does not have (the title
+/* fastboot_mp (2026-10-17): an ABSENT view is looked up again at most every FV_RETRY_MS (was 15 frames) per class
+   name + mode (was per call site). FindObjectOfType walks the scene's objects and ran every frame for views the scene does not have (the title
    view in the world, the Esc menu before it was first opened, the HUD on the title): a big part of this module's main-
    thread time during a world load. A found view keeps its cached handle (unchanged). Lookups stay immediate during a rig
    command (mpmenu_fv_kick from rig_exec), for 10 frames after a key / mouse press (Input.anyKeyDown, read in
    mpmenu_frame; without that icall: always immediate, as before) and inside find_view_now (actions that open a view).
    UI only: no sim state. */
-#define FV_RETRY 15
-#define FV_SITES 48
-static struct { const uintptr_t *h; const char *ns, *name; int64_t next; } fv_miss[FV_SITES];
+#define FV_RETRY_MS 2000.0    /* fpsfix 2026-10-20: was 15 frames (14 lookups/s per absent view at 210 fps, 2.5-4 ms each) */
+#define FV_SITES 64
 static int64_t fv_free_until = INT64_MAX;                         /* immediate lookups while rig_frames < this */
 static int fv_now_depth;
-void mpmenu_fv_kick(void) { if (fv_free_until != INT64_MAX && fv_free_until < rig_frames + 10) fv_free_until = rig_frames + 10; }
+static long fv_kicks[2];
+static void fv_kick_n(int n) { fv_kicks[n == 10]++; if (fv_free_until != INT64_MAX && fv_free_until < rig_frames + n) fv_free_until = rig_frames + n; }
+void mpmenu_fv_kick(void) { fv_kick_n(10); }
+/* fpsfix: an absent view is looked up again after FV_RETRY_MS (wall clock, not frames), and at most one throttled
+   lookup runs per frame (the others wait a frame): no frame pays for several FindObjectOfType walks. Immediate lookups
+   (a kick): 10 frames after a rig command or a stock popup opening (ui_game hk_activate_view), 3 frames after a key /
+   mouse press. A new scene or the end of a load only makes every absent view due again (still one per frame). */
+static int64_t fv_budget_frame = -1;
+static double fv_clock(void);
+static int fv_kicked(void) { return rig_frames < fv_free_until || fv_now_depth; }
+static int fv_may_retry(double next) {                             /* 1 = look it up now */
+    if (fv_kicked()) return 1;
+    if (fv_clock() < next || fv_budget_frame == rig_frames) return 0;
+    fv_budget_frame = rig_frames; return 1;
+}
+/* absent views by class name + mode ('a' active only, 'i' with inactive, '*' active then inactive): an absent class is
+   absent for every caller (some callers pass a handle on the stack, several handles look for one class) */
+static struct { char key[96]; double next; } fv_miss[FV_SITES];
+static int fv_rr;
+static int fv_slot(const char *ns, const char *name, char mode, char *key, size_t cap) {   /* index or -1 */
+    snprintf(key, cap, "%s.%s/%c", ns, name, mode);
+    for (int i = 0; i < FV_SITES; i++) if (fv_miss[i].key[0] && !strcmp(fv_miss[i].key, key)) return i;
+    return -1;
+}
+static void fv_missed(int i, const char *key) {
+    if (i < 0) {                                                       /* a free slot, else round robin */
+        for (i = 0; i < FV_SITES && fv_miss[i].key[0]; i++) {}
+        if (i == FV_SITES) { i = fv_rr; fv_rr = (fv_rr + 1) % FV_SITES; }
+        snprintf(fv_miss[i].key, sizeof fv_miss[i].key, "%s", key);
+    }
+    fv_miss[i].next = fv_clock() + FV_RETRY_MS;
+}
 static Obj find_view_lookup(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive);
+static double fv_clock(void);
+static double fv_ms_sum, fv_ms_max; static long fv_lookups;
+static struct { char key[80]; long n; double ms; } fv_cnt[96]; static int fv_ncnt;
+static void fv_count(const char *ns, const char *name, double ms) {
+    char key[80]; snprintf(key, sizeof key, "%s.%s", ns, name);
+    int i; for (i = 0; i < fv_ncnt && strcmp(fv_cnt[i].key, key); i++) {}
+    if (i == fv_ncnt) { if (fv_ncnt == 96) return; snprintf(fv_cnt[fv_ncnt++].key, 80, "%s", key); }
+    fv_cnt[i].n++; fv_cnt[i].ms += ms;
+}
+const char *mpmenu_fv_counts(void) {
+    static char o[4096]; size_t k = 0; o[0] = 0;
+    for (int i = 0; i < fv_ncnt && k < sizeof o - 120; i++) k += (size_t)snprintf(o + k, sizeof o - k, "%s[\"%s\",%ld,%.1f]", i ? "," : "", fv_cnt[i].key, fv_cnt[i].n, fv_cnt[i].ms);
+    return o;
+}
 Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
-    int i, slot = -1;
-    for (i = 0; i < FV_SITES; i++) {
-        if (fv_miss[i].h == h && fv_miss[i].ns == ns && fv_miss[i].name == name) break;
-        if (!fv_miss[i].h && slot < 0) slot = i;
-    }
-    if (i < FV_SITES && rig_frames < fv_miss[i].next && rig_frames >= fv_free_until && !fv_now_depth) return NULL;   /* retried later */
+    char key[96]; int i = fv_slot(ns, name, inactive ? 'i' : 'a', key, sizeof key);
+    if (i >= 0 && !fv_may_retry(fv_miss[i].next)) return NULL;       /* retried later */
     v = find_view_lookup(h, kcache, ns, name, inactive);
-    if (v) { if (i < FV_SITES) fv_miss[i].h = NULL; }
-    else if (i < FV_SITES || slot >= 0) {                             /* table full: no throttle for that site */
-        if (i == FV_SITES) { i = slot; fv_miss[i].h = h; fv_miss[i].ns = ns; fv_miss[i].name = name; }
-        fv_miss[i].next = rig_frames + FV_RETRY;
-    }
+    if (v) { if (i >= 0) fv_miss[i].key[0] = 0; }
+    else fv_missed(i, key);
     return v;
 }
+/* fpsfix (2026-10-20, player report "the mod lowers FPS even in single player"): the ui lanes' find_view (ui_game.c,
+   ui_teams.c: active object first, then an inactive one) ran FindObjectOfType twice per call for every view the scene
+   does not have, 10 to 60 times a second (pause view, quick slots, banner, Esc menu on the title): half of the main
+   thread on the title, 18% in a world (macOS sample, rig 2026-10-20). Same throttle as find_view_x, keyed by class
+   name (an absent class is absent for every caller; some callers pass a handle on the stack). */
+Obj mpmenu_find_any(uintptr_t *h, const char *ns, const char *name) {
+    Obj v = u_gc_get(*h);
+    if (u_alive(v)) return v;
+    char key[96]; int i = fv_slot(ns, name, '*', key, sizeof key);
+    if (i >= 0 && !fv_may_retry(fv_miss[i].next)) return NULL;       /* retried later */
+    double t0 = fv_clock();
+    void *k = class_by_name(ns, name);
+    Obj tobj = k ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k)) : NULL;
+    v = tobj ? F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, false, NULL) : NULL;   /* an active one first (scene copies) */
+    if (tobj && !u_alive(v)) v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, true, NULL);
+    double d = fv_clock() - t0; fv_ms_sum += d; fv_lookups++; if (d > fv_ms_max) fv_ms_max = d; fv_count(ns, name, d);
+    u_gc_free(*h); *h = u_alive(v) ? u_gc_new(v) : 0;
+    if (u_alive(v)) { if (i >= 0) fv_miss[i].key[0] = 0; return v; }
+    fv_missed(i, key);
+    return NULL;
+}
+static double fv_clock(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
 static Obj find_view_now(uintptr_t *h, void **k, const char *ns, const char *name, bool inactive) {
     fv_now_depth++; Obj v = find_view_x(h, k, ns, name, inactive); fv_now_depth--; return v;
 }
@@ -160,16 +244,22 @@ static void fv_input_frame(void) {                                    /* once pe
     static bool (*anykey)(void); static int looked;
     if (!looked) {
         looked = 1; anykey = (bool (*)(void))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::get_anyKeyDown()");
-        rig_log("mpmenu: view lookups %s", anykey ? "throttled while absent (every 15 frames; immediate after input)" : "immediate (Input.anyKeyDown not available)");
+        rig_log("mpmenu: view lookups %s", anykey ? "throttled while absent (every 2 s, one per frame; immediate after input / a popup)" : "immediate (Input.anyKeyDown not available)");
         if (anykey) fv_free_until = 0;
     }
-    if (anykey && anykey()) mpmenu_fv_kick();
+    if (anykey && anykey()) fv_kick_n(3);
+    static int was_scene = -2, was_busy = -1;                         /* a new scene / the end of a load: its views are due */
+    int sc = mf ? scene() : -1, bz = mf ? busy() : 1;
+    if (sc != was_scene || (was_busy == 1 && !bz)) for (int i = 0; i < FV_SITES; i++) fv_miss[i].next = 0;
+    was_scene = sc; was_busy = bz;
 }
 static Obj find_view_lookup(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
     if (!*kcache) *kcache = class_by_name(ns, name);
     if (!*kcache) return NULL;
     Obj tobj = F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(*kcache));   /* class -> Type object */
+    double t0 = fv_clock();
     Obj v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, inactive, NULL);
+    { double d = fv_clock() - t0; fv_ms_sum += d; fv_lookups++; if (d > fv_ms_max) fv_ms_max = d; fv_count(ns, name, d); }
     u_gc_free(*h); *h = u_alive(v) ? u_gc_new(v) : 0;
     return u_alive(v) ? v : NULL;
 }
@@ -216,7 +306,7 @@ static Obj comp_of(Obj any, const char *ns, const char *cls) {             /* Ge
     Obj ty = type_obj(ns, cls);
     return ty && u_alive(any) ? (mm_is(any, K_COMP) ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(any, ty, NULL) : NULL) : NULL;
 }
-/* stock assets by name: sprites of the v2 spec, the Cinzel font. Scanned once, again every 300 frames while one is missing */
+/* stock assets by name: sprites of the v2 spec, the Cinzel font. Scanned once, again (assets_scan) while a needed one is missing */
 static const char *spr_name[S_N] = { "topLineButton_Frame1", "ITEM_CogWheel", "ListToggle_On", "ListToggle_Off", "ArrrowIcon_Previous",
     "ArrrowIcon_Next", "ToggleButton_Normal", "ToggleButton_Selected", "RecruitButton", "BottomButton", "Box", "Devider_Detail2",
     "Icon_Devider", "Slot1", "Slot2", "Button_Normal", "CheckBox_Normal", "CheckBox_Checked" };
@@ -228,8 +318,41 @@ static int cog_built(void);
 void assets_scan_now(void);
 static int64_t scan_last = -100000;
 int scan_done; static int scans;
-static void assets_scan(void) { if (!scan_done && frames - scan_last >= 300 && scans < 30) assets_scan_now(); }   /* at most 30 scans */
+/* fpsfix (2026-10-20): one scan walks every loaded sprite (16 000+ in a world; ~5 ms on the title, longer in a world)
+   and ran every 300 frames up to 30 times, in the world too (ITEM_CogWheel is often not loaded: it kept the scans
+   going). Now: the cog is optional (a pixel cog stands in; title_build / lw_build still look for it), and the timer
+   scans at most 3 times per scene, the first 60 frames after the scene settles, then every 600 frames while a needed
+   sprite is missing; never during a load. */
+static void assets_scan(void) {
+    static int at_scene = -1, n_here; static int64_t since;
+    int sc = scene();
+    if (sc != at_scene) { at_scene = sc; n_here = 0; since = frames; }
+    if (busy()) { since = frames; return; }
+    if (scan_done || n_here >= 3 || frames - (n_here ? scan_last : since) < (n_here ? 600 : 60)) return;
+    n_here++; assets_scan_now();
+}
+static double scan_ms_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
+static double scan_ms_sum, scan_ms_max, pscan_ms_sum, pscan_ms_max; static int pscans;
+const char *mpmenu_scan_stats(void) {
+    static char o[300];
+    snprintf(o, sizeof o, "{\"assets\":[%d,%.1f,%.1f],\"portrait\":[%d,%.1f,%.1f],\"done\":%d,\"view_lookups\":[%ld,%.1f,%.1f],\"kicks\":[%ld,%ld]}", scans, scan_ms_sum, scan_ms_max, pscans, pscan_ms_sum, pscan_ms_max, scan_done, fv_lookups, fv_ms_sum, fv_ms_max, fv_kicks[0], fv_kicks[1]);
+    return o;
+}
+static void assets_scan_body(void);
 void assets_scan_now(void) {
+    double t0 = scan_ms_now(); assets_scan_body(); double d = scan_ms_now() - t0;
+    scan_ms_sum += d; if (d > scan_ms_max) scan_ms_max = d;
+}
+/* CheckBox_Normal comes in 5 x 5 (Settings, see-through corners: a round ring when drawn big), 10 x 10 and 12 x 12: the
+   load-list box takes the 10 x 10 one, the same square as CheckBox_Checked (owner 2026-10-20: square boxes) */
+static int chk_size_ok(int k, Obj sp) {
+    if (k != S_CHK_N && k != S_CHK_C) return 1;
+    static void *mr; if (!mr) mr = mth("UnityEngine", "Sprite", "get_rect", 0);
+    if (!mr) return 1;
+    RectF2 r = MCALL(mr, RectF2, Obj, const void *)(sp, mr);
+    return r.w > 9.5f && r.w < 10.5f && r.h > 9.5f && r.h < 10.5f;
+}
+static void assets_scan_body(void) {
     scan_last = frames; scans++;
     popup_prefab(8); popup_prefab(2); popup_prefab(13);                     /* load the Recruit / Expedition / Task Planner prefabs: their sprites too */
     static void *mi; if (!mi) mi = mth("UnityEngine", "Resources", "FindObjectsOfTypeAll", 1);
@@ -240,7 +363,7 @@ void assets_scan_now(void) {
     for (int i = 0; i < n; i++) {
         Obj sp = AT((char *)arr + 0x20, i * 8, Obj); char nm[64] = "";
         str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(sp, NULL), nm, sizeof nm);
-        for (int k = 0; k < S_N; k++) if (!h_spr[k] && !strcmp(nm, spr_name[k])) { h_spr[k] = u_gc_new(sp); found++; }
+        for (int k = 0; k < S_N; k++) if (!h_spr[k] && !strcmp(nm, spr_name[k]) && chk_size_ok(k, sp)) { h_spr[k] = u_gc_new(sp); found++; }
     }
     if (!h_cinzel) {
         Obj fa = MCALL(mi, Obj, Obj, const void *)(type_obj("TMPro", "TMP_FontAsset"), mi);
@@ -253,7 +376,7 @@ void assets_scan_now(void) {
     }
     if (!h_spr[S_COG]) cog_from_bundles();
     char missing[256] = ""; size_t o = 0;
-    for (int k = 0; k < S_N; k++) if (!h_spr[k]) { miss++; o += (size_t)snprintf(missing + o, sizeof missing - (o < sizeof missing ? o : sizeof missing), " %s", spr_name[k]); }
+    for (int k = 0; k < S_N; k++) if (!h_spr[k]) { miss += k != S_COG; o += (size_t)snprintf(missing + o, sizeof missing - (o < sizeof missing ? o : sizeof missing), " %s", spr_name[k]); }   /* the cog: optional (pixel cog) */
     if (!h_cinzel) miss++;
     rig_log("mpmenu: assets scan (%d sprites loaded): %d new, missing%s%s", n, found, missing[0] ? missing : " none", h_cinzel ? "" : " Cinzel");
     if (!miss) scan_done = 1;
@@ -371,22 +494,25 @@ void img_set(Obj im, Obj sprite, Col c) {                          /* sprite (sl
     F(0x52602F8, void (*)(Obj, Col, void *))(im, c, NULL);
     F(0x5260348, void (*)(Obj, bool, void *))(im, false, NULL);
 }
-/* Body text material (owner 2026-10-13: our texts had a black outline the game's windows do not have; the clones carried
- * the menu-button label's material). The stock window body text, CommonNoticeView Panel_Notice/Txt_Notice (Lora 16), gives
- * its fontSharedMaterial; every Lora text of our windows uses it. Cinzel titles use the Cinzel font's own material. */
+/* Text look (owner 2026-10-24: "not the same as the rest of the menus"; it replaces the 2026-10-13 plain-material rule):
+ * every text we make or restyle takes the game's look for its role, as measured in the game's own menus (title column,
+ * Options, Load Campaign): body text, buttons, labels = the language's body font + its SoftOutline16 material
+ * ("Lora-Regular SDF OutLine16"); section heads = the title font + its SoftOutline16 material; window titles (24 and up, as
+ * the game's Options / Rename titles) and text fields = the font's own plain material. mpm_look_material() decides. */
 static Obj tr_find(Obj t, const char *path);
 /* ---- i18n: the game's language and its fonts (research/i18n_plan.md 2, 4). Refactor.Setting.LanguageSetting, by name (Mac
  * and Windows): GetCurrentLanguage() (static, polled each frame: lang_poll) and GetFont(FontStyleType) (EasyRead 0 = body,
  * VeryDecorative 2 = titles; the language's own fonts: Lora / Cinzel, or the zh-Hans, zh-Hant, ja ones). */
-static void *ls_klass, *ls_lang_mi, *ls_font_mi; static int ls_tries; static int64_t ls_last_try = -100000;
+static void *ls_klass, *ls_lang_mi, *ls_font_mi, *ls_mat_mi; static int ls_tries; static int64_t ls_last_try = -100000;
 static int ls_ready(void) {                            /* class + methods found, its statics allocated */
     if (!ls_klass && ls_tries < 10 && frames - ls_last_try >= 300) {
         ls_last_try = frames; ls_tries++;
         ls_klass = class_by_name("Refactor.Setting", "LanguageSetting");
         if (ls_klass) { ls_lang_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetCurrentLanguage", 0);
-                        ls_font_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetFont", 1); }
-        rig_log("mpmenu: i18n: LanguageSetting %s (GetCurrentLanguage %s, GetFont %s)", ls_klass ? "found" : "NOT found",
-                ls_lang_mi ? "ok" : "missing", ls_font_mi ? "ok" : "missing");
+                        ls_font_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetFont", 1);
+                        ls_mat_mi = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetMaterial", 2); }
+        rig_log("mpmenu: i18n: LanguageSetting %s (GetCurrentLanguage %s, GetFont %s, GetMaterial %s)", ls_klass ? "found" : "NOT found",
+                ls_lang_mi ? "ok" : "missing", ls_font_mi ? "ok" : "missing", ls_mat_mi ? "ok" : "missing");
     }
     return ls_klass && *(void **)((char *)ls_klass + 0xB8) != NULL;       /* Il2CppClass.static_fields */
 }
@@ -413,10 +539,38 @@ static Obj lang_font(int style) {                      /* 0 body, 2 titles; NULL
     return f;
 }
 static Obj title_font(void) { Obj f = lang_font(2); if (!f) f = u_gc_get(h_cinzel); return u_alive(f) ? f : NULL; }   /* the scan's Cinzel: fallback */
-/* Body text material (owner 2026-10-13: our texts had a black outline the game's windows do not have; the clones carried
- * the menu-button label's material). Body font = the language's EasyRead font (GetFont 0); fallback the stock window body
- * text, CommonNoticeView Panel_Notice/Txt_Notice (Lora 16). Material: the font asset's own (plain). Re-fetched when the
- * language changes. Cinzel titles use the title font's own material. */
+/* the SoftOutline16 material of the language's body (title 0) or title (title 1) font: LanguageSetting.GetMaterial(
+ * FontStyleType, FontMaterialType.SoftOutline16); NULL: not available (then the plain material) */
+static uintptr_t h_lmat[2]; static unsigned lmat_gen = ~0u;
+static Obj lang_mat16(int title) {
+    if (lmat_gen != dsi_generation()) { for (int i = 0; i < 2; i++) { u_gc_free(h_lmat[i]); h_lmat[i] = 0; } lmat_gen = dsi_generation(); }
+    Obj m = u_gc_get(h_lmat[title]);
+    if (u_alive(m)) return m;
+    if (!ls_ready() || !ls_mat_mi || !*(void **)*(void **)((char *)ls_klass + 0xB8)) return NULL;   /* _fontSO not loaded yet */
+    m = MCALL(ls_mat_mi, Obj, int32_t, int32_t, const void *)(title ? 2 : 0, 1, ls_mat_mi);
+    if (!u_alive(m)) return NULL;
+    u_gc_free(h_lmat[title]); h_lmat[title] = u_gc_new(m);
+    char nm[96] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), nm, sizeof nm);
+    rig_log("mpmenu: look: %s text material for %s: %s", title ? "title" : "body", dsi_code(), nm);
+    return m;
+}
+/* the game's material for a text in font f at size (head: a section head, whatever its size): the language's body font
+ * -> its SoftOutline16; its title font -> SoftOutline16 for heads and under 24, the plain material for window titles (24
+ * and up); any other font (chat fallback faces) -> its own plain material (the game has no preset for it) */
+Obj mpm_look_material(Obj f, float size, int head) {
+    if (!u_alive(f)) return NULL;
+    Obj m = NULL;
+    if (f == lang_font(0)) m = lang_mat16(0);
+    else if (f == title_font() && (head || size < 24)) m = lang_mat16(1);
+    return m ? m : font_material(f);
+}
+static void txt_mat(Obj t, Obj m) {                                         /* TMP_Text.fontSharedMaterial */
+    static void *ms; if (!ms) ms = mth("TMPro", "TMP_Text", "set_fontSharedMaterial", 1);
+    if (u_alive(m) && ms && mm_is(t, K_TMP)) MCALL(ms, void, Obj, Obj, const void *)(t, m, ms);
+}
+/* Body font = the language's EasyRead font (GetFont 0); fallback the stock window body text, CommonNoticeView
+ * Panel_Notice/Txt_Notice (Lora 16). body_material() = that font's own plain material (text fields); body texts take
+ * mpm_look_material (SoftOutline16). Re-fetched when the language changes. */
 static uintptr_t h_body_mat, h_body_font; static unsigned body_gen = ~0u;
 static Obj body_material(void) {
     Obj m = u_gc_get(h_body_mat);
@@ -430,26 +584,29 @@ static Obj body_material(void) {
         static void *k; if (!k) k = class_by_name("TMPro", "TMP_Text");
         Obj ty = k ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k)) : NULL;
         Obj t = nt && ty ? F(0x50EDA7C, Obj (*)(Obj, Obj, void *))(nt, ty, NULL) : NULL;
-        /* that text's material is "Lora-Regular SDF OutLine16" (an outline preset): its font asset's own material instead */
         font = u_alive(t) ? F(0x4F0A59C, Obj (*)(Obj, void *))(t, NULL) : NULL; how = "CommonNoticeView Txt_Notice";
     }
     m = font_material(font);
     if (m) { h_body_mat = u_gc_new(m); h_body_font = u_gc_new(font); }
     if (body_gen != dsi_generation()) { body_gen = dsi_generation(); char nm[96] = ""; if (m) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), nm, sizeof nm);
-                                        rig_log("mpmenu: body text (%s): font from %s, its default material \"%s\"", dsi_code(), m ? how : "NOT found", nm); }
+                                        rig_log("mpmenu: body text (%s): font from %s, plain material (fields) \"%s\"", dsi_code(), m ? how : "NOT found", nm); }
     return m;
 }
-static void txt_body(Obj t) {                                             /* the language's body font + material, no outline */
+static void txt_body_as(Obj t, int field) {
     if (!mm_is(t, K_TMP)) return;
     Obj m = body_material(); if (!m) return;
     Obj f = u_gc_get(h_body_font); if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);
-    static void *ms; if (!ms) ms = mth("TMPro", "TMP_Text", "set_fontSharedMaterial", 1);
-    if (ms) MCALL(ms, void, Obj, Obj, const void *)(t, m, ms);
+    Obj g = field || !u_alive(f) ? NULL : mpm_look_material(f, 0, 0);
+    txt_mat(t, g ? g : m);
 }
+static void txt_body(Obj t) { txt_body_as(t, 0); }                         /* the language's body font, the game's body look */
+static void txt_field(Obj t) { txt_body_as(t, 1); }                        /* a text field: the plain material (as the game's) */
+static int lang_cjk(void) { const char *c = dsi_code(); return c && (!strncmp(c, "ja", 2) || !strncmp(c, "zh", 2) || !strncmp(c, "ko", 2)); }   /* see fit_min */
 void txt_style(Obj t, int cinzel, float size, int align, int wrap) {
     if (!mm_is(t, K_TMP)) return;
+    if (size < 14 && lang_cjk()) size = 14;                                 /* CJK floor (fit_min) */
     Obj f = cinzel ? title_font() : NULL;                                  /* titles: the language's title font (Cinzel in Latin languages) */
-    if (u_alive(f)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);   /* TMP takes the font's own material (other atlas) */
+    if (u_alive(f)) { F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL); txt_mat(t, mpm_look_material(f, size, 0)); }   /* head / window title */
     F(0x4F0B5DC, void (*)(Obj, bool, void *))(t, false, NULL);
     F(0x4F0B340, void (*)(Obj, float, void *))(t, size, NULL);
     F(0x4F0B7BC, void (*)(Obj, int, void *))(t, align, NULL);              /* 513 middle-left, 514 centre, 516 middle-right */
@@ -470,12 +627,19 @@ void txt_color(Obj t, Col c) { if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Co
  * 0.75: the game's way for long text, the text keeps its design size and wraps to more lines (the line grows; it
  * draws past its rect, centred); a box we own asks txt_fit_h() for the height its text needs and grows. */
 #define FIT_N 2048                                                           /* open addressing by object address */
-typedef struct { Obj t; uintptr_t h; float size, w, h_, qw, qh, qr, qs; uint32_t hash, qhash; uint8_t wrap, on, dirty, multi, stock, qk; } fit_e;   /* q*: txt_fit_h / _w cache */
+typedef struct { Obj t; uintptr_t h; float size, w, h_, qw, qh, qr, qs; uint32_t hash, qhash; uint8_t wrap, on, dirty, multi, stock, qk, ell; } fit_e;   /* q*: txt_fit_h / _w cache */
 typedef struct { float x, y, w, h; } fit_rect;
 static fit_e fit_tab[FIT_N];
 static int fit_count;
 static void *m_fit_pw, *m_fit_ph, *m_fit_rect, *m_fit_live, *m_fit_pv;
-static float fit_min(float size) { float m = size * 0.75f; m = (float)(int)(m + 0.5f); return m < 8 ? (size < 8 ? size : 8) : m; }   /* the game's 0.75 */
+/* ja / zh / ko (UX pass 2026-10-21, lead's rule): CJK below ~14 at the design size is unreadable at 960 x 540 (kanji become
+   blobs), so the fit never shrinks them below 14 (it wraps or the box grows instead) and txt_style draws them at 14 at least */
+static float fit_min(float size) {                                           /* the game's 0.75 */
+    float m = size * 0.75f; m = (float)(int)(m + 0.5f); m = m < 8 ? (size < 8 ? size : 8) : m;
+    if (lang_cjk() && m < 14) m = size < 14 ? size : 14;
+    else if (m < 12) m = size < 12 ? size : 12;                                /* Latin / Cyrillic: never below 12 (~5 px at 960 x 540) */
+    return m;
+}
 static int fit_methods(void) {
     if (!m_fit_pw) { m_fit_pw = mth("TMPro", "TMP_Text", "get_preferredWidth", 0); m_fit_ph = mth("TMPro", "TMP_Text", "get_preferredHeight", 0);
                      m_fit_rect = mth("UnityEngine", "RectTransform", "get_rect", 0); m_fit_live = mth("UnityEngine", "GameObject", "get_activeInHierarchy", 0);
@@ -551,6 +715,11 @@ static void fit_one(fit_e *e, Obj t, float w, float h) {
         int fits = fit_at_min(e, t, w, h, &two);
         fit_set(t, 0, e->size, e->wrap);
         char tx[64] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
+        if (!fits && e->ell && !e->wrap) {                                  /* a one-line text (txt_one_line): 0.75, one line, "..." */
+            e->on = 5; fit_set(t, 0, mn, 0); F(0x4F0BB74, void (*)(Obj, int, void *))(t, 1, NULL);   /* overflowMode Ellipsis */
+            rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f even at %.0f: one line at %.0f, ends in ...", tx, w, h, mn, mn);
+            return;
+        }
         if (!fits) {                                                         /* the game's long text: design size, more lines */
             e->on = 4; fit_set(t, 0, e->size, 1);
             rig_log("mpmenu: text fit: \"%s\" is too long for %.0fx%.0f even at %.0f: size %.0f, wraps (%.0f high)", tx, w, h, mn, e->size, fit_pref(t, w).y);
@@ -596,6 +765,9 @@ static void fit_frame(void) {
 }
 /* for the game-side files (ui_game.c, ui_teams.c) and Custom Modes texts styled their own way: same fit */
 void txt_fit(Obj t, float size, int wrap) { if (mm_is(t, K_TMP)) fit_style(t, size, wrap); }
+/* a one-line text in a fixed box (after txt_style / mk_txt): too long even at 0.75 = one line at 0.75 that ends in "..."
+   (the game's ellipsis), never more lines past its box (Bring Units cards: gear lines ran out of their card) */
+void txt_one_line(Obj t) { fit_e *e = mm_is(t, K_TMP) ? fit_find(t, 1) : NULL; if (e) { e->ell = 1; e->dirty = 1; } }
 void txt_fit_text(Obj t, const char *s) { fit_text(t, s); }
 /* the fit's current settings again (after a measure) */
 static void fit_apply(fit_e *e, Obj t) {
@@ -690,14 +862,6 @@ static uintptr_t h_title_cog, h_title_more, h_title_sum, h_title_box, h_title_pc
 /* host choice buttons: the small second line (mpm_choice_note) and the label's own place, to move it up over the line */
 static uintptr_t h_cnote[MPM_CHOICES]; static V2 cnote_ap0[MPM_CHOICES]; static float cnote_x[MPM_CHOICES];
 static mpm_choices hcl;                                                     /* (defined with the host choice code below) */
-/* owner 2026-10-17: the Multiplayer page always shows a PvP entry. Without a "pvp" choice (Custom Modes not installed, off
-   or refused) the first free choice slot shows it greyed, with "Needs Units Laboratory" under it; the model gives an
-   unregistered slot no action, so a click does nothing. -1: PvP is registered (its own button) or no slot is free. */
-static int pvp_stub_slot(void) {
-    if (M.state != MPM_TITLE_MENU) return -1;
-    for (int k = 0; k < hcl.n; k++) if (!strcmp(hcl.c[k].id, "pvp")) return -1;
-    return hcl.n < MPM_CHOICES ? hcl.n : -1;
-}
 /* Recent worlds panel (mockup "Multiplayer page: recent worlds"): beside the column on the Multiplayer page */
 static uintptr_t h_rw_root, h_rw_l1[6], h_rw_l2[6], h_rw_ul[6], h_rw_u[6], h_rw_note, h_rw_band, h_rw_line, h_rw_title;
 static uintptr_t h_rw_pf[6][6], h_rw_pi[6][6], h_rw_pp[6][6], h_rw_pn[6][6];   /* + the unit's name beside its box */   /* "Your units": 30x30 frames (copper edge), initial, portrait image */
@@ -714,15 +878,17 @@ Obj portrait_sprite(const char *name) {
     if (got && ncache < 48) { snprintf(cache[ncache].n, 64, "%s", name); cache[ncache++].h = u_gc_new(got); return got; }
     if (scanned >= 0 && frames - scanned < 600) return NULL;               /* not loaded: look again in ~20 s */
     scanned = frames;
+    double t0 = scan_ms_now(); pscans++; Obj hit = NULL;
     static void *mi; if (!mi) mi = mth("UnityEngine", "Resources", "FindObjectsOfTypeAll", 1);
     Obj arr = mi ? MCALL(mi, Obj, Obj, const void *)(type_obj("UnityEngine", "Sprite"), mi) : NULL;
     int n = arr ? (int)AT(arr, 0x18, uintptr_t) : 0;
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n && !hit; i++) {
         Obj sp = AT((char *)arr + 0x20, i * 8, Obj); char nm[64] = "";
         str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(sp, NULL), nm, sizeof nm);
-        if (!strcmp(nm, name) && ncache < 48) { snprintf(cache[ncache].n, 64, "%s", nm); cache[ncache++].h = u_gc_new(sp); return sp; }
+        if (!strcmp(nm, name) && ncache < 48) { snprintf(cache[ncache].n, 64, "%s", nm); cache[ncache++].h = u_gc_new(sp); hit = sp; }
     }
-    return NULL;
+    double d = scan_ms_now() - t0; pscan_ms_sum += d; if (d > pscan_ms_max) pscan_ms_max = d;
+    return hit;
 }
 static float rw_h;
 static const int hist_ids[] = { MPB_HIST0, MPB_HIST1, MPB_HIST2, MPB_HIST3, MPB_HIST4, MPB_HIST5, MPB_HISTX0, MPB_HISTX1, MPB_HISTX2,
@@ -754,7 +920,10 @@ static int rules_close_frames;                          /* frames after the lobb
 static int teams_close_frames;                          /* same after the teams lane's window closed */
 static int teams_modal(void);
 static int chat_typing, chat_close_frames, chat_scroll, chat_fade_s = 12, chat_show_join = 1, chat_on = 1;
-static float chat_x = 0, chat_y = 0;                     /* offset from the default place (canvas units), remembered */
+#define CH_W0 470                                        /* the open chat box: default = smallest size (canvas units) */
+#define CH_H0 270
+static float chat_x = 0, chat_y = 0;                     /* offset of the box's bottom-left from the default place (canvas units), remembered */
+static float chat_w = CH_W0, chat_h = CH_H0;             /* the open box's size (owner 2026-10-25: corner / bottom drag), remembered */
 static int fields_edited, test_escape;                   /* test_escape: mpm_escape (tests: no keyboard in a hidden copy) */                               /* title_sync: a field's text changed (read in the next observe) */
 static void modset_notice(void);
 static void observe(mpm_obs *o) {
@@ -764,19 +933,25 @@ static void observe(mpm_obs *o) {
     o->campaign_ready = o->scene == 2 && c && AT(c, 0x10, int32_t) != -1 && !busy() && tick() > 0;
     Obj tv = o->scene == 1 ? title_view() : NULL;
     o->title_visible = tv && u_on(tv);
-    o->picker_open = o->scene == 1 && popup_open(5);                         /* SaveLoadUI */
+    /* SaveLoadUI or CreateCampaign: the title view stays active under the new-campaign screen, so without popup 7 a
+       Cancel there left the menu in PICK_NEW and the next single-player load was hosted (Foctopus 2026-10-20) */
+    o->picker_open = o->scene == 1 && (popup_open(5) || popup_open(7));
+    { Obj dd = o->scene == 2 && c ? AT(c, 0x40, Obj) : NULL; o->tutorial = dd && AT(dd, 0x10, int32_t) == 7; }   /* CampaignDataContainer dungeon data: region 7 = Tutorial */
     o->loading = busy();
     static int (*load_pending)(void); static int lp_looked;                /* mpglue: an mp load / reload / retry runs */
     if (!lp_looked) { lp_looked = 1; load_pending = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_load_pending"); }
     if (load_pending && load_pending()) o->loading = 1;                    /* never tear the session down during it */
     Obj ev = o->scene == 2 ? esc_view() : NULL;
     o->esc_open = ev && u_on(ev);
+    { static int (*ar)(void); static int looked; if (!looked) { looked = 1; ar = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_autorejoin"); }
+      o->rejoining = ar && ar(); }
     mp_steam_info in; mp_steam_state(&in);
     if (in.state == MP_STEAM_ENDED) { o->failed = 1; snprintf(o->msg, sizeof o->msg, "%s", mp_steam_end_text()); o->end = mp_steam_end_code(); modset_notice(); }   /* Steam join refused for mods */
     else if (in.is_host) o->role = 1;
     else if (in.state == MP_STEAM_JOINING || in.state == MP_STEAM_IN_GAME) {
         o->role = 2;
         o->guest_loading = in.state == MP_STEAM_JOINING && in.player >= 0;           /* welcomed, waiting for / loading the save */
+        o->host_window = in.phase == MP_PH_HOST_WINDOW;
     }
     if (o->role == 2) snprintf(o->host_name, sizeof o->host_name, "%s", in.host_name);
     { mp_session *ss = mp_game_session(); o->spectator = ss && mp_is_spectator(ss); }
@@ -785,7 +960,8 @@ static void observe(mpm_obs *o) {
         static bool (*keydown)(int); static int looked;
         if (!looked) { looked = 1; keydown = (bool (*)(int))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::GetKeyDownInt(UnityEngine.KeyCode)");
                        rig_log("mpmenu: Escape key check %s", keydown ? "ready (Input.GetKeyDownInt)" : "NOT available"); }
-        o->escape = (keydown && keydown(27)) || test_escape ? 1 : 0;        /* KeyCode.Escape */
+        o->escape = ((keydown && keydown(27)) || test_escape) && !chat_typing && !chat_close_frames ? 1 : 0;   /* KeyCode.Escape (the open chat takes it: chatfix A6) */
+        if (o->escape && mpesc_took()) { o->escape = 0; rig_log("mpmenu: Escape taken by the kit for one of our windows (no Back, no other close)"); }   /* one press, one close */
         test_escape = 0;
     }
     if (host_failed) o->failed = 1;
@@ -811,6 +987,18 @@ static Obj field_source(const char **from) {
     return u_alive(fld) ? fld : NULL;
 }
 Obj first_image(Obj tr, int depth);
+/* The text area (TMP_InputField.textViewport, "Text Area", stretched): the stock save-name field keeps 35.8 units on
+ * its left for the magnifier its "Search" sprite draws, 10 on its right (prefab: offset x 12.9, size -45.8, y -0.5 / -13;
+ * SaveLoadUI and RenameUnitUI). Our frames have no magnifier, so that gap only pushed the text right (the address hint cut
+ * at 216 of 262; the chat's typed text ~36 in). Here in_x on both sides; in_y < 0: the source's height and vertical place. */
+static void field_area(Obj f, float in_x, float in_y) {
+    Obj ta = tr_find(u_tr(f), "Text Area");
+    if (!mm_is(ta, K_RT)) return;
+    V2 sd = F(0x510701C, V2 (*)(Obj, void *))(ta, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(ta, NULL);   /* sizeDelta, anchoredPosition */
+    F(0x5106B64, void (*)(Obj, V2, void *))(ta, (V2){ 0, 0 }, NULL); F(0x5106D48, void (*)(Obj, V2, void *))(ta, (V2){ 1, 1 }, NULL);
+    F(0x5107110, void (*)(Obj, V2, void *))(ta, (V2){ -2 * in_x, in_y < 0 ? sd.y : -2 * in_y }, NULL);
+    F(0x5106F2C, void (*)(Obj, V2, void *))(ta, (V2){ 0, in_y < 0 ? ap.y : 0 }, NULL);
+}
 static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *text) {
     Obj f = u_instantiate(src, parent);
     if (!u_alive(f)) return NULL;
@@ -825,24 +1013,14 @@ static Obj field_make(Obj src, Obj parent, const char *placeholder, const char *
       }
       rig_log("mpmenu: field frame %s", u_alive(fim) && u_alive(spr) ? "= menu button frame (no magnifier)" : "unchanged (no image / sprite)"); }
     row_height(f, 262, 44);                                                 /* v2 §2a: input 262x44, Lora 18, centred vertically */
-    /* The text area (TMP_InputField.textViewport, "Text Area", stretched): the stock save-name field keeps 35.8 units on
-     * its left for the magnifier its "Search" sprite draws, 10 on its right (prefab: offset x 12.9, size -45.8; SaveLoadUI
-     * and RenameUnitUI). Our frame has no magnifier, so that gap only cut the address hint ("...:4777" at 216 of 262).
-     * Here the stock right inset on both sides; height and vertical place stay the source's. */
-    { Obj ta = tr_find(u_tr(f), "Text Area");
-      if (mm_is(ta, K_RT)) {
-          V2 sd = F(0x510701C, V2 (*)(Obj, void *))(ta, NULL), ap = F(0x5106E38, V2 (*)(Obj, void *))(ta, NULL);   /* sizeDelta, anchoredPosition */
-          F(0x5106B64, void (*)(Obj, V2, void *))(ta, (V2){ 0, 0 }, NULL); F(0x5106D48, void (*)(Obj, V2, void *))(ta, (V2){ 1, 1 }, NULL);
-          F(0x5107110, void (*)(Obj, V2, void *))(ta, (V2){ -20, sd.y }, NULL);
-          F(0x5106F2C, void (*)(Obj, V2, void *))(ta, (V2){ 0, ap.y }, NULL);
-      } }
+    field_area(f, 10, -1);                                                  /* the stock right inset on both sides */
     { static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
       Obj tc = mtc && mm_is(f, K_FIELD) ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
-      if (u_alive(tc)) { txt_body(tc); txt_style(tc, 0, 18, 513, 0); txt_color(tc, C_MAIN); } }
+      if (u_alive(tc)) { txt_field(tc); txt_style(tc, 0, 18, 513, 0); txt_color(tc, C_MAIN); } }
     (mm_is(f, K_FIELD) ? F(0x4EFC2D8, void (*)(Obj, int, void *))(f, 64, NULL) : (void)0);                   /* characterLimit */
     (mm_is(f, K_FIELD) ? F(0x4EFC75C, void (*)(Obj, int, void *))(f, 0, NULL) : (void)0);                    /* contentType Standard */
     Obj ph = (mm_is(f, K_FIELD) ? F(0x4EFB9CC, Obj (*)(Obj, void *))(f, NULL) : NULL);                    /* placeholder ("Save File Name" in the source) */
-    if (u_alive(ph) && strstr(cls_name(ph), "Text")) { tmp_set(ph, placeholder); txt_body(ph); txt_style(ph, 0, 16, 513, 0); txt_color(ph, C_SUB); }
+    if (u_alive(ph) && strstr(cls_name(ph), "Text")) { tmp_set(ph, placeholder); txt_field(ph); txt_style(ph, 0, 16, 513, 0); txt_color(ph, C_SUB); }
     (mm_is(f, K_FIELD) ? F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str_ok(text), NULL) : (void)0);       /* SetTextWithoutNotify */
     u_active(f, false);
     return f;
@@ -876,6 +1054,21 @@ static void field_text(uintptr_t h, char *out, size_t cap) {
     out[0] = 0; Obj f = u_gc_get(h);
     if (u_alive(f)) str_utf8((mm_is(f, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL) : NULL), out, cap);   /* TMP_InputField.text */
 }
+/* lane pvprules: a text field like the address field, for other windows of the menu (PvP Rules box "Save as preset...").
+   NULL when no stock TMP_InputField exists yet. Made inactive, 262 x 44: the caller places and shows it. */
+Obj mpmenu_field_new(Obj parent, const char *placeholder, const char *text) {
+    const char *from = ""; Obj src = field_source(&from);
+    Obj f = src ? field_make(src, parent, placeholder, text) : NULL;
+    rig_log("mpmenu: extra text field %s %s", f ? "cloned from" : "not made: no source", from);
+    return f;
+}
+void mpmenu_field_get(Obj f, char *out, size_t cap) {
+    if (cap) out[0] = 0;
+    if (u_alive(f)) str_utf8((mm_is(f, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL) : NULL), out, cap);   /* TMP_InputField.text */
+}
+void mpmenu_field_put(Obj f, const char *s) {
+    if (u_alive(f)) (mm_is(f, K_FIELD) ? F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str_ok(s), NULL) : (void)0);   /* SetTextWithoutNotify */
+}
 /* text-only line (labels, status): the button clone with every Image under it switched off (Behaviour.enabled), so
  * no frame shows (ux #16). Clicks on it reach our hook and do nothing. */
 static void images_off(Obj tr, int depth) {
@@ -901,7 +1094,8 @@ Obj mk_button(Obj src, Obj parent, int esc, int sprite, Col tint, float x, float
     else if (bg) img_set(bg, sprite >= 0 ? spr(sprite) : NULL, sprite >= 0 && !spr(sprite) ? spr_fallback(sprite) : tint);
     if (bg) { stretch(bg); if (mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL); }
     Obj l = AT(b, esc ? 0x28 : 0x130, Obj);
-    if (u_alive(l)) { txt_body(l); txt_style(l, 0, fs, 514, 0); txt_color(l, tc); stretch(l); tmp_set(l, label); }
+    if (u_alive(l)) { txt_body(l); txt_style(l, 0, fs, 514, 0); txt_color(l, tc); stretch(l); tmp_set(l, label);
+                      if (w >= 40 && mm_is(u_tr(l), K_RT)) F(0x5107110, void (*)(Obj, V2, void *))(u_tr(l), (V2){ w >= 120 ? -24 : -16, 0 }, NULL); }   /* 12 (small: 8) free each side: a long label fits inside the frame, never edge to edge */
     place(b, x, y, w, h);
     return b;
 }
@@ -939,11 +1133,15 @@ static void rp_build(rpanel *p, Obj parent, Obj src, int esc, Obj tpl_img, Obj t
         float yc = PY(RTOP(i) + rh / 2), x0 = RX(i);
         Obj rb = mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, PX(x0 + 197), yc, 394, rh);
         u_gc_free(p->row[i]); p->row[i] = rb ? u_gc_new(rb) : 0;
-        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(x0 + 77), yc, 130, 40, C_SUB); tmp_set(lb, mpm_rule_label(i));   /* "Units per player" fits */
-        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(x0 + 261), yc, 186, 40, C_MAIN);
+        /* label 12..140 (the longest word, ru "администратора", fits: no break inside a word), arrows at 158 and 378, value
+           176..356 between them (8 from each); both 40 high: a long label or value takes 2 lines at its size, not 1 shrunk */
+        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(x0 + 76), yc, 128, 40, C_SUB); tmp_set(lb, mpm_rule_label(i));
+        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(x0 + 266), yc, 180, 40, C_MAIN);
+        { typedef struct { float x, y, z, w; } mg4; static void *mmg; if (!mmg) mmg = mth("TMPro", "TMP_Text", "set_margin", 1);   /* the value 6 inside each side, */
+          if (mmg && v) MCALL(mmg, void, Obj, mg4, const void *)(v, (mg4){ 6, 0, 6, 0 }, mmg); }   /* as TMP margins (the fit measures them): de "Geteilt, eigene Einheiten" touched both arrows */
         u_gc_free(p->val[i]); p->val[i] = v ? u_gc_new(v) : 0;
         for (int a = 0; a < 2; a++) {
-            Obj b = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(x0 + (a ? 368 : 154)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
+            Obj b = mk_button(src, R, esc, S_NBTN, C_WHITE, PX(x0 + (a ? 378 : 158)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
             int id = arrow_ids[2 * i + a];
             if (reg) { u_gc_free(reg[id]); reg[id] = b ? u_gc_new(b) : 0; }
         }
@@ -970,8 +1168,10 @@ static char test_hover[64];                                                  /* 
 char tip_now[64];                                                     /* test status: the title shown this frame */
 static int tip_hit;
 static inline bool u_on_tree(Obj comp) { Obj g = u_alive(comp) ? u_go(comp) : NULL; return g && mm_is(g, K_GO) && F(0x50F3724, bool (*)(Obj, void *))(g, NULL); }   /* activeInHierarchy */
+int mu_bring_is_open(void);                                           /* mu_bring.c: the Bring Units card window */
 int tip_try(Obj o, const char *title, const char *body) {
     if (tip_hit || !o || !u_on_tree(o)) return 0;
+    if (mu_bring_is_open()) return 0;                                       /* our menus' tips (mouse-in-rect) never through the card window */
     int hov;
     if (test_hover[0]) hov = !strcmp(test_hover, title);
     else { float r[4]; V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL); hov = rect_of(o, r) && m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]; }
@@ -1008,13 +1208,13 @@ static void fe_build(fepanel *p, Obj parent, Obj src, Obj tpl_img, Obj tpl_txt, 
         float top = 62 + step * i, yc = PY(top + rh / 2);
         Obj rb = mk_img(tpl_img, R, -1, i % 2 ? C_ROW2 : C_ROW1, PX(18 + 197), yc, 394, rh);
         u_gc_free(p->row[i]); p->row[i] = rb ? u_gc_new(rb) : 0;
-        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(18 + 77), yc, 130, 40, C_SUB); tmp_set(lb, mpm_fe_label(i));
-        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(18 + 261), yc, 186, 40, i == 4 ? C_SUB : C_MAIN);
+        Obj lb = mk_txt(tpl_txt, R, 0, 15, 513, 0, PX(18 + 76), yc, 128, 40, C_SUB); tmp_set(lb, mpm_fe_label(i));   /* as the Rules rows */
+        Obj v = mk_txt(tpl_txt, R, 0, 16, 514, 0, PX(18 + 266), yc, 180, 40, i == 4 ? C_SUB : C_MAIN);
         u_gc_free(p->val[i]); p->val[i] = v ? u_gc_new(v) : 0;
         Obj ds = mk_txt(tpl_txt, R, 0, 12, 513, 0, PX(18 + 197), PY(top + rh + 11), 390, 20, C_SUB);
         u_gc_free(p->desc[i]); p->desc[i] = ds ? u_gc_new(ds) : 0;
         for (int a = 0; a < 2 && fe_arrows[i][0]; a++) {
-            Obj b = mk_button(src, R, 0, S_NBTN, C_WHITE, PX(18 + (a ? 368 : 154)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
+            Obj b = mk_button(src, R, 0, S_NBTN, C_WHITE, PX(18 + (a ? 378 : 158)), yc, 28, 28, 16, a ? "\xE2\x80\xBA" : "\xE2\x80\xB9", C_MAIN);
             int id = fe_arrows[i][a]; u_gc_free(h_tb[id]); h_tb[id] = b ? u_gc_new(b) : 0;
         }
     }
@@ -1068,7 +1268,7 @@ static void trow_note(int id, Obj b) {
 static void trow_fit(int id, Obj b, float note) {
     if (id < 0 || id >= MPB_COUNT || id == MPB_SETTINGS || trow_base[id] < 30 || trow_lw[id] < 4 || trow_lh[id] < 4) return;
     float need = txt_fit_h(AT(b, 0x130, Obj), trow_lw[id], trow_lh[id]);
-    float want = need > trow_lh[id] + 1 && need + 16 > trow_base[id] ? need + 16 + note : trow_base[id] + (note > CN_H ? note - CN_H : 0);
+    float want = need > trow_lh[id] + 1 && need + 16 > trow_base[id] ? need + (id == MPB_HEADER ? 36 : 16) + note : trow_base[id] + (note > CN_H ? note - CN_H : 0);   /* a 2-line page title: 18 above and below (the label under it touched it) */
     if (want == trow_cur[id]) return;
     row_height(b, 262, want);
     Obj bg = first_image(u_tr(b), 0);
@@ -1081,7 +1281,7 @@ static void title_build(Obj v) {
     if (!u_alive(src) || !u_alive(after)) { rig_log("mpmenu: title buttons not found"); return; }
     Obj parent = u_tr_parent(u_tr(src));
     int at = u_sibling(u_tr(after)) + 1;
-    if (!scan_done) assets_scan_now();
+    if (!scan_done || !h_spr[S_COG]) assets_scan_now();
     Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x130, Obj);
     for (int i = 0; i < NT; i++) {
         int id = title_ids[i];
@@ -1092,9 +1292,9 @@ static void title_build(Obj v) {
         txt_style(l, 0, 22, 514, 1);                                        /* design #8: the stock menu size 22 (Credits is 24) */
         int plain = id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME || id == MPB_INFO || id == MPB_HEADER || id == MPB_DIVIDER || id == MPB_HOST || id == MPB_JOIN_HDR || id == MPB_JOIN_DIV;
         if (plain) images_off(u_tr(b), 0);
-        if (plain || id == MPB_SETTINGS) txt_body(l);                      /* text rows: the stock body material, no outline */
+        if (plain || id == MPB_SETTINGS) txt_body(l);                      /* text rows: the body font, the game's body look */
         /* approved mockup "Host page A": subtitle, Your name, field, Rules box, line, Host from a save (primary), ... Back */
-        if (id == MPB_HEADER) { row_height(b, 262, 20); txt_style(l, 0, 12, 514, 0); txt_color(l, C_SUB); }
+        if (id == MPB_HEADER) { row_height(b, 262, 30); txt_style(l, 0, 18, 514, 0); txt_color(l, C_SUB); }   /* the page title: as "Host a game" / "Join a game" */
         if (id == MPB_LABEL_ADDR || id == MPB_LABEL_NAME) { row_height(b, 262, 18); txt_style(l, 0, 14, 513, 0); txt_color(l, C_SUB); }
         if (id == MPB_INFO) { row_height(b, 262, 40); txt_style(l, 0, 14, 514, 1); }
         if (id == MPB_DIVIDER) { row_height(b, 262, 17); mk_img(tpl_img, u_tr(b), -1, C_LINE, 0, 0, 262, 1); }
@@ -1131,13 +1331,17 @@ static void title_build(Obj v) {
             Obj sm = mk_txt(tpl_txt, u_tr(b), 0, 12, 513, 1, 0, -18, 238, 60, C_SUB);   /* up to 4 lines inside the box (owner lan_v8: it spilled) */
             u_gc_free(h_title_sum); h_title_sum = sm ? u_gc_new(sm) : 0;
         }
+        /* the label 12 inside each side of the frame: a long label (de "Aus einem Spielstand hosten") fits inside it */
+        /* as TMP margins: a smaller rect did not hold (round 2 shots: the label still 262 wide) */
+        if (id != MPB_SETTINGS && mm_is(l, K_TMP)) { typedef struct { float x, y, z, w; } mg4; static void *mmg; if (!mmg) mmg = mth("TMPro", "TMP_Text", "set_margin", 1);
+                                                   if (mmg) MCALL(mmg, void, Obj, mg4, const void *)(l, (mg4){ 12, 0, 12, 0 }, mmg); }
         trow_note(id, b);
         { int k = mpm_choice_of_btn(id);                                    /* host choice: its small second line (hidden until it has one) */
           if (k >= 0) {
               Obj lr = u_tr(l);
               cnote_ap0[k] = mm_is(lr, K_RT) ? F(0x5106E38, V2 (*)(Obj, void *))(lr, NULL) : (V2){ 0, 0 };   /* anchoredPosition */
-              cnote_x[k] = (trow_lw[id] > 64 ? trow_lw[id] : 262) - 24;        /* the label's width (the row's 262) inside the frame */
-              /* the game's small text: the language's body font (LanguageSetting.GetFont EasyRead, plain material), 12, the
+              cnote_x[k] = (trow_lw[id] > 64 ? trow_lw[id] : 262) - 24;        /* the label's width inside its margins */
+              /* the game's small text: the language's body font (LanguageSetting.GetFont EasyRead, its body look), 12, the
                  secondary colour; one line, auto size down to 0.75 when too long (txt_style) */
               Obj nt = mk_txt(tpl_txt, u_tr(b), 0, 12, 514, 0, 0, -14, cnote_x[k], CN_H, C_SUB);
               if (nt) u_active(nt, false);
@@ -1185,11 +1389,11 @@ static void title_build(Obj v) {
                 u_gc_free(h_rw_ul[i]); h_rw_ul[i] = ul ? u_gc_new(ul) : 0; u_gc_free(h_rw_u[i]); h_rw_u[i] = un ? u_gc_new(un) : 0;
                 Obj x = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 22, 15, 26, 26, 15, "x", C_SUB);   /* remove: a small framed "x", own click */
                 if (x) { u_gc_free(h_tb[MPB_HISTX0 + i]); h_tb[MPB_HISTX0 + i] = u_gc_new(x); }
-                Obj w = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 40, -16, 62, 26, 14, TR("Watch"), C_MAIN);   /* spectator rejoin (owner 2026-10-14) */
+                Obj w = mk_button(src, B, 0, S_NBTN, C_WHITE, 368 - 10 - 40, -16, 80, 26, 14, TR("Watch"), C_MAIN);   /* spectator rejoin (owner 2026-10-14) */
                 if (w) { u_gc_free(h_tb[MPB_HISTW0 + i]); h_tb[MPB_HISTW0 + i] = u_gc_new(w); }
             }
             Obj nt = mk_txt(tpl_txt, R, 0, 12, 513, 0, -380 + 16 + 250, RY(rw_h - 20), 500, 20, C_SUB);
-            if (nt) tmp_set(nt, TR("Click a world to reconnect the same way. x removes it from this list."));
+            if (nt) tmp_set(nt, TR("Click a world to reconnect the same way. The x button removes it from this list."));
             u_gc_free(h_rw_note); h_rw_note = nt ? u_gc_new(nt) : 0;
             Obj pv = mk_button(src, R, 0, S_NBTN, C_WHITE, 380 - 16 - 160, RY(rw_h - 20), 100, 26, 14, TR("\xE2\x80\xB9 Newer"), C_MAIN);
             Obj nx = mk_button(src, R, 0, S_NBTN, C_WHITE, 380 - 16 - 52, RY(rw_h - 20), 100, 26, 14, TR("Older \xE2\x80\xBA"), C_MAIN);
@@ -1232,24 +1436,22 @@ static void title_sync(const mpm_obs *o) {
     uint64_t vis = mpm_visible(&M, o);
     int sub = vis & ~(1ull << MPB_MULTIPLAYER) ? 1 : 0;                        /* our own menu page: hide the stock buttons */
     if (sub != stock_hidden) stock_set(v, sub);
-    int ps = pvp_stub_slot(), psb = ps >= 0 ? mpm_choice_btn(ps) : MPB_NONE;   /* greyed PvP entry (no Custom Modes) */
     for (int i = 0; i < NT; i++) {
         Obj b = tb(title_ids[i]); if (!b) continue;
         int on = title_ids[i] < 64 ? (int)((vis >> title_ids[i]) & 1) : mpm_is_visible(&M, o, title_ids[i]);   /* Watch: id 68 */
-        if (title_ids[i] == psb) on = 1;
         u_active(b, on);
-        if (on && title_ids[i] == psb) { char l[160]; snprintf(l, sizeof l, "<color=#A69085>%s</color>", TR("PvP")); tmp_set(AT(b, 0x130, Obj), l); }   /* greyed like Join a friend without Steam */
-        else if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
+        if (on) { char l[512]; mpm_label(&M, title_ids[i], l, sizeof l); tmp_set(AT(b, 0x130, Obj), l); }
     }
     float cnh[MPM_CHOICES] = { 0 };                                         /* host choices: second line on, its height (0 = none) */
     for (int k = 0; k < MPM_CHOICES; k++) {
         Obj b = tb(mpm_choice_btn(k)), nt = u_gc_get(h_cnote[k]);
-        const char *n = !b || !u_on(b) ? NULL : k == ps ? TR("Needs Units Laboratory") : k < hcl.n ? mpm_choice_note(hcl.c[k].id) : NULL;
+        const char *n = !b || !u_on(b) ? NULL : k < hcl.n ? mpm_choice_note(hcl.c[k].id) : NULL;
         if (!u_alive(nt)) continue;
         u_active(nt, n != NULL);
         if (!n) continue;
         tmp_set(nt, n);
         float h = txt_fit_h(nt, cnote_x[k], CN_H);                            /* CN_H, or more when it wraps even at 0.75 */
+        if (h <= CN_H && lang_cjk()) { float th = txt_text_h(nt, cnote_x[k]); if (th > h && th < 2 * CN_H) h = (float)(int)(th + 0.99f); }   /* ja 14: one line is ~20 high (it sat on the frame) */
         cnh[k] = h > CN_H ? h : CN_H;
     }
     for (int i = 0; i < NT; i++) { Obj b = tb(title_ids[i]); int k = mpm_choice_of_btn(title_ids[i]);   /* rows grow to a long label */
@@ -1298,7 +1500,10 @@ static void title_sync(const mpm_obs *o) {
             for (char *tok = strtok_r(tmp, ";", &save); tok; tok = strtok_r(NULL, ";", &save)) {   /* "Name|id" (older: "Name|#colour") */
                 char *bar = strchr(tok, '|'); if (bar) *bar = 0;
                 const char *col = bar && bar[1] >= '0' && bar[1] <= '9' ? palette_color(atoi(bar + 1)) : "#CCBEB8";   /* old hex / none: neutral */
-                o += (size_t)snprintf(pl + o, sizeof pl - (o < sizeof pl ? o : sizeof pl), "%s<color=%s>%s</color>%s", o ? TR(", ") : "", col, tok,
+                char nm1[64]; { int cp = 0; size_t q = 0, cut = 0;                 /* a long name: 15 characters + "..." (it filled 2 lines) */
+                  for (; tok[q]; q++) if (((unsigned char)tok[q] & 0xC0) != 0x80 && ++cp == 16) cut = q;
+                  if (cut && cp > 16 && cut < sizeof nm1 - 4) snprintf(nm1, sizeof nm1, "%.*s\xE2\x80\xA6", (int)cut, tok); else snprintf(nm1, sizeof nm1, "%s", tok); }
+                o += (size_t)snprintf(pl + o, sizeof pl - (o < sizeof pl ? o : sizeof pl), "%s<color=%s>%s</color>%s", o ? TR(", ") : "", col, nm1,
                                       !strcmp(h->how, "host") || strcmp(tok, h->host) ? "" : TR(" (host)"));
             }
             if (!strcmp(h->how, "host")) { if (pl[0]) snprintf(t, sizeof t, TR("You hosted \xC2\xB7 with %s"), pl); else snprintf(t, sizeof t, "%s", TR("You hosted")); }
@@ -1327,15 +1532,41 @@ static void title_sync(const mpm_obs *o) {
         }
         for (int i = 0; i < 6; i++) if (M.hist_page * 6 + i >= nhist) u_active(tb(MPB_HISTW0 + i), false);
         u_active(tb(MPB_HIST_PREV), M.hist_page > 0); u_active(tb(MPB_HIST_NEXT), (M.hist_page + 1) * 6 < nhist);
-        /* the panel's height follows the rows shown */
-        float H = 56 + 12 + (shown ? shown : 1) * 72 + 40;
+        /* the panel's height follows the rows shown; a row grows by what its players line needs beyond one line, the footer
+           by what its note needs (ja at its 14 floor: both wrapped onto the borders) */
+        /* the players line ends 8 before the leftmost unit box (it ran under the boxes); a wrapped line gets 8 more under it
+           (at 960 x 540 its second line sat on the row's bottom border) */
+        float rh[6], h2[6], w2[6], rows = 0;
+        for (int i = 0; i < 6; i++) {
+            int nu = 0; for (int k = 0; k < 6; k++) if (u_on(u_gc_get(h_rw_pf[i][k]))) nu++;
+            w2[i] = nu ? 368 - 90 - 15 - 96 * (nu - 1) - 66 - 15 - 8 - (-368 + 14) : 380;
+            Obj l2 = u_gc_get(h_rw_l2[i]); h2[i] = i < shown && l2 ? txt_fit_h(l2, w2[i], 22) : 22; if (h2[i] < 22) h2[i] = 22;
+            rh[i] = 66 + h2[i] - 22 + (h2[i] > 23 ? 8 : 0); if (i < shown) rows += rh[i] + 6;
+        }
+        if (!shown) rows = 72;
+        Obj rnt = u_gc_get(h_rw_note); float nw = M.hist_page > 0 || (M.hist_page + 1) * 6 < nhist ? 500 : 728;   /* no Newer / Older: the full width */
+        float nh = rnt ? txt_fit_h(rnt, nw, 20) : 20; if (nh < 20) nh = 20;
+        float fh = 40 + nh - 20, H = 56 + 12 + rows + fh;
         place(rw, 103, 397 - H / 2, 760, H);
         place(u_gc_get(h_rw_band), 0, H / 2 - 28, 756, 54); place(u_gc_get(h_rw_line), 0, H / 2 - 56, 756, 1);
         Obj tt = u_gc_get(h_rw_title); if (tt) { place(tt, 0, H / 2 - 28, 700, 44); tmp_set(tt, TR("Recent Worlds")); }
-        for (int i = 0; i < 6; i++) { Obj b = tb(MPB_HIST0 + i); if (b) place(b, 0, H / 2 - (68 + 72 * i + 33), 736, 66); }
-        place(u_gc_get(h_rw_note), -380 + 16 + 250, -H / 2 + 20, 500, 20);
-        if (tb(MPB_HIST_PREV)) place(tb(MPB_HIST_PREV), 380 - 16 - 160, -H / 2 + 20, 100, 26);
-        if (tb(MPB_HIST_NEXT)) place(tb(MPB_HIST_NEXT), 380 - 16 - 52, -H / 2 + 20, 100, 26);
+        { float y = 68;
+          for (int i = 0; i < 6; i++) {                                     /* row parts from the row's top (as built for 66) */
+              Obj b = tb(MPB_HIST0 + i); if (!b) continue;
+              float T = rh[i] / 2;
+              place(b, 0, H / 2 - (y + T), 736, rh[i]); y += rh[i] + 6;
+              place(u_gc_get(h_rw_l1[i]), -368 + 14 + 230, T - 21, 460, 28);
+              place(u_gc_get(h_rw_l2[i]), -368 + 14 + w2[i] / 2, T - 36 - h2[i] / 2, w2[i], h2[i]);
+              place(u_gc_get(h_rw_ul[i]), 368 - 80 - 110, T - 23, 220, 20);   /* 2 lower than built: off the frame's top (ja) */
+              place(u_gc_get(h_rw_u[i]), 368 - 80 - 110, T - 45, 220, 22);
+              for (int k = 0; k < 6; k++) { float px = 368 - 90 - 15 - 96 * (5 - k) - 66;
+                  place(u_gc_get(h_rw_pf[i][k]), px, T - 45, 30, 30); place(u_gc_get(h_rw_pn[i][k]), px + 15 + 4 + 31, T - 45, 62, 20); }
+              if (tb(MPB_HISTX0 + i)) place(tb(MPB_HISTX0 + i), 368 - 22, T - 18, 26, 26);
+              if (tb(MPB_HISTW0 + i)) place(tb(MPB_HISTW0 + i), 368 - 10 - 40, T - 49, 80, 26);
+          } }
+        place(rnt, -380 + 16 + nw / 2, -H / 2 + fh / 2, nw, nh);
+        if (tb(MPB_HIST_PREV)) place(tb(MPB_HIST_PREV), 380 - 16 - 160, -H / 2 + fh / 2, 100, 26);
+        if (tb(MPB_HIST_NEXT)) place(tb(MPB_HIST_NEXT), 380 - 16 - 52, -H / 2 + fh / 2, 100, 26);
     }
     int join = M.state == MPM_TITLE_JOIN, hostp = M.state == MPM_TITLE_HOST;
     if ((join || hostp) && tb(MPB_MULTIPLAYER)) fields_find(u_tr_parent(u_tr(tb(MPB_MULTIPLAYER))));
@@ -1408,6 +1639,7 @@ static void esc_shift_find(Obj v, Obj holder) {
     }
 }
 /* add_world: height our parts add (world units). Each mover's local y = its stock y + half of that, in its parent's units */
+static float esc_up;                                                        /* screen px the Esc column goes up more (esc_sync: UI scale 1.5) */
 static void esc_shift_apply(float add_world) {
     for (int i = 0; i < n_emove; i++) {
         Obj t = u_gc_get(h_emove[i]), pa = t ? u_tr_parent(t) : NULL; if (!mm_is(t, K_TR) || !mm_is(pa, K_TR)) continue;
@@ -1415,6 +1647,13 @@ static void esc_shift_apply(float add_world) {
         V3 p = tr_lpos(t); float want = emove_base[i] + add_world / 2 / ls.y;
         if (p.y - want > 0.25f || want - p.y > 0.25f) { p.y = want; F(0x5107724, void (*)(Obj, V3, void *))(t, p, NULL); }
     }
+}
+/* an Esc-menu button clone: its label 8 in from each side, shrinking to fit (ru "Выйти из мультиплеера" ran past the frame) */
+static void esc_label_fit(Obj b) {
+    Obj l = u_alive(b) ? AT(b, 0x28, Obj) : NULL; if (!mm_is(l, K_TMP)) return;
+    float fs = F(0x4F0B338, float (*)(Obj, void *))(l, NULL);              /* TMP_Text.fontSize: the stock size */
+    if (fs >= 4) txt_fit(l, fs, 0);
+    if (mm_is(u_tr(l), K_RT)) { V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(l), NULL); sd.x -= 16; F(0x5107110, void (*)(Obj, V2, void *))(u_tr(l), sd, NULL); }
 }
 static void esc_build(Obj v) {
     Obj src = AT(v, 0x70, Obj), before = AT(v, 0x78, Obj), ver = AT(v, 0x80, Obj);   /* clone "Report bug", place before "Quit" */
@@ -1426,6 +1665,7 @@ static void esc_build(Obj v) {
         if (!u_alive(b)) { rig_log("mpmenu: Esc clone failed"); return; }
         (mm_is(b, K_SMB) ? F(0xF2DB60, void (*)(Obj, Obj, void *))(b, NULL, NULL) : (void)0);            /* Init(null): adds the clone's own onClick listener */
         AT(b, 0x30, Obj) = NULL;                                            /* (runtime listeners are not cloned) */
+        esc_label_fit(b);
         u_set_sibling(u_tr(b), at + i);
         u_active(b, false);
         u_gc_free(h_eb[esc_ids[i]]); h_eb[esc_ids[i]] = u_gc_new(b);
@@ -1481,7 +1721,16 @@ static void esc_build(Obj v) {
     Obj seed = AT(v, 0x88, Obj);                                            /* design #7: why Load is off, a seed-style line */
     if (u_alive(seed)) {
         Obj r = u_instantiate(seed, u_tr_parent(u_tr(seed)));
-        if (u_alive(r)) { { char lr[200]; snprintf(lr, sizeof lr, "<color=#A69085>%s</color>", TR("Leave multiplayer to load another world")); tmp_set(r, lr); } u_active(r, false); }
+        if (u_alive(r)) { { char lr[200]; snprintf(lr, sizeof lr, "<color=#A69085>%s</color>", TR("Leave multiplayer to load another world")); tmp_set(r, lr); }
+            /* one line: as wide as its text (the seed line's width wrapped de "zu laden" alone onto a second line, onto the seed) */
+            if (mm_is(r, K_TMP) && fit_methods() && mm_is(u_tr(r), K_RT)) {
+                float fs = F(0x4F0B338, float (*)(Obj, void *))(r, NULL), fl = lang_cjk() ? 14 : 12;   /* the seed's 12: ja unreadable at 960 */
+                if (fs > 1 && fs < fl) { F(0x4F0B5DC, void (*)(Obj, bool, void *))(r, false, NULL); F(0x4F0B340, void (*)(Obj, float, void *))(r, fl, NULL); }
+                V2 sd = F(0x510701C, V2 (*)(Obj, void *))(u_tr(r), NULL), s0 = sd; float pw = fit_pref(r, 0).x + 8;
+                if (pw > sd.x) sd.x = pw > 640 ? 640 : pw;
+                float ph = fit_pref(r, sd.x).y; if (ph > sd.y) sd.y = (float)(int)(ph + 0.99f);   /* 14 is taller than the seed's rect */
+                if (sd.x != s0.x || sd.y != s0.y) F(0x5107110, void (*)(Obj, V2, void *))(u_tr(r), sd, NULL); }
+            u_active(r, false); }
         u_gc_free(h_ereason); h_ereason = u_alive(r) ? u_gc_new(r) : 0;
     }
     ph_sibling = -1;
@@ -1520,13 +1769,13 @@ static void esc_sync(const mpm_obs *o) {
             for (int i = 0; i < NE; i++) if (u_on(eb(esc_ids[i]))) add += step;
             float rr[4]; if (in_session() && u_alive(rl) && rect_of(rl, rr)) add += rr[3] - rr[1] + 2;
         }
-        esc_shift_apply(lobby ? 0 : add);                                   /* the lobby hides the column: stock place */
+        esc_shift_apply(lobby ? 0 : add);   /* the lobby hides the column: stock place (the esc_up lift is off: at UI scale 1.5 it pushed the host menu logo off the top) */
     }
     if (!lobby) {
         /* the seed lines go right under the lowest visible button (stock ones and ours), keeping their own spacing */
-        float low = 1e9f, bh = 0, r[4];
-        for (int off = 0x48; off <= 0x78; off += 8) if (off != 0x58) { Obj b = AT(v, off, Obj); if (u_on(b) && rect_of(b, r) && r[1] < low) { low = r[1]; bh = r[3] - r[1]; } }
-        for (int i = 0; i < NE; i++) { Obj b = eb(esc_ids[i]); if (u_on(b) && rect_of(b, r) && r[1] < low) { low = r[1]; bh = r[3] - r[1]; } }
+        float low = 1e9f, bh = 0, high = -1e9f, r[4];
+        for (int off = 0x48; off <= 0x78; off += 8) if (off != 0x58) { Obj b = AT(v, off, Obj); if (u_on(b) && rect_of(b, r)) { if (r[1] < low) { low = r[1]; bh = r[3] - r[1]; } if (r[3] > high) high = r[3]; } }
+        for (int i = 0; i < NE; i++) { Obj b = eb(esc_ids[i]); if (u_on(b) && rect_of(b, r)) { if (r[1] < low) { low = r[1]; bh = r[3] - r[1]; } if (r[3] > high) high = r[3]; } }
         Obj l0 = AT(v, 0x88, Obj), l1 = AT(v, 0x90, Obj); float s0[4];
         Obj rl = u_gc_get(h_ereason); int show_r = in_session() && u_alive(rl);
         u_active(rl, show_r);
@@ -1536,7 +1785,7 @@ static void esc_sync(const mpm_obs *o) {
             if (rect_of(rl, rr)) {
                 float d = cursor - rr[3];
                 if (d < -0.5f || d > 0.5f) { V3 p = (mm_is(u_tr(rl), K_TR) ? F(0x5109A08, V3 (*)(Obj, void *))(u_tr(rl), NULL) : (V3){0, 0, 0}); p.y += d; (mm_is(u_tr(rl), K_TR) ? F(0x5109B04, void (*)(Obj, V3, void *))(u_tr(rl), p, NULL) : (void)0); }
-                cursor = rr[1] + d - 2;
+                cursor = rr[1] + d - 4;                                    /* a small gap before the seed lines */
             }
         }
         if (low < 1e8f && u_alive(l0) && rect_of(l0, s0)) {
@@ -1550,6 +1799,18 @@ static void esc_sync(const mpm_obs *o) {
                     (mm_is(u_tr(l), K_TR) ? F(0x5109B04, void (*)(Obj, V3, void *))(u_tr(l), p, NULL) : (void)0);
                 }
         }
+        /* UI scale 1.5: the column with our buttons ran to the window's bottom (the reason line 2 px above it, the seed line
+           off it at 1280 x 720): the column goes up (esc_up, next frame) until the lowest line is 3% of the height above the
+           bottom, as far as the room above it allows. At scale 1 the lines are well above it: esc_up stays 0. */
+        float bot = 1e9f, sh = (float)F(0x5092CD4, int (*)(void *))(NULL);  /* Screen.height */
+        for (int k = 0; k < 2; k++) { Obj l = AT(v, 0x88 + 8 * k, Obj); if (u_on(l) && rect_of(l, r) && r[1] < bot) bot = r[1]; }
+        if (show_r && u_on(rl) && rect_of(rl, r) && r[1] < bot) bot = r[1];
+        if (low < 1e8f && bot < 1e8f && high > -1e8f && sh > 0) {
+            float m = sh * 0.03f, want = m - (bot - esc_up), room = sh - m - (high - esc_up);
+            if (want > room) want = room;
+            if (want < 0) want = 0;
+            if (want - esc_up > 0.5f || esc_up - want > 0.5f) esc_up = want;
+        }
     }
     if (lobby) u_active(u_gc_get(h_ereason), false);
     lw_sync(v, lobby);
@@ -1559,11 +1820,13 @@ static void esc_sync(const mpm_obs *o) {
  * title band, hint strip, two columns (Players + Invite | Rules with the cog), bottom bar Leave left / Start right.
  * Host 880 x 740, guest 880 x 640. Buttons are SubUI_SystemMenuButton clones (the click hook knows them, h_lwb). The cog
  * opens the Rules panel (same as the host page) over the window. Mockup px from the window's top-left -> centre units. */
-enum { LW_START, LW_INVITE, LW_COPY, LW_LEAVE, LW_GEAR, LW_BRING, LW_NB };
-static const int lw_ids[LW_NB] = { MPB_START, MPB_INVITE, MPB_COPY_ADDR, MPB_LEAVE, MPB_LOBBY_SETTINGS, MPB_FE_BRINGWIN };
+enum { LW_START, LW_INVITE, LW_COPY, LW_LEAVE, LW_GEAR, LW_BRING, LW_QUIT, LW_SHOWADDR, LW_NB };   /* LW_LEAVE = "Turn off multiplayer" (host only) */
+static const int lw_ids[LW_NB] = { MPB_START, MPB_INVITE, MPB_COPY_ADDR, MPB_LEAVE, MPB_LOBBY_SETTINGS, MPB_FE_BRINGWIN, MPB_LOBBY_QUIT, MPB_SHOW_ADDR };
+/* owner 2026-10-20: in a Steam lobby the address block is hidden until "Show address for friends without Steam" */
+static int lw_addr_shown;
 uintptr_t h_lwr[MPB_COUNT];                       /* the lobby Rules panel's arrows + Done, by button id */
 #define LW_ROWS 4
-enum { T_TITLE, T_HINT, T_GUEST, T_PLAYERS, T_INV, T_RULES, T_INV_ADDR, T_INV_NOTE, T_RULES_NOTE, T_NOTE,
+enum { T_TITLE, T_HINT, T_GUEST, T_PLAYERS, T_INV, T_RULES, T_INV_ADDR, T_INV_NOTE, T_RULES_NOTE, T_NOTE, T_CONN,
        T_R0L, T_R1L, T_R2L, T_R3L, T_R4L, T_R5L, T_R6L, T_R7L, T_R8L, T_R0V, T_R1V, T_R2V, T_R3V, T_R4V, T_R5V, T_R6V, T_R7V, T_R8V, T_NT };
 _Static_assert(T_R0V - T_R0L == MPM_RULE_ROWS, "one label + one value text per rules row");
 uintptr_t h_lw_root; static uintptr_t h_lw_view, h_lw_area, h_lwb[LW_NB], h_lwt[T_NT];
@@ -1572,16 +1835,50 @@ static uintptr_t h_lw_lines[6], h_lw_addrbox[2], h_lw_rrow[MPM_RULE_ROWS], h_lw_
 static char lw_rowname[LW_ROWS][32];                    /* row names (tooltip titles) */
 static int lw_host_built = -1, lw_level[LW_ROWS];   /* connection level shown per row (-1 none), for the read-back */
 static int64_t copied_until;
+static int inet_state;                                   /* extaddr_get state for the lobby (direct_refresh) */
+static int up_state;                                     /* upnpport_get state for the lobby (direct_refresh) */
+static char lobby_addr[96];                              /* the address in the lobby box = what Copy copies */
 static float lw_h = 740;
+static float lw_k = 1;                                  /* the window's scale to fit the screen (lw_texts) */
+static char lobby_err[512]; static double lobby_err_until;   /* a refused lobby Start (host choice), shown in the hint line */
+#define C_WARN_HEX "#F16071"
+static float lw_note_h;                                 /* steaminv: height of the note under Steam invite (ui_friends.c) */
+static float lw_addr_h = 40 + 10 + 52;                  /* the address block (box + note) or its "Show address" button */
+int ui_friends_invite_click(void); float ui_friends_lobby_note(float x, float y, float w, int steam);
+int mp_game_conn(int player, char *addr, size_t n);      /* mp_game.c (conninfo): enum dsnet_via + the address this copy may show */
+/* conninfo (owner 2026-10-20): the connection words of a players row, for the lobby and ui_game.c's Players panel.
+   Host's own row: "Steam lobby" while its Steam lobby is up, else its address (internet when known, else local).
+   Host about a guest: "Steam" or "Direct (ip:port)". Guest: "Steam" / "Direct"; the host's row adds the address it joined
+   by address. Another guest's address is never shown (only the host has it). 0 = nothing to say. */
+__attribute__((visibility("default"))) int mpmenu_conn_words(int player, char *out, size_t n) {
+    if (!out || !n) return 0;
+    out[0] = 0;
+    char a[96]; int v = mp_game_conn(player, a, sizeof a);
+    if (v == DSNET_VIA_HOST) {
+        mp_steam_info in; mp_steam_state(&in);
+        if (in.steam && in.lobby && in.lobby != ~0ull) snprintf(out, n, "%s", TR("Steam lobby"));
+        else if (inet_state == EXTADDR_OK && M.internet[0]) snprintf(out, n, "%s", M.internet);
+        else snprintf(out, n, "%s", M.direct);
+    } else if (v == DSNET_VIA_STEAM) snprintf(out, n, "%s", TR("Steam"));
+    else if (v == DSNET_VIA_DIRECT) { if (a[0]) snprintf(out, n, TR("Direct (%s)"), a); else snprintf(out, n, "%s", TR("Direct")); }
+    return out[0] != 0;
+}
 static Obj lwt(int k) { Obj t = u_gc_get(h_lwt[k]); return u_alive(t) ? t : NULL; }
 #define LX(x) ((x) - 440.0f)
 #define LY(y) (lw_h / 2 - (y))
+/* bottom bar, left part (mockup px): Quit 32..172, Turn off multiplayer 184..424 (DE / RU labels shrink to fit); Start 616..848 */
+#define LW_QUIT_X 32.0f
+#define LW_QUIT_W 140.0f
+#define LW_OFF_X 184.0f
+#define LW_OFF_W 240.0f
+#define LW_MID_X 520.0f                   /* host: the space between Turn off multiplayer and Start (Bring units, the loading note) */
+#define LW_MID_W 172.0f
 static void lw_build(Obj v, int host) {
-    if (!scan_done) assets_scan_now();
+    if (!scan_done || !h_spr[S_COG]) assets_scan_now();
     Obj src = AT(v, 0x70, Obj);                                             /* Report bug: button template */
     if (!u_alive(src)) return;
     Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x28, Obj);
-    lw_h = 740;                       /* layout space (top-based); the frame's real height follows the content (lw_texts) */
+    lw_h = 740; lw_k = 1;             /* layout space (top-based); the frame's real height follows the content (lw_texts) */
     Obj root = mk_img(tpl_img, u_tr(v), -1, (Col){ 0, 0, 0, 0 }, 0, 0, 880, lw_h);   /* invisible container */
     if (!root) { rig_log("mpmenu: lobby window: no frame"); return; }
     Obj R = u_tr(root);
@@ -1600,7 +1897,8 @@ static void lw_build(Obj v, int host) {
     mk_img(tpl_img, R, -1, C_ROW1, 0, LY(host ? 97 : 99), 876, host ? 49 : 53);
     mk_img(tpl_img, R, -1, C_ROW2, 0, LY(host ? 122 : 126), 876, 1);
     if (host) T(T_HINT, 0, 16, 513, 0, 0, LY(97), 816, 30, C_SUB)
-    else { KEEP(h_lw_guestdot, mk_txt(tpl_txt, R, 0, 26, 514, 0, LX(37), LY(99), 20, 30, C_GOLD)); T(T_GUEST, 0, 18, 513, 0, LX(54 + 300), LY(99), 600, 30, C_MAIN); }
+    else { KEEP(h_lw_guestdot, mk_txt(tpl_txt, R, 0, 26, 514, 0, LX(37), LY(99), 20, 30, C_GOLD)); T(T_GUEST, 0, 18, 513, 0, LX(54 + 300), LY(99), 600, 30, C_MAIN);
+           T(T_CONN, 0, 14, 513, 0, LX(32 + 198), 0, 396, 24, C_SUB); }  /* conninfo: under the players (placed in lw_texts) */
     /* section headers: Cinzel 20 gold between two lines (lines placed at refresh, once the text width is known) */
     T(T_PLAYERS, 1, 20, 514, 0, LX(32 + 198), LY(159), 200, 28, C_GOLD);
     T(T_RULES, 1, 20, 514, 0, LX(452 + 198), LY(159), 200, 28, C_GOLD);
@@ -1632,7 +1930,8 @@ static void lw_build(Obj v, int host) {
         T(T_INV_ADDR, 0, 16, 513, 0, 0, 0, 268, 30, C_MAIN);
         b = mk_button(src, R, 1, S_NBTN, C_WHITE, 0, 0, 96, 40, 16, TR("Copy"), C_MAIN); KEEP(h_lwb[LW_COPY], b);
         T(T_INV_NOTE, 0, 12, 513, 1, 0, 0, 396, 34, C_SUB);
-    }
+        b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 198), 0, 396, 30, 14, TR("Show address for friends without Steam"), C_SUB); KEEP(h_lwb[LW_SHOWADDR], b);
+    } else { u_gc_free(h_lwb[LW_SHOWADDR]); h_lwb[LW_SHOWADDR] = 0; }
     /* rules (read-only rows; the host's cog opens the Rules panel) */
     for (int i = 0; i < MPM_RULE_ROWS; i++) {
         float y = LY(188 + 40 * i + 20);
@@ -1649,11 +1948,14 @@ static void lw_build(Obj v, int host) {
     /* bottom bar (placed at the content's height in lw_texts) */
     KEEP(h_lw_bbar, mk_img(tpl_img, R, -1, C_BAND, 0, LY(lw_h - 38), 876, 74));
     KEEP(h_lw_bline, mk_img(tpl_img, R, -1, C_COPPER, 0, LY(lw_h - 76), 876, 1));
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 103), LY(lw_h - 38), 206, 34, 16, host ? TR("Leave multiplayer") : TR("Leave"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b);
+    /* owner 2026-10-20: Quit (end the session, back to the title) left; host: Turn off multiplayer (keep playing alone) beside it */
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(lw_h - 38), LW_QUIT_W, 34, 16, host ? TR("Quit to title") : TR("Leave"), C_MAIN); KEEP(h_lwb[LW_QUIT], b);   /* guest: leaves the host's game (to the title) */
+    if (host) { b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_OFF_X + LW_OFF_W / 2), LY(lw_h - 38), LW_OFF_W, 34, 16, TR("Turn off multiplayer"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b); }
+    else { u_gc_free(h_lwb[LW_LEAVE]); h_lwb[LW_LEAVE] = 0; }
     if (host) { b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, LX(848 - 116), LY(lw_h - 38), 232, 44, 18, mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), C_START); KEEP(h_lwb[LW_START], b); }
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? 0 : LX(848 - 116), LY(lw_h - 38), 206, 34, 16, TR("Bring units"), C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? LX(LW_MID_X) : LX(848 - 116), LY(lw_h - 38), host ? LW_MID_W : 206, 34, 16, TR("Bring units"), C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
     if (b) u_active(b, false);
-    T(T_NOTE, 0, 14, 514, 0, 0, LY(lw_h - 38), 300, 24, C_ORANGE);
+    T(T_NOTE, 0, 14, 514, 0, host ? LX(LW_MID_X) : 0, LY(lw_h - 38), host ? LW_MID_W : 300, 24, C_ORANGE);
     #undef T
     #undef KEEP
     if (host) { Obj sh = mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 1 }, 0, 0, 876, 10);   /* hides the columns behind the open Rules */
@@ -1677,10 +1979,20 @@ static void lw_texts(void) {
     int host = M.state == MPM_LOBBY;
     mp_steam_info in; mp_steam_state(&in);
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
-    char b[256]; const char *hn = M.host[0] ? M.host : TR("the host");
+    char b[1024]; const char *hn = M.host[0] ? M.host : TR("the host");   /* the lobby note: 3 lines, up to ~500 bytes in Russian (a 256 cut the Windows Allow line) */
     if (host) tmp_set(lwt(T_TITLE), TR("Multiplayer Lobby")); else { snprintf(b, sizeof b, TR("%s's Lobby"), hn); tmp_set(lwt(T_TITLE), b); }
-    tmp_set(lwt(T_HINT), TR("Share your address, then press Start when everyone is in."));
+    if (host && lobby_err[0] && mono_s() < lobby_err_until) {                 /* a refused Start: 10 s in the hint line, red */
+        char e[600]; snprintf(e, sizeof e, "<color=" C_WARN_HEX ">%s</color>", lobby_err); tmp_set(lwt(T_HINT), e);
+    } else { fe_mode_info fm;                                              /* the hub (owner 2026-10-21): what it is for */
+        tmp_set(lwt(T_HINT), fe_mode_get(&fm) ? TR("Bring units, then press Start. In the hub: co-op expeditions or PvP matches.") : TR("Share your address, then press Start when everyone is in.")); }
     snprintf(b, sizeof b, TR("Waiting for %s to start"), hn); tmp_set(lwt(T_GUEST), b);
+    if (!host && lwt(T_CONN)) {                                            /* conninfo: "Connected to <host> through Steam" / "... to <ip:port>" */
+        char a[96]; int v = mp_game_conn(0, a, sizeof a);
+        if (v == DSNET_VIA_STEAM) snprintf(b, sizeof b, TR("Connected to %s through Steam"), hn);
+        else if (v == DSNET_VIA_DIRECT && a[0]) snprintf(b, sizeof b, TR("Connected to %s"), a);
+        else b[0] = 0;
+        tmp_set(lwt(T_CONN), b);
+    }
     if (u_gc_get(h_lw_guestdot)) tmp_set(u_gc_get(h_lw_guestdot), "\xE2\x80\xA2");
     int n = in.nplayers > 0 ? in.nplayers : 1;
     snprintf(b, sizeof b, TR("Players (%d)"), n); tmp_set(lwt(T_PLAYERS), b); tmp_set(lwt(T_RULES), TR("Rules")); tmp_set(lwt(T_INV), TR("Invite"));
@@ -1697,9 +2009,20 @@ static void lw_texts(void) {
         if (shown) {
             int id = in.nplayers > 0 ? in.players[i].id : 0, me = in.nplayers > 0 ? in.player : 0;
             const char *nmn = in.nplayers > 0 && in.players[i].name[0] && strcmp(in.players[i].name, "player") ? in.players[i].name : in.nplayers > 0 ? TR("Player") : my_name;
-            tmp_set(nm, nmn); snprintf(lw_rowname[i], sizeof lw_rowname[i], "%s", nmn);
+            char rowt[400]; snprintf(rowt, sizeof rowt, "%s", nmn); snprintf(lw_rowname[i], sizeof lw_rowname[i], "%s", nmn);
+            /* line 1 the name; line 2 what a mode says ("Choosing units...": it wrapped the name over 3 lines) and how the
+               player is connected */
+            char mode[160] = "";
             for (int k = 0; k < nhooks; k++) { char t2[160];                /* Custom Modes (Foreign Expedition): "2 units brought" / "Choosing units..." */
-                if (hooks[k].lobby_name && hooks[k].lobby_name(id, nmn, t2, sizeof t2)) { tmp_set(nm, t2); break; } }
+                if (hooks[k].lobby_name && hooks[k].lobby_name(id, nmn, t2, sizeof t2)) {
+                    size_t ln = strlen(nmn);
+                    if (!strncmp(t2, nmn, ln)) { const char *r2 = t2 + ln; while (*r2 == ' ') r2++; snprintf(mode, sizeof mode, "%s", r2); }
+                    else snprintf(rowt, sizeof rowt, "%s", t2);
+                    break; } }
+            { char cw[128] = ""; size_t rl = strlen(rowt); mpmenu_conn_words(id, cw, sizeof cw);
+              if ((mode[0] || cw[0]) && rl < sizeof rowt)
+                  snprintf(rowt + rl, sizeof rowt - rl, "\n%s%s<size=%d%%><color=#A69085>%s</color></size>", mode, mode[0] && cw[0] ? "  " : "", 75, cw); }   /* 75 % also for CJK: 88 % wrapped the PvP host row to 3 lines over the next row; was: 12; ja / zh / ko 14 */
+            tmp_set(nm, rowt);
             { char d[48]; snprintf(d, sizeof d, "<color=%s>\xE2\x80\xA2</color>", ui_player_color(id)); tmp_set(dot, d); }   /* the player's colour */
             int ping = 0, behind = 0, state = DSNET_NET_IN_SYNC;
             if (c && in.nplayers > 0) dsnet_player_net(c, id, &ping, &behind, &state);
@@ -1709,10 +2032,13 @@ static void lw_texts(void) {
             if (id != me) lvl = state == DSNET_NET_ABSENT ? 0 : ui_conn_level(ping, behind, cs);
             tmp_set(st, tag == 1 ? TR("Host") : tag == 2 ? TR("You") : "");
             float right = 428 - 14 - (lvl >= 0 ? 18 + 12 : 0);              /* tag left of the bars */
-            place(st, LX(right - 20), y, 40, 20);
-            place(tb0, LX(right - 20), y, 42, 20); place(tb1, LX(right - 20), y, 40, 18);
+            float tw = lang_cjk() ? 56 : 50, th = lang_cjk() ? 24 : 20;    /* ja "ホスト" at 14: 2 more each side (the ink touched the box) */
+            place(st, LX(right - 24), y, tw - 2, th);                      /* 48: "ホスト" / "あなた" at 14 */
+            place(tb0, LX(right - 24), y, tw, th); place(tb1, LX(right - 24), y, tw - 4, th - 4);   /* a 2-unit edge: 1 was lost at 960 x 540 */
+            float nr = (tag ? right - 24 - tw / 2 : right) - 10;           /* the name up to 10 before the tag / the bars */
+            place(nm, LX((68 + nr) / 2), y, nr - 68, 40);
         }
-        u_active(tb0, shown && tag == 1); u_active(tb1, shown && tag == 1);
+        u_active(tb0, shown && tag); u_active(tb1, shown && tag);         /* "Host" and "You" both boxed */
         for (int k = 0; k < 3; k++) {
             Obj bar = u_gc_get(h_lw_bar[i][k]);
             u_active(bar, shown && lvl >= 1);
@@ -1724,23 +2050,52 @@ static void lw_texts(void) {
     /* header lines + invite block position (after the visible rows) */
     float rows_end = 182 + 44 * (n < LW_ROWS ? n : LW_ROWS);
     lw_header_lines(0, lwt(T_PLAYERS), 32, 396, LY(159), 0);
+    if (!host && lwt(T_CONN)) place(lwt(T_CONN), LX(32 + 198), LY(rows_end + 20), 396, 24);
     lw_header_lines(2, lwt(T_RULES), 452, 396, LY(159), host ? 42 : 0);
+    u_active(u_gc_get(h_lwb[LW_GEAR]), host);
     if (host) {
         float hy = rows_end + 18 + 13;
         lw_header_lines(4, lwt(T_INV), 32, 396, LY(hy), 0);
         float y1 = hy + 13 + 10 + 20;                                       /* Steam invite 40 high */
         Obj ib = u_gc_get(h_lwb[LW_INVITE]); if (ib) place(ib, LX(32 + 198), LY(y1), 396, 40);
-        float y2 = y1 + 20 + 10 + 20;
+        lw_note_h = ui_friends_lobby_note(LX(32 + 198), LY(y1 + 20 + 4 + 10), 396, in.steam);   /* steaminv: "Your friend must open ... first." */
+        float y2 = y1 + 20 + 10 + 20 + lw_note_h;
+        int addr_on = !in.steam || lw_addr_shown;                          /* Steam lobby: Steam invite first, the address on request */
+        { Obj sa = u_gc_get(h_lwb[LW_SHOWADDR]); u_active(sa, !addr_on); if (sa) place(sa, LX(32 + 198), LY(y2 - 5), 396, 30); }
+        u_active(u_gc_get(h_lw_addrbox[0]), addr_on); u_active(u_gc_get(h_lw_addrbox[1]), addr_on); u_active(lwt(T_INV_ADDR), addr_on);
+        u_active(u_gc_get(h_lwb[LW_COPY]), addr_on); u_active(lwt(T_INV_NOTE), addr_on);
+        lw_addr_h = addr_on ? 40 + 10 + 52 : 30;
         place(u_gc_get(h_lw_addrbox[0]), LX(32 + 146), LY(y2), 292, 40); place(u_gc_get(h_lw_addrbox[1]), LX(32 + 146), LY(y2), 290, 38);
         place(lwt(T_INV_ADDR), LX(32 + 12 + 134), LY(y2), 268, 30);
         Obj cb = u_gc_get(h_lwb[LW_COPY]); if (cb) place(cb, LX(428 - 48), LY(y2), 96, 40);
-        place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + 17), 396, 34);
-        tmp_set(lwt(T_INV_ADDR), M.direct[0] ? M.direct : "...");
-        { const char *port = strrchr(M.direct, ':');
-          snprintf(b, sizeof b, in.steam ? TR("Friends outside your home: open port %s on your router, or use Steam invite.") : TR("Friends outside your home: open port %s on your router."),
-                   port ? port + 1 : "47777");
-          if (M.internet[0]) { size_t bl = strlen(b); snprintf(b + bl, sizeof b - bl, " "); bl = strlen(b); snprintf(b + bl, sizeof b - bl, TR("Internet: %s"), M.internet); }
+        /* owner 2026-10-20: the box shows the INTERNET address (friends outside the home) with the router's external port
+           (upnpport: opened automatically / already forwarded), the note says how friends outside reach it + the local one */
+        { const char *port = strrchr(M.direct, ':'); const char *pn = port ? port + 1 : "47777";
+          int inet = inet_state == EXTADDR_OK && M.internet[0];
+          int up_ok = up_state == UPNPP_OPENED || up_state == UPNPP_ALREADY;
+          snprintf(lobby_addr, sizeof lobby_addr, "%s", inet ? M.internet : M.direct);
+          tmp_set(lwt(T_INV_ADDR), lobby_addr[0] ? lobby_addr : "...");
+          char l1[640];
+          if (inet_state == EXTADDR_PRIVATE) snprintf(l1, sizeof l1, "%s", in.steam ? TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes. Use Steam invite.")
+                                                                              : TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes."));
+          else if (inet_state == EXTADDR_PENDING || inet_state == EXTADDR_IDLE || up_state == UPNPP_PENDING) snprintf(l1, sizeof l1, "%s", TR("Looking for your internet address..."));
+          else if (inet && up_state == UPNPP_OPENED) snprintf(l1, sizeof l1, TR("Friends outside your home: %s (opened automatically on your router)."), M.internet);
+          else if (inet && up_state == UPNPP_ALREADY) snprintf(l1, sizeof l1, TR("Friends outside your home: %s (your router already forwards this port)."), M.internet);
+          else if (up_ok) snprintf(l1, sizeof l1, in.steam ? TR("Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.")
+                                                           : TR("Your router opened port %s, but your internet address is unknown."), M.internet[0] ? strrchr(M.internet, ':') + 1 : pn);
+          else snprintf(l1, sizeof l1, in.steam ? TR("Your router did not open a port. For friends outside your home, use Steam invite, or forward port %s on your router to this computer (port forwarding).")
+                                                : TR("Your router did not open a port. For friends outside your home, forward port %s on your router to this computer (port forwarding)."), pn);
+          size_t bl = (size_t)snprintf(b, sizeof b, "%s\n", l1);
+          if (bl < sizeof b) bl += (size_t)snprintf(b + bl, sizeof b - bl, TR("Same home: %s"), M.direct[0] ? M.direct : "...");
+#ifdef _WIN32
+          if (bl < sizeof b) snprintf(b + bl, sizeof b - bl, "\n%s", TR("If Windows asks to allow Dungeon Settlers on networks, click Allow."));
+#endif
           tmp_set(lwt(T_INV_NOTE), b); }
+        /* the note as tall as its text needs (3 to 5 lines: it ran over the address box and the bottom bar in Russian, and
+           on Windows with the Allow line); the window grows with it */
+        { float th = addr_on ? txt_text_h(lwt(T_INV_NOTE), 396) : 0, nh = th > 1 ? (float)(int)(th + 2.99f) : 52;   /* its design size: auto-sized it was unreadable at 960 x 540 */
+          if (addr_on) lw_addr_h = 40 + 10 + nh;
+          place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + nh / 2), 396, nh); }
         if (cb) tmp_set(AT(cb, 0x28, Obj), frames < copied_until ? TR("Copied") : TR("Copy"));
         Obj ib2 = u_gc_get(h_lwb[LW_INVITE]);                               /* both ways in one app: Steam invite + the address */
         if (ib2) { char iv[200]; if (in.steam) snprintf(iv, sizeof iv, "%s", TR("Steam invite"));
@@ -1751,23 +2106,47 @@ static void lw_texts(void) {
     mpm_settings ss = M.set;
     if (c) { dsnet_rules r; dsnet_rules_get(c, &r); if (!host) { ss.pause_mode = r.pause_mode; ss.speedup = r.allow_speedup; ss.gear = r.gear_mode; ss.units = r.units_per_player; ss.events = r.event_choice; ss.population = r.population; ss.fog = r.shared_fog; }
              ss.admin = dsnet_admin_mode(c); ss.spectators = dsnet_spectators_allowed(c); ss.watching = __builtin_popcount(dsnet_spectator_mask(c)); }
-    for (int i = 0; i < MPM_RULE_ROWS; i++) { char v[64]; mpm_rule_value(&ss, i, v, sizeof v); tmp_set(lwt(T_R0L + i), mpm_rule_label(i)); tmp_set(lwt(T_R0V + i), v); }
+    int nrow = 0;
+    for (int i = 0; i < MPM_RULE_ROWS; i++) {
+        u_active(u_gc_get(h_lw_rrow[i]), true); u_active(lwt(T_R0L + i), true); u_active(lwt(T_R0V + i), true);
+        char v[64]; mpm_rule_value(&ss, i, v, sizeof v); tmp_set(lwt(T_R0L + i), mpm_rule_label(i)); tmp_set(lwt(T_R0V + i), v);
+        float y = LY(188 + 40 * nrow + 20);
+        place(u_gc_get(h_lw_rrow[i]), LX(452 + 198), y, 396, 40); place(lwt(T_R0L + i), LX(452 + 14 + 100), y, 200, 30); place(lwt(T_R0V + i), LX(848 - 14 - 110), y, 220, 30);
+        Obj rb = u_gc_get(h_lw_rrow[i]); if (rb) img_set(rb, NULL, nrow % 2 ? C_ROW2 : C_ROW1);
+        nrow++;
+    }
     tmp_set(lwt(T_RULES_NOTE), host ? TR("Only the host can change the rules.") : TR("Set by the host."));
+    place(lwt(T_RULES_NOTE), LX(452 + 198), LY(188 + 40 * nrow + 16), 396, 20);
     if (loading[0]) snprintf(b, sizeof b, TR("%s is still loading"), loading); else b[0] = 0;
     tmp_set(lwt(T_NOTE), b);
     Obj cg = u_gc_get(h_lw_cog); if (cg) { img_set(cg, spr(S_COG), C_WHITE); u_active(cg, spr(S_COG) != NULL); }
     u_active(u_gc_get(h_lw_pcog), spr(S_COG) == NULL);
     /* height from the content: no empty band under the columns; the window stays centred */
-    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + 40 + 10 + 34 : rows_end, right = 188 + 40 * MPM_RULE_ROWS + 8 + 20;
+    float left = host ? rows_end + 18 + 26 + 10 + 40 + 10 + lw_addr_h + lw_note_h : rows_end + 36, right = 188 + 40 * nrow + 8 + 20;
     float H = (left > right ? left : right) + 24 + 76;
     place(u_gc_get(h_lw_frame), 0, LY(H / 2), 880, H);
     { float top = host ? 123 : 127, bot = H - 77; place(u_gc_get(h_lw_body), 0, LY((top + bot) / 2), 876, bot - top); }
     if (!host) { u_active(u_gc_get(h_lw_lines[4]), false); u_active(u_gc_get(h_lw_lines[5]), false); }   /* no Invite header */
     place(u_gc_get(h_lw_bbar), 0, LY(H - 38), 876, 74); place(u_gc_get(h_lw_bline), 0, LY(H - 76), 876, 1);
-    Obj lb = u_gc_get(h_lwb[LW_LEAVE]); if (lb) place(lb, LX(32 + 103), LY(H - 38), 206, 34);
+    Obj qb = u_gc_get(h_lwb[LW_QUIT]); if (qb) place(qb, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(H - 38), LW_QUIT_W, 34);
+    Obj lb = u_gc_get(h_lwb[LW_LEAVE]); if (lb) place(lb, LX(LW_OFF_X + LW_OFF_W / 2), LY(H - 38), LW_OFF_W, 34);
     Obj sb = u_gc_get(h_lwb[LW_START]); if (sb) place(sb, LX(848 - 116), LY(H - 38), 232, 44);
-    place(lwt(T_NOTE), 0, LY(H - 38), 300, 24);
-    place(u_gc_get(h_lw_root), 0, H / 2 - lw_h / 2, 880, lw_h);
+    { Obj bb = u_gc_get(h_lwb[LW_BRING]); if (bb) place(bb, host ? LX(LW_MID_X) : LX(848 - 116), LY(H - 38), host ? LW_MID_W : 206, 34); }   /* UX pass: with the bar (it stayed at the first height, under the window) */
+    if (host) place(lwt(T_NOTE), LX(LW_MID_X), LY(H - 38), LW_MID_W, 30); else place(lwt(T_NOTE), 0, LY(H - 38), 300, 24);
+    /* UX pass 2026-10-21: the window fits the game window. The Esc view carries the user's UI scale (up to 1.75 on the
+       1080-high canvas): the lobby could be taller than the screen, Start cut off. Measured in pixels, scaled down about
+       the window's centre with 16 px free on each side, never up. Its buttons are Unity UI buttons: clicks follow. */
+    { Obj fr = u_gc_get(h_lw_frame), lr = u_gc_get(h_lw_root); float r[4];
+      float sw = (float)F(0x5092C94, int (*)(void *))(NULL), sh = (float)F(0x5092CD4, int (*)(void *))(NULL);   /* Screen.width / height */
+      if (fr && lr && sw > 0 && sh > 0 && rect_of(fr, r) && r[2] > r[0] && r[3] > r[1]) {
+          float fw = (r[2] - r[0]) / lw_k, fh = (r[3] - r[1]) / lw_k, k = (sw - 32) / fw;
+          if ((sh - 32) / fh < k) k = (sh - 32) / fh;
+          if (k > 1) k = 1; if (k < 0.3f) k = 0.3f;
+          if (k - lw_k > 0.002f || lw_k - k > 0.002f) {
+              lw_k = k; F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(lr), (V3){ k, k, 1 }, NULL);   /* localScale */
+              rig_log("mpmenu: lobby window %.0fx%.0f px at scale 1 on a %.0fx%.0f screen: scale %.3f", fw, fh, sw, sh, k);
+          } } }
+    place(u_gc_get(h_lw_root), 0, (H / 2 - lw_h / 2) * lw_k, 880, lw_h);
     { float top = host ? 123 : 127, bot = H - 77;                          /* inside the body: never over the title or Start */
       if (u_gc_get(rp_lobby.root)) place(u_gc_get(rp_lobby.root), 0, LY((top + bot) / 2), RP_WIDE_W, RP_WIDE_H);
       Obj sh = u_gc_get(h_lw_rshade); if (sh) { place(sh, 0, LY((top + bot) / 2), 876, bot - top); u_active(sh, host && M.lobby_settings_open); } }
@@ -1778,6 +2157,7 @@ static void lw_texts(void) {
 static void lw_sync(Obj v, int lobby) {
     Obj root = u_gc_get(h_lw_root);
     int host = M.state == MPM_LOBBY;
+    if (!host) lw_addr_shown = 0;                                           /* hidden again in the next lobby */
     if (lobby && (!u_alive(root) || u_gc_get(h_lw_view) != v || lw_host_built != host)) {
         if (u_alive(root)) u_active(root, false);
         lw_build(v, host); root = u_gc_get(h_lw_root);
@@ -1796,6 +2176,7 @@ static void h_esc_press(Obj btn, void *mi) {                                /* S
     for (int k = 0; k < nhooks; k++) if (hooks[k].press && hooks[k].press(btn)) return;   /* Custom Modes buttons (PvP) */
     if (escb_press(btn)) return;                                            /* mp_api register_esc_button */
     for (int i = 0; i < NE; i++) if (btn && btn == eb(esc_ids[i])) { pending_click = esc_ids[i]; return; }
+    if (btn && btn == u_gc_get(h_lwb[LW_SHOWADDR])) { lw_addr_shown = 1; lw_texts(); rig_log("mpmenu: lobby: address shown"); return; }
     for (int i = 0; i < LW_NB; i++) if (btn && btn == u_gc_get(h_lwb[i])) { pending_click = lw_ids[i]; return; }
     for (int i = 0; i < MPB_COUNT; i++) if (h_lwr[i] && btn == u_gc_get(h_lwr[i])) { pending_click = i; return; }
     o_esc_press(btn, mi);
@@ -1851,6 +2232,8 @@ static void prefs_load(void) {
     if (jnum(b, "chat_on", &v)) chat_on = v != 0;
     if (jnum(b, "chat_x", &v)) chat_x = (float)v;
     if (jnum(b, "chat_y", &v)) chat_y = (float)v;
+    if (jnum(b, "chat_w", &v) && v >= CH_W0 && v <= 8000) chat_w = (float)v;    /* shown clamped to the screen (ch_geo) */
+    if (jnum(b, "chat_h", &v) && v >= CH_H0 && v <= 8000) chat_h = (float)v;
     {   char rn[64] = ""; double nv = 0; jstr(b, "name", rn, sizeof rn); jnum(b, "name_v", &nv);
         const char *st = dsnet_steam_load(NULL) == 0 ? dsnet_steam_my_name() : "";
         mpm_start_name(my_name, sizeof my_name, rn, (int)nv, st);
@@ -1860,8 +2243,8 @@ static void prefs_load(void) {
 static void prefs_save(void) {
     char p[1200]; app_path(p, sizeof p, "mp_menu.json");
     FILE *f = fopen(p, "w"); if (!f) return;
-    Buf b = {0}; bput(&b, "{\"pause\":%d,\"speedup\":%d,\"gear\":%d,\"units\":%d,\"admin\":%d,\"events\":%d,\"population\":%d,\"fog\":%d,\"spectators\":%d,\"fe\":%d,\"fe_death\":%d,\"fe_xp\":%d,\"fe_loot\":%d,\"fe_recruit\":%d,\"fe_v\":2,\"chat_fade\":%d,\"chat_join_lines\":%d,\"chat_on\":%d,\"chat_x\":%.0f,\"chat_y\":%.0f,\"name\":",
-        M.set.pause_mode, M.set.speedup, M.set.gear, M.set.units, M.set.admin, M.set.events, M.set.population, M.set.fog, M.set.spectators, M.set.fe, M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, chat_fade_s, chat_show_join, chat_on, chat_x, chat_y); bstr(&b, my_name); bput(&b, ",\"name_v\":2}\n");
+    Buf b = {0}; bput(&b, "{\"pause\":%d,\"speedup\":%d,\"gear\":%d,\"units\":%d,\"admin\":%d,\"events\":%d,\"population\":%d,\"fog\":%d,\"spectators\":%d,\"fe\":%d,\"fe_death\":%d,\"fe_xp\":%d,\"fe_loot\":%d,\"fe_recruit\":%d,\"fe_v\":2,\"chat_fade\":%d,\"chat_join_lines\":%d,\"chat_on\":%d,\"chat_x\":%.0f,\"chat_y\":%.0f,\"chat_w\":%.0f,\"chat_h\":%.0f,\"name\":",
+        M.set.pause_mode, M.set.speedup, M.set.gear, M.set.units, M.set.admin, M.set.events, M.set.population, M.set.fog, M.set.spectators, M.set.fe, M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, chat_fade_s, chat_show_join, chat_on, chat_x, chat_y, chat_w, chat_h); bstr(&b, my_name); bput(&b, ",\"name_v\":2}\n");
     fputs(b.p, f); fclose(f); free(b.p);
 }
 static int world_get(const char *guid, mpm_settings *out) {
@@ -1875,6 +2258,7 @@ static int world_get(const char *guid, mpm_settings *out) {
     fclose(f); return found;
 }
 static void world_put(const char *guid, const mpm_settings *st) {
+    if (mp_hub_guid(guid)) return;                                          /* a hub is made new each session: nothing to keep */
     char p[1200], tmp[1300], line[256]; app_path(p, sizeof p, "mp_worlds.txt"); snprintf(tmp, sizeof tmp, "%s.tmp", p);
     FILE *in = fopen(p, "r"), *out = fopen(tmp, "w"); if (!out) { if (in) fclose(in); return; }
     while (in && fgets(line, sizeof line, in)) { char g[64]; if (sscanf(line, "%63s", g) == 1 && strcmp(g, guid)) fputs(line, out); }
@@ -1940,13 +2324,19 @@ static void esc_load_rule(Obj v) {
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <net/if.h>
-static void lan_ip(char *out, size_t cap) {                                 /* first up, non-loopback IPv4 (en0 first) */
+/* the ONE "Same home" address (owner 2026-10-20): en0, else the first real LAN adapter. VPN / virtual adapters (Tailscale
+   utun, bridge, vmnet, Docker, Hyper-V: ui_addr_kind, the Windows getifaddrs shim names them so), link-local 169.254/16
+   and carrier NAT 100.64/10 (Tailscale) only when nothing else is up. */
+static void lan_ip(char *out, size_t cap) {
     struct ifaddrs *ifs = NULL, *i; snprintf(out, cap, "127.0.0.1");
     if (getifaddrs(&ifs)) return;
-    for (int pass = 0; pass < 2; pass++)
+    for (int pass = 0; pass < 3; pass++)
         for (i = ifs; i; i = i->ifa_next) {
             if (!i->ifa_addr || i->ifa_addr->sa_family != AF_INET || !(i->ifa_flags & IFF_UP) || (i->ifa_flags & IFF_LOOPBACK)) continue;
-            if (pass == 0 && strcmp(i->ifa_name, "en0")) continue;
+            uint32_t a = ntohl(((struct sockaddr_in *)i->ifa_addr)->sin_addr.s_addr);
+            int lan = ui_addr_kind(i->ifa_name) == 0 && a >> 16 != 0xA9FE && (a & 0xFFC00000u) != 0x64400000u;
+            if (pass == 0 && (strcmp(i->ifa_name, "en0") || !lan)) continue;
+            if (pass == 1 && !lan) continue;
             inet_ntop(AF_INET, &((struct sockaddr_in *)i->ifa_addr)->sin_addr, out, (socklen_t)cap);
             freeifaddrs(ifs); return;
         }
@@ -1976,11 +2366,22 @@ static int steam_public_ip(char *out, size_t cap) {
 }
 static void direct_refresh(void) {
     mp_session *s = mp_game_session(); uint16_t p = s ? mp_server_port(s) : 0;
-    if (!p) { M.direct[0] = M.internet[0] = 0; return; }
-    char ip[64], pub[64]; lan_ip(ip, sizeof ip);
+    static mp_session *last_s; static uint16_t last_p;                     /* one internet lookup per host session */
+    if (s != last_s || p != last_p) { extaddr_reset(); last_s = s; last_p = p; }
+    if (!p) { M.direct[0] = M.internet[0] = 0; inet_state = EXTADDR_IDLE; up_state = UPNPP_IDLE; return; }
+    char ip[64], pub[64]; const char *via = ""; lan_ip(ip, sizeof ip);
     snprintf(M.direct, sizeof M.direct, "%s:%u", ip, p);
-    if (steam_public_ip(pub, sizeof pub)) snprintf(M.internet, sizeof M.internet, "%s:%u", pub, p);
+    extaddr_start();                                                        /* no-op once started (own thread, never this frame) */
+    int was = inet_state; inet_state = extaddr_get(pub, sizeof pub, &via);
+    if (inet_state == EXTADDR_UNKNOWN && steam_public_ip(pub, sizeof pub)) { inet_state = EXTADDR_OK; via = "steam"; }
+    uint16_t ext = 0; int was_up = up_state; up_state = upnpport_get(&ext);
+    if (inet_state == EXTADDR_OK) snprintf(M.internet, sizeof M.internet, "%s:%u", pub, (up_state == UPNPP_OPENED || up_state == UPNPP_ALREADY) && ext ? ext : p);
     else M.internet[0] = 0;
+    if (inet_state != was && inet_state >= EXTADDR_OK)
+        rig_log("mpmenu: internet address %s (via %s)", inet_state == EXTADDR_OK ? "found" : inet_state == EXTADDR_PRIVATE ? "private (provider NAT)" : "unknown", via);
+    if (up_state != was_up && up_state >= UPNPP_OPENED)
+        rig_log("mpmenu: router port %s (listen %u, external %u)", up_state == UPNPP_OPENED ? "opened automatically" : up_state == UPNPP_ALREADY ? "already forwarded"
+                                                                     : up_state == UPNPP_OFF ? "UPnP off" : "not opened", p, ext);
 }
 static char hist_host[48];                               /* reconnecting from a Recent worlds row: that host's name */
 static char hist_world[64];                              /* ... and that row's world name (F17 refusal text) */
@@ -2162,11 +2563,13 @@ static void rules_send(const char *why) {
     char gid[64] = ""; prefs_save(); if (campaign_guid(gid, sizeof gid)) world_put(gid, &M.set);
     rig_log("mpmenu: rules (%s): pause %d speed-up %d gear %d units %d (rc %d)", why, r.pause_mode, r.allow_speedup, r.gear_mode, r.units_per_player, rc);
 }
+int pvp_pause_mode_saved(void) __attribute__((weak_import));               /* pvp_game.c: >= 0 while a match turns player pauses off */
 static void rules_sync(const mpm_obs *o) {
     if (o->role != 1 || frames % 60 || frames - rules_sent_frame < 120) return;   /* host; our own change has landed */
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
     if (!c) return;
     dsnet_rules r; dsnet_rules_get(c, &r);
+    if (pvp_pause_mode_saved) { int sv = pvp_pause_mode_saved(); if (sv >= 0) r.pause_mode = sv; }   /* the match's "no pause" is never remembered (a quit mid-match kept it) */
     int adm = dsnet_admin_mode(c), spa = dsnet_spectators_allowed(c) != 0;
     if (r.pause_mode == M.set.pause_mode && (r.allow_speedup != 0) == (M.set.speedup != 0) && r.gear_mode == M.set.gear && r.units_per_player == M.set.units && r.event_choice == M.set.events && r.population == M.set.population && r.shared_fog == M.set.fog && adm == M.set.admin
         && spa == (M.set.spectators != 0)) return;
@@ -2197,6 +2600,8 @@ static void notice_frame(const mpm_obs *o) {
     static int calm_scene;
     if (o->scene != calm_scene) { calm_scene = o->scene; title_calm = 0; }
     title_calm = (o->scene == 1 && o->title_visible && !o->loading) || (o->scene == 2 && M.state == MPM_FAILED && o->campaign_ready && !o->loading) ? title_calm + 1 : 0;
+    if (M.notice[0] && title_calm && o->scene == 2)                         /* a world pop-up (tutorial, story event) draws over the box: */
+        for (int i = 2; i < 30; i++) if (popup_open(i)) { title_calm = 0; break; }   /* show it once they stay closed */
     if (HM.pending) M.notice[0] = 0;                                        /* the hostmods box says it (hostmods_frame) */
     if (!M.notice[0] || title_calm < 90) return;                            /* the loading curtain is gone (~3 s of title, or of the world) */
     if (M.confirm_leave) return;                                            /* never over the Leave box */
@@ -2222,7 +2627,7 @@ static void notice_frame(const mpm_obs *o) {
  * actions; _txtConfirm +0x40 primary right "End for everyone", _txtCancle +0x50 "Cancel"). The ui lane's
  * OnClick_Confirm / OnClick_Cancle hooks hand clicks on a box that is not theirs to mpmenu_notice_click (dlsym). If
  * another box takes the view (its text changes) or it closes another way, it counts as Cancel. */
-enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK, BX_HOSTMODS, BX_HOSTMODS_INFO };   /* HOSTMODS: the host's mods + "Get the host's mods"; _INFO: its progress / failure */   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
+enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK, BX_HOSTMODS, BX_HOSTMODS_INFO, BX_REJOIN, BX_SOLO };   /* SOLO: "Keep a single-player copy of this world?" */   /* REJOIN: "Connection lost, rejoining..." + Cancel (mp_game_autorejoin) */   /* HOSTMODS: the host's mods + "Get the host's mods"; _INFO: its progress / failure */   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
 static char lbox_text[2048]; static int lbox_up;                             /* lbox_up = BX_* */
 static Obj lbox_view(void) { return find_view_x(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }
 static Obj lbox_view_now(void) { return find_view_now(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }   /* showing a box */
@@ -2267,8 +2672,40 @@ static void lbox_restore(void) {
     u_gc_free(LG.h_bg); u_gc_free(LG.h_tx); LG.h_bg = LG.h_tx = 0;
     rig_log("mpmenu: notice box: stock size again (was %.0f higher)", LG.extra);
 }
+/* at UI scale 1.5 the stock box is wider than the free area right of the title column, and the column draws over its left
+   part (the body text lost its first letters): on the title, the box moves right until it clears the column (+20% of the
+   column's width, its frame); back to its place when it closes or shows another text (lbox_fit_frame) */
+static struct { int on; uintptr_t h; float x; uint32_t hash; } LS;
+static void lbox_unshift(void) {
+    if (!LS.on) return;
+    LS.on = 0;
+    Obj p = u_gc_get(LS.h);
+    if (u_alive(p) && mm_is(p, K_RT)) { V2 ap = F(0x5106E38, V2 (*)(Obj, void *))(p, NULL); ap.x = LS.x; F(0x5106F2C, void (*)(Obj, V2, void *))(p, ap, NULL); }
+    u_gc_free(LS.h); LS.h = 0;
+}
+static void lbox_shift(Obj v) {
+    lbox_unshift();
+    Obj tv = title_view(); if (!u_alive(v) || !u_on(v) || !u_alive(tv) || !u_on(tv)) return;
+    float cl = 1e9f, cr = -1e9f, r[4];                                       /* the title column: its visible buttons (stock + ours) */
+    for (int i = 0; i < 7; i++) { Obj b = AT(tv, 0x30 + 8 * i, Obj); if (u_on(b) && rect_of(b, r)) { if (r[0] < cl) cl = r[0]; if (r[2] > cr) cr = r[2]; } }
+    for (int i = 0; i < NT; i++) { Obj b = tb(title_ids[i]); if (u_on(b) && rect_of(b, r)) { if (r[0] < cl) cl = r[0]; if (r[2] > cr) cr = r[2]; } }
+    if (cr < cl) return;
+    Obj p = tr_find(u_tr(v), "Panel_Notice"), bg = tr_find(u_tr(v), "Panel_Notice/Img_BackGroundBox");
+    float br[4]; if (!u_alive(p) || !mm_is(p, K_RT) || !u_alive(bg) || !mm_is(bg, K_RT) || !rect_of(bg, br)) return;
+    float lim = cr + 0.2f * (cr - cl), dx = lim - br[0], sw = (float)F(0x5092C94, int (*)(void *))(NULL);   /* Screen.width */
+    if (dx < 1) return;
+    if (sw > 0 && br[2] + dx > sw * 0.98f) dx = sw * 0.98f - br[2];          /* never off the right edge */
+    V2 bsd = F(0x510701C, V2 (*)(Obj, void *))(bg, NULL); float sc = bsd.x > 1 ? (br[2] - br[0]) / bsd.x : 0;   /* screen px per canvas unit */
+    if (dx < 1 || sc <= 0) return;
+    V2 ap = F(0x5106E38, V2 (*)(Obj, void *))(p, NULL);
+    LS.x = ap.x; ap.x += dx / sc; F(0x5106F2C, void (*)(Obj, V2, void *))(p, ap, NULL);
+    char rb[2048] = ""; str_utf8(tmp_get(AT(v, 0x30, Obj)), rb, sizeof rb); LS.hash = fit_hash(rb);
+    LS.h = u_gc_new(p); LS.on = 1;
+    rig_log("mpmenu: notice box: %.0f px right, clear of the title column (right edge %.0f)", dx, cr);
+}
 static void lbox_grow(Obj v) {
     lbox_restore();
+    lbox_shift(v);
     if (!u_alive(v) || !u_on(v) || !fit_methods() || !lg_methods()) return;
     Obj t = AT(v, 0x30, Obj); if (!u_alive(t) || !mm_is(t, K_TMP)) return;
     Obj tx = u_tr(t), bg = tr_find(u_tr(v), "Panel_Notice/Img_BackGroundBox");
@@ -2298,11 +2735,13 @@ static void lbox_grow(Obj v) {
     LG.h_bg = u_gc_new(bg); LG.h_tx = u_gc_new(tx); LG.on = 1;
     rig_log("mpmenu: notice box: %.0f higher for its text (needs %.0f, rect %.0f)", extra, need, r.h);
 }
-static void lbox_fit_frame(void) {                                           /* the box closed or shows another text: stock size */
-    if (!LG.on) return;
+static void lbox_fit_frame(void) {                                           /* the box closed or shows another text: stock size and place */
+    if (!LG.on && !LS.on) return;
     Obj v = lbox_view(); char t[2048] = "";
     if (u_alive(v) && u_on(v)) str_utf8(tmp_get(AT(v, 0x30, Obj)), t, sizeof t);
-    if (!t[0] || fit_hash(t) != LG.hash) lbox_restore();
+    uint32_t h = t[0] ? fit_hash(t) : 0;
+    if (LG.on && (!t[0] || h != LG.hash)) lbox_restore();
+    if (LS.on && (!t[0] || h != LS.hash)) lbox_unshift();
 }
 static int leave_box_text(char *out, size_t cap) {             /* returns how many other players are in (they go back to the title) */
     mp_session *s = mp_game_session(); dsnet_client *c = s ? mp_client(s) : NULL;
@@ -2316,8 +2755,11 @@ static int leave_box_text(char *out, size_t cap) {             /* returns how ma
     }
     char who[400];
     if (n) snprintf(who, sizeof who, TRN("%s goes back to the title.", "%s go back to the title.", n), names);
-    snprintf(out, cap, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", n ? TR("End the game for everyone?") : TR("Leave multiplayer?"),
-             n ? who : TR("Nobody else is in this world now. Friends can no longer join."), TR("The world stays on your computer. You keep playing it alone."));
+    int quit = M.confirm_leave == 2, lobby = M.state == MPM_LOBBY;           /* lobby: Quit (then the title) or Turn off multiplayer */
+    snprintf(out, cap, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>",
+             n ? TR("End the game for everyone?") : quit ? TR("Quit to the title?") : lobby ? TR("Turn off multiplayer?") : TR("Leave multiplayer?"),
+             n ? who : TR("Nobody else is in this world now. Friends can no longer join."),
+             quit ? TR("The world stays on your computer. You go back to the title.") : TR("The world stays on your computer. You keep playing it alone."));
     return n;
 }
 static void leave_box_show(void) {
@@ -2330,7 +2772,7 @@ static void leave_box_show(void) {
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str_ok(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
     tmp_set(AT(v, 0x30, Obj), lbox_text);
     txt_fit_stock(AT(v, 0x30, Obj));
-    tmp_set(AT(v, 0x40, Obj), others ? TR("End for everyone") : TR("Leave"));          /* from the box's own case, not its text */
+    tmp_set(AT(v, 0x40, Obj), others ? TR("End for everyone") : M.confirm_leave == 2 ? TR("Quit") : M.state == MPM_LOBBY ? TR("Turn off") : TR("Leave"));   /* from the box's own case, not its text */
     tmp_set(AT(v, 0x50, Obj), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }   /* centred, as the ui lane's boxes */
     u_go_active(u_go(v), true);
@@ -2344,6 +2786,26 @@ static void leave_box_close(void) {                                         /* o
     lbox_up = 0;
     if (ours) F(0xF65638, void (*)(Obj, void *))(v, NULL);                    /* OnClick_Cancle (through the ui lane's hook: not theirs) */
 }
+/* mp_esc.c: one of our boxes is up (they lie over every window of ours; the windows step off the kit's Escape stack) */
+int mpmenu_box_over(void) { return lbox_up != BX_NONE && lbox_ours(lbox_view()); }
+/* Escape on our boxes (owner 2026-10-25). The game's Escape event reaches mpmenu_escape_ours (InputEventHandler.OnEvent hook,
+ * ui_game.c), which presses the box's Cancel; but the title page's own Escape check (observe) also went Back on that same
+ * press (a box over the Multiplayer page: the box and the page closed). With the loader kit's Escape (kit 0.1.28) the box is
+ * on the kit's stack while it shows, title and world: it is on top (it shows last; our windows step off while it is up,
+ * mp_esc.c), Escape = its Cancel as before, the game sees no press and our own checks skip it (mpesc_took). It is the stock
+ * CommonNoticeView every box shares: dropped the frame our text leaves it, and the close checks it is still ours (else it
+ * does nothing). Without that kit: as before. */
+static void lbox_esc_close(void *ud);
+static mpesc_win esc_lbox = { .name = "our notice box", .close = lbox_esc_close };
+static void lbox_esc_close(void *ud) {
+    (void)ud; Obj v = lbox_view();
+    if (lbox_up != BX_NONE && lbox_ours(v)) { rig_log("mpmenu: Escape = Cancel in our box %d", lbox_up); F(0xF65638, void (*)(Obj, void *))(v, NULL); }
+    mpesc_drop(&esc_lbox);
+}
+static void lbox_esc_frame(void) {
+    Obj v = lbox_up != BX_NONE ? lbox_view() : NULL;
+    mpesc_sync(&esc_lbox, v, v && lbox_ours(v), MPESC_BOX);
+}
 static void leave_box_frame(void) {
     if (lbox_up != BX_LEAVE) return;
     if (!M.confirm_leave) { leave_box_close(); return; }                     /* the model closed it (session ended, state change) */
@@ -2356,7 +2818,7 @@ __attribute__((visibility("default"))) int mpmenu_notice_click(int confirm) {
     if (lbox_up > BX_LEAVE && lbox_ours(lbox_view())) { invite_click(confirm); return 1; }   /* invite / joining boxes */
     if (!M.confirm_leave || !lbox_ours(lbox_view())) return 0;
     lbox_up = 0; pending_click = confirm ? MPB_LEAVE_CONFIRM : MPB_LEAVE_CANCEL;
-    rig_log("mpmenu: Leave box: %s", confirm ? "End for everyone" : "Cancel");
+    rig_log("mpmenu: Leave box (%s): %s", M.confirm_leave == 2 ? "Quit" : "Turn off", confirm ? "confirm" : "Cancel");
     return 1;
 }
 /* ---------------------------------------------------------------- invite during a single-player game (lan_v10, ux_flow F9; core API) */
@@ -2442,15 +2904,19 @@ static void invite_answer(int choice) {
     }
 }
 static void hostmods_click(int confirm);
+static void solo_answer(int yes);
 static void invite_click(int confirm) {
     int k = lbox_up; lbox_up = BX_NONE;
     if (k == BX_INVITE) invite_answer(confirm ? 2 : 0);
     else if (k == BX_NOSAVE) invite_answer(confirm ? 1 : 0);
     else if (k == BX_JOINING) { join_box_on = 0; mp_steam_leave(); rig_log("mpmenu: joining cancelled (box)"); }
+    else if (k == BX_REJOIN) { static void (*cn)(void); if (!cn) cn = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_autorejoin_cancel");
+                               rig_log("mpmenu: rejoining cancelled (box)"); if (cn) cn(); }
     else if (k == BX_SPECT_OFF) { if (confirm) spect_apply(0); else rig_log("mpmenu: spectators stay (box: Cancel)"); }
     else if (k == BX_UNTAG) tag_answer(confirm);
     else if (k == BX_LANBLOCK && confirm) lanblock_open_settings();
     else if (k == BX_HOSTMODS) hostmods_click(confirm);
+    else if (k == BX_SOLO) solo_answer(confirm);
 }
 static void invite_frame(const mpm_obs *o) {
     static int looked; if (!looked) { looked = 1; inv_pending = (int (*)(char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_invite_pending"); inv_answer = (int (*)(int))dlsym(RTLD_DEFAULT, "mp_game_invite_answer"); }
@@ -2479,6 +2945,25 @@ static void invite_frame(const mpm_obs *o) {
         snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", hd, bd, TR("Your progress here is saved first, then this world closes."));
         box_show(BX_INVITE, t, TR("Save and join"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     }
+    /* "Connection lost, rejoining..." (mp_game.c auto rejoin): one Cancel button, instead of the Joining box */
+    static int (*ar_state)(void); static int ar_looked, ar_shown;
+    if (!ar_looked) { ar_looked = 1; ar_state = (int (*)(void))dlsym(RTLD_DEFAULT, "mp_game_autorejoin"); }
+    int ar = ar_state ? ar_state() : 0;
+    if (lbox_up == BX_REJOIN && !lbox_ours(v)) { lbox_up = BX_NONE; ar_shown = 0; }   /* closed another way: shown again below */
+    if (ar) {
+        join_box_on = 0; join_phase_shown = -1;
+        if (lbox_up == BX_JOINING) box_close();
+        int free_view = lbox_up == BX_NONE && !M.confirm_leave && !(u_alive(v) && u_on(v)) && frames % 15 == 0;   /* never over another box */
+        if (o->scene == 2 && ar != ar_shown && (lbox_up == BX_REJOIN || free_view)) {
+            char t[300]; snprintf(t, sizeof t, "<size=150%%>%s</size>\n<size=88%%><color=#a69085>%s</color></size>", TR("Connection lost, rejoining..."),
+                                  ar == 2 ? TR("Loading the world") : TR("Connecting"));
+            box_show(BX_REJOIN, t, mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")), NULL);
+            ar_shown = lbox_up == BX_REJOIN ? ar : 0;
+        }
+        return;
+    }
+    if (lbox_up == BX_REJOIN) box_close();
+    ar_shown = 0;
     /* "Joining <host>'s game..." in the world (a join started from the player's own world) */
     mp_steam_info in; mp_steam_state(&in);
     static int prev_role; int role = o->role;
@@ -2490,7 +2975,8 @@ static void invite_frame(const mpm_obs *o) {
         const char *h = in.host_name[0] ? in.host_name : inv_host[0] ? inv_host : TR("the host");
         char hd[160]; snprintf(hd, sizeof hd, TR("Joining %s's game..."), h);
         char t[300]; snprintf(t, sizeof t, "<size=150%%>%s</size>\n<size=88%%><color=#a69085>%s</color></size>", hd,
-                              in.phase == MP_PH_LOADING ? TR("Loading the world") : in.phase == MP_PH_WAITING_SAVE ? TR("Waiting for the world") : TR("Connecting"));
+                              in.phase == MP_PH_LOADING ? TR("Loading the world") : in.phase == MP_PH_WAITING_SAVE ? TR("Waiting for the world")
+                              : in.phase == MP_PH_HOST_WINDOW ? TR("Waiting for the host to close a window...") : TR("Connecting"));
         box_show(BX_JOINING, t, mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")), NULL);
         join_phase_shown = in.phase;
     }
@@ -2550,8 +3036,8 @@ static void pick_frame(const mpm_obs *o) {
         Obj t = slv ? AT(slv, 0x48, Obj) : NULL, lb = slv ? AT(slv, 0xA0, Obj) : NULL, bt = u_alive(lb) ? tmp_below(u_tr(lb), 0) : NULL;
         if (!u_alive(t)) return;
         if (!pick_on) {
-            str_utf8(tmp_get(t), pick_title0, sizeof pick_title0); pick_key0[0] = !strcmp(cls_name(t), "DASText") && AT(t, 0x7C0, bool);
-            pick_btn0[0] = 0; if (bt) { str_utf8(tmp_get(bt), pick_btn0, sizeof pick_btn0); pick_key0[1] = !strcmp(cls_name(bt), "DASText") && AT(bt, 0x7C0, bool); }
+            str_utf8(tmp_get(t), pick_title0, sizeof pick_title0); pick_key0[0] = das_key_on(t);
+            pick_btn0[0] = 0; if (bt) { str_utf8(tmp_get(bt), pick_btn0, sizeof pick_btn0); pick_key0[1] = das_key_on(bt); }
             u_gc_free(h_pick_title); h_pick_title = u_gc_new(t); u_gc_free(h_pick_btn); h_pick_btn = bt ? u_gc_new(bt) : 0;
             pick_on = 1; rig_log("mpmenu: load list retitled (was \"%s\" / \"%s\")", pick_title0, pick_btn0);
         }
@@ -2559,8 +3045,8 @@ static void pick_frame(const mpm_obs *o) {
         if (bt) { str_utf8(tmp_get(bt), cur, sizeof cur); if (strcmp(cur, TRC("verb", "Host"))) tmp_set(bt, TRC("verb", "Host")); }
     } else if (!want && pick_on) {
         Obj t = u_gc_get(h_pick_title), bt = u_gc_get(h_pick_btn);
-        if (u_alive(t)) { tmp_set(t, pick_title0); if (pick_key0[0]) AT(t, 0x7C0, bool) = true; }
-        if (u_alive(bt)) { tmp_set(bt, pick_btn0); if (pick_key0[1]) AT(bt, 0x7C0, bool) = true; }
+        if (u_alive(t)) { tmp_set(t, pick_title0); if (pick_key0[0]) das_key_set(t, true); }
+        if (u_alive(bt)) { tmp_set(bt, pick_btn0); if (pick_key0[1]) das_key_set(bt, true); }
         u_gc_free(h_pick_title); u_gc_free(h_pick_btn); h_pick_title = h_pick_btn = 0; pick_on = 0;
         rig_log("mpmenu: load list titles restored");
     }
@@ -2622,6 +3108,7 @@ static void hist_update(void) {
     char gid[64] = ""; campaign_guid(gid, sizeof gid);
     Obj clan = AT(cd, 0x50, Obj); if (clan) str_utf8(AT(clan, 0x20, Obj), e.world, sizeof e.world);     /* ClanDataContainer.ClanName */
     Obj td = AT(cd, 0xA8, Obj); if (td) e.day = AT(td, 0x20, int64_t);                              /* CampaignDataContainer.TimeData (dump 25846389) .Day */
+    if (in.is_host && mp_hub_guid(gid)) return;                             /* no hub row to host again: the hub is never saved */
     if (in.is_host) { snprintf(e.how, sizeof e.how, "host"); snprintf(e.addr, sizeof e.addr, "%s", M.direct); snprintf(e.host, sizeof e.host, "%s", my_name); }
     else if (!strcmp(joined_how, "ip")) { snprintf(e.how, sizeof e.how, "ip"); snprintf(e.addr, sizeof e.addr, "%s", joined_addr); snprintf(e.host, sizeof e.host, "%s", in.host_name); }
     else { snprintf(e.how, sizeof e.how, "steam"); e.steamid = joined_steamid ? joined_steamid : dsnet_steam_lobby_owner(in.lobby); snprintf(e.host, sizeof e.host, "%s", in.host_name); }
@@ -2873,13 +3360,26 @@ static void hist_del(int k) {
 /* Lines come from dsnet (outside the sim). Idle: the last lines bottom-left above the build bar, no frame, fading after
  * the fade time. Enter: a framed box with the history (wheel / PageUp-PageDown scroll) and "Say:" + the typed text;
  * Enter sends, Escape closes. While typing, the game's own key handling sees a focused text field
- * (KeyInputDispatcher.IsTextInputFocused hooked to true), so no hotkey fires. Right-click + drag moves it. */
-#define CH_HIST 100
+ * (KeyInputDispatcher.IsTextInputFocused hooked to true), so no hotkey fires. Right-click + drag moves it; the open box
+ * also moves with a left drag on its title band or frame, and resizes with a left drag on its bottom-right corner (grip:
+ * width + height) or its bottom edge (height) (owner 2026-10-25); place and size are remembered in mp_menu.json. */
+#define CH_HIST 3000                                                         /* mp_api v3: a DPS check writes a line per hit */
+#define CH_DROP 300                                                          /* history full: the oldest 300 go in one move */
 #define CH_IDLE 5
-#define CH_BOX_LINES 9
-static struct { char text[300]; double t; int link; } chist[CH_HIST]; static int nch;   /* link: ui_game's id (pings), 0 = plain */
+#define CH_BOX_LINES 60                                                      /* line objects of the open box: enough for its tallest size (972 high) */
+#define CH_TEXT 640
+static struct { char text[CH_TEXT]; double t; int link, id, font, missing, local; unsigned gen; float hi, hb; } chist[CH_HIST]; static int nch, ch_serial;
+/* link: ui_game's id (pings), 0 = plain. id: serial (slots keep what they show). font: index in the chat fonts (-1 not
+   chosen yet, gen = the fonts' generation); missing: characters no game font has, shown as '?'. hi / hb: measured text
+   height in the idle lines (box width - 60: 410) / the open box (box width - 24: 446), 0 = not measured (ch_hi_w / ch_hb_w). local: 1 = a mp_api v3 chat_local line
+   (never sent; MP_CHATL_CLEAR removes it; in single player the chat shows while one is in the history) */
+static int ch_nlocal; static unsigned ch_local_total;                       /* local lines in chist now / ever added (test read-back) */
 static char chat_buf[DSNET_CHAT_MAX + 1];
 static uintptr_t h_ch_view, h_ch_root, h_ch_box, h_ch_idle[CH_IDLE], h_ch_idlebg[CH_IDLE], h_ch_lines[CH_BOX_LINES], h_ch_input, h_ch_hint, h_ch_field, h_ch_typing, h_ch_typingbg;
+/* the open box's parts placed by ch_layout for its size: history / footer / title bands, lines, "Chat", "Say:", the field's
+   plates, the corner grip, and two clear strips (UI clicks) under the bottom edge and right of the corner: a wider grab */
+enum { CL_BAND, CL_FOOT, CL_TBAND, CL_TLINE, CL_TITLE, CL_ILINE, CL_SAY, CL_FLINE, CL_FBG, CL_GRIP, CL_STRIPB, CL_STRIPR, CL_N };
+static uintptr_t h_ch_lay[CL_N]; static float ch_say_w = 40, ch_lay_w, ch_lay_h;
 static char typing_shown[200];                           /* test status: the "is typing" line now shown */
 void utf16_to_utf8(Obj s, char *out, size_t cap) {             /* typed text: keep accents etc. (str_utf8 is ASCII-only) */
     size_t n = 0; if (cap) out[0] = 0;
@@ -2896,7 +3396,7 @@ void utf16_to_utf8(Obj s, char *out, size_t cap) {             /* typed text: ke
     }
     out[n] = 0;
 }
-static char test_chat_in[256]; static int test_chat_enter, test_chat_escape, test_chat_open;
+static char test_chat_in[1024]; static int test_chat_enter, test_chat_escape, test_chat_open;
 static bool (*o_textfocus)(void *);
 /* hotkeys off while typing, and while the lobby Rules panel is open (its Escape must not open the game's Esc menu) */
 static int teams_modal(void) {                                             /* teams lane: Teams window / proposal summary / stock step open */
@@ -2911,7 +3411,9 @@ __attribute__((visibility("default"))) int mpmenu_escape_ours(void) {
             M.state == MPM_LOBBY && M.lobby_settings_open, rules_close_frames, teams_modal(), teams_close_frames);
     if (chat_typing) { test_chat_escape = 1; rig_log("mpmenu: Escape closed the chat"); return 1; }
     if (M.confirm_leave) { pending_click = MPB_LEAVE_CANCEL; rig_log("mpmenu: Escape = Cancel in the Leave box"); return 1; }
-    for (int k = 0; k < nhooks; k++) { int ec = hooks[k].escape ? hooks[k].escape() : 0; if (ec) { pending_click = ec; return 1; } }   /* Custom Modes windows (FE) */
+    /* Custom Modes windows (FE), the Steam friends picker: the last registered first. The picker registers at the lobby, after
+       FE, and opens over an FE window (results opened by themselves at the session start), so Escape closes the top one. */
+    for (int k = nhooks - 1; k >= 0; k--) { int ec = hooks[k].escape ? hooks[k].escape() : 0; if (ec) { pending_click = ec; return 1; } }
     if (lbox_up > BX_LEAVE && lbox_ours(lbox_view())) {                    /* the box's own Cancel: the click hook answers it */
         rig_log("mpmenu: Escape = Cancel in our box"); F(0xF65638, void (*)(Obj, void *))(lbox_view(), NULL); return 1; }
     if (M.state == MPM_LOBBY && M.lobby_settings_open) { pending_click = MPB_RULES_DONE; rig_log("mpmenu: Escape closed the lobby Rules"); return 1; }
@@ -2934,10 +3436,36 @@ __attribute__((visibility("default"))) void mpmenu_chat_config_get(int *fade_s, 
     if (fade_s) *fade_s = chat_fade_s; if (show_join) *show_join = chat_show_join; if (enabled) *enabled = chat_on;
 }
 static double mono_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
-static void chat_add(const char *rich) {
-    if (nch == CH_HIST) { memmove(&chist[0], &chist[1], sizeof chist[0] * (CH_HIST - 1)); nch--; }
-    snprintf(chist[nch].text, sizeof chist[nch].text, "%s", rich); chist[nch].t = mono_s(); chist[nch].link = 0; nch++;
-    chat_scroll = 0;
+static int chat_shown_k[CH_IDLE + CH_BOX_LINES]; static uintptr_t *chat_shown_h[CH_IDLE + CH_BOX_LINES]; static int nchat_shown;   /* lines on screen this frame */
+static void chat_add_as(const char *rich, int local) {
+    if (nch == CH_HIST) {                                                   /* one move per CH_DROP lines, not one per line */
+        for (int i = 0; i < CH_DROP; i++) ch_nlocal -= chist[i].local;
+        memmove(&chist[0], &chist[CH_DROP], sizeof chist[0] * (CH_HIST - CH_DROP)); nch -= CH_DROP;
+        nchat_shown = 0;                                                    /* the indices shown this frame moved */
+    }
+    snprintf(chist[nch].text, sizeof chist[nch].text, "%s", rich); dsi_utf8_fix_end(chist[nch].text);
+    chist[nch].t = mono_s(); chist[nch].link = 0; chist[nch].id = ++ch_serial; chist[nch].font = -1; chist[nch].gen = 0; chist[nch].hi = chist[nch].hb = 0; chist[nch].missing = 0;
+    chist[nch].local = local != 0; ch_nlocal += local != 0; nch++;
+    /* a local line while the open box is scrolled up keeps the same lines in view (a DPS check adds many a second); any
+       other line jumps to the newest, as before. A drop above moves the shown line and nch by the same count. */
+    if (local && chat_typing && chat_scroll > 0) { chat_scroll++; if (chat_scroll > nch - 1) chat_scroll = nch - 1; }
+    else chat_scroll = 0;
+}
+static void chat_add(const char *rich) { chat_add_as(rich, 0); }
+/* MP_CHATL_CLEAR (and the title with no session): the local lines go, the others keep their order. The open box keeps
+   the newest kept line at or above the one it showed at its bottom. */
+static void chat_clear_local(void) {
+    if (!ch_nlocal) return;
+    int k0 = nch - 1 - chat_scroll, j = 0, newer = 0;
+    for (int i = 0; i < nch; i++) {
+        if (chist[i].local) continue;
+        if (i > k0) newer++;
+        if (j != i) chist[j] = chist[i];
+        j++;
+    }
+    rig_log("mpmenu: chat: %d local line(s) removed, %d kept", nch - j, j);
+    nch = j; ch_nlocal = 0; nchat_shown = 0;
+    chat_scroll = newer < nch ? newer : nch > 0 ? nch - 1 : 0;
 }
 /* ui lane (pings, lan_v10, dlsym): a system line in the chat, faded like any line. link != 0: a left click on the shown
    line (idle lines or the open box) calls ui_chat_link_click(link) (ui_game.c); it returns 0 when the ping is gone, and
@@ -2946,13 +3474,13 @@ __attribute__((visibility("default"))) void mpmenu_chat_system_line(const char *
     if (!rich) return;
     chat_add(rich); chist[nch - 1].link = link;
 }
-static int chat_shown_k[CH_IDLE + CH_BOX_LINES]; static uintptr_t *chat_shown_h[CH_IDLE + CH_BOX_LINES]; static int nchat_shown;   /* lines on screen this frame */
 static int chat_link_clicks;                                                /* test read-back */
 static int pt_in(Obj o, V3 m) { float r[4]; return u_on(o) && rect_of(o, r) && m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]; }
 /* ui lane (dlsym, pings lan_v10): 1 = the mouse is over a shown chat line, the "is typing" line or the open chat box */
 __attribute__((visibility("default"))) int mpmenu_chat_over(void) {
     V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL);                              /* Input.mousePosition */
     if (pt_in(u_gc_get(h_ch_box), m) || pt_in(u_gc_get(h_ch_typingbg), m)) return 1;
+    if (pt_in(u_gc_get(h_ch_lay[CL_STRIPB]), m) || pt_in(u_gc_get(h_ch_lay[CL_STRIPR]), m)) return 1;   /* the open box's resize strips */
     for (int i = 0; i < CH_IDLE; i++) if (pt_in(u_gc_get(h_ch_idlebg[i]), m)) return 1;
     return 0;
 }
@@ -2973,7 +3501,7 @@ static mpc_bucket modch_rx[32]; static double modch_rx_logged;   /* per sender: 
 static void chat_pull(dsnet_client *c) {
     dsnet_chat_msg m;
     while (dsnet_chat_poll(c, &m)) {
-        char t[300], body[260]; chat_esc(m.text, body, sizeof body);
+        char t[CH_TEXT], body[CH_TEXT - 140]; chat_esc(m.text, body, sizeof body);
         const char *col = ui_player_color(m.player);
         char mod[MP_CHAT_MOD_MAX + 1]; const char *mtext;
         if (m.kind == DSNET_CHAT_TEXT && !m.watching && mpc_decode(m.text, mod, sizeof mod, &mtext)) {   /* a mod's broadcast line */
@@ -3019,12 +3547,190 @@ int mpmenu_mod_chat(const char *mod_name, const char *text, int flags) {
     if (mpc_encode(m, x, w, sizeof w) < 0) return MP_CHAT_BAD_ARGS;
     return dsnet_chat_send(c, w) ? MP_CHAT_NOT_SENT : MP_CHAT_SHOWN;      /* shown here when the server's copy comes back */
 }
-static Obj chat_parent(void) {                            /* the HUD's root canvas (CampaignInfoView's root) */
-    static uintptr_t hv; static void *kv;
-    Obj v = find_view_x(&hv, &kv, "Refactor.UI", "CampaignInfoView", false);
-    static void *mr; if (!mr) mr = mth("UnityEngine", "Transform", "get_root", 0);
-    return v && mr ? MCALL(mr, Obj, Obj, const void *)(u_tr(v), mr) : NULL;
+/* mp_api v3 chat_local (MP_API.md 2b; Units Laboratory's DPS check: a line per hit): this screen only, never sent, no rate
+   limit, with or without a session. The text alone in the normal colour, escaped like the other lines. */
+int mpmenu_chat_local(const char *mod_name, const char *text, int flags) {
+    char m[MP_CHAT_MOD_MAX + 1], x[MP_CHAT_TEXT_CHATL + 1], t[MP_CHAT_TEXT_CHATL * 4 + 8];   /* the history slot is CH_TEXT (640) */
+    int rich = (flags & MP_CHATL_RICH) != 0; flags &= ~MP_CHATL_RICH;      /* rich: a mod's own tags (this screen only, never sent) */
+    if ((flags != MP_CHATL_LINE && flags != MP_CHATL_CLEAR) || !mpc_clean(mod_name, m, sizeof m)) return MP_CHAT_BAD_ARGS;
+    if (flags == MP_CHATL_CLEAR) { chat_clear_local(); return MP_CHAT_SHOWN; }
+    if (!mpc_clean(text, x, sizeof x)) return MP_CHAT_BAD_ARGS;
+    if (!chat_on) return MP_CHAT_OFF;                                       /* "Chat: Off": nothing stored */
+    if (rich) snprintf(t, sizeof t, "%s", x); else chat_esc(x, t, sizeof t);
+    chat_add_as(t, 1); ch_local_total++;
+    return MP_CHAT_SHOWN;
 }
+/* test read-back: "<local lines ever added>\n<local lines in the history now>\n", then each local line's stored text,
+   oldest first, one per line; whole lines only (stops at the first that does not fit). Returns the bytes written. */
+__attribute__((visibility("default"))) size_t mpmenu_chat_local_dump(char *out, size_t cap) {
+    if (!out || !cap) return 0;
+    int w = snprintf(out, cap, "%u\n%d\n", ch_local_total, ch_nlocal);
+    if (w < 0 || (size_t)w >= cap) { out[0] = 0; return 0; }
+    size_t n = (size_t)w;
+    for (int i = 0; i < nch; i++) {
+        if (!chist[i].local) continue;
+        size_t l = strlen(chist[i].text);
+        if (n + l + 2 > cap) break;
+        memcpy(out + n, chist[i].text, l); n += l; out[n++] = '\n';
+    }
+    out[n] = 0;
+    return n;
+}
+/* chatfix (owner 2026-10-20, v0.1.21 A6 + A7): the chat lives on its OWN screen canvas, kept across scenes
+ * (DontDestroyOnLoad), so it works everywhere a session runs (lobby, connecting, guest waiting, preparation, PvP prep,
+ * the world) and draws ABOVE the game's windows (Teams 32000, our panel's top layer 32020) but under the tooltip /
+ * notice boxes (32040+, ui_tip.c and the loader kit). Scaler as the game's UI: 1920 x 1080 reference, by height, so
+ * the canvas is 1080 high (the places below are the same canvas units as before). */
+#define CH_SORT 32030
+static uintptr_t h_ch_cv;
+static int ch_cv_order = -1;
+static Obj chat_parent(void) {
+    Obj cv = u_gc_get(h_ch_cv);
+    if (u_alive(cv)) return u_tr(cv);
+    static int64_t tried = -1000; if (frames - tried < 60) return NULL;   /* a failed build: again in 2 s */
+    tried = frames;
+    void *kg = class_by_name("UnityEngine", "GameObject"); Obj tcv = type_obj("UnityEngine", "Canvas"), tsc = type_obj("UnityEngine.UI", "CanvasScaler"),
+         tgr = type_obj("UnityEngine.UI", "GraphicRaycaster");
+    static void *mmode, *morder, *msm, *mref, *mmatch, *mddol;
+    if (!mmode) { mmode = mth("UnityEngine", "Canvas", "set_renderMode", 1); morder = mth("UnityEngine", "Canvas", "set_sortingOrder", 1);
+                  msm = mth("UnityEngine.UI", "CanvasScaler", "set_uiScaleMode", 1); mref = mth("UnityEngine.UI", "CanvasScaler", "set_referenceResolution", 1);
+                  mmatch = mth("UnityEngine.UI", "CanvasScaler", "set_matchWidthOrHeight", 1); mddol = mth("UnityEngine", "Object", "DontDestroyOnLoad", 1); }
+    if (!kg || !tcv || !tsc || !tgr || !mmode || !morder) { rig_log("mpmenu: chat canvas: Unity types missing"); return NULL; }
+    Obj go = F(0x6F96CC, Obj (*)(void *))(kg);                                  /* il2cpp_object_new */
+    if (!go) return NULL;
+    F(0x50F4674, void (*)(Obj, Obj, void *))(go, u_str("DSMP_Chat"), NULL);     /* GameObject..ctor(string) */
+    if (!u_alive(go)) return NULL;
+    F(0x50F3204, void (*)(Obj, int, void *))(go, 5, NULL);                      /* layer UI */
+    cv = F(0x50F2B90, Obj (*)(Obj, Obj, void *))(go, tcv, NULL);                /* AddComponent(Canvas): RectTransform too */
+    if (!u_alive(cv)) { rig_log("mpmenu: chat canvas: AddComponent(Canvas) failed"); return NULL; }
+    MCALL(mmode, void, Obj, int, const void *)(cv, 0, mmode);                  /* ScreenSpaceOverlay */
+    MCALL(morder, void, Obj, int, const void *)(cv, CH_SORT, morder); ch_cv_order = CH_SORT;
+    Obj sc = F(0x50F2B90, Obj (*)(Obj, Obj, void *))(go, tsc, NULL);
+    if (u_alive(sc) && msm && mref && mmatch) { MCALL(msm, void, Obj, int, const void *)(sc, 1, msm);   /* ScaleWithScreenSize */
+        MCALL(mref, void, Obj, V2, const void *)(sc, (V2){ 1920, 1080 }, mref); MCALL(mmatch, void, Obj, float, const void *)(sc, 1.0f, mmatch); }
+    F(0x50F2B90, Obj (*)(Obj, Obj, void *))(go, tgr, NULL);                     /* clicks on the plates are UI clicks */
+    if (mddol) MCALL(mddol, void, Obj, const void *)(go, mddol);
+    u_gc_free(h_ch_cv); h_ch_cv = u_gc_new(cv);
+    rig_log("mpmenu: chat canvas %p (sorting order %d, kept across scenes)", cv, CH_SORT);
+    return u_tr(cv);
+}
+/* chat fonts (A5): the language's body font first, then the game's own body fonts of the other scripts
+ * (LanguageSetting.GetFont(EasyRead, Japanese / Chinese / Korean / Russian)). A line takes the first font that has all its
+ * characters (TMP_FontAsset.HasCharacter with its fallbacks); a character no game font has (emoji) is shown as '?'
+ * (TMP would draw an empty box). */
+#define CH_FONTS 6
+static uintptr_t h_chf[CH_FONTS]; static int nchf; static unsigned chf_gen;   /* 0 = not built */
+static char chf_names[CH_FONTS][48];
+static void chat_fonts(void) {
+    if (chf_gen && chf_gen == dsi_generation() + 1 && nchf) return;
+    body_material(); Obj b = u_gc_get(h_body_font);
+    if (!u_alive(b)) return;
+    for (int i = 0; i < nchf; i++) u_gc_free(h_chf[i]);
+    nchf = 0; h_chf[nchf] = u_gc_new(b); str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(b, NULL), chf_names[nchf], sizeof chf_names[0]); nchf++;
+    static void *mi2; if (!mi2 && ls_ready()) mi2 = F(0x6F8C1C, void *(*)(void *, const char *, int))(ls_klass, "GetFont", 2);
+    static const int langs[] = { 7, 5, 6, 1, 4 };                              /* LanguageType Japanese, ChineseSimplified, ChineseTraditional, Korean, Russian */
+    for (int l = 0; l < 5 && mi2 && ls_ready() && *(void **)*(void **)((char *)ls_klass + 0xB8); l++) {
+        Obj f = MCALL(mi2, Obj, int32_t, int32_t, const void *)(0, langs[l], mi2);
+        if (!u_alive(f) || nchf >= CH_FONTS) continue;
+        int dup = 0; for (int i = 0; i < nchf; i++) dup |= u_gc_get(h_chf[i]) == f;
+        if (dup) continue;
+        h_chf[nchf] = u_gc_new(f); str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(f, NULL), chf_names[nchf], sizeof chf_names[0]); nchf++;
+    }
+    chf_gen = dsi_generation() + 1;
+    rig_log("mpmenu: chat fonts: %d (%s, %s, %s, %s, %s, %s)", nchf, chf_names[0], nchf > 1 ? chf_names[1] : "-", nchf > 2 ? chf_names[2] : "-",
+            nchf > 3 ? chf_names[3] : "-", nchf > 4 ? chf_names[4] : "-", nchf > 5 ? chf_names[5] : "-");
+}
+/* TMP_FontAsset.HasCharacter(char, fallbacks, add to a dynamic atlas). Never HasCharacter_Internal: it records the fonts
+   it searched in a static set that only the public calls reset (a null set threw at the title; a stale one skipped the
+   fallbacks: Japanese came out as '?'). A character above U+FFFF (emoji): the font's own table only. */
+static bool ch_has(Obj font, uint32_t cp) {
+    if (!u_alive(font)) return false;
+    if (cp > 0xFFFF) return F(0x4EEE500, bool (*)(Obj, int32_t, void *))(font, (int32_t)cp, NULL);
+    return F(0x4EEE580, bool (*)(Obj, uint16_t, bool, bool, void *))(font, (uint16_t)cp, true, true, NULL);
+}
+static uint32_t ch_utf8(const unsigned char *s, int *len) {                   /* one UTF-8 character (a bad byte = itself, 1 byte) */
+    uint32_t c = s[0];
+    int n = c < 0x80 ? 1 : (c & 0xE0) == 0xC0 ? 2 : (c & 0xF0) == 0xE0 ? 3 : (c & 0xF8) == 0xF0 ? 4 : 1;
+    for (int i = 1; i < n; i++) if ((s[i] & 0xC0) != 0x80) { n = 1; break; }
+    if (n == 2) c = (c & 0x1F) << 6 | (s[1] & 63);
+    else if (n == 3) c = (c & 0x0F) << 12 | (s[1] & 63) << 6 | (s[2] & 63);
+    else if (n == 4) c = (c & 0x07) << 18 | (s[1] & 63) << 12 | (s[2] & 63) << 6 | (s[3] & 63);
+    *len = n; return c;
+}
+/* characters of rich text t that font lacks (tags skipped; "<" + U+200B is a player's literal '<'). fix: write them as
+   '?' (joiners and variation selectors of emoji are dropped). Returns the count. */
+static int ch_missing(char *t, Obj font, int fix) {
+    char out[CH_TEXT]; size_t o = 0; int miss = 0;
+    const unsigned char *s = (const unsigned char *)t;
+    while (*s && o + 5 < sizeof out) {
+        if (*s == '<' && !(s[1] == 0xE2 && s[2] == 0x80 && s[3] == 0x8B)) {     /* a tag: copied, never checked */
+            const unsigned char *e = (const unsigned char *)strchr((const char *)s, '>');
+            if (e) { size_t n = (size_t)(e - s + 1); if (o + n + 1 >= sizeof out) break; memcpy(out + o, s, n); o += n; s = e + 1; continue; }
+        }
+        int n; uint32_t cp = ch_utf8(s, &n);
+        int skip = cp < 0x20 || cp == 0x200B;
+        int joiner = cp == 0x200D || (cp >= 0xFE00 && cp <= 0xFE0F);
+        if (!skip && !ch_has(font, cp)) { miss += !joiner; if (fix) { if (!joiner) out[o++] = '?'; s += n; continue; } }
+        memcpy(out + o, s, (size_t)n); o += (size_t)n; s += n;
+    }
+    out[o] = 0;
+    if (fix) snprintf(t, CH_TEXT, "%s", out);
+    return miss;
+}
+static int ch_pick(char *t, int fix, int *missing) {                         /* the font for this text (index), '?' for the rest */
+    chat_fonts(); if (!nchf) { if (missing) *missing = 0; return -1; }
+    int best = 0, bm = 1 << 30;
+    for (int i = 0; i < nchf; i++) { int m = ch_missing(t, u_gc_get(h_chf[i]), 0); if (m < bm) { bm = m; best = i; } if (!m) break; }
+    if (bm > 0 && fix) ch_missing(t, u_gc_get(h_chf[best]), 1);
+    if (missing) *missing = bm;
+    return best;
+}
+static void ch_prepare(int k) {
+    chat_fonts();
+    if (!nchf || (chist[k].font >= 0 && chist[k].gen == chf_gen)) return;
+    chist[k].font = ch_pick(chist[k].text, 1, &chist[k].missing); chist[k].gen = chf_gen; chist[k].hi = chist[k].hb = 0;
+    if (chist[k].missing) rig_log("mpmenu: chat line %d: %d character(s) no game font has, shown as '?'", chist[k].id, chist[k].missing);
+}
+static void ch_font_set(Obj t, int fi, int field) {                          /* font + the game's look (a fallback face: plain) */
+    if (!mm_is(t, K_TMP) || fi < 0 || fi >= nchf) return;
+    if (fi == 0) { txt_body_as(t, field); return; }
+    Obj f = u_gc_get(h_chf[fi]); if (!u_alive(f)) return;
+    F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL);
+    txt_mat(t, field ? font_material(f) : mpm_look_material(f, 0, 0));
+}
+/* a chat text: wraps at its width, keeps its size (no text fit: the line grows instead, A1 / A2), no margins (A3) */
+typedef struct { float x, y, z, w; } ch_v4;
+static void ch_text_style(Obj t, float size) {
+    if (!mm_is(t, K_TMP)) return;
+    fit_e *e = fit_find(t, 0); if (e) fit_drop(e);
+    fit_set(t, 0, size, 1);
+    static void *mmg; if (!mmg) mmg = mth("TMPro", "TMP_Text", "set_margin", 1);
+    if (mmg) MCALL(mmg, void, Obj, ch_v4, const void *)(t, (ch_v4){ 0, 0, 0, 0 }, mmg);
+}
+static float ch_measure(Obj t, float w) {                                     /* height of t's text wrapped at w */
+    if (!fit_methods()) return 20;
+    fit_v2 v = fit_pref(t, w);
+    return v.y > 1 && v.y < 2000 ? v.y : 20;
+}
+/* a slot (idle line / box line) shows line k: text and font only when they changed */
+static void ch_slot_show(Obj t, int *slot_id, int *slot_font, int k) {
+    if (*slot_font != chist[k].font) { ch_font_set(t, chist[k].font, 0); *slot_font = chist[k].font; *slot_id = 0; }
+    if (*slot_id != chist[k].id) { tmp_set(t, chist[k].text); *slot_id = chist[k].id; }
+}
+static int ch_idle_id[CH_IDLE], ch_idle_font[CH_IDLE], ch_box_id[CH_BOX_LINES], ch_box_font[CH_BOX_LINES], ch_typing_font = -1, ch_field_font = -1;
+static int ch_box_oldest;                                                     /* the open box shows the oldest line: no more scrolling up */
+static int ch_over_now, ch_wheel_blocked;                                     /* the pointer is over the chat (this frame); wheel reads blocked */
+static float ch_line_w[2] = { CH_W0 - 60, CH_W0 - 24 };                      /* text width now: idle lines, open-box lines (test read-back) */
+enum { CHD_NONE, CHD_MOVE, CHD_SIZE, CHD_HEIGHT };
+static int ch_drag, ch_drag_btn, ch_held[2]; static V3 ch_d0; static float ch_dsc;   /* a move / resize in progress: kind, button, start */
+static unsigned ch_drags[4];                                                  /* test read-back: drags ended, per kind */
+/* test only: a scripted pointer for the drag code above (set by the rig control channel's mpm_chat {drag}, which opens only in
+   DSRIG_CTL=1 test copies; a player's game never sets it): 2 frames resting at (x0, y0), the press, n frames moving to (x1, y1),
+   the release; screen pixels, y up, as Input.mousePosition */
+static struct { int on, button, i, n; float x0, y0, x1, y1; } ch_fk;
+#ifdef TEAMS_MOUSE_TEST
+static V2 ch_fake_wheel; static int ch_fake_wheel_n;                         /* test: a fake mouse wheel for n frames */
+#endif
 static void chat_build(Obj parent) {
     static uintptr_t hc; static void *kc;
     Obj cn = find_view_x(&hc, &kc, "Refactor.UI", "CommonNoticeView", true);
@@ -3037,58 +3743,128 @@ static void chat_build(Obj parent) {
     Obj R = u_tr(root);
     for (int i = 0; i < CH_IDLE; i++) {                                    /* idle lines: a soft plate + the text */
         Obj bg = mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 0.7f }, 0, 0, 430, 26);
-        Obj t = mk_txt(tpl_txt, R, 0, 16, 513, 0, 0, 0, 410, 26, C_MAIN);
+        Obj t = mk_txt(tpl_txt, R, 0, 16, 513, 1, 0, 0, 410, 26, C_MAIN); ch_text_style(t, 16); ch_idle_id[i] = 0; ch_idle_font[i] = -1;
         u_gc_free(h_ch_idlebg[i]); h_ch_idlebg[i] = bg ? u_gc_new(bg) : 0; u_gc_free(h_ch_idle[i]); h_ch_idle[i] = t ? u_gc_new(t) : 0;
         if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);   /* lead lan_v10: a click on a shown chat line is a UI click
                                                                                                    (IsPointerOverUI sees it), never a world click; the plate is off when the line has faded */
     }
     { Obj bg = mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 0.7f }, 0, 0, 430, 22);      /* "<Name> is typing..." */
-      Obj t = mk_txt(tpl_txt, R, 0, 14, 513, 0, 0, 0, 410, 22, C_SUB);
+      Obj t = mk_txt(tpl_txt, R, 0, 14, 513, 1, 0, 0, 410, 22, C_SUB); ch_text_style(t, 14); ch_typing_font = -1;
       u_gc_free(h_ch_typingbg); h_ch_typingbg = bg ? u_gc_new(bg) : 0; u_gc_free(h_ch_typing); h_ch_typing = t ? u_gc_new(t) : 0;
       if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);   /* a UI click too */
       u_active(bg, false); u_active(t, false); }
-    Obj box = mk_img(tpl_img, R, S_BOX, C_WHITE, 0, 0, 470, 270);
+    Obj box = mk_img(tpl_img, R, S_BOX, C_WHITE, 0, 0, CH_W0, CH_H0);
     if (box && mm_is(box, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(box, true, NULL);   /* the open box: UI clicks too */
+    for (int i = 0; i < CL_N; i++) { u_gc_free(h_ch_lay[i]); h_ch_lay[i] = 0; }
     if (box) {
-        Obj B = u_tr(box);
-        mk_img(tpl_img, B, -1, C_BAND, 0, 135 - 16, 466, 30);
-        mk_img(tpl_img, B, -1, C_LINE, 0, 135 - 31, 466, 1);
-        Obj ti = mk_txt(tpl_txt, B, 1, 15, 513, 0, -235 + 12 + 60, 135 - 16, 120, 26, C_MAIN); if (ti) tmp_set(ti, TR("Chat"));
-        Obj hi = mk_txt(tpl_txt, B, 0, 11, 516, 0, 235 - 12 - 120, 135 - 16, 240, 22, C_SUB);
+        Obj B = u_tr(box), o;
+#define CH_KEEP(id, x) do { o = (x); h_ch_lay[id] = o ? u_gc_new(o) : 0; } while (0)
+        /* one plain colour under the history and one under the input line: the stock "Box" sprite has a darker footer of
+           its own (34 of its 104 px) that, stretched to this box, ended in the middle of the history (owner 2026-10-21).
+           Built at the default size; ch_layout places every part for the box's size. */
+        CH_KEEP(CL_BAND, mk_img(tpl_img, B, -1, C_BAND, 0, 0, 10, 10));
+        CH_KEEP(CL_FOOT, mk_img(tpl_img, B, -1, (Col){ 0.133f, 0.125f, 0.145f, 1 }, 0, 0, 10, 10));
+        CH_KEEP(CL_TBAND, mk_img(tpl_img, B, -1, C_BAND, 0, 0, 10, 10));
+        CH_KEEP(CL_TLINE, mk_img(tpl_img, B, -1, C_LINE, 0, 0, 10, 1));
+        CH_KEEP(CL_TITLE, mk_txt(tpl_txt, B, 1, 15, 513, 0, 0, 0, 120, 26, C_MAIN)); if (o) tmp_set(o, TR("Chat"));
+        Obj hi = mk_txt(tpl_txt, B, 0, 11, 516, 0, 0, 0, 240, 22, C_SUB);
         if (hi) tmp_set(hi, TR("Right-click and drag to move"));
         u_gc_free(h_ch_hint); h_ch_hint = hi ? u_gc_new(hi) : 0;
         for (int i = 0; i < CH_BOX_LINES; i++) {
-            Obj l = mk_txt(tpl_txt, B, 0, 15, 513, 0, 0, 135 - 40 - 10 - 20 * i, 446, 20, C_MAIN);
+            Obj l = mk_txt(tpl_txt, B, 0, 15, 513, 1, 0, 0, CH_W0 - 24, 20, C_MAIN); ch_text_style(l, 15); ch_box_id[i] = 0; ch_box_font[i] = -1;
+            if (l) u_active(l, false);
             u_gc_free(h_ch_lines[i]); h_ch_lines[i] = l ? u_gc_new(l) : 0;
         }
-        mk_img(tpl_img, B, -1, C_LINE, 0, -135 + 46, 466, 1);
-        Obj say = mk_txt(tpl_txt, B, 0, 14, 513, 0, -235 + 12 + 20, -135 + 23, 40, 24, C_GOLD); if (say) tmp_set(say, TR("Say:"));
-        mk_img(tpl_img, B, -1, C_LINE, 22, -135 + 23, 396, 30);
-        mk_img(tpl_img, B, -1, (Col){ 0.106f, 0.098f, 0.122f, 1 }, 22, -135 + 23, 394, 28);
-        Obj in = mk_txt(tpl_txt, B, 0, 15, 513, 0, 22, -135 + 23, 380, 26, C_MAIN);
+        CH_KEEP(CL_ILINE, mk_img(tpl_img, B, -1, C_LINE, 0, 0, 10, 1));
+        /* "Say:" 40 wide, or as wide as its text ("Сказать:"); the field from 7 after it to 15 before the box's right edge */
+        Obj say = mk_txt(tpl_txt, B, 0, 14, 513, 0, 0, 0, 40, 24, C_GOLD); if (say) tmp_set(say, TR("Say:"));
+        float sw = say && fit_methods() ? fit_pref(say, 0).x + 2 : 0; ch_say_w = sw < 40 ? 40 : sw > 100 ? 100 : sw;
+        h_ch_lay[CL_SAY] = say ? u_gc_new(say) : 0;
+        CH_KEEP(CL_FLINE, mk_img(tpl_img, B, -1, C_LINE, 0, 0, 10, 30));
+        CH_KEEP(CL_FBG, mk_img(tpl_img, B, -1, (Col){ 0.106f, 0.098f, 0.122f, 1 }, 0, 0, 10, 28));
+        Obj in = mk_txt(tpl_txt, B, 0, 15, 513, 0, 0, 0, 10, 26, C_MAIN);
         u_gc_free(h_ch_input); h_ch_input = in ? u_gc_new(in) : 0;
         /* the real text field (the game's own input handling: any keyboard layout, accents): the Rename popup's field */
         Obj rp = popup_prefab(19), fs = rp ? tr_find(u_tr(rp), "Input_SaveFileName") : NULL, fsrc = fs ? comp_of(fs, "TMPro", "TMP_InputField") : NULL;
         Obj f = fsrc ? u_instantiate(fsrc, B) : NULL;
         if (u_alive(f)) {
-            u_active(f, true); place(f, 22, -135 + 23, 394, 28);
+            u_active(f, true); place(f, 0, 0, 10, 28);
+            field_area(f, 8, 2);                                            /* the typed text from 8 in, as tall as the field (stock: 36 in, 15 high) */
             Obj fim = image_of(f); if (fim) img_set(fim, NULL, (Col){ 0, 0, 0, 0 });   /* our own field plate shows */
             if (mm_is(fim, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(fim, true, NULL);
             F(0x4EFC2D8, void (*)(Obj, int, void *))(f, DSNET_CHAT_MAX, NULL);                 /* characterLimit */
             static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
             Obj tc = mtc ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
-            if (u_alive(tc)) { txt_body(tc); txt_style(tc, 0, 15, 513, 0); txt_color(tc, C_MAIN); }
+            if (u_alive(tc)) { txt_field(tc); txt_style(tc, 0, 15, 513, 0); txt_color(tc, C_MAIN); }
+            ch_field_font = -1;
             Obj ph = F(0x4EFB9CC, Obj (*)(Obj, void *))(f, NULL); if (u_alive(ph) && strstr(cls_name(ph), "Text")) tmp_set(ph, "");
             F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL);
             u_active(in, false);                                            /* the field draws the text and the caret */
         }
         u_gc_free(h_ch_field); h_ch_field = u_alive(f) ? u_gc_new(f) : 0;
         rig_log("mpmenu: chat text field %s", u_alive(f) ? "= the Rename popup's TMP_InputField" : "not found (typed keys only in tests)");
+        /* the corner grip: six small squares in a triangle (the game's pixel look, like the cog), 14 x 14 in the corner */
+        CH_KEEP(CL_GRIP, mk_img(tpl_img, B, -1, (Col){ 0, 0, 0, 0 }, 0, 0, 14, 14));
+        if (o) { if (mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, false, NULL);
+                 for (int a = 0; a < 3; a++) for (int c = 0; a + c < 3; c++) {
+                     Obj d = mk_img(tpl_img, u_tr(o), -1, C_SUB, 5.5f - 5 * a, -5.5f + 5 * c, 3, 3);
+                     if (d && mm_is(d, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(d, false, NULL); } }
+        /* clear strips under the bottom edge and right of the corner: a press there is a UI click (IsPointerOverUI), never
+           a world click, and grabs the edge / the corner (the box itself has only 9 free units under the field) */
+        CH_KEEP(CL_STRIPB, mk_img(tpl_img, B, -1, (Col){ 0, 0, 0, 0 }, 0, 0, 10, 6));
+        if (o && mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL);
+        CH_KEEP(CL_STRIPR, mk_img(tpl_img, B, -1, (Col){ 0, 0, 0, 0 }, 0, 0, 6, 20));
+        if (o && mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL);
+#undef CH_KEEP
+        ch_lay_w = ch_lay_h = 0;                                            /* ch_layout places them at the first frame */
         u_active(box, false);
     }
     u_gc_free(h_ch_box); h_ch_box = box ? u_gc_new(box) : 0;
     rig_log("mpmenu: chat built");
 }
+/* the open box's parts for its size W x H (canvas units, centre origin): the same places as the old fixed 470 x 270 box,
+   measured from its edges (title band at the top, "Say:" + field at the bottom, the history between) */
+static void ch_layout(float W, float H) {
+    float hw = W / 2, hh = H / 2, sw = ch_say_w;
+    Obj o;
+#define CH_P(id, x, y, w, h) do { o = u_gc_get(h_ch_lay[id]); if (o) place(o, x, y, w, h); } while (0)
+    CH_P(CL_BAND, 0, ((hh - 31) + (-hh + 46)) / 2, W - 4, (hh - 31) - (-hh + 46));
+    CH_P(CL_FOOT, 0, ((-hh + 46) + (-hh + 3)) / 2, W - 4, 43);
+    CH_P(CL_TBAND, 0, hh - 16, W - 4, 30);
+    CH_P(CL_TLINE, 0, hh - 31, W - 4, 1);
+    CH_P(CL_TITLE, -hw + 12 + 60, hh - 16, 120, 26);
+    { Obj hi = u_gc_get(h_ch_hint); if (hi) place(hi, hw - 12 - 120, hh - 16, 240, 22); }
+    CH_P(CL_ILINE, 0, -hh + 46, W - 4, 1);
+    CH_P(CL_SAY, -hw + 12 + sw / 2, -hh + 23, sw, 24);
+    float fl = -hw + 12 + sw + 7, fr = hw - 15, fw = fr - fl, fx = (fl + fr) / 2;   /* English, 470 wide: 396 wide at x 22, as before */
+    CH_P(CL_FLINE, fx, -hh + 23, fw, 30);
+    CH_P(CL_FBG, fx, -hh + 23, fw - 2, 28);
+    { Obj in = u_gc_get(h_ch_input), f = u_gc_get(h_ch_field);
+      if (in) place(in, fx, -hh + 23, fw - 16, 26);
+      if (u_alive(f)) place(f, fx, -hh + 23, fw - 2, 28); }
+    CH_P(CL_GRIP, hw - 10, -hh + 10, 14, 14);                              /* 3 from the corner; clear of the field (ends 15 in) */
+    CH_P(CL_STRIPB, 0, -hh - 3, W, 6);
+    CH_P(CL_STRIPR, hw + 3, -hh + 4, 6, 20);
+#undef CH_P
+    ch_lay_w = W; ch_lay_h = H;
+}
+/* where the open box is (canvas units: left, bottom, width, height; the canvas is 1080 high, 2 * hw wide): the remembered
+   place and size, inside the screen. Size: 470 x 270 at least, 80 % of the canvas width and 90 % of its height at most.
+   Place: 4 free on each side, 34 at the top for the "is typing" line over the open box. A place / size remembered on a
+   bigger window shows clamped here and stays remembered until the next drag. */
+typedef struct { float l, b, w, h; } ch_rect;
+static float ch_max_w(float hw) { float m = 0.8f * 2 * hw; return m < CH_W0 ? CH_W0 : m; }
+#define CH_MAX_H (0.9f * 1080)
+static ch_rect ch_clamp(ch_rect g, float hw) {
+    float mw = ch_max_w(hw);
+    if (g.w > mw) g.w = mw; if (g.w < CH_W0) g.w = CH_W0;
+    if (g.h > CH_MAX_H) g.h = CH_MAX_H; if (g.h < CH_H0) g.h = CH_H0;
+    if (g.l > hw - 4 - g.w) g.l = hw - 4 - g.w; if (g.l < -hw + 4) g.l = -hw + 4;
+    if (g.b > 540 - 34 - g.h) g.b = 540 - 34 - g.h; if (g.b < -540 + 4) g.b = -540 + 4;
+    return g;
+}
+static ch_rect ch_geo(float hw) { return ch_clamp((ch_rect){ -hw + 130 + chat_x, -540 + 130 + chat_y, chat_w, chat_h }, hw); }
+static ch_rect ch_g0;                                                          /* the box when the drag started */
 static int dbg_istr_n, dbg_enter_n, dbg_a_n;
 /* give the chat field the keyboard: the box must be active first (ActivateInputField ignores an inactive field: owner
  * lan_v8 "Enter opens the box but I can never type"), then select it in the EventSystem and activate it */
@@ -3105,21 +3881,54 @@ static void chat_focus(void) {
     if (u_alive(es) && mset) MCALL(mset, void, Obj, Obj, const void *)(es, u_go(f), mset);
     if (ma) MCALL(ma, void, Obj, const void *)(f, ma);
 }
+static float ch_wheel_y(void (*wheel)(V2 *)) {                               /* this frame's wheel (the injected icall: not blocked) */
+    V2 d = { 0, 0 }; if (wheel) wheel(&d);
+#ifdef TEAMS_MOUSE_TEST
+    if (ch_fake_wheel_n > 0) d = ch_fake_wheel;
+#endif
+    return d.y;
+}
+/* A4 (owner 2026-10-20: the wheel scrolled the chat AND zoomed the map): while the pointer is over the chat, the game's
+   managed Input.mouseScrollDelta reads 0. Its callers: MouseIdleState.DetectWheelInput (the camera zoom; on Windows inlined
+   into MouseIdleState.HandleInput, which calls this getter too), EventSystem / UI scroll, Unity's debug UI. The chat reads
+   the wheel through the icall directly, so it still scrolls. */
+static V2 (*o_scroll_delta)(void *);
+static V2 h_scroll_delta(void *mi) {
+    V2 d = o_scroll_delta(mi);
+#ifdef TEAMS_MOUSE_TEST
+    if (ch_fake_wheel_n > 0) d = ch_fake_wheel;
+#endif
+    if ((d.x != 0 || d.y != 0) && ch_over_now && chat_on) { ch_wheel_blocked++; return (V2){ 0, 0 }; }
+    return d;
+}
 static void chat_frame(const mpm_obs *o) {
     mp_session *ss = mp_game_session(); dsnet_client *c = ss ? mp_client(ss) : NULL;
+#ifdef TEAMS_MOUSE_TEST
+    if (ch_fake_wheel_n > 0) ch_fake_wheel_n--;
+#endif
+    ch_over_now = 0;
     if (chat_close_frames > 0) chat_close_frames--;
-    if (!c) { chat_typing = 0; Obj r = u_gc_get(h_ch_root); if (u_alive(r)) u_active(r, false); return; }
-    chat_pull(c);
-    if (o->scene != 2 || !o->campaign_ready) return;
+    /* no session (mp_api v3 chat_local): the chat shows in a world while a local line is in the history; on the title
+       the local lines go (a caller that never cleared them). Without local lines: hidden, no keys taken, as before. */
+    if (!c && ch_nlocal && o->scene == 1) chat_clear_local();
+    if (!c && (!ch_nlocal || o->scene != 2)) { chat_typing = 0; Obj r = u_gc_get(h_ch_root); if (u_alive(r)) u_active(r, false); return; }
+    if (c) chat_pull(c);
+    /* A6: every scene of a session (title: connecting / waiting for the host; lobby; loading; the world; PvP prep), on our
+       own canvas. The templates (CommonNoticeView, the Rename popup) exist from the title on. */
     Obj parent = chat_parent(); if (!parent) return;
     if (u_gc_get(h_ch_view) != parent || !u_alive(u_gc_get(h_ch_root))) {
+        static int64_t tried = -1000; if (frames - tried < 60) return;     /* templates not loaded yet: again in 2 s */
+        tried = frames;
         chat_build(parent);
-        Obj f = u_gc_get(h_ch_field), bx = u_gc_get(h_ch_box);              /* rebuilt while typing (resync, reload): keep the draft open */
+        if (!u_alive(u_gc_get(h_ch_root))) return;
+        Obj f = u_gc_get(h_ch_field), bx = u_gc_get(h_ch_box);              /* rebuilt while typing: keep the draft open */
         if (chat_typing && u_alive(f) && bx) { u_active(bx, true); F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(chat_buf), NULL); chat_focus(); }
     }
     Obj root = u_gc_get(h_ch_root); if (!u_alive(root)) return;
     u_active(root, chat_on != 0);
-    if (!chat_on) return;
+    if (!chat_on) { chat_typing = 0; return; }
+    { Obj cv = u_gc_get(h_ch_cv); if (u_alive(cv) && ch_cv_order != CH_SORT) { static void *mo; if (!mo) mo = mth("UnityEngine", "Canvas", "set_sortingOrder", 1);
+                                                                          if (mo) { MCALL(mo, void, Obj, int, const void *)(cv, CH_SORT, mo); ch_cv_order = CH_SORT; } } }
     /* keys (icalls: Input.GetKeyDownInt / get_inputString; tests feed the same paths) */
     static bool (*kd)(int); static Obj (*istr)(void); static bool (*mb)(int); static void (*mpos)(V3 *); static void (*wheel)(V2 *); static int looked;
     if (!looked) { looked = 1; void *(*ri)(const char *) = F(0x6F8B90, void *(*)(const char *));
@@ -3131,8 +3940,16 @@ static void chat_frame(const mpm_obs *o) {
     int enter = (kd && (kd(13) || kd(271))) || test_chat_enter, esc = (kd && kd(27)) || test_chat_escape;
     test_chat_enter = test_chat_escape = 0;
     if (!chat_typing) {
-        int other_text = o_textfocus && o_textfocus(NULL);                /* the game's own text field has the keys */
-        if ((enter || test_chat_open) && !o->esc_open && !other_text) {
+        /* A6: Enter opens the chat in the Esc menu too: the host's lobby IS that menu (popup_activate). Not while another
+           text field has the keys (the game's, or one of ours: name / address on the title pages) */
+        int other_text = o_textfocus && o_textfocus(NULL);
+        if (!other_text) { static void *mcur, *msel; if (!mcur) { mcur = mth("UnityEngine.EventSystems", "EventSystem", "get_current", 0); msel = mth("UnityEngine.EventSystems", "EventSystem", "get_currentSelectedGameObject", 0); }
+            Obj es = mcur ? MCALL(mcur, Obj, const void *)(mcur) : NULL, sel = u_alive(es) && msel ? MCALL(msel, Obj, Obj, const void *)(es, msel) : NULL;
+            Obj tin = type_obj("TMPro", "TMP_InputField");
+            Obj fi = u_alive(sel) && tin && mm_is(sel, K_GO) ? F(0x50EDAA8, Obj (*)(Obj, Obj, void *))(sel, tin, NULL) : NULL;   /* GameObject.GetComponent(Type) */
+            static void *mfoc; if (!mfoc) mfoc = mth("TMPro", "TMP_InputField", "get_isFocused", 0);
+            if (u_alive(fi) && fi != u_gc_get(h_ch_field) && mfoc && MCALL(mfoc, bool, Obj, const void *)(fi, mfoc)) other_text = 1; }
+        if ((enter || test_chat_open) && !other_text) {
             chat_typing = 1; chat_buf[0] = 0; chat_scroll = 0; enter = 0;
             Obj f = u_gc_get(h_ch_field);
             if (u_alive(f)) { F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL); chat_focus(); }
@@ -3143,10 +3960,23 @@ static void chat_frame(const mpm_obs *o) {
         if (!enter && !esc) chat_focus();                                   /* keeps the keyboard while typing (a click on the world took it) */
         if (u_alive(f)) {                                                  /* the field holds the text; tests write into it */
             if (test_chat_in[0]) { char cur[DSNET_CHAT_MAX + 1]; utf16_to_utf8(F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL), cur, sizeof cur);
-                                   char nw[512]; snprintf(nw, sizeof nw, "%s%s", cur, test_chat_in); F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(nw), NULL); test_chat_in[0] = 0; }
-            utf16_to_utf8(F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL), chat_buf, sizeof chat_buf);
+                                   char nw[1024]; snprintf(nw, sizeof nw, "%s%s", cur, test_chat_in); F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(nw), NULL); test_chat_in[0] = 0; }
+            /* A5: the line is sent as UTF-8, at most DSNET_CHAT_MAX bytes (accented / Cyrillic letters are 2 bytes, CJK 3):
+               a longer text is cut back in the field at a whole character, so what the player sees is what is sent */
+            char all[1024]; utf16_to_utf8(F(0x4EFAE84, Obj (*)(Obj, void *))(f, NULL), all, sizeof all);
+            snprintf(chat_buf, sizeof chat_buf, "%s", all); dsi_utf8_fix_end(chat_buf);
+            if (strlen(all) > strlen(chat_buf)) {
+                F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(chat_buf), NULL);
+                static void *mcp; if (!mcp) mcp = mth("TMPro", "TMP_InputField", "MoveTextEnd", 1);
+                if (mcp) MCALL(mcp, void, Obj, bool, const void *)(f, false, mcp);
+            }
         }
-        { static char last[DSNET_CHAT_MAX + 1]; if (strcmp(last, chat_buf)) { snprintf(last, sizeof last, "%s", chat_buf); if (chat_buf[0]) dsnet_chat_typing(c, 1); } }   /* a key changed the line: "is typing" (dsnet sends at most 1/s) */
+        { static char last[DSNET_CHAT_MAX + 1]; if (strcmp(last, chat_buf)) { snprintf(last, sizeof last, "%s", chat_buf); if (chat_buf[0] && c) dsnet_chat_typing(c, 1);
+              /* the typed text in a font that has its characters (Japanese typed into a Latin font showed boxes) */
+              char tmp[CH_TEXT]; snprintf(tmp, sizeof tmp, "%s", chat_buf); int fi = ch_pick(tmp, 0, NULL);
+              static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
+              Obj tc = u_alive(f) && mtc ? MCALL(mtc, Obj, Obj, const void *)(f, mtc) : NULL;
+              if (fi >= 0 && fi != ch_field_font && u_alive(tc)) { ch_font_set(tc, fi, 1); ch_field_font = fi; } } }   /* a key changed the line: "is typing" (dsnet sends at most 1/s) */
         char in[256] = ""; if (istr && !u_alive(f)) str_utf8(istr(), in, sizeof in);
         size_t L = strlen(in), T = strlen(test_chat_in); if (T && L + T < sizeof in) { memcpy(in + L, test_chat_in, T + 1); } test_chat_in[0] = 0;
         for (char *q = in; *q; q++) {
@@ -3156,35 +3986,58 @@ static void chat_frame(const mpm_obs *o) {
             else if ((unsigned char)*q >= 0x20 && n < DSNET_CHAT_MAX) { chat_buf[n] = *q; chat_buf[n + 1] = 0; }
         }
         if (enter || esc) {
-            if (enter && chat_buf[0]) { int rc = dsnet_chat_send(c, chat_buf); rig_log("mpmenu: chat sent (%zu bytes, rc %d)", strlen(chat_buf), rc);
+            if (enter && chat_buf[0]) { int rc = c ? dsnet_chat_send(c, chat_buf) : -1;          /* no session: nothing sent */
+                rig_log("mpmenu: chat %s (%zu bytes, rc %d)", c ? "sent" : "not sent (no session)", strlen(chat_buf), rc);
                 if (rc) { char ln[300]; snprintf(ln, sizeof ln, "<i><color=#F16071>%s</color></i>", TR("Message not sent: no connection to the other players.")); chat_add(ln); } }   /* F18 */
             chat_typing = 0; chat_close_frames = 2;
-            dsnet_chat_typing(c, 0);                                        /* sent or cancelled: the others drop the line */
+            if (c) dsnet_chat_typing(c, 0);                                 /* sent or cancelled: the others drop the line */
             if (u_alive(f)) { F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL);
                               static void *md; if (!md) { md = mth("TMPro", "TMP_InputField", "DeactivateInputField", 1); if (!md) md = mth("TMPro", "TMP_InputField", "DeactivateInputField", 0); }
                               if (md) MCALL(md, void, Obj, bool, const void *)(f, false, md); }
         }
-        if (wheel) { V2 d = { 0, 0 }; wheel(&d); if (d.y > 0) chat_scroll++; else if (d.y < 0 && chat_scroll > 0) chat_scroll--; }
-        if (kd && kd(280)) chat_scroll += 3; if (kd && kd(281)) chat_scroll = chat_scroll > 3 ? chat_scroll - 3 : 0;   /* PageUp / PageDown */
-        int maxs = nch > CH_BOX_LINES ? nch - CH_BOX_LINES : 0; if (chat_scroll > maxs) chat_scroll = maxs;
+        { float wy = ch_wheel_y(wheel); if (wy > 0 && !ch_box_oldest) chat_scroll++; else if (wy < 0 && chat_scroll > 0) chat_scroll--; }
+        if (kd && kd(280) && !ch_box_oldest) chat_scroll += 3; if (kd && kd(281)) chat_scroll = chat_scroll > 3 ? chat_scroll - 3 : 0;   /* PageUp / PageDown */
+        int maxs = nch > 1 ? nch - 1 : 0; if (chat_scroll > maxs) chat_scroll = maxs;
     }
     /* place: bottom-left above the build bar, right of the resource list (canvas x 0..~105), plus the dragged offset.
      * The canvas is 1080 high; its width follows the screen (1663 at 1512x982, 1920 at 16:9). */
     static void *msw, *msh; if (!msw) { msw = mth("UnityEngine", "Screen", "get_width", 0); msh = mth("UnityEngine", "Screen", "get_height", 0); }
     int sw = msw ? MCALL(msw, int, const void *)(msw) : 0, shh = msh ? MCALL(msh, int, const void *)(msh) : 0;
     float hw = sw > 0 && shh > 0 ? 540.0f * sw / shh : 831;
-    float bx = -hw + 130 + 235 + chat_x, by = -540 + 130 + 135 + chat_y;
+    /* inside the screen (a place dragged on a wider window, or off the edge): ch_geo. bx / by = the box's centre */
+    ch_rect g = ch_geo(hw);
+    float bx = g.l + g.w / 2, by = g.b + g.h / 2, bw = g.w - 24, iw = g.w - 60, pw = g.w - 40;   /* box lines / idle text / idle plates */
+    /* heights measured at another width (the box was resized): measured again when shown */
+    static float ch_hb_w = CH_W0 - 24, ch_hi_w = CH_W0 - 60;
+    if (bw != ch_hb_w) { for (int i = 0; i < nch; i++) chist[i].hb = 0; ch_hb_w = bw; }
+    if (iw != ch_hi_w) { for (int i = 0; i < nch; i++) chist[i].hi = 0; ch_hi_w = iw; }
+    ch_line_w[0] = iw; ch_line_w[1] = bw;
     Obj box = u_gc_get(h_ch_box);
     nchat_shown = 0;
     if (box) {
         u_active(box, chat_typing);
-        place(box, bx, by, 470, 270);
+        place(box, bx, by, g.w, g.h);
+        if (g.w != ch_lay_w || g.h != ch_lay_h) ch_layout(g.w, g.h);
         if (chat_typing) {
-            for (int i = 0; i < CH_BOX_LINES; i++) {                      /* newest at the bottom */
-                int k = nch - CH_BOX_LINES - chat_scroll + i; Obj l = u_gc_get(h_ch_lines[i]);
-                if (l) tmp_set(l, k >= 0 && k < nch ? chist[k].text : "");
-                if (l && k >= 0 && k < nch && nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_lines[i]; }
+            /* A1 / A2: the newest lines that fit whole between the title band (top 95) and the input line (bottom -85), each
+               as high as its wrapped text, newest at the bottom; placed from the top down (owner 2026-10-21: no empty band
+               above the rows; what is left over stays under the newest line). One line taller than the space: from the bottom. */
+            float top = g.h / 2 - 40, bot = -g.h / 2 + 50;                    /* 95 / -85 in the 270 high box */
+            float used = 0, avail = top - bot, hs[CH_BOX_LINES]; int j = 0, k = nch - 1 - chat_scroll; ch_box_oldest = 0;
+            for (; j < CH_BOX_LINES && k >= 0; j++, k--) {
+                Obj l = u_gc_get(h_ch_lines[j]); if (!l) break;
+                ch_prepare(k);
+                ch_slot_show(l, &ch_box_id[j], &ch_box_font[j], k);
+                if (chist[k].hb <= 0) { place(l, 0, 0, bw, 20); chist[k].hb = ch_measure(l, bw); }
+                float h = chist[k].hb;
+                if (used + h > avail && j > 0) break;                         /* the next older line does not fit whole */
+                u_active(l, true); hs[j] = h; used += h + 2;
+                if (nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_lines[j]; }
             }
+            { float y = used - 2 > avail ? bot + used - 2 : top;              /* top of the oldest shown line */
+              for (int i = j - 1; i >= 0; i--) { place(u_gc_get(h_ch_lines[i]), 0, y - hs[i] / 2, bw, hs[i]); y -= hs[i] + 2; } }
+            if (k < 0) ch_box_oldest = 1;
+            for (; j < CH_BOX_LINES; j++) { Obj l = u_gc_get(h_ch_lines[j]); if (l) u_active(l, false); }
             if (!u_alive(u_gc_get(h_ch_field))) {                           /* no field: draw the text + a caret ourselves */
                 char t[DSNET_CHAT_MAX + 64], e[DSNET_CHAT_MAX * 2 + 8]; chat_esc(chat_buf, e, sizeof e);
                 snprintf(t, sizeof t, "%s%s", e, (frames / 15) % 2 ? "|" : " ");
@@ -3194,9 +4047,9 @@ static void chat_frame(const mpm_obs *o) {
     }
     /* "<Name> is typing..." for the others (owner 2026-10-14): one line in their colours; it takes the lowest idle slot
      * (the idle lines move up one) or sits above the open box */
-    int me = dsnet_player_id(c), lift = 0;
+    int me = c ? dsnet_player_id(c) : -1; float lift = 0;
     { char line[200] = ""; int k = 0, more = 0; size_t o = 0;
-      for (int p = 0; p < DSNET_MAX_PLAYERS; p++) {
+      for (int p = 0; c && p < DSNET_MAX_PLAYERS; p++) {                   /* no session: nobody else types */
           if (p == me || !dsnet_chat_typing_of(c, p)) continue;
           const char *nm = dsnet_player_name(c, p);
           static char snm[32]; if (!nm && dsnet_spectator_info(c, p, snm, NULL, NULL) == 0) nm = snm;   /* a spectator types too */
@@ -3210,27 +4063,40 @@ static void chat_frame(const mpm_obs *o) {
       u_active(t, k > 0); u_active(bg, k > 0);
       snprintf(typing_shown, sizeof typing_shown, "%s", k ? line : "");
       if (k) {
-          float y = chat_typing ? by + 135 + 14 : by - 135 + 11;
-          place(t, bx - 235 + 10 + 205, y, 410, 22); place(bg, bx, y, 430, 22); tmp_set(t, line);
-          if (!chat_typing) lift = 24;
+          static char shown[200]; static float th = 18, tw;
+          if (strcmp(shown, line) || ch_typing_font < 0 || tw != iw) { snprintf(shown, sizeof shown, "%s", line); char tmp[CH_TEXT]; snprintf(tmp, sizeof tmp, "%s", line);
+              int fi = ch_pick(tmp, 1, NULL); if (fi >= 0 && fi != ch_typing_font) { ch_font_set(t, fi, 0); ch_typing_font = fi; }
+              tmp_set(t, tmp); place(t, bx, 0, iw, 22); th = ch_measure(t, iw); tw = iw; }
+          float ph = th + 6 > 22 ? th + 6 : 22;
+          float y = chat_typing ? g.b + g.h + 4 + ph / 2 : g.b + ph / 2;
+          place(t, bx, y, iw, th); place(bg, bx, y, pw, ph);
+          if (!chat_typing) lift = ph + 4;
       }
     }
-    /* idle lines: the newest at the bottom, fading after chat_fade_s (1 s fade) */
+    /* idle lines: the newest at the bottom, each plate as high as its wrapped text (A1 / A2), fading after chat_fade_s */
     double now = mono_s();
-    for (int i = 0; i < CH_IDLE; i++) {
+    { float y = g.b + lift;                                                 /* bottom of the next plate */
+      for (int i = CH_IDLE - 1; i >= 0; i--) {
         int k = nch - CH_IDLE + i; Obj t = u_gc_get(h_ch_idle[i]), bg = u_gc_get(h_ch_idlebg[i]);
         float a = 0;
         if (!chat_typing && k >= 0 && k < nch) { double age = now - chist[k].t; a = age < chat_fade_s ? 1 : age < chat_fade_s + 1 ? (float)(chat_fade_s + 1 - age) : 0; }
         u_active(t, a > 0); u_active(bg, a > 0);
         if (a > 0) {
-            float y = by - 135 + 13 + lift + 30 * (CH_IDLE - 1 - i);
-            place(t, bx - 235 + 10 + 205, y, 410, 26); place(bg, bx, y, 430, 26);
-            tmp_set(t, chist[k].text);
+            /* a local line (mp_api v3, e.g. a DPS log line every hit) never takes a click: the game's buttons under the idle
+               lines stay usable (the unit panel's Inspect button sat under them); other lines stay UI clicks (lan_v10) */
+            if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, !chist[k].local || chist[k].link, NULL);
+            ch_prepare(k);
+            ch_slot_show(t, &ch_idle_id[i], &ch_idle_font[i], k);
+            if (chist[k].hi <= 0) { place(t, bx, 0, iw, 26); chist[k].hi = ch_measure(t, iw); }
+            float th = chist[k].hi, ph = th + 6 > 26 ? th + 6 : 26;
+            place(t, bx, y + ph / 2, iw, th); place(bg, bx, y + ph / 2, pw, ph);
+            y += ph + 4;
             if (nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_idle[i]; }
             if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(t, (Col){ C_MAIN.r, C_MAIN.g, C_MAIN.b, a }, NULL);
             if (mm_is(bg, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(bg, (Col){ 0.133f, 0.125f, 0.145f, 0.7f * a }, NULL);
         }
-    }
+      } }
+    ch_over_now = mpmenu_chat_over();                                       /* A4: Input.mouseScrollDelta reads 0 for the game while set */
     /* linked lines (pings): hover = tooltip, left click = ui_chat_link_click */
     { V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL);                            /* Input.mousePosition */
       int down = F(0x51ACDD0, bool (*)(int, void *))(0, NULL);              /* Input.GetMouseButtonDown(0) */
@@ -3246,16 +4112,59 @@ static void chat_frame(const mpm_obs *o) {
           }
           break;
       } }
-    /* right-click + drag on the box (or the idle lines): move; remembered */
-    static int dragging; static V3 last;
+    /* move / resize (owner 2026-10-25), remembered in mp_menu.json at the release:
+       - right-click + drag on the open box or the newest idle line: move (as before);
+       - left drag on the open box's title band or frame: move; on its bottom-right corner (the grip): width + height; on its
+         bottom edge: height. The top-left corner stays where it is while resizing.
+       A drag starts only with a press ON the box or its two clear strips: they are UI graphics (raycast targets), so the
+       game's IsPointerOverUI sees the press and never turns it into a world click. */
     if (mb && mpos && box) {
-        V3 mp = { 0, 0, 0 }; mpos(&mp);
-        float r[4] = { 0 }; if (chat_typing) rect_of(box, r); else { Obj t0 = u_gc_get(h_ch_idlebg[CH_IDLE - 1]); if (u_on(t0)) rect_of(t0, r); }
-        float sc = r[2] > r[0] ? (r[2] - r[0]) / (chat_typing ? 470 : 430) : 1;
-        if (mb(1)) {
-            if (!dragging && mp.x >= r[0] && mp.x <= r[2] && mp.y >= r[1] && mp.y <= r[3] && r[2] > r[0]) { dragging = 1; last = mp; }
-            else if (dragging && sc > 0) { chat_x += (mp.x - last.x) / sc; chat_y += (mp.y - last.y) / sc; last = mp; }
-        } else if (dragging) { dragging = 0; prefs_save(); rig_log("mpmenu: chat moved to %.0f,%.0f", chat_x, chat_y); }
+        V3 mp = { 0, 0, 0 }; int held[2] = { 0, 0 };
+        if (ch_fk.on) {                                                     /* test (rig control channel only): a scripted pointer */
+            int i = ch_fk.i++, n = ch_fk.n;
+            float t = i <= 2 ? 0 : i >= 3 + n ? 1 : (float)(i - 2) / n;
+            mp.x = ch_fk.x0 + (ch_fk.x1 - ch_fk.x0) * t; mp.y = ch_fk.y0 + (ch_fk.y1 - ch_fk.y0) * t;
+            held[ch_fk.button] = i >= 2 && i < 3 + n;                       /* 2 frames resting, press, n frames moving, release */
+            if (i >= 3 + n) ch_fk.on = 0;
+        } else { mpos(&mp); held[0] = mb(0); held[1] = mb(1); }
+        int down0 = held[0] && !ch_held[0], down1 = held[1] && !ch_held[1];
+        ch_held[0] = held[0]; ch_held[1] = held[1];
+        float r[4] = { 0 }; rect_of(box, r);                                /* placed every frame, shown or not */
+        float sc = r[2] > r[0] ? (r[2] - r[0]) / g.w : 0;                   /* screen px per canvas unit */
+        if (!ch_drag && sc > 0) {
+            int kind = 0, btn = 0;
+            if (down0 && chat_typing && u_on(box)) {
+                float ux = (mp.x - r[0]) / sc, uy = (mp.y - r[1]) / sc;     /* canvas units from the box's bottom-left */
+                int in = ux >= 0 && ux <= g.w && uy >= 0 && uy <= g.h;
+                if (in || pt_in(u_gc_get(h_ch_lay[CL_STRIPB]), mp) || pt_in(u_gc_get(h_ch_lay[CL_STRIPR]), mp)) {
+                    if (ux >= g.w - 15 && uy <= 16) kind = CHD_SIZE;        /* the grip corner (right of / under the field) */
+                    else if (uy <= 8) kind = CHD_HEIGHT;                    /* the bottom edge: under the field */
+                    else if (uy >= g.h - 31 || ux <= 3 || ux >= g.w - 3) kind = CHD_MOVE;   /* the title band, the frame */
+                }
+            } else if (down1) {
+                float q[4] = { 0 }; int ok = 0;
+                if (chat_typing) ok = u_on(box) && rect_of(box, q); else { Obj t0 = u_gc_get(h_ch_idlebg[CH_IDLE - 1]); ok = u_on(t0) && rect_of(t0, q); }
+                if (ok && mp.x >= q[0] && mp.x <= q[2] && mp.y >= q[1] && mp.y <= q[3]) { kind = CHD_MOVE; btn = 1; }
+            }
+            if (kind) { ch_drag = kind; ch_drag_btn = btn; ch_d0 = mp; ch_g0 = g; ch_dsc = sc;
+                        rig_log("mpmenu: chat %s started (%s button)", kind == CHD_MOVE ? "move" : kind == CHD_SIZE ? "resize" : "height", btn ? "right" : "left"); }
+        } else if (ch_drag && held[ch_drag_btn]) {
+            float dx = (mp.x - ch_d0.x) / ch_dsc, dy = (mp.y - ch_d0.y) / ch_dsc, top = ch_g0.b + ch_g0.h;
+            ch_rect n = ch_g0;
+            if (ch_drag == CHD_MOVE) { n.l += dx; n.b += dy; n = ch_clamp(n, hw); }
+            else {                                                          /* the top-left corner stays; never past the screen */
+                if (ch_drag == CHD_SIZE) { float mw = ch_max_w(hw), room = hw - 4 - n.l; n.w = ch_g0.w + dx;
+                    if (n.w > mw) n.w = mw; if (n.w > room) n.w = room; if (n.w < CH_W0) n.w = CH_W0; }
+                float roomh = top - (-540 + 4); n.h = ch_g0.h - dy;
+                if (n.h > CH_MAX_H) n.h = CH_MAX_H; if (n.h > roomh) n.h = roomh; if (n.h < CH_H0) n.h = CH_H0;
+                n.b = top - n.h;
+            }
+            chat_x = n.l - (-hw + 130); chat_y = n.b - (-540 + 130); chat_w = n.w; chat_h = n.h;
+        } else if (ch_drag) {
+            ch_drags[ch_drag]++; prefs_save();
+            rig_log("mpmenu: chat %s to %.0f,%.0f size %.0f x %.0f", ch_drag == CHD_MOVE ? "moved" : "resized", chat_x, chat_y, chat_w, chat_h);
+            ch_drag = 0;
+        }
     }
 }
 
@@ -3300,7 +4209,7 @@ static void run_actions(int a, const mpm_obs *o) {
         char p[1200]; snprintf(p, sizeof p, "%s/mp.json", rig_dir);
         mp_config f; if (mp_config_load(p, &f) == 0) { snprintf(c.name, sizeof c.name, "%s", f.name); c.port = f.port; }
         c.host = 1; c.allow_speedup = M.set.speedup; c.allow_pause = M.set.pause_mode != MPM_PAUSE_NONE;
-        c.pause_mode = M.set.pause_mode; c.gear_mode = M.set.gear; c.port = MPM_DEFAULT_PORT;
+        c.pause_mode = M.set.pause_mode; c.gear_mode = M.set.gear; c.port = mpm_host_port();
         c.allow_spectators = M.set.spectators;
         if (my_name[0]) snprintf(c.name, sizeof c.name, "%s", my_name);
         else if (!in.steam) default_name(c.name, sizeof c.name);
@@ -3337,7 +4246,10 @@ static void run_actions(int a, const mpm_obs *o) {
         if (!hc || !hc->lobby_start) snprintf(err, sizeof err, "%s", TR("No mod offers this choice."));
         rig_log("mpmenu: host choice \"%s\" lobby start rc %d %s", hc ? hc->id : "?", rc, err);
         if (rc == 0) { M.state = MPM_PLAYING; run_actions(MPA_LOBBY_HIDE | MPA_START_GAME, o); }
-        else if (ui_notice) ui_notice(err[0] ? err : TR("This mode could not start."));
+        else {                                                              /* UX pass: in the lobby's own hint line (the top alert sat over the window's edge) */
+            snprintf(lobby_err, sizeof lobby_err, "%s", err[0] ? err : TR("This mode could not start.")); lobby_err_until = mono_s() + 10;
+            if (!u_alive(lwt(T_HINT)) && ui_notice) ui_notice(lobby_err);
+        }
     }
     if (a & MPA_START_GAME) lobby_hold(0);
     if (a & MPA_RULES) rules_send("lobby");
@@ -3350,20 +4262,21 @@ static void run_actions(int a, const mpm_obs *o) {
         char gid[64] = ""; prefs_save(); if (campaign_guid(gid, sizeof gid)) world_put(gid, &M.set);
         rig_log("mpmenu: admin mode -> %d (rc %d)", b, rc);
     }
-    if (a & MPA_COPY_ADDR) { copied_until = frames + 60; F(0x518AFE0, void (*)(Obj, void *))(u_str(M.direct), NULL); rig_log("mpmenu: copied %s", M.direct); }
+    if (a & MPA_COPY_ADDR) { copied_until = frames + 60; const char *ca = lobby_addr[0] ? lobby_addr : M.direct; F(0x518AFE0, void (*)(Obj, void *))(u_str(ca), NULL); rig_log("mpmenu: copied the lobby address"); }
     if (a & MPA_INVITE) {                                                   /* F18: a failed overlay is said, not only logged */
-        int rc = mp_steam_invite(); rig_log("mpmenu: invite rc %d", rc);
+        int rc = ui_friends_invite_click() ? 0 : mp_steam_invite(); rig_log("mpmenu: invite rc %d", rc);   /* steaminv: overlay off = friends picker (ui_friends.c) */
         if (rc) say("%s", TR("The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead."));
     }
     if (a & MPA_CONFIRM_LEAVE) leave_box_show();
     if (a & MPA_LEAVE_BOX_CLOSE) leave_box_close();
     if (a & MPA_LEAVE) {                                                    /* guest: straight to the title (mp_game) */
-        int host_alone = o->role == 1 && o->scene == 2;                     /* the host stays in the world, single player */
+        int quit = (a & MPA_QUIT_TITLE) != 0;                               /* lobby Quit: everyone (the host too) goes to the title */
+        int host_alone = o->role == 1 && o->scene == 2 && !quit;            /* the host stays in the world, single player */
         hist_update();                                                      /* Recent worlds: the state at leaving */
-        static void (*leave_title)(void); static int looked;
-        if (!looked) { looked = 1; leave_title = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_leave_to_title"); }
-        if (leave_title) leave_title(); else mp_steam_leave();
-        host_failed = 0; rig_log("mpmenu: left the session");
+        static void (*leave_title)(void), (*quit_title)(void); static int looked;
+        if (!looked) { looked = 1; leave_title = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_leave_to_title"); quit_title = (void (*)(void))dlsym(RTLD_DEFAULT, "mp_game_quit_to_title"); }
+        if (quit && quit_title) quit_title(); else if (leave_title) leave_title(); else mp_steam_leave();
+        host_failed = 0; rig_log("mpmenu: left the session%s", quit ? " (Quit: to the title)" : "");
         if (host_alone) say("%s", TR("Multiplayer ended. You are playing alone now; the world stays on your computer."));
     }
     if (a & MPA_FRIENDS) friends_refresh();
@@ -3408,7 +4321,9 @@ static void tips_frame(const mpm_obs *o) {
     /* lobby window (3.5, 3.7) */
     if (M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY) {
         TIP(u_gc_get(h_lwb[LW_START]), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Starts the game for everyone in the lobby. Players who join later catch up with the running game."));
-        TIP(u_gc_get(h_lwb[LW_LEAVE]), TR("Leave Multiplayer"), TR("Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you leave and return to the title; your units stay reserved for you."));
+        TIP(u_gc_get(h_lwb[LW_QUIT]), TR("Quit"), M.state == MPM_LOBBY ? TR("Asks first, then ends the game for everyone and goes back to the title. The world stays on your computer.")
+                                                                        : TR("You leave and return to the title; your units stay reserved for you."));
+        TIP(u_gc_get(h_lwb[LW_LEAVE]), TR("Turn Off Multiplayer"), TR("Asks first, then ends the game for everyone. You stay in this world and keep playing alone."));
         if (!lobby_rules) {
             TIP(u_gc_get(h_lwb[LW_GEAR]), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));
             TIP(lwt(T_RULES), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));
@@ -3448,7 +4363,6 @@ static void tips_frame(const mpm_obs *o) {
     TIP(tb(MPB_HOST_SAVE), TR("Your Save"), TR("Open one of your saves to other players. Friends join your world and play with your units. The world stays on your computer."));
     TIP(tb(MPB_HOST_NEW), TR("New Save"), TR("Start a new campaign and open it to other players as soon as it is created."));
     for (int k = 0; k < hcl.n; k++) TIP(tb(mpm_choice_btn(k)), hcl.c[k].label, hcl.c[k].tip);
-    { int ps = pvp_stub_slot(); if (ps >= 0) TIP(tb(mpm_choice_btn(ps)), TR("PvP"), TR("Teams of players fight each other. Install and turn on the Units Laboratory mod to play it.")); }
     TIP(tb(MPB_HOST_START), mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), TR("Prepares the world for this mode and opens the lobby. Friends join you there."));
     TIP(tb(MPB_JOIN_ADDR), TR("Join by Address"), TR("Join a friend's world with their address. Use it without Steam, or on the same home network."));
     TIP(tb(MPB_JOIN_FRIEND), TR("Join a Friend on Steam"), TR("Lists the Steam friends who are hosting a world right now. Click one to join. Needs the Steam version of the game."));
@@ -3515,7 +4429,7 @@ static void tag_frame(const mpm_obs *o) {
     if (!c || mp_is_spectator(s) || dsnet_player_id(c) < 0) return;
     uint32_t pm = dsnet_present_mask(c);
     if (__builtin_popcount(pm) < 2) return;
-    char gid[64] = ""; if (!campaign_guid(gid, sizeof gid)) return;
+    char gid[64] = ""; if (!campaign_guid(gid, sizeof gid) || mp_hub_guid(gid)) return;   /* no tag on a hub: it is never saved */
     const char *nm[DSNET_MAX_PLAYERS]; char buf[DSNET_MAX_PLAYERS][32]; int n = 0;
     for (int p = 0; p < DSNET_MAX_PLAYERS; p++) {                           /* slot order: the host first */
         if (!(pm >> p & 1u)) continue;
@@ -3524,6 +4438,114 @@ static void tag_frame(const mpm_obs *o) {
     }
     tag_seed(); char p[1200]; tag_path(p, sizeof p);
     if (mpm_tag_add(p, gid, nm, n)) rig_log("mpmenu: Multiplayer tag on world %s (%d players present)", gid, n);
+}
+
+/* ---------------------------------------------------------------- single-player copy (owner 2026-10-25, mp_solo.c)
+ * "when logging in multiplayer into a world for the first time, i should have the option to create a backup of it which
+ * stays single player". Host from Your save (or a Recent worlds host row): once the world is open and before the session
+ * starts (the model waits in HOST_LOADING while obs.solo_hold), a world never played with others (no Multiplayer tag) and
+ * never asked before (<app data>/mp_solo.txt) asks once: Yes = its newest save becomes a NEW single-player world in the same
+ * folder (new guid, "<name> (solo)", the original's mods in the loader's worlds.json, no tag), then the session starts with
+ * the original; No = the session starts. Not for New save, the hub or a Foreign Expedition pick (no world of the player's is
+ * played there). A guest is never asked: its game keeps no save of the host's world (mp_game.c h_save, mp_sync deleted). */
+void fe_new_guid(char out[37]);                                             /* fe_save.c */
+const char *fe_game_saves_dir(char *b, size_t n);                           /* fe_game.c: the normal game's Saves folder (tests: none) */
+enum { SOLO_OFF, SOLO_CHECK, SOLO_ASK };
+static int solo_st, solo_shows; static int64_t solo_t0;
+static char solo_guid[40], solo_world[160];
+static uint64_t solo_asked_n, solo_made_n;                                  /* test read-back (mpm_status) */
+static void solo_path(char *p, size_t cap) { app_path(p, cap, "mp_solo.txt"); }
+static int solo_dirs(char d[2][1100]) {
+    snprintf(d[0], sizeof d[0], "%s/data/Saves", rig_dir);
+    return fe_game_saves_dir(d[1], sizeof d[1]) ? 2 : 1;
+}
+static void solo_suffix(char *pre, char *post, size_t cap) {               /* "%s (solo)" in the player's language, around the name */
+    const char *f = TR("%s (solo)"), *k = strstr(f, "%s");
+    if (!k) { snprintf(pre, cap, "%s", ""); snprintf(post, cap, "%s", " (solo)"); return; }
+    snprintf(pre, cap, "%.*s", (int)(k - f), f); snprintf(post, cap, "%s", k + 2);
+}
+/* the loader's worlds.json: the copy gets the original's mods. dsl_world_copy_mods (loader kit 0.1.27+, Mac + Windows);
+   an older Mac loader: its dsl_world_mods / dsl_world_set_mods (the Mods window's own calls). 0 ok. */
+static int solo_copy_mods(const char *from, const char *to) {
+    int (*cp)(const char *, const char *) = (int (*)(const char *, const char *))mpmenu_loader_sym("dsl_world_copy_mods");
+    if (cp) return cp(from, to);
+#ifndef _WIN32
+    int (*get)(const char *, const char **, int) = (int (*)(const char *, const char **, int))mpmenu_loader_sym("dsl_world_mods");
+    int (*set)(const char *, const char *const *, int) = (int (*)(const char *, const char *const *, int))mpmenu_loader_sym("dsl_world_set_mods");
+    if (get && set) {
+        const char *ids[64]; char keep[64][64]; const char *kp[64];
+        int n = get(from, ids, 64);
+        for (int i = 0; i < n; i++) { snprintf(keep[i], sizeof keep[i], "%s", ids[i]); kp[i] = keep[i]; }   /* the loader's buffer is static */
+        return set(to, kp, n);
+    }
+#endif
+    return -2;                                                              /* no loader (test copies): nothing to copy */
+}
+static int solo_make(char cg[37], char *name, size_t nn) {
+    char d[2][1100]; int nd = solo_dirs(d); const char *dp[2] = { d[0], d[1] }; mps_save sv;
+    if (!mps_newest(dp, nd, solo_guid, &sv)) { rig_log("mpmenu: single-player copy: no save of world %s any more", solo_guid); return -1; }
+    do fe_new_guid(cg); while (mp_hub_guid(cg));
+    char pre[96], post[96], out[1400], err[300] = ""; solo_suffix(pre, post, sizeof pre);
+    snprintf(name, nn, "%s%s%s", pre, solo_world, post); dsi_utf8_fix_end(name);
+    if (mps_copy(sv.path, cg, pre, post, out, sizeof out, err, sizeof err)) { rig_log("mpmenu: single-player copy of %s FAILED: %s", sv.path, err); return -1; }
+    int mrc = solo_copy_mods(solo_guid, cg);
+    Obj ld = mf ? AT(mf, 0x180, Obj) : NULL;                                 /* the Load list reads the new save */
+    if (ld) F(0x812AB8, void (*)(Obj, void *))(ld, NULL);                    /* CampaignSaveLoader.TryRefreshSave */
+    solo_made_n++;
+    rig_log("mpmenu: single-player copy of world %s: %s -> %s (world %s); mods in worlds.json: %s", solo_guid, sv.path, out, cg,
+            !mrc ? "copied" : mrc == -2 ? "no loader" : "NOT copied (the copy takes the mods it is first opened with)");
+    return 0;
+}
+static void solo_answer(int yes) {
+    if (solo_st != SOLO_ASK) return;
+    solo_st = SOLO_OFF;
+    char p[1200], cg[37] = "", name[260] = ""; solo_path(p, sizeof p);
+    if (yes && solo_make(cg, name, sizeof name)) {                         /* not written: asked again next time */
+        if (ui_notice) ui_notice(TR("The single-player copy could not be made. Your world is not changed."));
+        return;
+    }
+    mps_asked_put(p, solo_guid, yes, cg);
+    rig_log("mpmenu: single-player copy box for world %s: %s", solo_guid, yes ? "Yes" : "No");
+    if (yes && ui_notice) { char t[400]; snprintf(t, sizeof t, TR("Single-player copy made: %s"), name); dsi_utf8_fix_end(t); ui_notice(t); }
+}
+/* before the model step: the world is open (HOST_LOADING), first time? */
+static void solo_obs(mpm_obs *o) {
+    if (solo_st && M.state != MPM_HOST_LOADING) { if (lbox_up == BX_SOLO) box_close(); solo_st = SOLO_OFF; }   /* failed / left */
+    if (solo_st == SOLO_CHECK && o->campaign_ready) {                       /* the same frame the model would start the lobby */
+        solo_st = SOLO_OFF;
+        char g[64] = "", nm[MPM_TAG_NAMES][32], p[1200]; solo_path(p, sizeof p);
+        if (o->tutorial || !campaign_guid(g, sizeof g)) return;               /* the tutorial never hosts (model) */
+        char d[2][1100]; int nd = solo_dirs(d); const char *dp[2] = { d[0], d[1] }; mps_save sv;
+        const char *why = mp_hub_guid(g) ? "a hub" : tag_get(g, nm) >= 0 ? "it has the Multiplayer tag" : mps_asked(p, g) ? "asked before"
+                        : !mps_newest(dp, nd, g, &sv) ? "no save of it on this computer" : NULL;
+        if (why) { rig_log("mpmenu: single-player copy: not asked for world %s (%s)", g, why); return; }
+        snprintf(solo_guid, sizeof solo_guid, "%s", g);
+        Obj c = cdc(), clan = c ? AT(c, 0x50, Obj) : NULL; solo_world[0] = 0;
+        if (clan) str_utf8(AT(clan, 0x20, Obj), solo_world, sizeof solo_world);   /* ClanDataContainer.ClanName */
+        solo_st = SOLO_ASK; solo_shows = 0; solo_t0 = frames;
+        rig_log("mpmenu: single-player copy: world %s (%s) is new to multiplayer, newest save %s: asking", g, solo_world, sv.path);
+    }
+    o->solo_hold = solo_st == SOLO_ASK;
+}
+/* the box: over nothing else; shown again if another box took the view (max 3 times); no box within 20 s = the session starts */
+static void solo_frame(void) {
+    if (solo_st != SOLO_ASK) return;
+    Obj v = lbox_view();
+    if (lbox_up == BX_SOLO && lbox_ours(v)) return;                         /* up: waiting for the click */
+    if (lbox_up == BX_SOLO) { lbox_up = BX_NONE; rig_log("mpmenu: single-player copy box closed another way"); }
+    if (solo_shows >= 3 || frames - solo_t0 > 1200) {
+        solo_st = SOLO_OFF; rig_log("mpmenu: single-player copy box: no answer, the session starts (asked again next time)"); return;
+    }
+    if (lbox_up != BX_NONE || (u_alive(v) && u_on(v)) || M.confirm_leave) return;   /* another box first */
+    char pre[96], post[96], copy[260], bd[400], sm[500], t[1400]; solo_suffix(pre, post, sizeof pre);
+    snprintf(copy, sizeof copy, "%s%s%s", pre, solo_world, post); dsi_utf8_fix_end(copy);
+    snprintf(bd, sizeof bd, TR("%s becomes a multiplayer world. A copy stays single-player, so you can go on with it alone."), solo_world);
+    snprintf(sm, sizeof sm, TR("Yes makes a new world, \"%s\", from your newest save, in the same folder. You are asked once for each world."), copy);
+    snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", TR("Keep a single-player copy of this world?"), bd, sm);
+    dsi_utf8_fix_end(t);
+    box_show(BX_SOLO, t, mpm_word("TEXTKEY_CommonPopUp_Yes", TR_NOOP("Yes")), mpm_word("TEXTKEY_CommonPopUp_No", TR_NOOP("No")));
+    solo_shows++;
+    if (lbox_up == BX_SOLO) solo_asked_n++;
 }
 /* the load list's rows we decorated: world rows (case, guid, its stock name text string, our "Remove tag" text) and save rows */
 /* world rows (SubUI_SettlerNameCase) and save rows we know, for every live load list. The title's Load list and the
@@ -3635,6 +4657,16 @@ static void tag_click_frame(void) {
  * world row and its save rows inactive, then the stock RefreshPanelSize. The save panel (Save) is never filtered.
  * Until the loader's LOAD-ROW API exists this file owns the SaveLoadView.RefreshLoadPanel hook (as the tag owns its two). */
 static int lf_mode = MPM_LIST_SOLO, lf_other, lf_hidden, lf_shown, lf_applied;
+/* the loader's filter panel (loader kit v0.1.23, its dsl_rows.c; owner 2026-10-24: filters on the right of the Load
+ * Campaign window replace this box): on the single-player list the panel's Multiplayer box decides, so this filter shows
+ * every world there and draws no box. Your save and the Expedition pick keep this filter as before. The loader asks two
+ * exports below: dsl_loadlist_own (1 = this filter decides the open list) and dsl_loadlist_world_mp (the tag). */
+static int lf_loader_panel(void) {
+    static int v = -1;
+    if (v < 0) { int (*f)(void) = (int (*)(void))mpmenu_loader_sym("dsl_loadlist_panel"); v = f && f() > 0; rig_log("mpmenu: load list: the loader's filter panel %s", v ? "decides the single-player list" : "not there (older loader): this box stays"); }
+    return v;
+}
+static int lf_eff(int mode) { return mode == MPM_LIST_SOLO && lf_loader_panel() ? MPM_LIST_ALL : mode; }
 static uintptr_t h_lf_slv, h_lf_tog, h_lf_box;                              /* the list view, our toggle text and its box */
 static void lf_toggle_sync(Obj slv);
 static tag_row *tag_row_find(tag_row *t, Obj row) {                        /* no new entry (tag_row_of adds one) */
@@ -3650,7 +4682,7 @@ static void lf_apply(Obj slv, const char *why) {
         Obj cs = AT(arr, 0x20 + 8 * i, Obj); if (!u_alive(cs)) continue;
         tag_row *r = tag_row_find(tcase, cs); if (!r || !r->guid[0]) continue;
         char nm[MPM_TAG_NAMES][32]; int tagged = tag_get(r->guid, nm) >= 0;
-        int show = mpm_list_show(lf_mode, lf_other, tagged, AT(cs, 0xA0, bool));   /* _isCurrentCampaign */
+        int show = mpm_list_show(lf_eff(lf_mode), lf_other, tagged, AT(cs, 0xA0, bool));   /* _isCurrentCampaign */
         u_active(cs, show);
         if (show) shown++; else { hid++; if (nh < 64) snprintf(hidden_guid[nh++], 40, "%s", r->guid); }
     }
@@ -3692,7 +4724,7 @@ static void lf_band(Obj slv, int on) {
 }
 static void lf_toggle_sync(Obj slv) {
     Obj tog = u_gc_get(h_lf_tog), box = u_gc_get(h_lf_box), low = AT(slv, 0x98, Obj);   /* _lowLoadPanel */
-    const char *lbl = mpm_list_toggle_label(lf_mode);
+    const char *lbl = mpm_list_toggle_label(lf_eff(lf_mode));
     if (!lbl[0]) { u_active(tog, false); u_active(box, false); lf_band(slv, 0); return; }
     if (!u_alive(tog)) {
         Obj tt = AT(slv, 0x48, Obj);                                        /* _saveLoadTitle (text template) */
@@ -3702,10 +4734,10 @@ static void lf_toggle_sync(Obj slv) {
         if (!u_alive(low) || !u_alive(tt)) return;
         tog = mk_txt(tt, u_tr(low), 0, 16, 513, 0, 0, 0, 400, 36, C_SUB);    /* middle left */
         if (!tog) return;
-        if (!strcmp(cls_name(tog), "DASText")) AT(tog, 0x7C0, bool) = false;   /* our text, not a localisation key */
+        das_key_set(tog, false);                                            /* our text, not a localisation key */
         F(0x5260348, void (*)(Obj, bool, void *))(tog, true, NULL);         /* raycastTarget: the click is ours */
         u_gc_free(h_lf_tog); h_lf_tog = u_gc_new(tog);
-        box = tpl_img ? mk_img(tpl_img, u_tr(low), S_CHK_N, C_WHITE, 0, 0, 28, 28) : NULL;
+        box = tpl_img ? mk_img(tpl_img, u_tr(low), S_CHK_N, C_WHITE, 0, 0, 20, 20) : NULL;   /* 2x the 10 x 10 box: whole pixels */
         u_gc_free(h_lf_box); h_lf_box = box ? u_gc_new(box) : 0;
         rig_log("mpmenu: load list toggle built (box %s)", box ? "yes" : "no");
     }
@@ -3713,7 +4745,7 @@ static void lf_toggle_sync(Obj slv) {
     URect lr = F(0x5106978, URect (*)(Obj, void *))(u_tr(low), NULL);       /* bottom row, local (centre = 0,0) */
     float y = lr.h / 2 + LF_BAND / 2.0f, x0 = -lr.w / 2 + 4;
     Obj sp = spr(lf_other ? S_CHK_C : S_CHK_N);
-    if (box) { place(box, x0 + 14, y, 28, 28); img_set(box, sp, sp ? C_WHITE : C_SUB); u_active(box, true); }
+    if (box) { place(box, x0 + 14, y, 20, 20); img_set(box, sp, sp ? C_WHITE : C_SUB); u_active(box, true); }
     place(tog, x0 + 36 + 200, y, 400, 36);
     tmp_set(tog, lbl); u_active(tog, true);
 }
@@ -3743,6 +4775,16 @@ static void lf_frame(void) {
 __attribute__((visibility("default"))) int dsl_loadlist_hidden(int *kind) {
     if (kind) *kind = lf_mode == MPM_LIST_MP ? 2 : 1;
     return popup_open(5) && u_alive(u_gc_get(h_lf_slv)) ? lf_hidden : 0;
+}
+/* the loader's filter panel: 1 = this filter decides the open list now (Your save, the Expedition pick), so the panel stays
+   away; 0 = the single-player list, the panel decides */
+__attribute__((visibility("default"))) int dsl_loadlist_own(void) { return mpm_list_mode(&M) != MPM_LIST_SOLO; }
+/* the loader (dsl_world.c): 1 = a temporary world it never registers in worlds.json: the hub, made new for each session and
+   never saved (owner 2026-10-25, mp_worldsave.h) */
+__attribute__((visibility("default"))) int dsl_world_temporary(const char *guid) { return mp_hub_guid(guid); }
+/* the loader's filter panel: 1 = a Multiplayer world (its tag, mp_tags.txt) */
+__attribute__((visibility("default"))) int dsl_loadlist_world_mp(const char *guid) {
+    char nm[MPM_TAG_NAMES][32]; return guid && *guid && tag_get(guid, nm) >= 0;
 }
 
 /* ---------------------------------------------------------------- the third host choice (MASTER_PLAN 2.2 B register_host_choice) */
@@ -3791,7 +4833,7 @@ static void escb_frame(const mpm_obs *o) {
         if (!b && eb(MPB_LEAVE)) {
             Obj src = AT(v, 0x70, Obj);
             b = u_alive(src) ? u_instantiate(src, u_tr_parent(u_tr(src))) : NULL;
-            if (u_alive(b)) { if (mm_is(b, K_SMB)) F(0xF2DB60, void (*)(Obj, Obj, void *))(b, NULL, NULL); AT(b, 0x30, Obj) = NULL;
+            if (u_alive(b)) { if (mm_is(b, K_SMB)) F(0xF2DB60, void (*)(Obj, Obj, void *))(b, NULL, NULL); AT(b, 0x30, Obj) = NULL; esc_label_fit(b);
                               u_set_sibling(u_tr(b), u_sibling(u_tr(eb(MPB_LEAVE)))); u_gc_free(escb[i].h); escb[i].h = u_gc_new(b); }
             else b = NULL;
         }
@@ -3851,18 +4893,13 @@ static void title_teardown(void) {
     for (int i = 0; i < TAG_ROWS; i++) if (tcase[i].rm) { destroy_go(u_gc_get(tcase[i].rm)); u_gc_free(tcase[i].rm); tcase[i].rm = 0; }   /* "Remove tag" (rows redo it) */
     cp_drawn = 0;
 }
-/* our own placeholder host choice (Custom Modes registers the same id with its start: then it is theirs); again on a language change */
-static void own_choice_register(void) {
-    for (int k = 0; k < hcl.n; k++) if (!strcmp(hcl.c[k].id, "foreign-expedition") && (hcl.c[k].v2 || hcl.c[k].on_start)) return;   /* the mod's own */
-    mpmenu_register_host_choice("foreign-expedition", TR("Foreign Expedition"), TR("Everyone brings units into a neutral hub with everything unlocked. Nobody's save changes until they bring the results home."), NULL, NULL);
-}
 static void lang_poll(void) {
     if (!ls_ready() || !ls_lang_mi) return;                                 /* before il2cpp / the class: English */
     int v = MCALL(ls_lang_mi, int32_t, const void *)(ls_lang_mi);
     if (!dsi_set_lang(v)) return;
     rig_log("mpmenu: i18n: game language %d = %s (%d texts, %d dropped as unsafe)", v, dsi_code(), dsi_loaded(), dsi_dropped());
-    own_choice_register();
     if (scene() == 1 && h_title_built) title_teardown();
+    if (!chat_typing) destroy_go(u_gc_get(h_ch_root));                     /* the chat (kept across scenes) is built again: "Chat", "Say:" */
 }
 
 void mpmenu_frame(void) {
@@ -3875,6 +4912,7 @@ void mpmenu_frame(void) {
     join_poll();
     assets_scan();                                                          /* every 300 frames until all are found */
     mpm_obs o; observe(&o);
+    solo_obs(&o);                                                           /* host from Your save: the single-player copy box first */
     o.edited = fields_edited; fields_edited = 0;
     int c = pending_click; pending_click = MPB_NONE;
     mpm_choices_to_model(&hcl, &M);
@@ -3882,6 +4920,7 @@ void mpmenu_frame(void) {
     int st0 = M.state;
     int a = mpm_step(&M, &o, c);
     if (M.state != st0) rig_log("mpmenu: state %d -> %d (click %d)", st0, M.state, c);
+    if (st0 == MPM_PICK_SAVE && M.state == MPM_HOST_LOADING && !M.set.fe) solo_st = SOLO_CHECK;   /* a world of the player's: first time? */
     if (o.failed && o.msg[0] && (M.state == MPM_FAILED || M.state == MPM_IDLE)) mp_steam_ack();   /* the message is in M.msg now */
     if (a & ~MPA_REFRESH) run_actions(a, &o);
     choice_page_frame();
@@ -3901,6 +4940,7 @@ void mpmenu_frame(void) {
         Obj ev = esc_view();
         if (ui_modal2 && ui_modal2() && ev) { (mm_is(ev, K_SMV) ? F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL) : (void)0); rig_log("mpmenu: lobby closed for a ui box; it comes back after"); }
     }
+    if (frames % 30 == 0) { mp_session *hs = mp_game_session(); upnpport_host(hs ? mp_server_port(hs) : 0); }   /* map / renew / delete (own thread) */
     if (M.state == MPM_LOBBY && frames % 30 == 0) direct_refresh();
     M.set.watching = o.role == 1 ? spect_watching() : 0;                    /* "Allowed · 2 watching" (Rules value) */
     rules_sync(&o);
@@ -3915,8 +4955,10 @@ void mpmenu_frame(void) {
     notice_frame(&o);
     leave_box_frame();
     invite_frame(&o);
+    solo_frame();
     hostmods_frame();
     lbox_fit_frame();
+    lbox_esc_frame();                                                       /* our box on the kit's Escape stack while it shows */
     rejoin_frame(&o);
     tag_frame(&o);
     tag_click_frame();
@@ -3936,6 +4978,7 @@ int mpmenu_gear_mode(void) { return mp_game_session() ? M.set.gear : -1; }
 /* ui lane (ux #30): the player panel hides while the host's lobby or the guest's waiting panel is up */
 __attribute__((visibility("default"))) int mpmenu_lobby_open(void) { return M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY; }
 
+void mp_modes_start(void);
 void mpmenu_install(void) {
     mp_fog_install();                   /* per-player fog hooks (core next 2026-10-15) */
     mpm_init(&M);
@@ -3949,12 +4992,12 @@ void mpmenu_install(void) {
     bad |= rig_hook(0x85E50C, (void *)h_case_init, (void **)&o_case_init, "mpmenu SubUI_SettlerNameCase.Init (MP world tag)");
     bad |= rig_hook(0x85ED7C, (void *)h_refresh_load, (void **)&o_refresh_load, "mpmenu SaveLoadView.RefreshLoadPanel (single / multiplayer list)");
     bad |= rig_hook(0xD42BBC, (void *)h_textfocus, (void **)&o_textfocus, "mpmenu KeyInputDispatcher.IsTextInputFocused (chat typing: no hotkeys)");
+    bad |= rig_hook(0x51AD584, (void *)h_scroll_delta, (void **)&o_scroll_delta, "mpmenu Input.get_mouseScrollDelta (0 over the chat: no camera zoom)");
     if (test_mode()) {
         bad |= rig_hook(0x518AEA0, (void *)h_clip_get, (void **)&o_clip_get, "mpmenu GUIUtility.get_systemCopyBuffer (test: file)");
         bad |= rig_hook(0x518AFE0, (void *)h_clip_set, (void **)&o_clip_set, "mpmenu GUIUtility.set_systemCopyBuffer (test: file)");
     }
-    /* until the split (M4) the Foreign Expedition code is in this dylib: it takes the third host choice itself */
-    own_choice_register();
+    mp_modes_start();                   /* Foreign Expedition + PvP (mp_modes.c): host choices, hooks, sim commands */
     rig_log("mpmenu: installed (%s)%s", bad ? "HOOK FAILED" : "ok", test_mode() ? ", clipboard -> clipboard.txt" : "");
 }
 
@@ -4022,8 +5065,10 @@ static int tmp_keys(const char *chars, const char *special) {
     static void *mke, *mpe; if (!mke) { mke = mth("UnityEngine", "Event", "KeyboardEvent", 1); mpe = mth("TMPro", "TMP_InputField", "ProcessEvent", 1); }
     if (!mke || !mpe) { rig_log("mpmenu: test keys: Event.KeyboardEvent %p / ProcessEvent %p missing", mke, mpe); return 0; }
     int n = 0, len = chars ? (int)strlen(chars) : 1;
-    for (int i = 0; i < len; i++) {
-        char one[16]; if (chars) { one[0] = chars[i]; one[1] = 0; if (chars[i] == ' ') snprintf(one, sizeof one, "space"); } else snprintf(one, sizeof one, "%s", special);
+    for (int i = 0; i < len; ) {                                             /* one UTF-8 character per event (accents, Cyrillic, CJK) */
+        char one[16]; int cl = 1;
+        if (chars) { ch_utf8((const unsigned char *)chars + i, &cl); memcpy(one, chars + i, (size_t)cl); one[cl] = 0; if (chars[i] == ' ') snprintf(one, sizeof one, "space"); } else snprintf(one, sizeof one, "%s", special);
+        i += cl;
         Obj ev = MCALL(mke, Obj, Obj, const void *)(u_str(one), mke);
         if (!ev) continue;
         MCALL(mpe, void, Obj, Obj, const void *)(f, ev, mpe); n++;
@@ -4037,10 +5082,10 @@ static int key_inject(const char *chars, int code, const char *via) {
     id pi = ((id (*)(Class, SEL))objc_msgSend)(objc_getClass("NSProcessInfo"), sel_registerName("processInfo"));
     double ts = ((double (*)(id, SEL))objc_msgSend)(pi, sel_registerName("systemUptime"));
     int n = 0, len = chars ? (int)strlen(chars) : 1;
-    for (int i = 0; i < len; i++) {
-        char one[8]; int kc;
-        if (chars) { one[0] = chars[i]; one[1] = 0; kc = mac_keycode(chars[i]); }
-        else { kc = code; if (kc < 0) return 0; one[0] = kc == 36 ? '\r' : kc == 53 ? 0x1b : kc == 51 ? 0x7f : 0; one[1] = 0; }
+    for (int i = 0; i < len; ) {
+        char one[8]; int kc, cl = 1;
+        if (chars) { ch_utf8((const unsigned char *)chars + i, &cl); memcpy(one, chars + i, (size_t)cl); one[cl] = 0; kc = cl == 1 ? mac_keycode(chars[i]) : 49; i += cl; }
+        else { kc = code; if (kc < 0) return 0; one[0] = kc == 36 ? '\r' : kc == 53 ? 0x1b : kc == 51 ? 0x7f : 0; one[1] = 0; i++; }
         for (int up = 0; up < 2; up++) {
             id ev = ((id (*)(Class, SEL, unsigned long, CGPoint, unsigned long, double, long, id, id, id, BOOL, unsigned short))objc_msgSend)(
                 objc_getClass("NSEvent"), sel_registerName("keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:characters:charactersIgnoringModifiers:isARepeat:keyCode:"),
@@ -4248,9 +5293,20 @@ char *mpmenu_exec(const char *cmd, const char *line) {
     }
     if (!strcmp(cmd, "mpm_testchoice")) return testchoice_exec(line);    /* test: dummy register_host_choice2 choices */
     if (!strcmp(cmd, "mpm_newcampaign")) {                                  /* test: what the new-campaign screen's Start sends */
-        char nm[64] = "MP Test", sd[32] = "12345"; double sc = 1; jstr(line, "name", nm, sizeof nm); jstr(line, "seed", sd, sizeof sd); jnum(line, "scenario", &sc);
+        double cn = 0;
+        if (jnum(line, "cancel", &cn) && cn != 0) {                         /* {cancel:1}: the screen's own Cancel button (CreateCampaignView.OnClickedCancelButton) */
+            static uintptr_t h_ccv; static void *k_ccv; Obj v = find_view_x(&h_ccv, &k_ccv, "Refactor.UI", "CreateCampaignView", false);
+            static void *mpress; if (!mpress) mpress = mth("UnityEngine.UI", "Button", "Press", 0);   /* _cancelButton +0x68: what a click runs */
+            Obj cb = v ? AT(v, 0x68, Obj) : NULL; if (u_alive(cb) && mpress) MCALL(mpress, void, Obj, const void *)(cb, mpress);
+            char o[64]; snprintf(o, sizeof o, "{\"ok\":%s,\"open\":%d}", v ? "true" : "false", popup_open(7)); return strdup(o);
+        }
+        if (jnum(line, "popups", &cn) && cn != 0) { char o[256] = "{\"ok\":true,\"open\":["; for (int i = 1; i < 32; i++) if (popup_open(i)) snprintf(o + strlen(o), sizeof o - strlen(o), "%d,", i); strcat(o, "0]}"); return strdup(o); }   /* {popups:1}: open stock pop-ups */
+        if (jnum(line, "close", &cn) && cn != 0) { Obj p = popups(); if (p && popup_open((int)cn)) F(0xF62A88, void (*)(Obj, int, void *))(p, (int)cn, NULL); return strdup("{\"ok\":true}"); }   /* {close:N}: DeactivateView(N), as the pop-up's own close */
+        if (jnum(line, "probe", &cn) && cn != 0) { char o[64]; snprintf(o, sizeof o, "{\"ok\":true,\"open\":%d}", popup_open(7)); return strdup(o); }
+        char nm[64] = "MP Test", sd[32] = "12345"; double sc = 1, cd = 1, md = 1; jstr(line, "name", nm, sizeof nm); jstr(line, "seed", sd, sizeof sd); jnum(line, "scenario", &sc);
+        double tut = 0; jnum(line, "combat", &cd); jnum(line, "mgmt", &md); jnum(line, "tutorial", &tut);   /* difficulties (default 1); Hell = 5; tutorial 1 = PlayTutorial */
         Obj ev = obj_new(0x664BC18);                                        /* CreateCampaignRequested */
-        F(0xD61EDC, void (*)(Obj, Obj, int, int, int, Obj, bool, bool, bool, Obj, bool, void *))(ev, u_str(nm), (int)sc, 1, 1, u_str(sd), false, false, false, u_str(""), false, NULL);
+        F(0xD61EDC, void (*)(Obj, Obj, int, int, int, Obj, bool, bool, bool, Obj, bool, void *))(ev, u_str(nm), (int)sc, (int)cd, (int)md, u_str(sd), false, false, tut != 0, u_str(""), false, NULL);
         F(0xCCFAD4, void (*)(Obj, Obj, void *))(AT(mf, 0x48, Obj), ev, NULL);
         return strdup("{\"ok\":true}");
     }
@@ -4335,11 +5391,30 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         (mm_is(v, K_SMV) ? F(0xF2EEA8, void (*)(Obj, void *))(v, NULL) : (void)0); return strdup("{\"ok\":true}");
     }
     if (!strcmp(cmd, "mpm_chat")) {                                         /* test: {open:1} {text:"..."} {enter:1} {escape:1} (no keyboard here) */
-        double v; char t[256];
+        double v; char t[1024];
         if (jnum(line, "open", &v)) test_chat_open = 1;
         if (jstr(line, "text", t, sizeof t)) snprintf(test_chat_in, sizeof test_chat_in, "%s", t);
         if (jnum(line, "enter", &v)) test_chat_enter = 1;
         if (jnum(line, "escape", &v)) test_chat_escape = 1;
+        if (jstr(line, "probe", t, sizeof t)) {                             /* test: per chat font, characters it lacks (add: 0 / 1) */
+            chat_fonts(); Buf b = {0}; bput(&b, "{\"ok\":true,\"fonts\":[");
+            for (int i = 0; i < nchf; i++) { Obj f = u_gc_get(h_chf[i]); int m = 0, n = 0;
+                for (const unsigned char *q = (const unsigned char *)t; *q; ) { int cl; uint32_t cp = ch_utf8(q, &cl); q += cl; n++; m += !ch_has(f, cp); }
+                bput(&b, "%s{\"name\":", i ? "," : ""); bstr(&b, chf_names[i]); bput(&b, ",\"chars\":%d,\"missing\":%d}", n, m); }
+            bput(&b, "]}"); return b.p;
+        }
+#ifdef TEAMS_MOUSE_TEST
+        if (jnum(line, "wheel", &v)) { double n = 30; jnum(line, "frames", &n); ch_fake_wheel = (V2){ 0, (float)v }; ch_fake_wheel_n = (int)n; }   /* fake wheel (test build) */
+#endif
+        if (jstr(line, "local", t, sizeof t)) { Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", mpmenu_chat_local("Test", t, MP_CHATL_LINE)); return b.p; }   /* mp_api v3 chat_local */
+        if (jnum(line, "drag", &v)) {                                       /* scripted pointer for the move / resize code (ch_fk) */
+            double x0 = 0, y0 = 0, x1 = 0, y1 = 0, bt = 0, n = 8;
+            jnum(line, "x0", &x0); jnum(line, "y0", &y0); jnum(line, "x1", &x1); jnum(line, "y1", &y1); jnum(line, "button", &bt); jnum(line, "frames", &n);
+            if (ch_fk.on || ch_drag) return strdup("{\"ok\":false,\"error\":\"a drag is running\"}");
+            ch_fk.button = bt != 0; ch_fk.i = 0; ch_fk.n = n < 1 ? 1 : n > 600 ? 600 : (int)n;
+            ch_fk.x0 = (float)x0; ch_fk.y0 = (float)y0; ch_fk.x1 = (float)x1; ch_fk.y1 = (float)y1; ch_fk.on = 1;
+            return strdup("{\"ok\":true}");
+        }
         if (jnum(line, "defocus", &v)) {                                    /* as if the player clicked the world: the field loses the focus */
             static void *mcur, *mset; if (!mcur) { mcur = mth("UnityEngine.EventSystems", "EventSystem", "get_current", 0); mset = mth("UnityEngine.EventSystems", "EventSystem", "SetSelectedGameObject", 1); }
             Obj es = mcur ? MCALL(mcur, Obj, const void *)(mcur) : NULL; if (u_alive(es) && mset) MCALL(mset, void, Obj, Obj, const void *)(es, NULL, mset);
@@ -4347,7 +5422,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         return strdup("{\"ok\":true}");
     }
     if (!strcmp(cmd, "mpm_key")) {                                         /* test: REAL key / mouse events through AppKit -> Unity's own input */
-        char t[256] = "", k[32] = "", via[16] = "window"; double v;
+        char t[1024] = "", k[32] = "", via[16] = "window"; double v;
         jstr(line, "via", via, sizeof via);
         int n = 0;
         if (jstr(line, "chars", t, sizeof t)) n += key_inject(t, 0, via) + tmp_keys(t, NULL);   /* key codes to Unity + the text to the field */
@@ -4439,6 +5514,19 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         if (!strcmp(w, "confirm")) F(0xF65A18, void (*)(Obj, void *))(v, NULL); else F(0xF65638, void (*)(Obj, void *))(v, NULL);
         return strdup("{\"ok\":true}");
     }
+    if (!strcmp(cmd, "mpm_conn")) {                                          /* conninfo read-back: each player's connection words;
+                                                                                test copies only: {mark:id} on the host makes that guest's link count as
+                                                                                a Steam bridge (the rig has no Steam: the same loopback mark the bridge sets) */
+        double mk = -1; jnum(line, "mark", &mk);
+        int marked = 0;
+        if (mk >= 0 && test_mode()) { char a[96]; mp_game_conn((int)mk, a, sizeof a); const char *pc = strrchr(a, ':');
+            if (pc) { dsnet_relay_port_mark((uint16_t)atoi(pc + 1), 1); marked = atoi(pc + 1); } }
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"marked\":%d,\"rows\":[", marked);
+        for (int i = 0, k = 0; i < 8; i++) { char w[128], a[96]; int v = mp_game_conn(i, a, sizeof a); if (v == DSNET_VIA_UNKNOWN) continue;
+            mpmenu_conn_words(i, w, sizeof w);
+            bput(&b, "%s{\"player\":%d,\"via\":%d,\"words\":", k++ ? "," : "", i, v); bstr(&b, w); bput(&b, "}"); }
+        bput(&b, "]}"); return b.p;
+    }
     if (!strcmp(cmd, "mpm_fail_join")) {                                     /* test stand-in for a refused Steam-invite join (no Steam in the rig):
                                                                                 the model sees "joining", then the session ending with {msg} */
         char why[160] = "", host[64] = ""; jstr(line, "msg", why, sizeof why); jstr(line, "host", host, sizeof host);
@@ -4473,10 +5561,13 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           bput(&b, ",\"confirm_leave\":%d,\"lbox_up\":%d,\"box\":{\"on\":%d,\"text\":", M.confirm_leave, lbox_up, bon); bstr(&b, bt);
           bput(&b, ",\"confirm\":"); bstr(&b, bc); bput(&b, ",\"cancel\":"); bstr(&b, bx); bput(&b, "},\"notice\":"); bstr(&b, M.notice);
           bput(&b, ",\"message\":"); bstr(&b, last_message); }
+        bput(&b, ",\"solo\":{\"state\":%d,\"asked\":%llu,\"made\":%llu,\"world\":", solo_st, (unsigned long long)solo_asked_n, (unsigned long long)solo_made_n); bstr(&b, solo_guid); bput(&b, "}");
         bput(&b, ",\"obs\":{\"scene\":%d,\"ready\":%d,\"title\":%d,\"picker\":%d,\"role\":%d,\"guest_loading\":%d,\"failed\":%d,\"esc\":%d},\"visible\":%llu",
              o.scene, o.campaign_ready, o.title_visible, o.picker_open, o.role, o.guest_loading, o.failed, o.esc_open, (unsigned long long)mpm_visible(&M, &o));
         mp_session *ss = mp_game_session();
-        bput(&b, ",\"port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0); bstr(&b, M.direct);
+        bput(&b, ",\"port\":%u,\"host_port\":%u,\"direct\":", ss ? mp_server_port(ss) : 0, (unsigned)mpm_host_port()); bstr(&b, M.direct);
+        bput(&b, ",\"inet_state\":%d,\"internet\":", inet_state); bstr(&b, M.internet);
+        { uint16_t ue = 0; int us = upnpport_get(&ue); bput(&b, ",\"up_state\":%d,\"up_ext\":%u", us, (unsigned)ue); }   /* router port (upnpport.h) */
         Obj fl = u_gc_get(h_field); char ft[256] = "";
         if (u_alive(fl)) str_utf8((mm_is(fl, K_FIELD) ? F(0x4EFAE84, Obj (*)(Obj, void *))(fl, NULL) : NULL), ft, sizeof ft);
         bput(&b, ",\"field\":{\"exists\":%s,\"active\":%s,\"text\":", u_alive(fl) ? "true" : "false", u_on(fl) ? "true" : "false"); bstr(&b, ft); bput(&b, "}");
@@ -4503,16 +5594,20 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           bput(&b, ",\"name_field\":{\"exists\":%s,\"active\":%s,\"text\":", u_alive(nf) ? "true" : "false", u_on(nf) ? "true" : "false"); bstr(&b, nt); bput(&b, "}"); }
         bput(&b, ",\"my_name\":"); bstr(&b, my_name);
         bput(&b, ",\"frames\":%lld,\"connecting\":", (long long)frames); bstr(&b, M.connecting);
-        { Obj root = u_gc_get(h_lw_root); char t[256];                     /* lobby window (v2 §2b) read-back */
+        { Obj root = u_gc_get(h_lw_root); char t[1024];                    /* lobby window (v2 §2b) read-back (the note is longer than 256) */
           bput(&b, ",\"lw\":{\"active\":%d,\"area_active\":%d,\"settings_open\":%d,\"title\":", u_on(root), u_on(u_gc_get(h_lw_area)), M.lobby_settings_open);
           t[0] = 0; if (lwt(T_TITLE)) str_utf8(tmp_get(lwt(T_TITLE)), t, sizeof t); bstr(&b, t);
           bput(&b, ",\"guest\":"); t[0] = 0; if (lwt(T_GUEST) && u_on(lwt(T_GUEST))) str_utf8(tmp_get(lwt(T_GUEST)), t, sizeof t); bstr(&b, t);
           bput(&b, ",\"note\":"); t[0] = 0; if (lwt(T_NOTE)) str_utf8(tmp_get(lwt(T_NOTE)), t, sizeof t); bstr(&b, t);
+          bput(&b, ",\"conn\":"); t[0] = 0; if (lwt(T_CONN) && u_on(lwt(T_CONN))) str_utf8(tmp_get(lwt(T_CONN)), t, sizeof t); bstr(&b, t);
+          { float r1[4] = {0}, r2[4] = {0}; if (lwt(T_INV_ADDR) && u_on(lwt(T_INV_ADDR))) rect_of(lwt(T_INV_ADDR), r1); if (lwt(T_INV_NOTE) && u_on(lwt(T_INV_NOTE))) rect_of(lwt(T_INV_NOTE), r2);
+            bput(&b, ",\"addr_rects\":[[%.0f,%.0f,%.0f,%.0f],[%.0f,%.0f,%.0f,%.0f]]", r1[0], r1[1], r1[2], r1[3], r2[0], r2[1], r2[2], r2[3]); }   /* test frames mask this Mac's addresses */
           { Obj ib3 = u_gc_get(h_lwb[LW_INVITE]); char it[160] = ""; if (u_on(ib3)) str_utf8(tmp_get(AT(ib3, 0x28, Obj)), it, sizeof it); bput(&b, ",\"invite\":"); bstr(&b, it); }
           bput(&b, ",\"addr\":"); t[0] = 0; if (lwt(T_INV_ADDR) && u_on(lwt(T_INV_ADDR))) str_utf8(tmp_get(lwt(T_INV_ADDR)), t, sizeof t); bstr(&b, t);
+          bput(&b, ",\"inv_note\":"); t[0] = 0; if (lwt(T_INV_NOTE) && u_on(lwt(T_INV_NOTE))) str_utf8(tmp_get(lwt(T_INV_NOTE)), t, sizeof t); bstr(&b, t);   /* test: "open port N" line */
           bput(&b, ",\"rows\":[");
           for (int i = 0; i < LW_ROWS; i++) {
-              char n[128] = "", st[64] = ""; int lit = 0;
+              char n[400] = "", st[64] = ""; int lit = 0;
               if (u_gc_get(h_lw_name[i])) str_utf8(tmp_get(u_gc_get(h_lw_name[i])), n, sizeof n);
               if (u_gc_get(h_lw_stat[i])) str_utf8(tmp_get(u_gc_get(h_lw_stat[i])), st, sizeof st);
               for (int k = 0; k < 3; k++) lit += u_on(u_gc_get(h_lw_bar[i][k]));
@@ -4568,6 +5663,23 @@ char *mpmenu_exec(const char *cmd, const char *line) {
                  u_alive(f) && u_alive(sel) && sel == u_go(f), u_alive(f) && mfoc ? (int)MCALL(mfoc, bool, Obj, const void *)(f, mfoc) : -1,
                  u_alive(f) ? AT(f, 0x260, bool) : -1, u_alive(f) ? AT(f, 0x261, bool) : -1, u_alive(f) && mint ? (int)MCALL(mint, bool, Obj, const void *)(f, mint) : -1, u_alive(f) ? AT(f, 0x220, bool) : -1);
             bstr(&b, ft); bput(&b, ",\"input_chars\":%d,\"input_enters\":%d,\"input_a\":%d}", dbg_istr_n, dbg_enter_n, dbg_a_n); }
+          bput(&b, ",\"rows\":[");
+          for (int i = 0; i < nchat_shown; i++) { int k = chat_shown_k[i]; float r[4] = { 0 }, pr[4] = { 0 }; Obj t = u_gc_get(*chat_shown_h[i]); rect_of(t, r);
+              int idle = chat_shown_h[i] >= &h_ch_idle[0] && chat_shown_h[i] < &h_ch_idle[CH_IDLE];
+              if (idle) rect_of(u_gc_get(h_ch_idlebg[chat_shown_h[i] - &h_ch_idle[0]]), pr);
+              float pv = 0; if (fit_methods() && u_on(t)) pv = fit_pref(t, ch_line_w[idle ? 0 : 1]).y;
+              char tx[CH_TEXT] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
+              bput(&b, "%s{\"k\":%d,\"idle\":%d,\"rect\":[%.0f,%.0f,%.0f,%.0f],\"plate\":[%.0f,%.0f,%.0f,%.0f],\"h\":%.1f,\"pref_h\":%.1f,\"font\":%d,\"missing\":%d,\"text\":",
+                   i ? "," : "", k, idle, r[0], r[1], r[2], r[3], pr[0], pr[1], pr[2], pr[3], idle ? chist[k].hi : chist[k].hb, pv, chist[k].font, chist[k].missing); bstr(&b, tx); bput(&b, "}"); }
+          bput(&b, "],\"fonts\":[");
+          for (int i = 0; i < nchf; i++) { bput(&b, "%s", i ? "," : ""); bstr(&b, chf_names[i]); }
+          { Obj cv = u_gc_get(h_ch_cv); static void *mgo; if (!mgo) mgo = mth("UnityEngine", "Canvas", "get_sortingOrder", 0);
+            bput(&b, "],\"canvas\":{\"alive\":%d,\"order\":%d},\"wheel_blocked\":%d,\"over_now\":%d,\"scroll\":%d,\"oldest\":%d", u_alive(cv),
+                 u_alive(cv) && mgo ? MCALL(mgo, int, Obj, const void *)(cv, mgo) : -1, ch_wheel_blocked, ch_over_now, chat_scroll, ch_box_oldest);
+            Obj cam = F(0x5083208, Obj (*)(void *))(NULL);                  /* Camera.main: the zoom (A4 test) */
+            bput(&b, ",\"cam_ortho\":%.3f", u_alive(cam) ? F(0x50804FC, float (*)(Obj, void *))(cam, NULL) : -1.0f); }
+          bput(&b, ",\"size\":[%.0f,%.0f],\"drag\":%d,\"fake\":%d,\"drags\":[%u,%u,%u],\"line_w\":[%.0f,%.0f]", chat_w, chat_h, ch_drag, ch_fk.on,
+               ch_drags[CHD_MOVE], ch_drags[CHD_SIZE], ch_drags[CHD_HEIGHT], ch_line_w[0], ch_line_w[1]);
           bput(&b, ",\"fade\":%d,\"pos\":[%.0f,%.0f],\"rect\":[%.0f,%.0f,%.0f,%.0f],\"screen\":[%d,%d]}", chat_fade_s, chat_x, chat_y, cr[0], cr[1], cr[2], cr[3],
                msw ? MCALL(msw, int, const void *)(msw) : 0, msh ? MCALL(msh, int, const void *)(msh) : 0); }
         { rpanel *rp = u_on(u_gc_get(rp_lobby.root)) ? &rp_lobby : &rp_title;

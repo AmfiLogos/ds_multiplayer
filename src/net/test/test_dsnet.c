@@ -66,7 +66,8 @@ typedef struct peer {
     int watch_player; uint32_t net_seen;
     int split_owner;                          /* test: this peer alone tags a unit when order F2 runs (owner split) */      /* states of watch_player seen through dsnet_player_net */
     double t_at60, t_at300;
-    uint32_t busy_at; int busy_ms, busy_done; double busy_since;
+    uint32_t busy_at; int busy_ms, busy_done, busy_val; double busy_since;
+    uint32_t window_seen;
     int want_run, vote_while_desynced, sent_desync_vote;   /* auto-pause policy of the toy game */
     size_t save_pad; int save_bad, upload_rc, oversize_rc;
     int fe_on_jp, fe_sent; uint32_t jp_ticks[4]; int njp;   /* host: FE_START from inside the 1st join point (review #4) */
@@ -177,10 +178,10 @@ static void *game_loop(void *arg) {
             p->fake_until = p->timer + 100;
         }
         dsnet_report_frame_time(p->c, p->fake_until > p->timer ? (float)p->fake_frame_ms : fms);
-        p->busy_seen |= dsnet_busy_mask(p->c);
+        p->busy_seen |= dsnet_busy_mask(p->c); p->window_seen |= dsnet_window_mask(p->c);
         if (p->watch_player) { int st; dsnet_player_net(p->c, p->watch_player, NULL, NULL, &st); p->net_seen |= 1u << st; }
         if (p->busy_at && !p->busy_done && p->timer >= p->busy_at) {   /* barrier: hold here, keep the frame loop */
-            if (!p->busy_since) { p->busy_since = now_ms(); dsnet_set_busy(p->c, 1); }
+            if (!p->busy_since) { p->busy_since = now_ms(); dsnet_set_busy(p->c, p->busy_val ? p->busy_val : 1); }
             if (now_ms() - p->busy_since < p->busy_ms) { dsnet_can_run_tick(p->c, p->timer); sleep_ms(FRAME_MS); continue; }
             dsnet_set_busy(p->c, 0); p->busy_done = 1;
         }
@@ -818,23 +819,34 @@ static void test_modset(void) {
     int ok = 1; double t0 = now_ms();
     const char *M1 = "1111111111111111111111111111111111111111111111111111111111111111";
     const char *M2 = "2222222222222222222222222222222222222222222222222222222222222222";
-    struct { int hrule; const char *hset, *hmods; const char *jset, *jmods; int want; const char *words; } cases[] = {
-        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0", M1, "hell-difficulty@2.0.0", 0, NULL },
-        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "host: hell-difficulty@2.0.0; you: none" },
-        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0:aa:bb\nzz-mod@1.2.0:cc", M2, "cheaper-recruits@1.0.0:dd", DSNET_REJ_MODSET, "(host: hell-difficulty@2.0.0, zz-mod@1.2.0; you: cheaper-recruits@1.0.0)" },
-        { DSNET_MATCH_MODS,    "", "", DSNET_MODSET_NONE, "", 0, NULL },            /* no launcher == the hash of no mods */
-        { DSNET_MATCH_VANILLA, "", "", "", "", 0, NULL },
-        { DSNET_MATCH_VANILLA, "", "", M1, "hell-difficulty@2.0.0", DSNET_REJ_MODSET, "allows no gameplay mods: turn off hell-difficulty@2.0.0 in the Mods window" },
-        { DSNET_MATCH_VANILLA, M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "the host allows no gameplay mods but has some on" },
+    /* jopt: the joiner's loaded but not counted lines (custom difficulty: Hell at the title, owner 2026-10-25). A joiner gets
+       in with them only when its lines + them are exactly the host's (same version + sha256s): else the host's world on
+       Hell would run Hell code on one peer only (desync), or a joiner with other files would join */
+    struct { int hrule; const char *hset, *hmods; const char *jset, *jmods; int want; const char *words; const char *jopt; } cases[] = {
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa", 0, NULL, "hell-difficulty@0.1.7:hh" },
+        { DSNET_MATCH_MODS,    M1, "hell-difficulty@0.1.7:hh", "", "", 0, NULL, "hell-difficulty@0.1.7:hh" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa", DSNET_REJ_MODSET, "your gameplay mods", "hell-difficulty@0.1.7:XX" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa", DSNET_REJ_MODSET, "your gameplay mods", "hell-difficulty@0.1.6:hh" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa\nzz-mod@1.2.0:cc", DSNET_REJ_MODSET, "your gameplay mods", "hell-difficulty@0.1.7:hh" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh\nzz-mod@1.2.0:cc", M2, "gcd-cdr@0.1.7:aa", DSNET_REJ_MODSET, "your gameplay mods", "hell-difficulty@0.1.7:hh" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa", DSNET_REJ_MODSET, "your gameplay mods", "" },
+        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0", M1, "hell-difficulty@2.0.0", 0, NULL, NULL },
+        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "host: hell-difficulty@2.0.0; you: none", NULL },
+        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0:aa:bb\nzz-mod@1.2.0:cc", M2, "cheaper-recruits@1.0.0:dd", DSNET_REJ_MODSET, "(host: hell-difficulty@2.0.0, zz-mod@1.2.0; you: cheaper-recruits@1.0.0)", NULL },
+        { DSNET_MATCH_MODS,    "", "", DSNET_MODSET_NONE, "", 0, NULL, NULL },            /* no launcher == the hash of no mods */
+        { DSNET_MATCH_VANILLA, "", "", "", "", 0, NULL, NULL },
+        { DSNET_MATCH_VANILLA, "", "", M1, "hell-difficulty@2.0.0", DSNET_REJ_MODSET, "allows no gameplay mods: turn off hell-difficulty@2.0.0 in the Mods window", NULL },
+        { DSNET_MATCH_VANILLA, M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "the host allows no gameplay mods but has some on", NULL },
     };
     int n = (int)(sizeof cases / sizeof *cases), in = 0, out = 0;
     for (int i = 0; i < n; i++) {
         dsnet_cfg cfg = test_cfg(1);
         dsnet_server *srv = dsnet_server_start(&cfg);
-        dsnet_set_modset(cases[i].hrule, cases[i].hset, cases[i].hmods);
+        dsnet_set_modset(cases[i].hrule, cases[i].hset, cases[i].hmods); dsnet_set_modset_optional("");
         dsnet_client *h = dsnet_client_connect_local(srv, "host");
         CHECK(dsnet_wait_welcome(h, 2000) == 0, "case %d: host not in", i);
         dsnet_set_modset(DSNET_MATCH_MODS, cases[i].jset, cases[i].jmods);   /* a joiner's rule is not used */
+        dsnet_set_modset_optional(cases[i].jopt);
         dsnet_client *c = dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "j");
         int r = dsnet_wait_welcome(c, 2000), why = dsnet_reject_reason(c);
         if (cases[i].want) {
@@ -847,7 +859,7 @@ static void test_modset(void) {
         dsnet_client_close(c); dsnet_client_close(h);
         dsnet_server_stop(srv);
     }
-    dsnet_set_modset(DSNET_MATCH_MODS, "", "");
+    dsnet_set_modset(DSNET_MATCH_MODS, "", ""); dsnet_set_modset_optional("");
     printf("%s modset: %d joins let in, %d refused with the host's / joiner's mod lists in the words (%.1fs)\n",
            ok ? "PASS" : "FAIL", in, out, (now_ms() - t0) / 1000);
 }
@@ -1306,6 +1318,40 @@ static void test_identity(void) {
            "admin release/take; duplicate id refused; export -> new session, owners restored; colours follow the uid (%.1fs)\n", ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
 }
 
+/* ---- 18b. autorejoin (2026-10-20): the leaver is back before the host's HOLD runs -> no hold (the world ran on) ----
+   A host stall: the old link drops and the auto rejoin's HELLO lands in one step; mp_core's HOLD for the leaver is a
+   command, so it runs after his PLAYER_JOIN. Before the fix it stayed on: 0 ticks for everyone, "<name> disconnected". */
+static void test_hold_late(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_cfg cfg = test_cfg(3); cfg.pause_mode = DSNET_PAUSE_NONE;   /* only a hold can stop the world */
+    dsnet_server *srv = dsnet_server_start(&cfg);
+    peer *h = peer_new("host", connect_as(srv, "host", 0xC0, 1), 300);  dsnet_wait_welcome(h->c, 2000);
+    peer *c1 = peer_new("c1", connect_as(srv, "c1", 0xC1, 0), 300);       dsnet_wait_welcome(c1->c, 2000);
+    peer *c2 = peer_new("c2", connect_as(srv, "c2", 0xC2, 0), 300);       dsnet_wait_welcome(c2->c, 2000);
+    uint8_t uid2[16]; memset(uid2, 0xC2, 16);
+    peer_go(h); peer_go(c1); peer_go(c2);
+    peer *c2b = NULL; int step = 0; uint32_t t_hold = 0;
+    while (!(h->done && c1->done && c2b && c2b->done)) {
+        uint32_t t = h->timer;
+        if (step == 0 && t >= 100) {
+            peer_drop(c2); c2 = NULL;
+            c2b = peer_new("c2b", connect_as(srv, "c2", 0xC2, 0), 300); dsnet_wait_welcome(c2b->c, 2000); peer_go(c2b); step = 1;
+        }
+        if (step == 1 && dsnet_player_name(h->c, dsnet_player_id(c2b->c)) && dsnet_present_mask(h->c) == 7) {
+            dsnet_hold(h->c, 1, DSNET_HOLD_PLAYER_LEFT, uid2); t_hold = t; step = 2;   /* the late HOLD */
+        }
+        sleep_ms(2);
+        if (now_ms() - t0 > 20000) { CHECK(0, "timeout: the late hold stopped the world (holds %d)", dsnet_hold_count(h->c)); break; }
+    }
+    CHECK(step == 2, "the rejoin never showed on the host");
+    CHECK(dsnet_hold_count(h->c) == 0 && dsnet_hold_count(c1->c) == 0 && (!c2b || dsnet_hold_count(c2b->c) == 0), "a hold is on for a player who is back");
+    int common;
+    CHECK(c2b && compare(h, c2b, &common) && common > 50, "c2 diverged after rejoin");
+    peer *ps[3] = { h, c1, c2b };
+    stop_all(ps, c2b ? 3 : 2, srv);
+    printf("%s hold_late: c2 back before the host's HOLD (sent at %u): no hold, the world ran on (%.1fs)\n", ok ? "PASS" : "FAIL", t_hold, (now_ms() - t0) / 1000);
+}
+
 /* ---- 17. owner-table split is a desync (reason OWNERS), recovered by resync ---- */
 static void test_owner_split(void) {
     int ok = 1; double t0 = now_ms();
@@ -1398,6 +1444,22 @@ static void test_hold(void) {
 }
 
 /* ---- 18. frozen game threads (map load, big save) with a live link: nobody disconnects (default 5 s limit) ---- */
+/* A host alone in its lobby (v0.1.19 VM report: "Not in a multiplayer session" when the host brought units before anyone
+   joined): the lobby hold goes on before the host's first tick, so its PLAYER_JOIN does not run in its sim yet. My stable
+   id must still be known (it is the HELLO id), else Bring Units is refused. */
+static void test_host_alone(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_cfg cfg = test_cfg(2);
+    dsnet_server *srv = dsnet_server_start(&cfg);
+    peer *h = peer_new("host", connect_as(srv, "host", 0xC0, 1), 420); dsnet_wait_welcome(h->c, 2000);
+    dsnet_hold(h->c, 1, DSNET_HOLD_LOBBY, NULL);                   /* mpmenu lobby_hold(1), before any frame */
+    peer_go(h); sleep_ms(400);
+    uint8_t u[16], want[16]; memset(want, 0xC0, 16); memset(u, 0, 16);
+    int rc = dsnet_my_uid(h->c, u);
+    CHECK(rc == 0 && !memcmp(u, want, 16), "host alone in a held lobby: dsnet_my_uid failed or returned another id");
+    peer *ps[1] = { h }; stop_all(ps, 1, srv);
+    printf("%s host_alone: lobby hold before the host's first tick, its own id still known (%.1fs)\n", ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
+}
 static void test_freeze8(void) {
     int ok = 1; double t0 = now_ms();
     dsnet_server *srv; peer *ps[3];
@@ -1873,6 +1935,39 @@ static void test_save_fail(int mode) {
     dsnet_set_save_wait_ms(90000);
     printf("%s save_fail_%s: late joiner left after %.0f ms (reason %d), host and c1 ran to 600, equal (%.1fs)\n",
            ok ? "PASS" : "FAIL", mode == 1 ? "notice" : "timeout", t_out, why, (now_ms() - t0) / 1000);
+}
+
+/* ---- the host holds a stock Yes/No box (busy 2) when a guest joins (live Steam test 2026-10-20: the guest left
+   after the 90 s save wait with "the host's world did not arrive"). The guest must wait while the host is held,
+   see the host as held by a window, and get in with equal state after the host closes it. ---- */
+static void test_join_host_window(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_set_save_wait_ms(1000);
+    dsnet_cfg cfg = test_cfg(2);
+    dsnet_server *srv; peer *ps[3];
+    if (setup_cfg(&srv, ps, 2, 600, NULL, NULL, &cfg)) { printf("  FAIL setup\n"); failures++; return; }
+    ps[0]->busy_at = 150; ps[0]->busy_ms = 3500; ps[0]->busy_val = 2;     /* the box stays open 3.5 s > 1 s save wait */
+    for (int i = 0; i < 2; i++) { ps[i]->orders_every = 5; peer_go(ps[i]); }
+    while (!ps[0]->busy_since) sleep_ms(2);
+    sleep_ms(200);
+    double tj = now_ms();
+    ps[2] = peer_new("late", dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "late"), 600);
+    CHECK(dsnet_wait_welcome(ps[2]->c, 2000) == 0, "no welcome");
+    ps[2]->orders_every = 5; peer_go(ps[2]);
+    while (!ps[2]->loads && !dsnet_is_disconnected(ps[2]->c) && now_ms() - tj < 15000) sleep_ms(5);
+    double tl = now_ms() - tj;
+    CHECK(!dsnet_is_disconnected(ps[2]->c) && dsnet_save_failed(ps[2]->c) == 0, "late joiner left after %.0f ms (reason %d)", tl, dsnet_save_failed(ps[2]->c));
+    CHECK(ps[2]->loads == 1 && tl > 2500, "late joiner loads %d after %.0f ms", ps[2]->loads, tl);
+    CHECK(ps[2]->window_seen & 1u, "late joiner never saw the host held by a window (%x)", ps[2]->window_seen);
+    CHECK(wait_done(ps, 3, 25000) == 0, "timeout");
+    for (int i = 0; i < 3; i++) CHECK(!dsnet_is_desynced(ps[i]->c, NULL, NULL), "%s desynced", ps[i]->name);
+    int common;
+    CHECK(compare(ps[0], ps[2], &common) && common > 200, "late joiner diverged (%d common)", common);
+    for (int i = 0; i < 3; i++) CHECK(dsnet_window_mask(ps[i]->c) == 0, "%s: window mask not cleared", ps[i]->name);
+    stop_all(ps, 3, srv);
+    dsnet_set_save_wait_ms(90000);
+    printf("%s join_host_window: host held by a box 3.5 s (save wait 1 s), late joiner waited, loaded %.0f ms after connect, equal (%.1fs)\n",
+           ok ? "PASS" : "FAIL", tl, (now_ms() - t0) / 1000);
 }
 
 /* ---- F4: a guest that keeps sending but stops reading is cut by the send stall limit; the others play on ---- */
@@ -2434,6 +2529,35 @@ static void test_fe_start(void) {
            ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
 }
 
+/* conninfo (owner 2026-10-20): every peer learns how each player is connected (host / direct / Steam bridge); only the host
+   has addresses. Breaks if the via bytes are lost, misread, or a Steam guest (loopback from a marked bridge port) shows as direct. */
+static void test_conn_via(void) {
+    int ok = 1; double t0 = now_ms();
+    dsnet_server *srv; peer *ps[3];
+    if (setup(&srv, ps, 3, 300, NULL, NULL)) { printf("  FAIL setup\n"); failures++; return; }
+    for (int i = 0; i < 3; i++) peer_go(ps[i]);
+    sleep_ms(400);
+    char a1[64], a2[64];
+    CHECK(dsnet_server_peer(srv, 1, a1, sizeof a1) == DSNET_VIA_DIRECT && !strncmp(a1, "127.0.0.1:", 10), "host: c1 direct with its address (%s)", a1);
+    CHECK(dsnet_server_peer(srv, 0, a2, sizeof a2) == DSNET_VIA_HOST && !a2[0], "host: own row is the host, no address");
+    dsnet_server_peer(srv, 2, a2, sizeof a2);
+    const char *pc = strrchr(a2, ':'); uint16_t p2 = pc ? (uint16_t)atoi(pc + 1) : 0;
+    CHECK(p2 != 0, "host: c2 has a peer port (%s)", a2);
+    dsnet_relay_port_mark(p2, 1);                            /* what the Steam bridge does for its loopback hop */
+    sleep_ms(500);
+    CHECK(dsnet_server_peer(srv, 2, a2, sizeof a2) == DSNET_VIA_STEAM, "host: c2 through the bridge = Steam");
+    for (int i = 0; i < 3; i++) {
+        CHECK(dsnet_player_via(ps[i]->c, 0) == DSNET_VIA_HOST, "%s: player 0 = host (%d)", ps[i]->name, dsnet_player_via(ps[i]->c, 0));
+        CHECK(dsnet_player_via(ps[i]->c, 1) == DSNET_VIA_DIRECT, "%s: c1 = direct (%d)", ps[i]->name, dsnet_player_via(ps[i]->c, 1));
+        CHECK(dsnet_player_via(ps[i]->c, 2) == DSNET_VIA_STEAM, "%s: c2 = Steam (%d)", ps[i]->name, dsnet_player_via(ps[i]->c, 2));
+    }
+    dsnet_relay_port_mark(p2, 0);
+    CHECK(!dsnet_relay_port_is(p2), "bridge closed: mark removed");
+    wait_done(ps, 3, 15000);
+    stop_all(ps, 3, srv);
+    printf("%s conn_via: host / direct / Steam seen by every peer, address on the host only (%.1fs)\n", ok ? "PASS" : "FAIL", (now_ms() - t0) / 1000);
+}
+
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IOLBF, 0);
     const char *role = NULL, *out = NULL, *only = NULL;
@@ -2455,6 +2579,7 @@ int main(int argc, char **argv) {
     if (!only) for (int i = 0; i < 2; i++) { char *fa[] = { argv[0], "--only", (char *)side[i], NULL }; posix_spawn(&kids[i], argv[0], NULL, NULL, fa, environ); }
 #define RUN(name, fn) if (!only || !strcmp(only, name)) fn
     RUN("basic", test_basic());
+    RUN("host_alone", test_host_alone());
     RUN("latency", test_latency());
     RUN("netlag", test_netlag());
     RUN("slow", test_slow_peer());
@@ -2495,11 +2620,14 @@ int main(int argc, char **argv) {
     RUN("utf8_names", test_utf8_names());
     RUN("fe_stale", test_fe_stale());
     RUN("save_fail", (test_save_fail(1), test_save_fail(2)));
+    RUN("join_window", test_join_host_window());
     RUN("identity", test_identity());
     RUN("hold", test_hold());
+    RUN("hold_late", test_hold_late());
     RUN("ownersplit", test_owner_split());
     RUN("fe_mail", test_fe_mail());
     RUN("fe_start", test_fe_start());
+    RUN("conn_via", test_conn_via());
     if (only && !strcmp(only, "lowfps")) test_low_fps();
     RUN("multiproc", test_multiproc(argv[0]));
     for (int i = 0; i < 2; i++) if (kids[i]) {

@@ -16,7 +16,7 @@ rig.json = _J()                                   # raw UTF-8 on the socket (the
 CODES = {0: 'en', 1: 'ko', 2: 'fr', 3: 'de', 4: 'ru', 5: 'zh-Hans', 6: 'zh-Hant', 7: 'ja', 8: 'es', 9: 'pt-BR'}
 HL, PL = int(sys.argv[1]), int(sys.argv[2])
 rig.DYLIB = os.path.expanduser('~/ds_mp_ship024t/build/dsrig.dylib')
-OUT = os.path.expanduser(f'~/ds_mp_int016/ext/gate016/i18n/out/pair2_{CODES[HL]}_{CODES[PL]}'); os.makedirs(OUT, exist_ok=True)
+OUT = os.path.expanduser(f'~/ds_int017/i18n_out/pair2_{CODES[HL]}_{CODES[PL]}'); os.makedirs(OUT, exist_ok=True)
 LOGF = open(os.path.join(OUT, 'test.log'), 'a')
 LANE = f'ship020i-{os.getpid()}'
 B = dict(MULTIPLAYER=1, BACK=3, LOAD_SAVE=7, START=10, JOIN_ADDR=14, CONNECT=15, HOST_SAVE=121, HOST_NEW=122, HOST_FE=123)

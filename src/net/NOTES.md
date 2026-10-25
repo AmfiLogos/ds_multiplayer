@@ -100,6 +100,11 @@ still run after the load.
   connecting thread vs the thread that started the server). Mismatch -> P_REJECT with a reason,
   dsnet_wait_welcome returns -2, dsnet_reject_reason tells which. Set dsnet_set_identity(build, mod)
   before connecting. Not checked yet: arm64 flush-to-zero bit (FPCR.FZ), which also changes float results.
+- Gameplay mod set (HELLO, host = reference): the hash of the sorted lines must match, or (2026-10-25) the joiner's
+  lines plus some of its "run but not counted" lines (HELLO tail `name [NUL release [NUL lines]]`, the loader's custom
+  difficulty mods: Hell at the title) must be exactly the host's lines, compared line by line (opt_covers). The host
+  counts Hell only for a world on Hell, so a guest with the same Hell files joins a Hell world with no refusal and no
+  restart; its loader counts Hell once that world is open. Older servers stop the release at the extra NUL.
 - dsnet puts its own state (players present, votes, ownership) in front of every save
   (DSNET_SAVE_OVERHEAD = 1706 bytes), so the game's part may be up to 64 MB minus that.
 

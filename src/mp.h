@@ -67,6 +67,10 @@ int  mp_config_parse(const char *json, mp_config *out);
 /* Gameplay mods + match rule from the launcher's session file (DSML_SESSION), for the HELLO (dsnet_set_modset):
  * mods = modset_lines '\n'-joined (give DSNET_MODLINES_MAX bytes). */
 int  mp_session_mods(int *vanilla, char modset[65], char *mods, size_t n);
+/* the lines of mods that run but are not in the session set now (the loader's custom difficulty mods, export
+   dsl_mp_optional_lines), '\n'-joined, for the HELLO (dsnet_set_modset_optional). Set by the game side (mp_game.c);
+   NULL = none (tests, an older loader). */
+extern int (*mp_session_optional)(char *out, size_t n);
 
 typedef struct mp_game_api {
     void *user;
@@ -115,9 +119,14 @@ const char *mp_full_diff(mp_session *s);   /* the newest full-state difference (
 /* Session: host = dsnet_server_start + local client; client = TCP. NULL on failure (reason logged;
  * *reject gets enum dsnet_reject when the host refused the join). */
 mp_session *mp_start(const mp_config *cfg, const mp_game_api *api, int *reject);
+/* the same in two halves (the game thread never waits): begin connects (an adopted socket: no wait) and sends the HELLO;
+ * mp_start_poll each frame: 0 waiting for the WELCOME, 1 started, -1 failed (*ps freed + NULL, *reject = enum dsnet_reject or 0) */
+mp_session *mp_start_begin(const mp_config *cfg, const mp_game_api *api);
+int mp_start_poll(mp_session **ps, int *reject);
 void        mp_stop(mp_session *s);
 dsnet_client *mp_client(mp_session *s);
 uint16_t      mp_server_port(mp_session *s);   /* host: the port it listens on; 0 on a client */
+dsnet_server *mp_server(mp_session *s);          /* host: its dsnet server (dsnet_server_peer); NULL on a client */
 
 /* ---- game thread, once per MainFlow.Update while locked ----
  * mp_frame = mp_ticks_to_run_now + per step { mp_apply_cmds, mp_step_ticks x sim_tick, fingerprint }.

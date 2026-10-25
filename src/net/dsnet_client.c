@@ -52,12 +52,14 @@ typedef struct simstate {
 
 struct dsnet_client {
     dsnet_link link;
+    uint8_t hello_uid[16];             /* the stable id this client sent in its HELLO (the server stamps it on PLAYER_JOIN) */
     pthread_t th;
     volatile int running;
     pthread_mutex_t mu;
     pthread_cond_t cv;
 
     int welcomed, player, is_host, needs_state, disconnected, rejected, host_left, bye_reason;
+    int local;                                   /* the host's own client (socket pair): no silence limit */
     int save_fail; double save_wait;            /* waiting for a save: why it ended (DSNET_SAVE_FAIL_*), last progress */
     int role, spectator;                                        /* asked for / granted (WELCOME): watch only */
     int sp_allow, sp_max, sp_seen;                              /* spectator list from the server (outside the sim) */
@@ -67,10 +69,12 @@ struct dsnet_client {
     double typing_until[DSNET_MAX_PLAYERS];                     /* "is typing" (ms clock), 0 = not */
     double typing_sent; int typing_on;                          /* own: last "on" sent, state */
     struct { int set; uint32_t map; float r[4]; double at; } view[DSNET_MAX_PLAYERS];   /* friends' views (outside the sim) */
+    struct { int set, n; uint32_t map; uint8_t g[DSNET_SEL_MAX][16]; double at; } sel[DSNET_MAX_PLAYERS];   /* unitsel B1: friends' selections (outside the sim) */
     dsnet_mark_ev marks[64]; uint32_t mark_head, mark_tail;                            /* ping events ring */
     int allow_speedup, pause_mode, gear_mode, busy;
-    uint32_t busy_mask;
-    struct { uint8_t state; uint16_t ping, behind; } net[DSNET_MAX_PLAYERS];
+    uint32_t busy_mask, window_mask;            /* window: held by a window (busy 2) */
+    double held_since;                          /* guest waiting for the save: since when the host is held (ms) */
+    struct { uint8_t state, via; uint16_t ping, behind; } net[DSNET_MAX_PLAYERS];   /* via: enum dsnet_via */
     uint32_t fp_interval;
     uint32_t tick_until, remote_timer, remote_sent, received;
     float tpt_ms;
@@ -154,6 +158,8 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
             const uint8_t *e = p + 2 + 6 * i;
             if (e[0] < DSNET_MAX_PLAYERS) { c->net[e[0]].state = e[1]; c->net[e[0]].ping = get16(e + 2); c->net[e[0]].behind = get16(e + 4); }
         }
+        if (n >= 2 + 7u * p[1])                              /* one via byte per entry after them (conninfo, 2026-10-20) */
+            for (int i = 0; i < p[1]; i++) { const uint8_t *e = p + 2 + 6 * i; if (e[0] < DSNET_MAX_PLAYERS) c->net[e[0]].via = p[2 + 6 * p[1] + i]; }
         break;
     case P_SPECT: {                                          /* spectators: came / went lines (not on the first list) */
         if (n < 4 || n < 4 + 36u * p[3]) return;
@@ -169,7 +175,7 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
         }
         for (int i = 0; i < DSNET_MAX_PLAYERS; i++) if (c->sp[i].set && !now[i]) {
             if (c->sp_seen && i != c->player) chat_local(c, i, DSNET_CHAT_STOPPED_WATCHING, c->sp[i].name);
-            c->sp[i].set = 0; c->view[i].set = 0;
+            c->sp[i].set = 0; c->view[i].set = 0; c->sel[i].set = 0;
         }
         c->sp_seen = 1;
         break;
@@ -195,6 +201,15 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
             int f = p[1]; c->view[f].set = 1; c->view[f].map = get32(p + 2);
             for (int i = 0; i < 4; i++) { uint32_t u = get32(p + 6 + 4 * i); memcpy(&c->view[f].r[i], &u, 4); }
             c->view[f].at = dsnet_now_ms();
+        }
+        break;
+    case P_SEL:                                      /* unitsel B1: a friend's selection */
+        if (n >= 7 && p[1] < DSNET_MAX_PLAYERS) {
+            int f = p[1], k = p[6]; if (k > DSNET_SEL_MAX) k = DSNET_SEL_MAX;
+            if ((uint32_t)7 + 16u * (uint32_t)k > n) break;
+            c->sel[f].set = 1; c->sel[f].map = get32(p + 2); c->sel[f].n = k;
+            memcpy(c->sel[f].g, p + 7, (size_t)k * 16);
+            c->sel[f].at = dsnet_now_ms();
         }
         break;
     case P_MARK:
@@ -265,11 +280,15 @@ static void on_frame(dsnet_client *c, const uint8_t *p, uint32_t n) {
         process_timectl(c);
         break;
     }
+    case P_HELD:                                     /* while loading: who holds the game (masks only, no timing) */
+        if (n >= 9) { c->busy_mask = get32(p + 1); c->window_mask = get32(p + 5); }
+        break;
     case P_TIMECTL:
         if (n < 13) return;
         c->remote_timer = get32(p + 1); c->remote_sent = get32(p + 5); c->tpt_ms = get32(p + 9) / 1000.0f;
         c->tc_seen = 1;
         if (n >= 17) c->busy_mask = get32(p + 13);
+        if (n >= 21) c->window_mask = get32(p + 17);
         process_timectl(c);
         break;
     case P_FP: {
@@ -353,19 +372,27 @@ static void *client_main(void *arg) {
         while (dsnet_link_next(&c->link, &body, &n)) { on_frame(c, body, n); c->last_rx = now; }
         /* silent cut (no FIN/RST): the server sends every ~33 ms, so a long silence means the link is gone */
         int tmo = dsnet_rx_timeout_ms();
-        if (c->welcomed && tmo && now - c->last_rx > tmo && !c->link.dead) {
+        /* not the host's own link: a stalled host process (VM freeze, 17 s seen 2026-10-20) is silent to itself too, and
+           ended its own session at the resume ("join point wanted but no host" for every rejoin) */
+        if (c->welcomed && !c->local && tmo && now - c->last_rx > tmo && !c->link.dead) {
             dsnet_logf("client %d: nothing received for %d ms, link gone", c->player, (int)(now - c->last_rx));
             c->link.dead = 1;
         }
         /* waiting for a save that never comes (host save failed with no notice, or a lost upload): leave, never hang */
         int sw = dsnet_save_wait_ms();
         if (c->welcomed && c->needs_state && !c->is_host && !c->has_pending && sw && !c->link.dead) {
+            /* the host (player 0) is busy (a Yes/No box open, a load): it cannot reach the join point yet.
+               The wait does not count while it is held, up to dsnet_save_held_ms (it never hangs forever). */
+            if (c->busy_mask & 1u) {
+                if (!c->held_since) { c->held_since = now; dsnet_logf("client %d: host is held (%s), waiting for it", c->player, c->window_mask & 1u ? "a window is open" : "busy"); }
+                if (now - c->held_since < dsnet_save_held_ms()) c->save_wait = now;
+            } else c->held_since = 0;
             if (!c->save_wait) c->save_wait = now;
             else if (now - c->save_wait > sw) {
                 dsnet_logf("client %d: no save byte for %d ms, leaving", c->player, (int)(now - c->save_wait));
                 c->save_fail = DSNET_SAVE_FAIL_TIMEOUT; c->link.dead = 1;
             }
-        } else c->save_wait = 0;
+        } else c->save_wait = c->held_since = 0;
         if (c->welcomed && now - c->last_ka >= 100) {       /* keep-alive: how far behind tickUntil we are */
             uint8_t b[9], *p = b; p = put8(p, P_KEEPALIVE); p = put32(p, c->timer); p = put32(p, c->tick_until);
             dsnet_link_send(&c->link, b, p - b);
@@ -393,23 +420,25 @@ static dsnet_client *client_new(int fd, const char *name, int want_host, int rol
     dsnet_link_init(&c->link, dsnet_fd_transport(fd));
     pthread_mutex_init(&c->mu, NULL);
     pthread_cond_init(&c->cv, NULL);
-    c->player = -1; c->exec_player = -1; c->fp_interval = 30; c->tpt_ms = 1000.0f / 60; c->role = role;
+    c->player = -1; c->exec_player = -1; c->fp_interval = 30; c->tpt_ms = 1000.0f / 60; c->role = role; c->local = want_host != 0;
     /* fixed part 28 + build (u8 len) + rule + modset (u8 len) + lines (u16 len) + role + name: every field bounded */
-    uint8_t b[28 + 1 + sizeof dsnet_build_id + 2 + sizeof dsnet_modset + 2 + DSNET_MODLINES_MAX + 1 + 32], *p = b;
+    uint8_t b[28 + 1 + sizeof dsnet_build_id + 2 + sizeof dsnet_modset + 2 + DSNET_MODLINES_MAX + 1 + 32 + 1 + DSNET_RELEASE_MAX + 1 + DSNET_MODOPT_MAX], *p = b;
     size_t nl = name ? utf8_len31(name) : 0;                        /* at most 31 bytes, whole characters */
     size_t bl = strnlen(dsnet_build_id, sizeof dsnet_build_id - 1), ml = strnlen(dsnet_modset, sizeof dsnet_modset - 1),
            dl = strnlen(dsnet_mod_lines, DSNET_MODLINES_MAX - 1);
     p = put8(p, P_HELLO); p = put16(p, DSNET_PROTO); p = put8(p, want_host);
     p = put32(p, dsnet_mod_version); p = put32(p, (uint32_t)fegetround());
     if (dsnet_uid_set) memcpy(p, dsnet_uid, 16); else arc4random_buf(p, 16);
+    memcpy(c->hello_uid, p, 16);
     p += 16;
     p = put8(p, bl); memcpy(p, dsnet_build_id, bl); p += bl;
     p = put8(p, dsnet_match_rule); p = put8(p, ml); memcpy(p, dsnet_modset, ml); p += ml;
     p = put16(p, (uint16_t)dl); memcpy(p, dsnet_mod_lines, dl); p += dl;
     p = put8(p, (uint8_t)role);
     memcpy(p, name, nl); p += nl;
-    const char *rel = dsnet_my_release(); size_t rl = strlen(rel);
-    if (rl) { *p++ = 0; memcpy(p, rel, rl); p += rl; }       /* release after a NUL: older servers end the name there */
+    const char *rel = dsnet_my_release(); size_t rl = strnlen(rel, DSNET_RELEASE_MAX), ol = strnlen(dsnet_mod_opt, DSNET_MODOPT_MAX - 1);
+    if (rl || ol) { *p++ = 0; memcpy(p, rel, rl); p += rl; }  /* release after a NUL: older servers end the name there */
+    if (ol) { *p++ = 0; memcpy(p, dsnet_mod_opt, ol); p += ol; }   /* loaded custom difficulty lines after one more NUL (older servers end the release there) */
     dsnet_link_send(&c->link, b, p - b);
     c->last_rx = dsnet_now_ms();
     c->running = 1;
@@ -917,6 +946,11 @@ static void sim_apply(simstate *s, const dsnet_cmd *cmd) {
         int k = 0;
         while (k < s->nhold && !(s->hold[k].reason == cmd->payload[1] && !memcmp(s->hold[k].uid, cmd->payload + 2, 16))) k++;
         if (cmd->payload[0]) {
+            /* autorejoin (2026-10-20): the leaver may be back before the host's HOLD runs (an auto rejoin right after a
+               host stall: PLAYER_LEAVE and PLAYER_JOIN in one step, the HOLD a step later). Back = no hold, else the
+               world stood still behind "<name> disconnected" with him playing. */
+            int back = cmd->payload[1] == DSNET_HOLD_PLAYER_LEFT ? reg_of_uid(s, cmd->payload + 2, 0) : -1;
+            if (back >= 0 && s->known[back].slot != SLOT_ABSENT) break;
             if (k == s->nhold && s->nhold < DSNET_MAX_HOLDS) { s->hold[k].reason = cmd->payload[1]; memcpy(s->hold[k].uid, cmd->payload + 2, 16); s->nhold++; }
         } else if (k < s->nhold) s->hold[k] = s->hold[--s->nhold];
         break;
@@ -1075,6 +1109,28 @@ int dsnet_view_of(dsnet_client *c, int player, uint32_t *map_key, float out[4], 
     pthread_mutex_unlock(&c->mu);
     return r;
 }
+/* unitsel B1: this player's selected units (outside the sim) */
+int dsnet_sel_send(dsnet_client *c, uint32_t map_key, const uint8_t (*guids)[16], int n) {
+    if (!c || !c->welcomed || n < 0) return -1;
+    if (n > DSNET_SEL_MAX) n = DSNET_SEL_MAX;
+    uint8_t b[6 + 16 * DSNET_SEL_MAX], *p = b;
+    p = put8(p, P_SEL); p = put32(p, map_key); p = put8(p, (uint8_t)n);
+    if (n) memcpy(p, guids, (size_t)n * 16);
+    return dsnet_link_send(&c->link, b, (uint32_t)(6 + 16 * n)) ? -1 : 0;
+}
+int dsnet_sel_of(dsnet_client *c, int player, uint32_t *map_key, uint8_t (*out)[16], int max, double *age_ms) {
+    if (!c || player < 0 || player >= DSNET_MAX_PLAYERS) return -1;
+    pthread_mutex_lock(&c->mu);
+    int r = c->sel[player].set ? c->sel[player].n : -1;
+    if (r >= 0) {
+        if (r > max) r = max;
+        if (map_key) *map_key = c->sel[player].map;
+        if (out && r) memcpy(out, c->sel[player].g, (size_t)r * 16);
+        if (age_ms) *age_ms = dsnet_now_ms() - c->sel[player].at;
+    }
+    pthread_mutex_unlock(&c->mu);
+    return r;
+}
 int dsnet_mark_send(dsnet_client *c, int op, int owner, int id, uint32_t map_key, int x, int y) {
     if (!c || !c->welcomed || (op != DSNET_MARK_ADD && op != DSNET_MARK_DEL)) return -1;
     uint8_t b[12], *p = b;
@@ -1120,7 +1176,7 @@ int dsnet_take_cmds_for_tick(dsnet_client *c, uint32_t timer, dsnet_cmd_cb cb, v
         qcmd e = c->q[c->qh++];
         if (e.c.tick < timer) dsnet_logf("client %d: command seq %u for tick %u run late at %u", c->player, e.c.seq, e.c.tick, timer);
         if (e.c.type == DSNET_PLAYER_JOIN || e.c.type == DSNET_PLAYER_LEAVE) chat_system(c, &e.c);   /* before: knows "rejoin" */
-        if ((e.c.type == DSNET_PLAYER_JOIN || e.c.type == DSNET_PLAYER_LEAVE) && e.c.player < DSNET_MAX_PLAYERS) c->view[e.c.player].set = 0;   /* his view is gone */
+        if ((e.c.type == DSNET_PLAYER_JOIN || e.c.type == DSNET_PLAYER_LEAVE) && e.c.player < DSNET_MAX_PLAYERS) { c->view[e.c.player].set = 0; c->sel[e.c.player].set = 0; }   /* his view is gone */
         sim_apply(&c->sim, &e.c);
         int start_len = 0;
         uint8_t *start = NULL;
@@ -1304,12 +1360,15 @@ int dsnet_player_id(dsnet_client *c) { pthread_mutex_lock(&c->mu); int r = c->we
 int dsnet_is_host(dsnet_client *c) { return c->is_host; }
 uint32_t dsnet_busy_mask(dsnet_client *c) { pthread_mutex_lock(&c->mu); uint32_t r = c->busy_mask; pthread_mutex_unlock(&c->mu); return r; }
 
+uint32_t dsnet_window_mask(dsnet_client *c) { pthread_mutex_lock(&c->mu); uint32_t r = c->window_mask; pthread_mutex_unlock(&c->mu); return r; }
+
 void dsnet_set_busy(dsnet_client *c, int busy) {
+    uint8_t v = busy <= 0 ? 0 : busy == 2 ? 2 : 1;   /* 2 = held by a window */
     pthread_mutex_lock(&c->mu);
-    int changed = c->busy != (busy != 0);
-    c->busy = busy != 0;
+    int changed = c->busy != v;
+    c->busy = v;
     pthread_mutex_unlock(&c->mu);
-    if (changed) { uint8_t b[2] = { P_BUSY, busy != 0 }; dsnet_link_send(&c->link, b, 2); }
+    if (changed) { uint8_t b[2] = { P_BUSY, v }; dsnet_link_send(&c->link, b, 2); }
 }
 
 uint32_t dsnet_story_pause_mask(dsnet_client *c) {
@@ -1530,9 +1589,14 @@ int dsnet_mail_poll(dsnet_client *c, uint8_t from_uid[16], uint8_t *kind, uint8_
     free(m);
     return 1;
 }
+/* My stable id once the server has welcomed me. The sim registers it only when my PLAYER_JOIN command runs in a step, and
+   a host alone in its lobby holds the world (0 ticks): before that, the id from my HELLO (the same one the server stamps
+   on my PLAYER_JOIN). Without this fallback a host alone could not bring units ("Not in a multiplayer session"). */
 int dsnet_my_uid(dsnet_client *c, uint8_t uid[16]) {
     if (!c || c->player < 0) return -1;
-    return dsnet_player_uid(c, c->player, uid);
+    if (!dsnet_player_uid(c, c->player, uid)) return 0;
+    if (uid) memcpy(uid, c->hello_uid, 16);
+    return 0;
 }
 
 int dsnet_request_resync(dsnet_client *c) {
@@ -1738,6 +1802,14 @@ int dsnet_player_net(dsnet_client *c, int player, int *ping_ms, int *ticks_behin
     if (state) *state = st;
     pthread_mutex_unlock(&c->mu);
     return st == DSNET_NET_ABSENT ? -1 : 0;
+}
+
+int dsnet_player_via(dsnet_client *c, int player) {
+    if (!c || player < 0 || player >= DSNET_MAX_PLAYERS) return DSNET_VIA_UNKNOWN;
+    pthread_mutex_lock(&c->mu);
+    int v = c->net[player].state == DSNET_NET_ABSENT ? DSNET_VIA_UNKNOWN : c->net[player].via;
+    pthread_mutex_unlock(&c->mu);
+    return v;
 }
 
 int dsnet_is_disconnected(dsnet_client *c) { pthread_mutex_lock(&c->mu); int r = c->disconnected; pthread_mutex_unlock(&c->mu); return r; }

@@ -56,6 +56,7 @@ float txt_fit_h(Obj t, float w, float h);                 /* mpmenu.c: the heigh
 void txt_fit_text(Obj t, const char *s);
 void txt_fit_stock(Obj t);                                 /* the stock notice box text: auto size while ours is up */
 float txt_fit_w(Obj t, float w, float h);                  /* mpmenu.c: the width a one-line box needs (its text too long even at 0.75) */
+float txt_text_h(Obj t, float w);                          /* mpmenu.c: the height of a text at its design size, wrapped at w (0: not measured) */
 static void tmp_set(Obj t, const char *s) {
     if (!ui_is(t, K_TMP)) return;
     void *k = *(void **)t;
@@ -274,9 +275,11 @@ __attribute__((noinline)) static int ui_is(Obj o, int k) {
     }
     return 0;
 }
+Obj mpmenu_find_any(uintptr_t *h, const char *ns, const char *name) __attribute__((weak_import));   /* mpmenu.c: absent views retried after 2 s (immediate after input / a popup) */
 static Obj find_view(uintptr_t *h, const char *ns, const char *name) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
+    if (mpmenu_find_any) return mpmenu_find_any(h, ns, name);
     /* GameAssembly exports by address (dlsym does not see them: the image is not loaded RTLD_GLOBAL) */
     void *k = ord_debug_class ? ord_debug_class(ns, name) : NULL;
     if (!k) { rig_log("ui: class %s.%s not found", ns, name); return NULL; }
@@ -377,21 +380,20 @@ static Obj line_clone(Obj parent_tr, float pivot_y, float w, float h, float y) {
     u_go_active(u_go(b), true);
     return b;
 }
-/* owner 2026-10-13 (final): no black outline on our texts. Our lines are clones of the clock's time text, whose
-   material has an outline; give every clone the plain material of the game's window body text: the stock Lora
-   text material (quest title, kept by the panel) for Lora, else the font asset's own default material
-   (TMP_Asset.m_Material +0x88). TMP_Text.fontSharedMaterial set = vtable slot 68 (+0x578). */
+/* Text look (owner 2026-10-24; it replaces the 2026-10-13 "no outline" rule): our lines are clones of the clock's time text;
+   each takes the game's material for its font and size (mpmenu.c mpm_look_material: the body font and section heads ->
+   SoftOutline16, window titles and other fonts -> plain). TMP_Text.fontSharedMaterial set = vtable slot 68 (+0x578). */
+Obj mpm_look_material(Obj f, float size, int head);
 static uintptr_t h_plain_mat;                                /* stock Lora body text material (plist_style) */
-static void tmp_plain(Obj t) {
+static void tmp_plain(Obj t) {                               /* the game's look for the text's font and size (name kept) */
     if (!ui_is(t, K_TMP)) return;
     Obj f = F(0x4F0A59C, Obj (*)(Obj, void *))(t, NULL);                                   /* TMP_Text.font */
     if (!u_alive(f)) return;
-    /* the font asset's own default material (TMP_Asset.m_Material +0x88): plain, no outline / underlay. (The notice box
-       body uses "Lora-Regular SDF OutLine16", an outline preset: not that one.) */
-    Obj m = AT(f, 0x88, Obj);
+    Obj m = mpm_look_material(f, F(0x4F0B338, float (*)(Obj, void *))(t, NULL), 0);         /* TMP_Text.fontSize */
+    if (!u_alive(m)) m = AT(f, 0x88, Obj);                                                 /* TMP_Asset.m_Material: plain */
     if (!u_alive(m)) return;
-    static Obj logged;
-    if (m != logged) { logged = m; char mn[96] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), mn, sizeof mn); rig_log("ui: plain text material in use: %s", mn); }
+    static uintptr_t logged;                                 /* an address, only compared */
+    if ((uintptr_t)m != logged) { logged = (uintptr_t)m; char mn[96] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m, NULL), mn, sizeof mn); rig_log("ui: text material in use: %s", mn); }
     void *k = *(void **)t;
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x578))(t, m, *(void **)((char *)k + 0x580));
 }
@@ -730,11 +732,47 @@ static void hud_track(Obj h) {
 }
 static void hk_hud_init(Obj h, Obj entity, void *mi) { o_hud_init(h, entity, mi); hud_track(h); }
 
+/* PvP enemy units (E5b, owner 2026-10-20: a player must not see the status of enemy units beyond the monster view): every
+   frame, an enemy PvP unit's portrait in my unit bar is hidden, and on its world HUD the health bars and the status parts
+   (skill in use, booked skill, work gauge) unless the PvP rules show them. pvp_game.c decides (weak); view only. */
+int pvp_view_hide(const uint8_t g[16], int what) __attribute__((weak_import));   /* what: 1 portrait, 2 health bars, 3 status */
+static void pvp_view_pass(void) {
+    if (!pvp_view_hide) return;
+    for (int i = 0; i < MAX_SC; i++) {
+        Obj u = u_gc_get(sc[i].unit), pa = u_gc_get(sc[i].parts);
+        if (!u || !u_alive(pa)) continue;
+        if (pvp_view_hide((const uint8_t *)u + UNIT_GUID, 1)) u_active(pa, false);
+    }
+    for (int i = 0; i < MAX_HUD; i++) {
+        Obj h = u_gc_get(hud[i].hud); if (!u_alive(h)) continue;
+        int hp = pvp_view_hide(hud[i].guid, 2), st = pvp_view_hide(hud[i].guid, 3);
+        if (!hp && !st) continue;
+        static const int bars[5] = { 0x80, 0x88, 0x90, 0x98, 0xA0 };       /* UnitEntityHUD: shield, head + bg, body + bg (SpriteRenderer) */
+        for (int k = 0; hp && k < 5; k++) { Obj r = AT(h, bars[k], Obj); if (u_alive(r)) F(0x509EA54, void (*)(Obj, bool, void *))(r, false, NULL); }   /* Renderer.set_enabled */
+        if (st) {
+            Obj so = AT(h, 0xB8, Obj), wo = AT(h, 0xD8, Obj);                /* _skillObject, _workloadObject (GameObjects) */
+            if (u_alive(so)) u_go_active(so, false);
+            if (u_alive(wo)) u_go_active(wo, false);
+            static const int bk[2] = { 0xE8, 0xF0 };                          /* _bookedSkill, _bookedSkillFrame */
+            for (int k = 0; k < 2; k++) { Obj r = AT(h, bk[k], Obj); if (u_alive(r)) F(0x509EA54, void (*)(Obj, bool, void *))(r, false, NULL); }
+        }
+    }
+}
+
+int ui_hud_bars_on(const uint8_t g[16]) {                    /* test (pvp_hudcheck): this unit's head health bar shown, -1 = no HUD tracked */
+    for (int i = 0; i < MAX_HUD; i++) {
+        Obj h = u_gc_get(hud[i].hud); if (!u_alive(h) || memcmp(hud[i].guid, g, 16)) continue;
+        Obj r = AT(h, 0x88, Obj); return u_alive(r) ? F(0x509E968, bool (*)(Obj, void *))(r, NULL) : -1;   /* Renderer.get_enabled */
+    }
+    return -1;
+}
+
 /* re-tag everything when the ownership table changes */
 static uint64_t own_sig;
 unsigned mp_game_session_gen(void);
 static void tags_frame(void) {
     if (!on()) return;
+    pvp_view_pass();
     { dsnet_client *c = cli(); static uint32_t refused = 0, seen_me = 99;   /* host rule "Units per player" */
       int u = c ? dsnet_units_per_player(c) : 0; if (u > 0) ui_max_owned = u;
       uint32_t r = c ? dsnet_claim_refusals(c, me()) : 0;
@@ -817,7 +855,10 @@ static void clock_lobby(Obj clock) {
     int sp = dsnet_allow_speedup(c), pa = dsnet_allow_pause(c);
     if (spect()) { sp = pa = 0; u_active(AT(clock, 0x50, Obj), false); }   /* spectators: no speed or pause buttons at all */
     u_active(AT(clock, 0x58, Obj), sp);
-    u_active(AT(clock, 0x60, Obj), sp);
+    /* the very-fast button: the stock Initialize hides it (no click listener, SetSpeedChangeOnUI(3) throws) and
+       VeryFast is not a session speed (clamped to Fast). Showing it gave a 4th button that did nothing (owner
+       2026-10-20): it stays hidden. */
+    u_active(AT(clock, 0x60, Obj), false);
     u_active(AT(clock, 0x48, Obj), pa);
 }
 static void hk_clock_init(Obj clock, Obj view, void *mi) {
@@ -846,27 +887,36 @@ static ui_net_state net_state(void) {
     if (st.needs_state) return st.loads ? UI_NET_DESYNC : UI_NET_WAITING;
     return UI_NET_PLAYING;
 }
-/* review #10: a resync reloads every peer from the host's save; say why on every peer, before the reload */
+/* review #10: a resync reloads every peer from the host's save; say why on every peer, before the reload. Only a real
+   desync says "went out of sync" (dsnet RESYNCING = its P_DESYNC came first); a planned reload (Foreign Expedition / PvP
+   start, PvP round snapshot: an in-sync player goes to LOADING) says "Loading the world" (v0.1.21 final review). */
 static void resync_frame(const ui_players *p) {
-    static uint32_t was;                                     /* players seen out of sync (bit per player) */
+    static uint32_t was, was_ok;                             /* players seen out of sync / in sync (bit per player) */
     dsnet_client *c = cli();
-    if (!c) { was = 0; return; }
+    if (!c) { was = was_ok = 0; return; }
     mp_stats ms; mp_get_stats(sess(), &ms);
-    uint32_t now = 0;
+    uint32_t now = 0, ok = 0, planned = 0;
     for (int i = 0; i < UI_MAX_PLAYERS; i++) {
         if (!(p->present >> i & 1u)) continue;
         int ping = -1, behind = 0, ns = 0;
-        if (dsnet_player_net(c, i, &ping, &behind, &ns) == 0 && ns == DSNET_NET_RESYNCING) now |= 1u << i;
+        if (dsnet_player_net(c, i, &ping, &behind, &ns) != 0) continue;
+        if (ns == DSNET_NET_RESYNCING) now |= 1u << i;
+        else if (ns == DSNET_NET_IN_SYNC) ok |= 1u << i;
+        else if (ns == DSNET_NET_LOADING && (was_ok >> i & 1u)) planned |= 1u << i;
     }
     if (ms.desynced && me() >= 0) now |= 1u << me();
     uint32_t fresh = now & ~was;
-    was = now;
+    was = now; was_ok = ok;
     for (int i = 0; fresh && i < UI_MAX_PLAYERS; i++)
-        if (fresh >> i & 1u) { char tx[256]; ui_resync_text(p, i, me(), tx, sizeof tx); notice("%s", tx); break; }
+        if (fresh >> i & 1u) { char tx[256]; ui_resync_text(p, i, me(), tx, sizeof tx); notice("%s", tx); return; }
+    static double planned_t;                                 /* several guests reload in turn: one line */
+    if ((planned & ~now) && now_s() - planned_t > 10) { planned_t = now_s(); notice("%s", TR("Loading the world")); }
 }
 static int status_agree;                                     /* the status line asks the others to press >> (by state, not by text) */
 static char status_text[256], pause_text[256];             /* pause_text: the one pause line (panel + banner, #20) */
 static ui_mapvote mapv;
+static void vote_pause(int on_);
+static int story_want, vote_hold;
 static void resync_frame(const ui_players *p);
 static void status_frame(void) {
     clock_lobby(u_gc_get(h_clock));                          /* stock SetSpeedChangeOnUI may re-enable them */
@@ -884,6 +934,7 @@ static void status_frame(void) {
         v.allow_speedup = c ? dsnet_allow_speedup(c) : 1; v.allow_pause = c ? dsnet_allow_pause(c) : 1;
         v.busy = c && dsnet_busy_mask ? dsnet_busy_mask(c) : 0;
         v.story_pause = c && dsnet_story_pause_mask ? dsnet_story_pause_mask(c) : (uint32_t)story_held << (me() & 31);
+        v.vote_open = ui_mapvote_open(&mapv);
         v.pause_by1 = c ? dsnet_pause_by(c) + 1 : 0;
         v.paused_ext = st.paused;
         if (c && dsnet_vote_of)
@@ -932,7 +983,7 @@ static void status_frame(void) {
    with "TEXTKEY". Our prompt passes null actions; the confirm/cancel hooks turn the click into a vote. */
 static uintptr_t h_notice;
 static uint32_t prompt_id, map_counter;
-static int map_submit, prompt_close, map_report = -1;
+static int map_submit, scroll_submit, prompt_close, map_report = -1; static double scroll_wait_t;
 static double map_open_t; static uint32_t map_cancel_sent;  /* proposer: when its vote opened (60 s timeout, review #5) */
 static double now_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
 /* floor index (DungeonData +0x14 of EntityDataContainer +0x40; 0 = 1F, seen in a run), -1 outside a dungeon */
@@ -1076,8 +1127,12 @@ static const char *ok_glyph(Obj tmp) {                       /* a check mark the
 static int next_floor_no(void) { int f = cur_floor(); return f >= 0 ? f + 2 : 0; }   /* 0-based index: 1F = 0 */
 static void prompt_text(Obj v, char *txt, size_t cap) {
     char q[64], nm[96], marks[1024]; ui_players p; players(&p);
-    int left = UI_MAP_TIMEOUT_S - (int)(now_s() - prompt_t0); if (left < 0) left = 0;
+    int left = ui_map_timeout_s(mapv.kind) - (int)(now_s() - prompt_t0); if (left < 0) left = 0;
     ui_mapvote_marks(&mapv, &p, p.present, ok_glyph(AT(v, 0x30, Obj)), marks, sizeof marks);
+    if (mapv.kind == UI_MAP_RETURN_SCROLL)                   /* unitsel B5: everyone returns to the settlement */
+        snprintf(txt, cap, TR("<size=150%%>%s</size>\n%s wants to use a Return scroll.\nEveryone goes back to the settlement.\n<size=88%%><color=#a69085>%s      %d s left (no answer = agree)</color></size>"),
+                 ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), pname(&p, mapv.proposer, nm, sizeof nm), marks, left);
+    else
     snprintf(txt, cap, TR("<size=150%%>%s</size>\n%s wants to %s.\n<size=88%%><color=#a69085>%s      %d s left</color></size>"),
              ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), pname(&p, mapv.proposer, nm, sizeof nm), ui_map_short(mapv.kind), marks, left);
 }
@@ -1090,6 +1145,7 @@ static void prompt_show(void) {
     prompt_id = mapv.id;
     rig_log("ui: map vote prompt: %s", txt);
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str(txt), NULL, NULL, true, NULL);   /* Yes / No */
+    if (mapv.kind == UI_MAP_RETURN_SCROLL) { tmp_set(AT(v, 0x40, Obj), TR("Agree")); tmp_set(AT(v, 0x50, Obj), TR("Refuse")); }   /* B5: _txtConfirm / _txtCancle */
     Obj nt = AT(v, 0x30, Obj);
     (ui_is(nt, K_TMP) ? F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL) : (void)0);          /* Center */
     u_go_active(u_go(v), true);
@@ -1099,6 +1155,7 @@ static void prompt_show(void) {
    floor 3? Waiting for Ben (1 of 2 agree) · 52 s" and a stock BottomButton "Cancel" (120x30) */
 static uintptr_t h_strip_bg, h_strip_txt, h_strip_btn, h_strip_btxt;
 static char strip_shown[300];
+static void strip_place(float w, float h, float *x, float *y);
 static void strip_frame(void) {
     ui_players p; players(&p);
     char wl[200], line[300], q[64];
@@ -1135,10 +1192,10 @@ static void strip_frame(void) {
     Obj parts[4] = { bg, tx, bt, btx };
     for (int i = 0; i < 4; i++) if (u_alive(parts[i]) && u_go_active_self(u_go(parts[i])) != open_) u_go_active(u_go(parts[i]), open_);
     if (!open_) { strip_shown[0] = 0; return; }
-    int left = UI_MAP_TIMEOUT_S - (int)(now_s() - map_open_t); if (left < 0) left = 0;
+    int left = ui_map_timeout_s(mapv.kind) - (int)(now_s() - map_open_t); if (left < 0) left = 0;
     snprintf(line, sizeof line, TR("<color=#ccbeb8>%s %s · %d s</color>"), ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), wl, left);
     if (strcmp(line, strip_shown)) { snprintf(strip_shown, sizeof strip_shown, "%s", line); tmp_set(tx, line); }
-    float y = -150, x0 = -380;                               /* under the pause banner, top centre */
+    float y, x0; strip_place(760, 40, &x0, &y);              /* under the pause banner, top centre (uxpass: measured) */
     if (u_alive(bg)) u_rt_set_pos(u_tr(bg), x0, y);
     if (u_alive(tx)) { u_rt_set_pos(u_tr(tx), x0 + 16, y); u_rt_set_size(u_tr(tx), 600, 40); }
     if (u_alive(bt)) u_rt_set_pos(u_tr(bt), x0 + 760 - 130, y - 5);
@@ -1150,7 +1207,8 @@ static void map_cancel_send(int why) {                     /* proposer: UI_MAP_C
     map_cancel_sent = mapv.id;
     ui_map_vote_write(a, mapv.id, why);
     int rc = mp_order(sess(), UI_ORDER_MAP_VOTE, zero, a, sizeof a);
-    rig_log("ui: map vote %08x: cancel sent (%s, rc %d)", mapv.id, why == UI_MAP_CANCEL ? "no decision in 60 s" : "Cancel pressed", rc);
+    rig_log("ui: map vote %08x: %s sent (%s, rc %d)", mapv.id, why == UI_MAP_TIMEOUT_YES ? "timeout" : "cancel",
+            why == UI_MAP_CANCEL ? "no decision in 60 s" : why == UI_MAP_TIMEOUT_YES ? "60 s: no answer counts as agree" : "Cancel pressed", rc);
 }
 static void strip_mouse(void) {
     Obj bt = u_gc_get(h_strip_btn);
@@ -1162,11 +1220,16 @@ static void strip_mouse(void) {
 int ui_debug_map_cancel(void) { if (!ui_mapvote_open(&mapv) || mapv.proposer != me()) return 0; map_cancel_send(UI_MAP_CANCEL_USER); return 1; }
 static void map_decided(int d) {                             /* command apply: same step on every peer */
     if (d < 0) return;
+    if (mapv.proposer == me()) vote_pause(0);                /* unitsel: the vote ended: the game goes on */
     if (prompt_id == mapv.id) { prompt_id = 0; prompt_close = 1; }
     map_report = d;
     if (d == 1) map_changing = now_s();                      /* every peer: orders wait for the new map */
     dsnet_client *c = cli();
-    if (d == 1 && c && dsnet_is_host(c)) { memcpy(map_order, mapv.order, mapv.order_len); map_order_len = mapv.order_len; map_submit = 1; }
+    if (d == 1 && mapv.kind == UI_MAP_RETURN_SCROLL) {      /* B5: the user's own order (his unit, his item), sent by him */
+        if (mapv.proposer == me() && mapv.order_len > 16) { memcpy(map_order, mapv.order, mapv.order_len); map_order_len = mapv.order_len; scroll_submit = 1; }
+        rig_log("ui: Return scroll vote %08x: agreed (proposer %d)", mapv.id, mapv.proposer);
+    } else if (mapv.kind == UI_MAP_RETURN_SCROLL) rig_log("ui: Return scroll vote %08x: refused (proposer %d)", mapv.id, mapv.proposer);
+    else if (d == 1 && c && dsnet_is_host(c)) { memcpy(map_order, mapv.order, mapv.order_len); map_order_len = mapv.order_len; map_submit = 1; }
 }
 static int map_propose_order(mp_session *s, int player, const uint8_t guid[16], const uint8_t *args, uint16_t len) {
     (void)s; (void)guid;
@@ -1181,7 +1244,8 @@ static int map_propose_order(mp_session *s, int player, const uint8_t guid[16], 
     else if (spect()) { char nm[40]; notice(TR("%s wants to %s"), ui_player_label(&p, player, nm), ui_map_short(kind)); }   /* no vote */
     else if (player != me() && left_prompt) { prompt_pending = 1; rig_log("ui: map vote waits for the disconnect box to close (ux_flow F20)"); }
     else if (player != me()) prompt_show();
-    else { map_open_t = now_s(); map_cancel_sent = 0; }      /* the panel line "Waiting for <names> to agree" says the rest */
+    else { map_open_t = now_s(); map_cancel_sent = 0; vote_pause(1); }   /* the panel line "Waiting for <names> to agree" says the rest;
+                                                                unitsel: an open vote pauses everyone, every pause mode */
     return 0;
 }
 static int map_vote_order(mp_session *s, int player, const uint8_t guid[16], const uint8_t *args, uint16_t len) {
@@ -1197,7 +1261,7 @@ int ui_map_propose(int kind, const uint8_t *order, size_t len) {
     mp_session *s = sess();
     if (!on() || !s || len > UI_MAP_MAX_ORDER) return 0;
     if (spect()) { notice("%s", TR("You are watching: only players change the map")); return 1; }
-    if (result_open && result_chooser == me()) return result_send(kind, order, len);
+    if (result_open && result_chooser == me() && kind != UI_MAP_RETURN_SCROLL) return result_send(kind, order, len);
     if (ui_mapvote_open(&mapv)) { notice("%s", TR("Another map change is being voted on")); return 1; }
     uint8_t buf[UI_MAP_MAX_ORDER + 8]; static const uint8_t zero[16];
     uint32_t id = (uint32_t)(me() + 1) << 24 ^ ++map_counter ^ (uint32_t)rig_frames << 8;
@@ -1205,6 +1269,14 @@ int ui_map_propose(int kind, const uint8_t *order, size_t len) {
     size_t n = ui_map_propose_write(buf, sizeof buf, id, kind, order, len);
     if (!n || mp_order(s, UI_ORDER_MAP_PROPOSE, zero, buf, (uint16_t)n)) { notice("%s", TR("The map change could not be sent")); return 1; }
     return 1;
+}
+/* unitsel B5 (ord_game.c, dlsym): a Return scroll use captured on this peer goes to a vote of every player first.
+   owner = the order's owner guid (the user's unit), order = the ord payload. 1 = taken (do not send now). */
+int ui_scroll_propose(const uint8_t owner[16], const uint8_t *order, size_t len) {
+    if (!on() || len + 16 > UI_MAP_MAX_ORDER) return 0;
+    uint8_t buf[UI_MAP_MAX_ORDER]; memcpy(buf, owner, 16); memcpy(buf + 16, order, len);
+    rig_log("ui: Return scroll use goes to a vote (%zu bytes)", len);
+    return ui_map_propose(UI_MAP_RETURN_SCROLL, buf, len + 16);
 }
 static int result_send(int kind, const uint8_t *order, size_t len) {
     uint8_t buf[UI_MAP_MAX_ORDER + 1];
@@ -1228,7 +1300,8 @@ static void map_frame(void) {
         if (u_alive(v)) o_cn_cancel(v, NULL);                /* stock close (null actions), no vote: prompt_id is 0 */
     }
     /* review #5: the proposer withdraws its vote after 60 s with no decision (a command: same on every peer) */
-    if (ui_mapvote_open(&mapv) && mapv.proposer == me() && map_open_t > 0 && now_s() - map_open_t > UI_MAP_TIMEOUT_S) map_cancel_send(UI_MAP_CANCEL);
+    if (ui_mapvote_open(&mapv) && mapv.proposer == me() && map_open_t > 0 && now_s() - map_open_t > ui_map_timeout_s(mapv.kind))
+        map_cancel_send(mapv.kind == UI_MAP_RETURN_SCROLL ? UI_MAP_TIMEOUT_YES : UI_MAP_CANCEL);   /* B5: scroll = no answer counts as agree */
     if (prompt_id) {                                         /* voter box: votes and time left, once a second */
         static int last = -1; int nv = 0;
         for (int i = 0; i < UI_MAX_PLAYERS; i++) nv += mapv.vote[i] >= 0;
@@ -1241,6 +1314,16 @@ static void map_frame(void) {
         char r[200]; ui_mapvote_result(&mapv, &p, p.present, cur_floor() >= 0 ? cur_floor() + 1 : 0, r, sizeof r);
         notice("%s", r);
         map_report = -1;
+    }
+    mp_stats sst; if (scroll_submit && sess()) mp_get_stats(sess(), &sst);
+    if (scroll_submit && !scroll_wait_t) scroll_wait_t = now_s();
+    if (scroll_submit && sess() && sst.paused && now_s() - scroll_wait_t < 30) {}   /* at most 30 s (another pause holds) */
+    else if (scroll_submit) {                                /* B5: agreed: the scroll order goes out once the game runs again (the
+                                                                vote's pause released): its map change never starts in a 0-tick step */
+        scroll_submit = 0; scroll_wait_t = 0;
+        int rc = sess() ? mp_order(sess(), ORD_MP_TYPE, map_order, map_order + 16, (uint16_t)(map_order_len - 16)) : -1;
+        rig_log("ui: Return scroll order sent (rc %d)", rc);
+        if (rc) { notice("%s", TR("The Return scroll could not be used")); map_changing = 0; }
     }
     if (map_submit) {
         map_submit = 0;
@@ -1261,12 +1344,27 @@ static int popup_active(int type) {                          /* PopUpViewContain
     Obj c = u_gc_get(h_popups);
     return c && F(0xF62D64, bool (*)(Obj, int, void *))(c, type, NULL);
 }
+/* The one DSNET_STORY_PAUSE hold of this peer (0 game ticks for everyone, in every pause mode) carries two wants:
+   a story popup with pause off, and (unitsel, owner 2026-10-20 late) an open vote this peer proposed: every vote
+   pauses the game for everyone, in every pause mode, until it ends. */
+static void hold_apply(void) {
+    dsnet_client *c = cli();
+    int want = story_want || vote_hold;
+    if (!c || want == story_held) return;
+    uint8_t b = (uint8_t)want;
+    if (dsnet_submit(c, DSNET_STORY_PAUSE, 0, &b, 1) == 0) { story_held = want; rig_log("ui: pause hold %d (story %d, vote %d)", want, story_want, vote_hold); }
+}
 static void story_pause(int on_) {
     dsnet_client *c = cli();
-    if (!c || dsnet_allow_pause(c) || on_ == story_held) return;   /* pause on: the EssentialPopup vote does it */
-    uint8_t b = (uint8_t)on_;
-    if (dsnet_submit(c, DSNET_STORY_PAUSE, 0, &b, 1) == 0) story_held = on_;
+    if (!c) return;
+    /* mode "anyone pauses": the EssentialPopup vote does it. "No pause" and (unitsel: every vote pauses, every mode)
+       "all must vote": this hold */
+    story_want = on_ && dsnet_pause_mode(c) != DSNET_PAUSE_ANYONE;
+    hold_apply();
 }
+static void vote_pause(int on_) { vote_hold = on_ ? vote_hold | 1 : vote_hold & ~1; hold_apply(); }   /* bit 0: map / scroll vote */
+/* other lanes' votes (ui_teams.c expedition proposal: bit 1), proposer side only; weak import there */
+void ui_vote_hold(int bit, int on_) { if (bit < 1 || bit > 7) return; vote_hold = on_ ? vote_hold | (1 << bit) : vote_hold & ~(1 << bit); hold_apply(); }
 static void (*o_set_timelock)(Obj, void *);
 static void (*o_unset_timelock)(Obj, void *);
 static void hk_lu_target(Obj helper, Obj unit, void *mi) {    /* sim: LevelUpHandler.Process */
@@ -1302,7 +1400,9 @@ static void guild_button_apply(void) {
 static void hk_faction_init(Obj v, void *mi) { o_faction_init(v, mi); u_gc_free(h_faction_view); h_faction_view = u_gc_new(v); guild_button_apply(); }
 static void hk_faction_refresh(Obj v, int map, void *mi) { o_faction_refresh(v, map, mi); if (u_gc_get(h_faction_view) != v) { u_gc_free(h_faction_view); h_faction_view = u_gc_new(v); } guild_button_apply(); }
 static void hk_faction_activate(Obj v, int t, bool on_, void *mi) { o_faction_activate(v, t, on_, mi); if (t == 0) guild_button_apply(); }
+void mpmenu_fv_kick(void) __attribute__((weak_import));
 static void hk_activate_view(Obj cont, int type, void *mi) {
+    if (mpmenu_fv_kick) mpmenu_fv_kick();                    /* fpsfix: a stock popup opens: view lookups immediate (mpmenu.c) */
     if (u_gc_get(h_popups) != cont) { u_gc_free(h_popups); h_popups = u_gc_new(cont); }
     if (type == 8 && mpx_ui_flag(MPUI_NO_RECRUIT_POPUP)) { rig_log("ui: recruitment window not offered (Foreign Expedition hub, Recruiting Off)"); return; }   /* owner: keep it simple */
     if (on()) {
@@ -1641,6 +1741,7 @@ static void hk_ev_click(Obj v, int idx, void *mi); static uintptr_t h_chip_tx[],
 static double tip_until; static char tip_shown[160]; int ui_conn_text(int player, char *out, int cap); static int ev_rule(void);
 static char *ui_lend_cmd(const char *line); static char *ui_host_addr_cmd(const char *line); static char *ui_escape_cmd(const char *line); static char *ui_tip_hover_cmd(const char *line); static char *ui_tip_where_cmd(void); static char *ui_players_lists_cmd(const char *line); static void viewer_geom(float *g); static void viewer_move_test(const char *line, int reset); static void viewer_overlay_json(Buf *b, const char *action); static void viewer_follow(int on_); static void viewer_ask(void); static Obj cam_setting(void);
 static int viewer_on, viewer_leader, follow_target; static uintptr_t h_vtitle; static uint32_t followers[UI_MAX_PLAYERS];
+static char *selshow_exec(const char *line);
 char *ui_exec(const char *cmd, const char *line) {
     teams_lookup();
     if (ui_teams_exec) { char *r = ui_teams_exec(cmd, line); if (r) return r; }
@@ -1662,6 +1763,7 @@ char *ui_exec(const char *cmd, const char *line) {
         if (v) { if (!strcmp(bt, "cancel")) hk_cn_cancel(v, NULL); else hk_cn_confirm(v, NULL); }
         Buf b = {0}; bput(&b, "{\"ok\":%s,\"left_prompt\":%d}", v ? "true" : "false", left_prompt); return b.p;
     }
+    if (!strcmp(cmd, "ui_selshow")) return selshow_exec(line);   /* unitsel B1 probe */
     if (!strcmp(cmd, "ui_owner")) {                          /* ui_owner {guid}: dsnet owner (-1 unclaimed) */
         char gs[64] = ""; Guid g; jstr(line, "guid", gs, sizeof gs);
         Buf b = {0}; bput(&b, "{\"ok\":true,\"owner\":%d}", guid_parse(gs, &g) ? owner_of_guid((const uint8_t *)&g) : -1); return b.p;
@@ -1805,6 +1907,12 @@ char *ui_exec(const char *cmd, const char *line) {
         bput(&b, "]}"); return b.p;
     }
     if (!strcmp(cmd, "ui_items")) return ui_items_cmd(line);
+    if (!strcmp(cmd, "ui_vote_state")) {                     /* unitsel test probe: the open vote and this peer's pause hold */
+        Buf b = {0}; bput(&b, "{\"ok\":true,\"id\":%u,\"kind\":%d,\"open\":%d,\"decided\":%d,\"proposer\":%d,\"prompt\":%d,\"vote_hold\":%d,\"story_held\":%d,\"votes\":[",
+                              mapv.id, mapv.kind, ui_mapvote_open(&mapv), mapv.decided, mapv.proposer, prompt_id != 0, vote_hold, story_held);
+        for (int i = 0; i < 4; i++) bput(&b, "%s%d", i ? "," : "", mapv.vote[i]);
+        bput(&b, "]}"); return b.p;
+    }
     if (!strcmp(cmd, "ui_map_cancel")) { Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", ui_debug_map_cancel()); return b.p; }
     if (!strcmp(cmd, "ui_buildings")) return ui_buildings_cmd(line);
     if (strcmp(cmd, "ui_levelup") && strcmp(cmd, "ui_interact")) return NULL;
@@ -2010,7 +2118,7 @@ static void story_frame(void) {
         mp_set_order_handler(s, UI_ORDER_ASK, ask_order);
         memset(followers, 0, sizeof followers); follow_target = -1;
         map_changing = 0;                                    /* never carried into a new session (lead 2026-10-14) */
-        story_held = 0; ui_mapvote_clear(&mapv); prompt_id = 0;
+        story_held = 0; story_want = 0; vote_hold = 0; ui_mapvote_clear(&mapv); prompt_id = 0;
         story_sess = s; ui_story_reset(&story, 0, -1);
     }
     if (!s) return;
@@ -2134,6 +2242,11 @@ static void pause_frame(void) {
             if (u_alive(line)) {
                 V2 pos = u_rt_pos(u_tr(src)), sz = u_rt_size(u_tr(src));
                 u_rt_set_pos(u_tr(line), pos.x, pos.y - 2.0f * sz.y - 22.0f);   /* owner 2026-10-13: right under the banner strip */
+                /* uxpass: a long line (DE / ES / FR / PT "Waiting for <name> · 1:05 · press Play ...", 600+ units) wraps
+                   under the banner (420 wide, centred) instead of running left under the Players panel, which hid its start */
+                V2 pv = ui_is(u_tr(line), K_RT) ? F(0x5107200, V2 (*)(Obj, void *))(u_tr(line), NULL) : (V2){ 0, 0 };   /* RectTransform.pivot */
+                if (pv.x > 0.49f && pv.x < 0.51f) u_rt_set_size(u_tr(line), 420, sz.y);
+                (ui_is(line, K_TMP) ? F(0x4F0BAB4, void (*)(Obj, bool, void *))(line, true, NULL) : (void)0);   /* enableWordWrapping */
                 u_gc_free(h_pause_line); h_pause_line = u_gc_new(line);
                 rig_log("ui: pause line created from %s", cls_name(src));
             }
@@ -2182,7 +2295,10 @@ static void chat_get(int *fade, int *join, int *en); static void chat_step(int r
 static float pl_y0;
 static int pl_anchor_bar, pl_pop;                            /* pl_pop: the cog is pressed (settings rows shown) */
 static float pl_cur_L, pl_cur_Y; static int pl_shown, pl_hide_why, cog_has_icon;       /* where the panel is now (lan_v8 drag) */
+static float pl_k = 1;                                       /* the panel's drawn scale: Compact 0.75, less when it is taller than the screen */
+static int pl_in_band;                                       /* uxpass: drawn in the open Teams window's title band (no drag there) */
 static int row_player[19];                                   /* player of each row (connection tooltip; PL_MAXROWS + 1) */
+int mpmenu_conn_words(int player, char *out, size_t n);       /* mpmenu.c (conninfo): "Steam" / "Direct (ip:port)" */
 static int row_lvl[19];                                      /* its connection level (ui_conn_level; -2 = left, -3 = "Watching" divider) */
 static int row_watch[19];                                    /* the row is a spectator (no Follow / look menu: they send no view) */
 typedef struct { float x, y, w, h; } RectF4;
@@ -2196,7 +2312,23 @@ static float bar_bottom_y(Obj root) {                       /* y just under the 
     V3 rp = F(0x5109A08, V3 (*)(Obj, void *))(root, NULL), rs = F(0x510F4F8, V3 (*)(Obj, void *))(root, NULL);
     RectF4 rr = (ui_is(root, K_RT) ? F(0x5106978, RectF4 (*)(Obj, void *))(root, NULL) : (RectF4){0,0,0,0});
     if (rs.y == 0) return 0;
-    return (bp.y + br.y * bs.y - (rp.y + (rr.y + rr.h) * rs.y)) / rs.y;                    /* <= 0: below the top edge */
+    float wy = bp.y + br.y * bs.y;                                                          /* world y of the bar's bottom */
+    /* final review (UI scale 1.5, F1): the game's cards grow past the bar's rect (their bars and mood icon lay under the
+       Teams button and the "sees this too" line): the lowest shown card part counts too (card, mood icon, stress bar) */
+    for (int i = 0; i < MAX_SC; i++) {
+        Obj pa = u_gc_get(sc[i].parts);
+        if (!u_alive(pa) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(pa), NULL)) continue;
+        Obj parts[] = { u_tr(pa), AT(pa, 0x1C8, Obj), AT(pa, 0x198, Obj), AT(pa, 0x1C0, Obj) };   /* _moodIcon, _stressBar(Background) */
+        for (size_t k = 0; k < sizeof parts / sizeof parts[0]; k++) {
+            Obj t = k ? (u_alive(parts[k]) ? u_tr(parts[k]) : NULL) : parts[0];
+            if (!u_alive(t) || !ui_is(t, K_RT) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(t), NULL)) continue;
+            RectF4 q = F(0x5106978, RectF4 (*)(Obj, void *))(t, NULL);
+            V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(t, (V3){ q.x, q.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(t, (V3){ q.x, q.y + q.h, 0 }, NULL);
+            float lo = a.y < b.y ? a.y : b.y;
+            if (lo < wy) wy = lo;
+        }
+    }
+    return (wy - (rp.y + (rr.y + rr.h) * rs.y)) / rs.y;                                     /* <= 0: below the top edge */
 }
 #define PL_TOP   196.0f
 #define PL_X     (-300.0f)
@@ -2208,15 +2340,47 @@ static float bar_bottom_y(Obj root) {                       /* y just under the 
 #define PL_ROW_H 32.0f
 #define PL_SET_H 28.0f
 #define PL_MAXROWS 18                                        /* players (8), left players, "Watching (n)" + spectators (8) */
+static void scr_to_layer(Obj layer, float sx, float sy, float *ux, float *uy);
+static int scr_w(void); static int scr_h(void);
+static Obj layer_top(void);
+/* uxpass: the game window in units of our top layer (x0 left, x1 right, yb bottom; the top is 0). 0 = not known yet */
+static int layer_screen(float *x0, float *x1, float *yb) {
+    Obj top = layer_top(); float t;
+    if (!top || scr_w() < 100 || scr_h() < 100) return 0;
+    scr_to_layer(top, 0, 0, x0, yb); scr_to_layer(top, (float)scr_w(), 0, x1, &t);
+    return *x1 - *x0 > 100;
+}
+/* uxpass: a box of w x h layer units with its top-left at (*x, *y) kept inside the game window (8 units in) */
+static void layer_keep_in(float w, float h, float *x, float *y) {
+    float x0, x1, yb;
+    if (!layer_screen(&x0, &x1, &yb)) return;
+    if (*x + w > x1 - 8) *x = x1 - 8 - w;
+    if (*x < x0 + 8) *x = x0 + 8;
+    if (*y - h < yb + 8) *y = yb + 8 + h;
+    if (*y > -2) *y = -2;
+}
 static int lobby_open(void) {                                /* review #30: hidden behind mpmenu's lobby panel */
     static int (*fn)(void); static unsigned tries;
     if (!fn && tries++ % 50 == 0) fn = (int (*)(void))dlsym(RTLD_DEFAULT, "mpmenu_lobby_open");
     return fn ? fn() : 0;
 }
 static uintptr_t h_hdrbg, h_hdrline, h_gear, h_cog, h_tog, h_chev, h_lora, h_cinzel, h_rowbg[PL_MAXROWS], h_bars[PL_MAXROWS + 1][3], h_set_arrow[2 * PL_SETMAX];
+/* uxpass round 2 (review_de #1, #2): one name text and one right text per row (the two multi-line columns drifted apart:
+   "Direkt (...)" between the rows, "Du" on a third line, a long CJK name wrapped over the panel's bottom border) */
+static uintptr_t h_rname[PL_MAXROWS], h_rright[PL_MAXROWS];
+static char pl_rl[PL_MAXROWS][256], pl_rr[PL_MAXROWS][200];
+static void obj_text(Obj t, const char *txt) {             /* plist_set for a text outside h_pl (DASText keeps _text = ours) */
+    char cur[600]; if (!u_alive(t)) return;
+    str_utf8(tmp_get(t), cur, sizeof cur);
+    if (!strcmp(cur, txt)) return;
+    tmp_set(t, txt);
+    if (!strcmp(cls_name(t), "DASText")) F(0x6F95C8, void (*)(Obj, void **, Obj))(t, (void **)((char *)t + 0x7D0), u_str(txt));
+}
 static uintptr_t h_band, h_arrow;                            /* (probes: header background / collapse button) */
 static const char *pl_dot = "•";
 static Obj tr_find(Obj t, const char *path) { return t ? F(0x510F3C0, Obj (*)(Obj, Obj, void *))(t, u_str(path), NULL) : NULL; }
+static int lang_cjk(void) { const char *c = dsi_code(); return c && (!strncmp(c, "ja", 2) || !strncmp(c, "zh", 2) || !strncmp(c, "ko", 2)); }   /* as mpmenu.c */
+static float small_pt(float latin) { return lang_cjk() ? (latin < 14 ? 14 : latin) : latin < 12 ? 12 : latin; }   /* floors: CJK 14, Latin 12 (review_ja F3) */
 static void tmp_style(Obj t, Obj font, float size, int align) {
     if (!ui_is(t, K_TMP)) return;
     if (u_alive(font)) F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, font, NULL);        /* TMP_Text.font */
@@ -2246,15 +2410,16 @@ static float tmp_pref_w(Obj t) {                             /* TMP_Text.preferr
     void *k = *(void **)t;
     return (*(float (**)(Obj, void *))((char *)k + 0x678))(t, *(void **)((char *)k + 0x680));
 }
+void das_text_keep(Obj t, Obj s);                             /* mpmenu.c */
 static void plist_set(int i, const char *txt) {
     Obj t = u_gc_get(h_pl[i]); char cur[3000];
     if (!u_alive(t)) return;
     str_utf8(tmp_get(t), cur, sizeof cur);
     if (strcmp(cur, txt) || !pl_written[i]) {
         tmp_set(t, txt); pl_written[i] = 1;
-        /* the rows are clones of the clock's DASText: its Awake (first activation) re-applies _text (+0x7D0, "12:34")
-           over ours (runs 54-58: settings rows read "12:34"); keep _text = ours */
-        if (!strcmp(cls_name(t), "DASText")) F(0x6F95C8, void (*)(Obj, void **, Obj))(t, (void **)((char *)t + 0x7D0), u_str(txt));
+        /* the rows are clones of the clock's DASText: its Awake (first activation) re-applies _text ("12:34") over ours
+           (runs 54-58: settings rows read "12:34"); keep _text = ours. By name (mpmenu.c): Mac +0x7D0, Windows +0x7D8 */
+        das_text_keep(t, u_str(txt));
     }
 }
 static void show(Obj o, int v) { if (u_alive(o) && u_go_active_self(u_go(o)) != v) u_go_active(u_go(o), v); }
@@ -2415,6 +2580,21 @@ static int plist_style(void) {
         pl_written[i] = 0;
     }
     for (int r = 0; r <= PL_MAXROWS; r++) for (int b = 0; b < 3; b++) { Obj im = u_gc_get(h_bars[r][b]); if (u_alive(im)) u_set_sibling(u_tr(im), 1 << 20); }
+    for (int r = 0; r < PL_MAXROWS; r++) {                   /* uxpass round 2: the row texts (name Lora 16 left, right column Lora 12 right) */
+        Obj tn = u_instantiate(u_gc_get(h_status), root), tr_ = u_instantiate(u_gc_get(h_status), root);
+        Obj two[2] = { tn, tr_ };
+        for (int q = 0; q < 2; q++) if (ui_is(two[q], K_TMP)) {
+            rt_top_left(u_tr(two[q])); u_rt_set_size(u_tr(two[q]), PL_W, 22); tmp_style(two[q], lora, q ? small_pt(12) : 16, q ? 516 : 513);
+            u_set_sibling(u_tr(two[q]), 1 << 20); show(two[q], 0); obj_text(two[q], "");
+        }
+        u_gc_free(h_rname[r]); h_rname[r] = u_gc_new(tn); u_gc_free(h_rright[r]); h_rright[r] = u_gc_new(tr_);
+    }
+    /* uxpass round 2 (review_de #4, #28, #30): settings labels and the move hint keep their size (no shrink to 11 pt) and
+       wrap; their rows grow (plist_frame, txt_text_h) */
+    for (int i = 0; i < PL_N; i++) if (pl_is_label(i) || i == PL_HINT) {
+        Obj t = u_gc_get(h_pl[i]);
+        if (ui_is(t, K_TMP)) { txt_fit(t, 14, 1); F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, true, NULL); }
+    }
     rig_log("ui: player panel (board) built: frame %p gear %p toggle %p lora %p cinzel %p dot %s", fr, gear, tog, lora, cinzel, pl_dot);
     return 1;
 }
@@ -2531,17 +2711,14 @@ static void plist_frame(void) {
     int hide = !on() || lobby_open() || popup_active(1) || left_prompt   /* Esc menu: design #3 */
                || busy();
     pl_hide_why = !on() | lobby_open() << 1 | popup_active(1) << 2 | (left_prompt != 0) << 3 | busy() << 5;                                    /* lan_v9: not on the loading screen (v2_v9_changing_map_guest.png) */
-    { Obj g = layer_of_panel(); if (g) { float k = uiset.compact ? 0.75f : 1.0f; V3 cur = F(0x510AEFC, V3 (*)(Obj, void *))(g, NULL);
-        if (cur.x != k) F(0x510AFF8, void (*)(Obj, V3, void *))(g, (V3){ k, k, 1 }, NULL); } }
-    /* the group scales around the layer's origin: shift it so the panel's top-left corner stays where it is (pos_x / pos_y
-       stay in layer units, so drag, saved place and ui_panel_anchor mean the same in Normal and Compact) */
+    /* the group's scale ("Panel size", and smaller when the panel is taller than the game window) and place: at the end */
     int styled = hide ? 0 : plist_style();
     if (hide || !styled) {
         pl_shown = 0;
         for (int i = 0; i < PL_N; i++) show(u_gc_get(h_pl[i]), 0);
         Obj every[] = { u_gc_get(h_plate), u_gc_get(h_hdrbg), u_gc_get(h_hdrline), u_gc_get(h_gear), u_gc_get(h_tog) };
         for (size_t k = 0; k < sizeof every / sizeof every[0]; k++) show(every[k], 0);
-        for (int r = 0; r < PL_MAXROWS; r++) show(u_gc_get(h_rowbg[r]), 0);
+        for (int r = 0; r < PL_MAXROWS; r++) { show(u_gc_get(h_rowbg[r]), 0); show(u_gc_get(h_rname[r]), 0); show(u_gc_get(h_rright[r]), 0); }
         for (int r = 0; r <= PL_MAXROWS; r++) bars_hide(r);
         for (int k = 0; k < 2 * PL_SETMAX; k++) show(u_gc_get(h_set_arrow[k]), 0);
         for (int k = 0; k < PL_NADDR; k++) show(u_gc_get(h_acopy[k]), 0);
@@ -2552,7 +2729,7 @@ static void plist_frame(void) {
     dsnet_client *c = cli(); ui_players p; players(&p);
     mp_stats ms; mp_get_stats(sess(), &ms);
     /* rows: present players, then players that left and are waited for (red X) */
-    char bl[2600] = "<line-height=32>", br[1200] = "<line-height=32>", row[256], rr[128];
+    char bl[2600] = "<line-height=32>", br[3200] = "<line-height=32>", row[256], rr[200];
     size_t nl = strlen(bl), nr = strlen(br); int np = 0, rows = 0, lvl[PL_MAXROWS], worst = 3;
     memset(row_watch, 0, sizeof row_watch);
     for (int i = 0; i < UI_MAX_PLAYERS && rows < PL_MAXROWS; i++) {
@@ -2567,9 +2744,15 @@ static void plist_frame(void) {
         lvl[rows] = i == me() ? -1 : ui_conn_level(ping, behind, state); row_lvl[rows] = lvl[rows];
         row_player[rows] = i;
         if (lvl[rows] >= 0 && lvl[rows] < worst) worst = lvl[rows];
-        snprintf(rr, sizeof rr, "%s", i == me() ? ui_col("#a69085", TR("You")) : " ");
+        { char cw[128];                                      /* conninfo (owner 2026-10-20): how that player is connected; space for its bars */
+          if (i == me()) snprintf(rr, sizeof rr, "%s", ui_col("#a69085", TR("You")));
+          else if (mpmenu_conn_words(i, cw, sizeof cw)) snprintf(rr, sizeof rr, "<margin-right=26><color=#a69085>%s</color></margin>", cw);
+          else snprintf(rr, sizeof rr, " "); }
         nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "%s%s", rows ? "\n" : "", row);
         nr += (size_t)snprintf(br + nr, sizeof br - nr, "%s%s", rows ? "\n" : "", rr);
+        snprintf(pl_rl[rows], sizeof pl_rl[0], "%s", row);
+        { char cw[128]; if (i != me() && mpmenu_conn_words(i, cw, sizeof cw)) snprintf(pl_rr[rows], sizeof pl_rr[0], "<color=#a69085>%s</color>", cw);
+          else snprintf(pl_rr[rows], sizeof pl_rr[0], "%s", rr); }   /* the row's own right text: no margin (the bars get their place) */
         rows++;
     }
     { int nh = dsnet_hold_count(c);
@@ -2580,6 +2763,7 @@ static void plist_frame(void) {
           lvl[rows] = -2; worst = 0; row_player[rows] = -1; row_lvl[rows] = -2;
           nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "%s%s", rows ? "\n" : "", row);
           nr += (size_t)snprintf(br + nr, sizeof br - nr, "%s<color=#f16071>X</color>", rows ? "\n" : "");
+          snprintf(pl_rl[rows], sizeof pl_rl[0], "%s", row); snprintf(pl_rr[rows], sizeof pl_rr[0], "<color=#f16071>X</color>");
           rows++;
       } }
     {   /* spectators (owner 2026-10-14): a "Watching (n)" divider, then one grey row each with its connection bars */
@@ -2589,6 +2773,7 @@ static void plist_frame(void) {
             lvl[rows] = -3; row_player[rows] = -1; row_lvl[rows] = -3;
             nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "%s%s", rows ? "\n" : "", row);
             nr += (size_t)snprintf(br + nr, sizeof br - nr, "%s ", rows ? "\n" : "");
+            snprintf(pl_rl[rows], sizeof pl_rl[0], "%s", row); snprintf(pl_rr[rows], sizeof pl_rr[0], " ");
             rows++;
             for (int i = 0; i < UI_MAX_PLAYERS && rows < PL_MAXROWS; i++) {
                 if (!(ui_spectators >> i & 1u)) continue;
@@ -2601,6 +2786,7 @@ static void plist_frame(void) {
                 row_player[rows] = i; row_watch[rows] = 1;
                 nl += (size_t)snprintf(bl + nl, sizeof bl - nl, "\n%s", row);
                 nr += (size_t)snprintf(br + nr, sizeof br - nr, "\n%s", i == me() ? ui_col("#a69085", TR("You")) : " ");
+                snprintf(pl_rl[rows], sizeof pl_rl[0], "%s", row); snprintf(pl_rr[rows], sizeof pl_rr[0], "%s", i == me() ? ui_col("#a69085", TR("You")) : " ");
                 rows++;
             }
         }
@@ -2612,7 +2798,7 @@ static void plist_frame(void) {
     plist_set(PL_HDR, h2);
     plist_set(PL_BODY, bl); plist_set(PL_BODYR, br);
     int host = me() == 0;
-    plist_set(PL_SEE, ui_col("#a69085", TR("Other units see-through")));
+    plist_set(PL_SEE, ui_col("#a69085", TR("Fade other units")));
     plist_set(PL_NAMES, ui_col("#a69085", TR("Names above units")));
     plist_set(PL_UNITS, ui_col("#a69085", TR("Units per player")));
     plist_set(PL_ADMIN, ui_col("#a69085", TR("Admin mode (host)")));
@@ -2626,24 +2812,24 @@ static void plist_frame(void) {
         else if (nw) snprintf(row, sizeof row, TR("<color=#ccbeb8>On (%d)</color>"), nw);
         else snprintf(row, sizeof row, "%s", ui_col("#ccbeb8", TR("On")));
         plist_set(PL_SPECTR, row); }
-    plist_set(PL_TIPS, ui_col("#a69085", TR("Show tooltips on hover")));
+    plist_set(PL_TIPS, ui_col("#a69085", TR("Hover tooltips")));
     plist_set(PL_SIZE, ui_col("#a69085", TR("Panel size")));
     plist_set(PL_SIZER, uiset.compact ? ui_col("#ccbeb8", TR("Compact")) : ui_col("#ccbeb8", TR("Normal")));
     plist_set(PL_TEAMS, ui_col("#a69085", TR("Teams button")));
     plist_set(PL_TEAMSR, uiset.teams_button ? ui_col("#ccbeb8", TR("Show")) : ui_col("#ccbeb8", TR("Hide")));
     plist_set(PL_TIPSR, uiset.tooltips ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
-    plist_set(PL_HINT, TR("<size=86%><color=#a69085>Right-click and drag to move the multiplayer windows</color></size>"));
+    plist_set(PL_HINT, TR("<size=86%><color=#a69085>Right-click and drag to move these windows</color></size>"));
     { int fade = 12, join = 1, en = 1; chat_get(&fade, &join, &en);
-      plist_set(PL_CFADE, ui_col("#a69085", TR("Chat messages fade after")));
+      plist_set(PL_CFADE, ui_col("#a69085", TR("Chat fade time")));
       snprintf(row, sizeof row, TR("<color=#ccbeb8>%d s</color>"), fade); plist_set(PL_CFADER, row);
-      plist_set(PL_CJOIN, ui_col("#a69085", TR("Show join / leave lines")));
+      plist_set(PL_CJOIN, ui_col("#a69085", TR("Join / leave lines")));
       plist_set(PL_CJOINR, join ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
       plist_set(PL_CHAT, ui_col("#a69085", TR("Chat")));
       plist_set(PL_CHATR, en ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off"))); }
     plist_set(PL_ADMINR, admin_on() ? ui_col("#f16071", TR("On")) : ui_col("#ccbeb8", TR("Off")));
     /* lan_v10 rows */
     { static const struct { int lab, val; const char *txt; } onoff[] = { { PL_PINGS, PL_PINGSR, TR_NOOP("Show pings") }, { PL_PSOUND, PL_PSOUNDR, TR_NOOP("Ping sound") },
-          { PL_PCHAT, PL_PCHATR, TR_NOOP("Ping lines in chat") }, { PL_VIEWS, PL_VIEWSR, TR_NOOP("Show friends' views") }, { PL_OFFS, PL_OFFSR, TR_NOOP("Show off-screen friends") } };
+          { PL_PCHAT, PL_PCHATR, TR_NOOP("Ping lines in chat") }, { PL_VIEWS, PL_VIEWSR, TR_NOOP("Show friends' views") }, { PL_OFFS, PL_OFFSR, TR_NOOP("Off-screen friends") } };
       int vals[5] = { uiset.pings, uiset.ping_sound, uiset.ping_chat, uiset.views, uiset.offscreen };
       for (int k = 0; k < 5; k++) { snprintf(row, sizeof row, "<color=#a69085>%s</color>", TR(onoff[k].txt)); plist_set(onoff[k].lab, row);
                                     plist_set(onoff[k].val, vals[k] ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off"))); }
@@ -2690,8 +2876,7 @@ static void plist_frame(void) {
     }
     /* lan_v8: the player may drag the panel; its place is saved in mp_ui.json (pos_*), else the default place */
     float L = uiset.pos_set ? (float)uiset.pos_x : PL_LEFT, Y0 = uiset.pos_set ? (float)uiset.pos_y : pl_y0;
-    pl_cur_L = L; pl_cur_Y = Y0; pl_shown = 1;
-    { Obj g = layer_of_panel(); float k = uiset.compact ? 0.75f : 1.0f; if (g) u_rt_set_pos(g, (1 - k) * L, (1 - k) * Y0); }
+    pl_shown = 1;
     float x = L + PL_PAD, inner = PL_W - 2 * PL_PAD, y = Y0 - 2;
     int open_ = uiset.list_open;
     /* header */
@@ -2717,20 +2902,40 @@ static void plist_frame(void) {
     /* status row (lan_v9 owner: collapsed = the header line only) */
     Obj ts = u_gc_get(h_pl[PL_STATUS]);
     int vs = open_ && status_text[0] != 0;
-    show(ts, vs); if (vs) { place(ts, x, y - 2, inner, 26); y -= 28; }
+    /* uxpass: a long line ("Waiting for Ben · 1:05 · press Play ...", DE / RU) takes the lines it needs, never over the rows */
+    show(ts, vs); if (vs) { float sh = txt_fit_h(ts, inner, 26); place(ts, x, y - 2, inner, sh); y -= sh + 2; }
     /* player rows, or the settings rows (cog) */
     Obj tb = u_gc_get(h_pl[PL_BODY]), tbr = u_gc_get(h_pl[PL_BODYR]);
     int show_rows = open_ && !pl_pop;
-    show(tb, show_rows); show(tbr, show_rows);
-    for (int r = 0; r < PL_MAXROWS; r++) { show(u_gc_get(h_rowbg[r]), show_rows && r < rows); bars_hide(r); }
+    show(tb, 0); show(tbr, 0);                               /* uxpass round 2: their texts stay (tests); the rows below draw */
+    for (int r = 0; r < PL_MAXROWS; r++) {
+        int on_ = show_rows && r < rows;
+        show(u_gc_get(h_rowbg[r]), on_); show(u_gc_get(h_rname[r]), on_); show(u_gc_get(h_rright[r]), on_); bars_hide(r);
+    }
     if (show_rows) {
+        /* uxpass round 2 (review_de #1, #2): each row is its own name + right text. The name ends before the right text
+           ("Du", "Direkt (127.0.0.1:47777)") and the bars; a name too long there even at 0.75 (12 CJK characters) takes
+           the row's whole width and the right text goes on a small line under it, in the same row (the row grows) */
+        float ry = y;
         for (int r = 0; r < rows; r++) {
-            place(u_gc_get(h_rowbg[r]), L + 2, y - PL_ROW_H * (float)r, PL_W - 4, PL_ROW_H);
-            if (lvl[r] >= 0) bars_put(r, lvl[r], L + PL_W - PL_PAD - 18, y - PL_ROW_H * (float)r - 9);
+            Obj tn = u_gc_get(h_rname[r]), tr_ = u_gc_get(h_rright[r]);
+            obj_text(tn, pl_rl[r]); obj_text(tr_, pl_rr[r]);
+            float bw = lvl[r] >= 0 ? 26 : 0, rw = strcmp(pl_rr[r], " ") ? tmp_pref_w(tr_) + 2 : 0;
+            float wn = inner - bw - (rw > 0 ? rw + 8 : 0), nh = 26, rh = PL_ROW_H, uh = lang_cjk() ? 20 : 16;   /* uh: the small line (CJK 14 pt) */
+            int under = 0;
+            if (wn < 40 || txt_fit_h(tn, wn, 26) > 26.5f) {
+                under = rw > 0; wn = inner - bw;
+                nh = txt_fit_h(tn, wn, 26);
+                rh = nh + (under ? uh : 0) + 6; if (rh < PL_ROW_H) rh = PL_ROW_H;
+            }
+            place(u_gc_get(h_rowbg[r]), L + 2, ry, PL_W - 4, rh);
+            place(tn, x, ry - 3, wn, nh);
+            if (under) place(tr_, x, ry - 3 - nh, inner - bw, uh);
+            else place(tr_, x + inner - bw - rw, ry - 3, rw > 0 ? rw : 1, 26);
+            if (lvl[r] >= 0) bars_put(r, lvl[r], L + PL_W - PL_PAD - 18, ry - 9);
+            ry -= rh;
         }
-        place(tb, x, y + 1, inner - 60, PL_ROW_H * (float)rows);
-        place(tbr, x, y + 1, inner, PL_ROW_H * (float)rows);
-        y -= PL_ROW_H * (float)rows;
+        y = ry;
     }
     y = host_addr_rows(show_rows && host, x, inner, L, y);
     /* settings: everyone: see-through, names, tooltips; host: units per player, admin; then the move hint (lan_v8) */
@@ -2743,24 +2948,112 @@ static void plist_frame(void) {
         if (!in) show(u_gc_get(h_pl[i]), 0);
     }
     for (int k = nset; k < PL_SETMAX; k++) { show(u_gc_get(h_set_arrow[2 * k]), 0); show(u_gc_get(h_set_arrow[2 * k + 1]), 0); }
+    /* uxpass: a label or value too long even at 0.75 (DE "Freunde außerhalb des Bildschirms anzeigen", ES, FR, RU)
+       wraps: its row grows to the lines it needs (it ran over the next row); the arrows stay centred on the row */
+    float ry = y - 6;
     for (int k = 0; k < nset; k++) {
         int vis = 1;
-        show(u_gc_get(h_pl[lab[k]]), vis); show(u_gc_get(h_pl[val[k]]), vis);
+        Obj tl = u_gc_get(h_pl[lab[k]]), tv = u_gc_get(h_pl[val[k]]);
+        show(tl, vis); show(tv, vis);
         show(u_gc_get(h_set_arrow[2 * k]), vis); show(u_gc_get(h_set_arrow[2 * k + 1]), vis);
-        float ry = y - 6 - PL_SET_H * (float)k;
-        place(u_gc_get(h_pl[lab[k]]), x, ry, 160, PL_SET_H);
-        place(u_gc_get(h_set_arrow[2 * k]), L + PL_W - PL_PAD - 22 - 72 - 22, ry - 4, 20, 20);
-        place(u_gc_get(h_pl[val[k]]), L + PL_W - PL_PAD - 22 - 72, ry, 72, PL_SET_H);
-        place(u_gc_get(h_set_arrow[2 * k + 1]), L + PL_W - PL_PAD - 22, ry - 4, 20, 20);
+        /* round 2 (review_de #4, #28, #29): labels wrap at 14 (txt_text_h) with room between rows; the value box sits 4
+           units from each arrow ("Deaktiviert" touched the right one) */
+        /* final review (de F5): at 960 / 1728 "Deaktiviert" (72 wide) touched the right arrow and "Namen über Einheiten" (147)
+           the left one: the label wraps at 144 (8 units = 4 px at 960 before the arrow); a value that fits 64 at the floor
+           (12, CJK 14) sits in 64 (12 units each side), only a longer one (ES "Desactivado") keeps the whole 72 */
+        float lw = 144, ra = L + PL_W - PL_PAD - 20, vx = ra - 4 - 80, la = vx - 4 - 20;
+        float vw = tmp_pref_w(tv) * (lang_cjk() ? 1.0f : 12.0f / 14.0f) <= 64 ? 64 : 72;   /* preferred width at the design size 14 */
+        float th = txt_text_h(tl, lw), rh = th > 24 ? th + 10 : PL_SET_H, hv = txt_fit_h(tv, vw, PL_SET_H);   /* one line: about 20 */
+        if (hv > PL_SET_H) hv += 6;
+        if (hv > rh) rh = hv;
+        if (rh < PL_SET_H) rh = PL_SET_H;
+        place(tl, x, ry, lw, rh);
+        place(u_gc_get(h_set_arrow[2 * k]), la, ry - (rh - 20) / 2, 20, 20);
+        place(tv, vx + 4 + (72 - vw) / 2, ry, vw, rh);        /* a long value (RU "Остальные") shrinks to fit */
+        place(u_gc_get(h_set_arrow[2 * k + 1]), ra, ry - (rh - 20) / 2, 20, 20);
+        ry -= rh;
     }
     Obj th2 = u_gc_get(h_pl[PL_HINT]);
     show(th2, nset > 0);
-    if (nset) { y -= 6 + PL_SET_H * (float)nset; place(th2, x, y - 2, inner, 20); y -= 26; }
+    if (nset) { y = ry; float hh = txt_text_h(th2, inner) + 4; if (hh < 20) hh = 20; place(th2, x, y - 4, inner, hh); y -= hh + 10; }   /* wraps at its size (round 2: it shrank to a tiny line on the border) */
     Obj tn = u_gc_get(h_pl[PL_NOTE]);
     show(tn, open_ && note[0] != 0);
-    if (open_ && note[0]) { int nlines = 1 + (strchr(note, '\n') != NULL); place(tn, x, y - 4, inner, 20.0f * (float)nlines); y -= 20.0f * (float)nlines + 6; }
+    if (open_ && note[0]) {                                  /* one line per absent player, each may wrap */
+        int nlines = 1; for (const char *q = note; *q; q++) nlines += *q == '\n';
+        float nh = txt_fit_h(tn, inner, 20.0f * (float)nlines);
+        place(tn, x, y - 4, inner, nh); y -= nh + 6;
+    }
     Obj fr = u_gc_get(h_plate);
-    show(fr, 1); place(fr, L, Y0, PL_W, Y0 - y + 4);
+    float ph = Y0 - y + 4;
+    show(fr, 1); place(fr, L, Y0, PL_W, ph);
+    /* uxpass: the panel stays inside the game window at every size: a place saved on a wider window (or dragged past an
+       edge) is drawn inside it, and a panel taller than the window (all settings rows, long texts) is drawn smaller.
+       pos_x / pos_y keep the player's place; pl_cur_* is where it is drawn (drag, Teams button, viewer box use it). */
+    float k = uiset.compact ? 0.75f : 1.0f, dl = L, dy = Y0, sx0, sx1, syb;
+    if (layer_screen(&sx0, &sx1, &syb)) {
+        float room = -2 - (syb + 8);
+        if (ph * k > room && ph > 1) k = room / ph;
+        layer_keep_in(PL_W * k, ph * k, &dl, &dy);
+    }
+    /* uxpass (lead 2026-10-21): while the Teams window is open (not folded) the panel sits in the window's title band, left
+       of the title (it covered the "Your units" slots and hint, before-shot 25_teams_guest); a band too narrow even at
+       0.6: just above the window's top edge, else inside its top-left corner. The player's own place (pos_x / pos_y)
+       is untouched, so it comes back when Teams closes; no drag while it sits there. */
+    pl_in_band = 0;
+    { static int (*band)(float *); static unsigned tries; float b[5]; Obj top = layer_top();
+      if (!band && tries++ % 50 == 0) band = (int (*)(float *))dlsym(RTLD_DEFAULT, "ui_teams_band_rect");
+      if (band && top && band(b)) {
+          float bx0, by0, bx1, by1, wy, t_;
+          scr_to_layer(top, b[0], b[1], &bx0, &by0); scr_to_layer(top, b[0] + b[2], b[1] + b[3], &bx1, &by1); scr_to_layer(top, b[0], b[4], &t_, &wy);
+          float kb = k, hh = PL_HDR_H;
+          if (PL_W * kb > bx1 - bx0) kb = (bx1 - bx0) / PL_W;
+          if (kb >= 0.6f) { k = kb; dl = bx0; dy = (by0 + by1) / 2 + hh * k / 2; }
+          else if (wy + hh * k + 4 <= -2) { dl = bx0; dy = wy + hh * k + 4; }   /* above the window */
+          else { dl = bx0; dy = wy - 4; }                                       /* inside its top-left corner */
+          pl_in_band = 1;
+      } }
+    pl_k = k;
+    Obj g = layer_of_panel();                                /* the group scales around the layer's origin: shift it so the
+                                                                drawn top-left corner is (dl, dy) */
+    if (g) {
+        V3 cur = F(0x510AEFC, V3 (*)(Obj, void *))(g, NULL);
+        if (cur.x != k) F(0x510AFF8, void (*)(Obj, V3, void *))(g, (V3){ k, k, 1 }, NULL);
+        u_rt_set_pos(g, dl - k * L, dy - k * Y0);
+    }
+    pl_cur_L = dl; pl_cur_Y = dy;
+}
+/* uxpass: the map vote strip of the proposer (6, w x h layer units, top-left out): under the pause banner's line (it sat at
+   y -150, over the bottom of the portrait cards), under the portrait bar, and never under the Players panel (the panel's
+   layer draws above it: the start of the line was hidden). Kept inside the game window. */
+static float rect_bottom_layer(Obj top, Obj t) {             /* bottom edge of a shown RectTransform in top-layer units; 1 = none */
+    if (!u_alive(t) || !ui_is(u_tr(t), K_RT) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(t), NULL)) return 1;
+    Obj rt = u_tr(t); RectF4 q = F(0x5106978, RectF4 (*)(Obj, void *))(rt, NULL);
+    V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ q.x, q.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ q.x + q.w, q.y + q.h, 0 }, NULL);
+    float ux, uy; scr_to_layer(top, a.x, a.y < b.y ? a.y : b.y, &ux, &uy);   /* overlay canvases: world = screen pixels */
+    return uy;
+}
+static void strip_place(float w, float h, float *x, float *y) {
+    Obj top = layer_top();
+    *x = -w / 2; *y = pl_anchor_bar && pl_y0 < -150 ? pl_y0 - 4 : -150;
+    if (!top) return;
+    float yb = rect_bottom_layer(top, u_gc_get(h_pause_line));
+    if (yb > 0) {                                            /* no pause line yet: the banner's own text */
+        Obj pv = pause_view(), pgo = pv ? AT(pv, 0x30, Obj) : NULL, tt = type_of("TMPro", "TMP_Text");
+        Obj ptx = u_alive(pgo) && tt ? F(0x50EDDF4, Obj (*)(Obj, Obj, bool, void *))(F(0x50F300C, Obj (*)(Obj, void *))(pgo, NULL), tt, false, NULL) : NULL;
+        yb = rect_bottom_layer(top, ptx);
+    }
+    if (yb <= 0 && yb - 8 < *y) *y = yb - 8;
+    Obj pl = u_gc_get(h_plate);
+    if (pl_shown && u_alive(pl)) {
+        float pw = PL_W * pl_k, ph = u_rt_size(u_tr(pl)).y * pl_k, sx0, sx1, syb;
+        int over = *x < pl_cur_L + pw && *x + w > pl_cur_L && *y > pl_cur_Y - ph && *y - h < pl_cur_Y;
+        if (over && layer_screen(&sx0, &sx1, &syb)) {
+            if (pl_cur_L + pw + 12 + w <= sx1 - 8) *x = pl_cur_L + pw + 12;   /* right of the panel */
+            else if (pl_cur_L - 12 - w >= sx0 + 8) *x = pl_cur_L - 12 - w;   /* left of it */
+            else *y = pl_cur_Y - ph - 10;                                  /* under it */
+        }
+    }
+    layer_keep_in(w, h, x, y);
 }
 /* clicks: header / collapse button (open / shut), cog (settings rows), the settings arrows */
 static int force_world;
@@ -2849,7 +3142,7 @@ static uintptr_t h_tip_box, h_tip_txt; static double tip_until; static char tip_
 void ui_tooltip(const char *text) {
     Obj root = layer_top();
     settings_load();
-    if (!root || !text || !uiset.tooltips) return;          /* "Show tooltips on hover" off: none of ours */
+    if (!root || !text || !uiset.tooltips) return;          /* "Hover tooltips" off: none of ours */
     Obj box = u_gc_get(h_tip_box), tx = u_gc_get(h_tip_txt);
     if (!u_alive(box)) {
         static uintptr_t h_noticev;
@@ -2870,7 +3163,8 @@ void ui_tooltip(const char *text) {
     V3 rls = F(0x510F4F8, V3 (*)(Obj, void *))(root, NULL); float sc = rls.x > 0.01f ? rls.x : 1;   /* the top layer (not compact) */
     float ux = (m3.x - (rp.x + (rr.x + rr.w / 2) * sc)) / sc, uy = (m3.y - (rp.y + (rr.y + rr.h) * sc)) / sc;
     show(box, 1); show(tx, 1);
-    place(box, ux + 14, uy - 14, w, 30); place(tx, ux + 24, uy - 17, w - 10, 24);
+    float bx = ux + 14, by = uy - 14; layer_keep_in(w, 30, &bx, &by);   /* uxpass: near the right / bottom edge it went off screen */
+    place(box, bx, by, w, 30); place(tx, bx + 10, by - 3, w - 10, 24);
     u_set_sibling(u_tr(box), 1 << 20); u_set_sibling(u_tr(tx), 1 << 20);
     tip_until = now_s() + 0.2;
 }
@@ -2879,11 +3173,11 @@ static void tooltip_frame(void) {
 }
 /* lan_v8: the panel's header rect for the Teams HUD button (it sits right of it). 1 = the panel shows */
 int ui_panel_anchor(float *x, float *y, float *w, float *h) {   /* the header AS DRAWN (Compact: the corner stays, size x 0.75) */
-    float k = uiset.compact ? 0.75f : 1.0f;
+    float k = pl_k;                                          /* uxpass: as drawn (Compact, or smaller to fit the window) */
     if (x) *x = pl_cur_L; if (y) *y = pl_cur_Y; if (w) *w = PL_W * k; if (h) *h = PL_HDR_H * k;
     return pl_shown;
 }
-int ui_tooltips_enabled(void) { settings_load(); return uiset.tooltips; }   /* ui_tip.c (dlsym): "Show tooltips on hover" */
+int ui_tooltips_enabled(void) { settings_load(); return uiset.tooltips; }   /* ui_tip.c (dlsym): "Hover tooltips" */
 static int pl_drag_arm, pl_dragging; static float pl_drag_mx, pl_drag_my, pl_drag_L, pl_drag_Y;
 static void plist_mouse(void) {
     Obj hdr = u_gc_get(h_pl[PL_HDR]);
@@ -2892,7 +3186,7 @@ static void plist_mouse(void) {
     float mx = m3.x, my = m3.y;
     /* tooltips (connection bars, header): tips_frame, the game's tooltip window (lan_v9) */
     /* move the panel: RIGHT-click + drag on its header (owner, lan_v8); left click keeps its normal action */
-    if (!pl_drag_arm && F(0x51ACDD0, bool (*)(int, void *))(1, NULL) && (ui_hit(hdr, mx, my) || ui_hit(u_gc_get(h_hdrbg), mx, my))) {
+    if (!pl_drag_arm && !pl_in_band && F(0x51ACDD0, bool (*)(int, void *))(1, NULL) && (ui_hit(hdr, mx, my) || ui_hit(u_gc_get(h_hdrbg), mx, my))) {
         pl_drag_arm = 1; pl_dragging = 0; pl_drag_mx = mx; pl_drag_my = my; pl_drag_L = pl_cur_L; pl_drag_Y = pl_cur_Y;
         return;
     }
@@ -3021,6 +3315,7 @@ static void ol_set(Obj eg, int on_, GCol c) {
     ol[k].c = c; AT(eg, 0x34, float) = 1; AT(eg, 0x38, GCol) = c;
     if (o_eg_apply) o_eg_apply(eg, NULL);
 }
+static int sel_friend_of(const uint8_t g[16]);
 static void world_frame(int force) {
     Obj srt = u_gc_get(h_srtype);
     if (!srt) { srt = type_of("UnityEngine", "SpriteRenderer"); if (!srt) return; h_srtype = u_gc_new(srt); }
@@ -3042,6 +3337,8 @@ static void world_frame(int force) {
           int own_ = pu2 && e2 == me(), fr_ = pu2 && e2 >= 0 && e2 != me();
           int want_ol = (own_ && (uiset.outline & UI_OUTLINE_OWN)) || (fr_ && (uiset.outline & UI_OUTLINE_FRIENDS));
           const char *hx = own_ ? UI_OWN_ACCENT : fr_ ? ui_player_color(e2) : "#ffffff";
+          int sp_ = pu2 ? sel_friend_of((const uint8_t *)e + UNIT_GUID) : -1;   /* unitsel B1: a friend selected it: glow in his colour */
+          if (sp_ >= 0) { want_ol = 1; hx = ui_player_color(sp_); }
           int sig = want_ol ? 1 + (int)(strtoul(hx + 1, NULL, 16) & 0xFFFFFF) : 0;
           if (sig != uo[i].ol_sig || (force && sig)) {
               Obj eg = u_gc_get(uo[i].eg);
@@ -3101,7 +3398,9 @@ static void order_frame(void) {
 static char *ui_view_cmd(void) {
     Buf b = {0}; char t[1024];
     Obj v = pause_view();
-    bput(&b, "{\"ok\":true,\"pause_panel\":%d,\"pause_line\":", u_alive(v) ? u_go_active_self(AT(v, 0x30, Obj)) : -1);
+    bput(&b, "{\"ok\":true,\"pause_panel\":%d,", u_alive(v) ? u_go_active_self(AT(v, 0x30, Obj)) : -1);
+    { Obj ck = u_gc_get(h_clock); Obj vf = u_alive(ck) ? AT(ck, 0x60, Obj) : NULL, fa = u_alive(ck) ? AT(ck, 0x58, Obj) : NULL;   /* speed buttons: very fast must stay hidden */
+      bput(&b, "\"very_fast\":%d,\"fast\":%d,\"pause_line\":", u_alive(vf) ? (int)u_go_active_self(u_go(vf)) : -1, u_alive(fa) ? (int)u_go_active_self(u_go(fa)) : -1); }
     Obj pl = u_gc_get(h_pause_line); str_utf8(u_alive(pl) ? tmp_get(pl) : NULL, t, sizeof t); bstr(&b, t);
     Obj li = u_gc_get(h_pl[PL_BODY]); str_utf8(u_alive(li) ? tmp_get(li) : NULL, t, sizeof t);
     bput(&b, ",\"player_list\":"); bstr(&b, t);
@@ -3209,8 +3508,32 @@ static void filter_list(Obj list) {
 }
 static void (*o_sel_select)(Obj, Obj, void *);
 static void (*o_sel_toggle)(Obj, Obj, void *);
-static void hk_sel_select(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_select(sp, list, mi); }
-static void hk_sel_toggle(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_toggle(sp, list, mi); }
+void pvp_select_after(Obj select_data) __attribute__((weak_import));   /* pvp_game.c (E7b): an enemy PvP unit is never selected as mine */
+static void hk_sel_select(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_select(sp, list, mi); if (pvp_select_after && sp) pvp_select_after(AT(sp, 0x10, Obj)); }
+static void hk_sel_toggle(Obj sp, Obj list, void *mi) { filter_list(list); o_sel_toggle(sp, list, mi); if (pvp_select_after && sp) pvp_select_after(AT(sp, 0x10, Obj)); }
+
+/* 8a2. unitsel B2 (owner feedback v0.1.20): a unit that changes owner (Teams, lend, take back) leaves the selection of
+   every player who could order it and no longer can, so nobody keeps giving orders to units he does not own. Only the
+   change counts: a friend's unit you click to look at stays selected. Local UI, between frames (never in a step). */
+int ord_select_units(int map, const uint8_t (*g)[16], int n) __attribute__((weak_import));
+int ord_debug_selection(uint8_t (*out)[16], int max, int *group) __attribute__((weak_import));
+static uint8_t selown_ok[32][16]; static int selown_n; static unsigned selown_dropped;
+static void sel_owner_frame(void) {
+    dsnet_client *c = cli();
+    if (!on() || !c || !ord_debug_selection || !ord_select_units || busy()) { selown_n = 0; return; }
+    uint8_t g[32][16]; int grp = 0, n = ord_debug_selection(g, 32, &grp);
+    if (grp < 3000 || grp > 3999) n = 0;                      /* units only */
+    uint8_t keep[32][16], ok[32][16]; int nk = 0, nok = 0, lost = 0;
+    for (int i = 0; i < n; i++) {
+        int may = dsnet_may_order(c, me(), g[i]);
+        int was = 0; for (int k = 0; k < selown_n && !was; k++) was = !memcmp(selown_ok[k], g[i], 16);
+        if (was && !may) { lost++; char un[64]; unit_name_g(g[i], un, sizeof un); rig_log("ui: %s left my selection: not mine any more (owner %d)", un, owner_of_guid(g[i])); continue; }
+        memcpy(keep[nk++], g[i], 16);
+        if (may) memcpy(ok[nok++], g[i], 16);
+    }
+    if (lost) { ord_select_units(cur_map(), (const uint8_t (*)[16])keep, nk); selown_dropped += (unsigned)lost; }
+    memcpy(selown_ok, ok, (size_t)nok * 16); selown_n = nok;
+}
 
 /* 8b. Expedition window: only my units. SubUI_SelectRegionUI.InitOnActivate 0xEF3A80 gets the playerUnits
    List<UnitEntity>; SubUI_SelectRegionUI.SetUnit 0xEF42E0 gets the presenter's selected party List<Guid>
@@ -3258,10 +3581,12 @@ static void banner_frame(void) {
             if (pu && !may_order(o)) foreign = o;
         }
     }
-    Obj views[2] = { find_view(&h_status_ui, "Refactor.UI", "EntityStatusUI"), find_view(&h_skill_ui, "Refactor.UI", "EntitySkillUI") };
+    /* fpsfix: no session = no banner (show needs foreign != -2): no view lookups at all (FindObjectOfType, 2x per second) */
+    Obj views[2] = { NULL, NULL };
+    if (on()) { views[0] = find_view(&h_status_ui, "Refactor.UI", "EntityStatusUI"); views[1] = find_view(&h_skill_ui, "Refactor.UI", "EntitySkillUI"); }
     /* the cached view can be an inactive copy (other screens clone UI prefabs): look for an active one, at most every 1 s */
     static double relook;
-    if (now_s() > relook) {
+    if (on() && now_s() > relook) {
         relook = now_s() + 1;
         uintptr_t *hs[2] = { &h_status_ui, &h_skill_ui }; const char *nm[2] = { "EntityStatusUI", "EntitySkillUI" };
         for (int k = 0; k < 2; k++)
@@ -3365,9 +3690,11 @@ static void mapchange_frame(void) {
    lives on the host; mp_game already refuses a guest save). SystemMenuView._saveCampaignButton +0x50,
    SubUI_SystemMenuButton._buttonName +0x28, SetInteractable 0xF2DC14 (as mpmenu does for Load). */
 static char save_label[128]; static int save_label_ours;   /* 1 = this build wrote its own text into the stock Save label */
+int fe_world_hub_any(void);                                  /* fe_game.c: the Foreign Expedition hub, never saved (mp_game.c) */
 static void esc_save_frame(void) {
     static double next_look;
-    if (!on() && !save_label[0]) return;                     /* single player: stock, nothing to restore */
+    int hub = fe_world_hub_any();                            /* the host's Save too (owner 2026-10-25), even with multiplayer off */
+    if (!on() && !save_label[0] && !hub) return;             /* single player: stock, nothing to restore */
     if (!u_alive(u_gc_get(h_sysmenu))) {                     /* not built yet: look for it at most every 2 s */
         if (now_s() < next_look) return;
         next_look = now_s() + 2;
@@ -3382,11 +3709,11 @@ static void esc_save_frame(void) {
     if (save_label_ours && save_label[0]) { tmp_set(t, save_label); save_label_ours = 0; }   /* by state, not by text (i18n): nothing writes it now */
     Obj tf = AT(v, 0x58, Obj);
     int guest = on() && me() != 0;
-    if (guest) {
+    if (guest || hub) {
         if (!save_label[0]) snprintf(save_label, sizeof save_label, "%s", cur);
         dis_apply(&esc_dis, sb);                                 /* first: it skips buttons that are already off */
         F(0xF2DC14, void (*)(Obj, bool, void *))(sb, false, NULL);              /* SubUI_SystemMenuButton.SetInteractable */
-        if (u_alive(tf)) F(0xF7B154, void (*)(Obj, Obj, bool, void *))(tf, u_str(spect() ? TR("You are watching: only the host saves this world") : TR("Only the host saves this world")), false, NULL);
+        if (u_alive(tf)) F(0xF7B154, void (*)(Obj, Obj, bool, void *))(tf, u_str(hub ? TR("The hub is never saved: a new one is made for each session") : spect() ? TR("You are watching: only the host saves this world") : TR("Only the host saves this world")), false, NULL);
     } else if (save_label[0]) {
         F(0xF2DC14, void (*)(Obj, bool, void *))(sb, true, NULL);
         dis_restore(&esc_dis);
@@ -3496,6 +3823,18 @@ static int lmenu_build(void) {                               /* the menu frame +
     }
     return u_alive(u_gc_get(h_lmenu));
 }
+/* uxpass: the menu as wide as its longest row (at least 240: "Give back <long unit name>", long names, DE / RU) and
+   inside the game window (a panel dragged to the right edge opened the player menu past it). x: the left edge, or the
+   centre when centred. The rows' texts are set first (lmenu_draw). */
+static void lmenu_place(float x, float y, int centred) {
+    float w = 240, h = 26.0f * (float)lmenu_n + 12;
+    for (int i = 0; i < lmenu_n; i++) { float pw = tmp_pref_w(u_gc_get(h_lrow[i])) + 24; if (pw > w) w = pw; }
+    if (centred) x -= w / 2;
+    layer_keep_in(w, h, &x, &y);
+    Obj fr = u_gc_get(h_lmenu);
+    show(fr, 1); place(fr, x, y, w, h); u_set_sibling(u_tr(fr), 1 << 20);
+    for (int i = 0; i < lmenu_n; i++) { Obj t = u_gc_get(h_lrow[i]); show(t, 1); place(t, x + 12, y - 6 - 26.0f * (float)i, w - 24, 26); u_set_sibling(u_tr(t), 1 << 20); }
+}
 /* open the menu under a portrait; 1 = opened (the right-click is ours) */
 static int lmenu_open(Obj parts, Obj unit) {
     dsnet_client *c = cli();
@@ -3514,12 +3853,8 @@ static int lmenu_open(Obj parts, Obj unit) {
     if (!lmenu_build()) return 0;
     memcpy(lmenu_unit, g, 16); lmenu_n = n; lmenu_hover = -1; lmenu_player = -1;
     float cx, bot; card_anchor(parts, &cx, &bot);
-    float w = 240, x = cx - w / 2, y = bot - 6;
-    Obj fr = u_gc_get(h_lmenu);
-    show(fr, 1); place(fr, x, y, w, 26.0f * (float)n + 12);
-    u_set_sibling(u_tr(fr), 1 << 20);
-    for (int i = 0; i < n; i++) { Obj t = u_gc_get(h_lrow[i]); show(t, 1); place(t, x + 12, y - 6 - 26.0f * (float)i, w - 24, 26); u_set_sibling(u_tr(t), 1 << 20); }
     lmenu_draw();
+    lmenu_place(cx, bot - 6, 1);
     rig_log("ui: lend menu opened (%d rows)", n);
     return 1;
 }
@@ -3587,6 +3922,11 @@ static void lend_frame(void) {
             if (act == LA_TAKE) snprintf(t1, sizeof t1, TR("<color=#d9be8f>Lent to %s</color>"), pname(&p, ctl, nm, sizeof nm));
             else snprintf(t1, sizeof t1, TR("<color=#d9be8f>From %s</color>"), pname(&p, owner >= 0 ? owner : 0, nm, sizeof nm));
             line_text(lb, t1);
+            /* uxpass: "Lent to <name>" too long for the 76-wide plate even at 0.75 (DE / ES / KO / PT / RU with an 8-letter
+               name) wraps: the plate grows up over the portrait to the lines it needs (it ran out of the plate) */
+            float lh = txt_fit_h(lb, 76, 18);
+            if (u_alive(bg)) u_rt_set_size(u_tr(bg), 76, lh);
+            if (u_alive(lb)) { u_rt_set_size(u_tr(lb), 76, lh); u_rt_set_pos(u_tr(lb), 0, -lh / 2); }
             line_text(btx, act == LA_TAKE ? ui_col("#ccbeb8", TR("Take back")) : ui_col("#ccbeb8", TR("Give back")));
         }
     }
@@ -3727,7 +4067,7 @@ static void viewer_move_test(const char *line, int reset) {
     vpos_load(); vpos_set = !reset; vpos_x = (float)x; vpos_y = (float)(y > -2 ? -2 : y); vpos_save(); viewer_frame();
 }
 static void viewer_geom(float *g) {
-    Obj pl = u_gc_get(h_plate), bx = u_gc_get(h_vbox); float k = uiset.compact ? 0.75f : 1.0f;
+    Obj pl = u_gc_get(h_plate), bx = u_gc_get(h_vbox); float k = pl_k;
     g[0] = vb_cur_x; g[1] = vb_cur_y; g[2] = u_alive(bx) ? u_rt_size(u_tr(bx)).y : 0;
     g[3] = pl_cur_L; g[4] = pl_cur_Y; g[5] = u_alive(pl) ? u_rt_size(u_tr(pl)).x * k : 0; g[6] = u_alive(pl) && pl_shown ? u_rt_size(u_tr(pl)).y * k : 0;
     g[7] = pl_y0 + 6; g[8] = vpos_set;
@@ -3830,7 +4170,7 @@ static void viewer_frame(void) {
            with it, unless the player dragged it (right-click drag, own place in mp_ui_viewer.json) */
         vpos_load();
         hid = viewer_hidden; full = !viewer_min && !hid;
-        Obj pl = u_gc_get(h_plate); float k = uiset.compact ? 0.75f : 1.0f;
+        Obj pl = u_gc_get(h_plate); float k = pl_k;
         float ph = u_alive(pl) && pl_shown ? u_rt_size(u_tr(pl)).y * k : 0;
         if (vpos_set) { X0 = vpos_x; Y0 = vpos_y; }
         else { X0 = pl_shown ? pl_cur_L : PL_LEFT; Y0 = (pl_shown ? pl_cur_Y : pl_y0) - ph - 10; }
@@ -3854,6 +4194,7 @@ static void viewer_frame(void) {
     show(box, vis); show(tt, vis); show(lk, vis); show(u_gc_get(h_vtext), vis && full);
     for (int k = 0; k < 3; k++) { show(u_gc_get(h_vbtn_b[k]), vis && full); show(u_gc_get(h_vbtn_bg[k]), vis && full); show(u_gc_get(h_vbtn_t[k]), vis && full); }
     if (!vis) return;
+    layer_keep_in(bw, full ? 112 : 48, &X0, &Y0);           /* uxpass: a saved place from a wider window, or under a tall panel */
     vb_cur_x = X0; vb_cur_y = Y0;
     place(box, X0, Y0, bw, full ? 70 : 48);
     place(tt, X0 + 18, Y0 - 10, tw + 8, 28);
@@ -3970,6 +4311,8 @@ static void marks_api(void) {
     fn_mark_send = (int (*)(dsnet_client *, int, int, int, uint32_t, int, int))dlsym(RTLD_DEFAULT, "dsnet_mark_send");
     fn_mark_poll = (int (*)(dsnet_client *, dsnet_mark_ev *))dlsym(RTLD_DEFAULT, "dsnet_mark_poll");
 }
+int pvp_peer_hidden(int slot) __attribute__((weak_import));   /* pvp_game.c (E5): an opponent in a PvP match */
+static int peer_hidden(int pl) { return pvp_peer_hidden && pvp_peer_hidden(pl); }
 #define SFX_PING 233                                         /* SFXEnum UI_Alert_Tutorial: a stock UI notice sound */
 static ui_pings pings; static ui_spam ping_spam; static int ping_next_id; static uint32_t ping_mute;   /* mute: bit per slot */
 static double ping_sound_t[UI_MAX_PLAYERS], ping_cycle_t; static int ping_cycle_k;
@@ -4100,6 +4443,7 @@ static void marks_poll(void) {
     while (fn_mark_poll(c, &ev) == 1) {
         if (ev.from < 0 || ev.from >= UI_MAX_PLAYERS) continue;
         if (ev.map_key != coop_key()) { rig_log("ui: ping event from %d for another map (%08x): dropped", ev.from, ev.map_key); continue; }
+        if (ev.op == DSNET_MARK_ADD && peer_hidden(ev.from)) { rig_log("ui: ping of %d dropped: an opponent in the PvP match", ev.from); continue; }   /* E5: no sound, no mark */
         if (ev.op == DSNET_MARK_ADD) ping_add_local(ev.from, ev.id, ev.map_key, ev.x, ev.y);
         else if (ev.op == DSNET_MARK_DEL) { int d = ui_ping_del(&pings, ev.owner, ev.id); rig_log("ui: ping of %d (id %d) deleted by %d (%d)", ev.owner, ev.id, ev.from, d); }
     }
@@ -4211,7 +4555,7 @@ static void pings_draw(void) {
     for (int i = 0; i < UI_PING_MAX; i++) {
         ui_ping *p = &pings.p[i];
         int muted = p->owner != me() && (ping_mute >> (p->owner & 31) & 1u);
-        if (!vis_all || !p->used || p->map_key != key || muted || (!uiset.pings && p->owner != me())) { ping_hide(i); continue; }
+        if (!vis_all || !p->used || p->map_key != key || muted || (!uiset.pings && p->owner != me()) || peer_hidden(p->owner)) { ping_hide(i); continue; }   /* PvP (E5): no opponent's ping */
         Obj ring = u_gc_get(h_pring[i]), rip = u_gc_get(h_prip[i]), pin = u_gc_get(h_ppin[i]), nmt = u_gc_get(h_pname[i]), arw = u_gc_get(h_parrow[i]);
         Obj pinbg = u_gc_get(h_ppinbg[i]), arwt = u_gc_get(h_parrowt[i]);
         if (!u_alive(ring) || !u_alive(arw)) {
@@ -4290,6 +4634,7 @@ static void view_send(void) {
 }
 static int view_get(int pl, float v[4]) {                    /* a friend's view on this map, 1 = known */
     dsnet_client *c = cli(); uint32_t k = 0; double age = 0;
+    if (peer_hidden(pl)) return 0;                           /* PvP (E5): never an opponent's view (no corners, no follow) */
     if (!c || !fn_view_of || fn_view_of(c, pl, &k, v, &age) != 0) return 0;
     for (int i = 0; i < 4; i++) if (!isfinite(v[i]) || fabsf(v[i]) > 1e5f) return 0;   /* a bad packet never reaches the camera */
     return k == coop_key();
@@ -4382,6 +4727,136 @@ static void follow_frame(void) {
         cam_apply();
     }
     follow_set_pos = F(0xD23584, V3 (*)(Obj, void *))(cs, NULL); follow_set_o = F(0xD23590, float (*)(Obj, void *))(cs, NULL); follow_set = 1;   /* after the stock clamp */
+}
+/* 8m. Friends' selections (unitsel B1, owner feedback v0.1.20: "show the units another player has selected"). The
+   selection is local UI: each peer sends its own selected units as dsnet P_SEL (outside the sim like P_VIEW / P_MARK:
+   never stamped, never in saves, hashes or replays). Owner 2026-10-20 late: no ring; a unit a friend has selected
+   glows (the game's own unit outline, world_frame) in the colour of that friend's name, with a small name tag above
+   it (position from the sim, read only). Sent when the selection changes (at most 5 a second) and every 4 s; nothing
+   selected = an empty list. Look only, on this screen. */
+int dsnet_sel_send(dsnet_client *c, uint32_t map_key, const uint8_t (*guids)[16], int n) __attribute__((weak_import));
+int dsnet_sel_of(dsnet_client *c, int player, uint32_t *map_key, uint8_t (*out)[16], int max, double *age_ms) __attribute__((weak_import));
+#define SEL_MAX 24                                            /* = DSNET_SEL_MAX */
+#define SEL_RINGS 48
+static uintptr_t h_snm[SEL_RINGS];
+static struct { int player; uint8_t g[16]; float sx, sy; int on; } sel_drawn[SEL_RINGS];
+static int sel_ndrawn; static unsigned sel_sent_n;
+static uint64_t sel_last_sig; static double sel_last_send;
+static int sel_local(uint8_t (*g)[16], int max) {             /* own selected units (players' units only, no items / buildings) */
+    if (!ord_debug_selection) return 0;
+    uint8_t all[32][16]; int grp = 0, n = ord_debug_selection(all, 32, &grp), k = 0;
+    if (grp < 3000 || grp > 3999) return 0;                   /* SelectGroup UNIT_START..UNIT_END */
+    for (int i = 0; i < n && k < max; i++) memcpy(g[k++], all[i], 16);
+    return k;
+}
+static void sel_send(void) {
+    dsnet_client *c = cli();
+    if (!c || !dsnet_sel_send || spect()) return;
+    uint8_t g[SEL_MAX][16]; int n = coop_ok() ? sel_local(g, SEL_MAX) : 0;
+    uint32_t key = coop_key();
+    uint64_t sig = fnv(1469598103934665603ull, &key, sizeof key); sig = fnv(sig, &n, sizeof n);
+    if (n) sig = fnv(sig, g, (size_t)n * 16);
+    double t = now_s();
+    if ((sig == sel_last_sig && t - sel_last_send < 4) || t - sel_last_send < 0.2) return;
+    if (dsnet_sel_send(c, key, (const uint8_t (*)[16])g, n) == 0) {
+        if (sig != sel_last_sig) rig_log("ui: selection sent: %d unit(s) on map %08x", n, key);
+        sel_last_sig = sig; sel_last_send = t; sel_sent_n++;
+    }
+}
+static int unit_pos(const uint8_t g[16], float *x, float *y) {   /* sim position (pos_dict), read only */
+    Obj pd = pos_dict(cur_map()); Obj pe = pd ? AT(pd, 0x18, Obj) : NULL; int pn = pd ? AT(pd, 0x20, int32_t) : 0;
+    for (int q = 0; pe && q < pn; q++) {
+        char *e = (char *)pe + 0x20 + q * 0x20;
+        if (*(int32_t *)e < 0 || memcmp(e + 8, g, 16)) continue;
+        *x = *(float *)(e + 0x18); *y = *(float *)(e + 0x1C);
+        return 1;
+    }
+    return 0;
+}
+/* the friend (lowest slot) who has this unit selected on this map now, or -1 */
+static int sel_friend_of(const uint8_t g[16]) {
+    dsnet_client *c = cli();
+    if (!c || !dsnet_sel_of || !coop_ok()) return -1;
+    ui_players p; players(&p); uint32_t key = coop_key();
+    for (int pl = 0; pl < UI_MAX_PLAYERS; pl++) {
+        if (pl == me() || !(p.present >> pl & 1u)) continue;
+        uint8_t sg[SEL_MAX][16]; uint32_t mk = 0; double age = 0;
+        int n = dsnet_sel_of(c, pl, &mk, sg, SEL_MAX, &age);
+        if (n <= 0 || mk != key || age > 12000) continue;
+        for (int i = 0; i < n; i++) if (!memcmp(sg[i], g, 16)) return pl;
+    }
+    return -1;
+}
+static void sel_hide_from(int k) { for (int i = k; i < SEL_RINGS; i++) { show(u_gc_get(h_snm[i]), 0); sel_drawn[i].on = 0; } }
+static void sels_draw(void) {                                /* the name tags (the glow itself: world_frame) */
+    static int drawn;
+    dsnet_client *c = cli(); Obj ml = mlayer();
+    int ok = c && dsnet_sel_of && coop_ok() && ml && cam_main();
+    int k = 0;
+    if (ok) {
+        ui_players p; players(&p);
+        uint32_t key = coop_key();
+        float km = layer_k(ml);
+        V3 a0 = w2s(0, 0), a1 = w2s(1, 0); float cell = (a1.x - a0.x) / km; if (cell < 4) cell = 4;
+        float sw = (float)scr_w(), sh = (float)scr_h();
+        uint8_t done[SEL_RINGS][16]; int ndone = 0;           /* a unit two friends selected: the second tag above the first */
+        for (int pl = 0; pl < UI_MAX_PLAYERS && k < SEL_RINGS; pl++) {
+            if (pl == me() || !(p.present >> pl & 1u)) continue;
+            uint8_t g[SEL_MAX][16]; uint32_t mk = 0; double age = 0;
+            int n = dsnet_sel_of(c, pl, &mk, g, SEL_MAX, &age);
+            if (n <= 0 || mk != key || age > 12000) continue;
+            const char *hex = ui_player_color(pl);
+            char nm[40], tx[96]; snprintf(tx, sizeof tx, "<color=%s>%s</color>", hex, ui_player_label(&p, pl, nm));
+            for (int i = 0; i < n && k < SEL_RINGS; i++) {
+                float wx, wy; if (!unit_pos(g[i], &wx, &wy)) continue;
+                V3 sp = w2s(wx, wy);
+                if (sp.x < -cell * km || sp.y < -cell * km || sp.x > sw + cell * km || sp.y > sh + cell * km) continue;   /* off screen */
+                int twice = 0; for (int d = 0; d < ndone; d++) twice += !memcmp(done[d], g[i], 16);
+                if (ndone < SEL_RINGS) memcpy(done[ndone++], g[i], 16);
+                Obj nt = u_gc_get(h_snm[k]);
+                if (!u_alive(nt)) {
+                    nt = line_clone(ml, 0.5f, 160, 18, 0);
+                    if (nt) { pivot_centre(nt); if (ui_is(nt, K_TMP)) tmp_style(nt, u_gc_get(h_lora), 12, 514); }
+                    u_gc_free(h_snm[k]); h_snm[k] = u_gc_new(nt);
+                }
+                float ux, uy; scr_to_layer(ml, sp.x, sp.y, &ux, &uy);
+                show(nt, 1); line_text(nt, tx); place(nt, ux, uy + cell * 0.9f + 8 + 14 * (float)twice, 160, 18);
+                sel_drawn[k].player = pl; memcpy(sel_drawn[k].g, g[i], 16); sel_drawn[k].sx = sp.x; sel_drawn[k].sy = sp.y; sel_drawn[k].on = 1;
+                k++;
+            }
+        }
+    }
+    sel_ndrawn = k;
+    if (k || drawn) sel_hide_from(k);
+    drawn = k > 0;
+}
+/* test probe: ui_selshow -> what this peer sends and draws */
+static char *selshow_exec(const char *line) {
+    (void)line;
+    dsnet_client *c = cli(); ui_players p; players(&p);
+    uint8_t mine[SEL_MAX][16]; int nm_ = coop_ok() ? sel_local(mine, SEL_MAX) : 0;
+    V3 mpx = mouse_px();
+    Buf b = {0}; bput(&b, "{\"ok\":true,\"me\":%d,\"api\":%d,\"key\":%u,\"sent\":%u,\"over_ui\":%d,\"mouse\":[%.0f,%.0f],\"mine\":[", me(), dsnet_sel_send != NULL, coop_key(), sel_sent_n,
+                          scene() == 2 ? over_ui() : -1, mpx.x, mpx.y);
+    for (int i = 0; i < nm_; i++) { char t[40]; Guid gg; memcpy(&gg, mine[i], 16); guid_str(gg, t); bput(&b, "%s\"%s\"", i ? "," : "", t); }
+    bput(&b, "],\"friends\":[");
+    int first = 1;
+    for (int pl = 0; c && dsnet_sel_of && pl < UI_MAX_PLAYERS; pl++) {
+        if (pl == me() || !(p.present >> pl & 1u)) continue;
+        uint8_t g[SEL_MAX][16]; uint32_t mk = 0; double age = 0; int n = dsnet_sel_of(c, pl, &mk, g, SEL_MAX, &age);
+        bput(&b, "%s{\"player\":%d,\"n\":%d,\"key\":%u,\"age_ms\":%.0f,\"units\":[", first ? "" : ",", pl, n, mk, age); first = 0;
+        for (int i = 0; i < n; i++) { char t[40]; Guid gg; memcpy(&gg, g[i], 16); guid_str(gg, t); bput(&b, "%s\"%s\"", i ? "," : "", t); }
+        bput(&b, "]}");
+    }
+    bput(&b, "],\"tags\":[");
+    for (int i = 0; i < sel_ndrawn; i++) { char t[40]; Guid gg; memcpy(&gg, sel_drawn[i].g, 16); guid_str(gg, t);
+        Obj r = u_gc_get(h_snm[i]); int gl = -1; GCol gc = {0, 0, 0, 0};
+        for (int q = 0; q < MAX_UO; q++) { Obj h = u_gc_get(uo[q].hud); Obj e = h ? AT(h, 0x118, Obj) : NULL; Obj eg = u_gc_get(uo[q].eg);
+            if (is_unit(e) && !memcmp((char *)e + UNIT_GUID, sel_drawn[i].g, 16) && u_alive(eg)) { gl = AT(eg, 0x34, float) > 0.5f; gc = AT(eg, 0x38, GCol); } }
+        bput(&b, "%s{\"player\":%d,\"unit\":\"%s\",\"x\":%.0f,\"y\":%.0f,\"tag\":%d,\"glow\":%d,\"glow_rgb\":[%.2f,%.2f,%.2f],\"want\":\"%s\"}", i ? "," : "", sel_drawn[i].player, t, sel_drawn[i].sx, sel_drawn[i].sy,
+             u_alive(r) ? (int)F(0x50F3724, bool (*)(Obj, void *))(u_go(r), NULL) : 0, gl, gc.r, gc.g, gc.b, ui_player_color(sel_drawn[i].player)); }
+    bput(&b, "]}");
+    return b.p;
 }
 /* 8k. Spectator mini overview (owner 2026-10-14 ~19:55, board design/project/SpectatorHUDAMini). While a spectator
    follows a player, a small window shows the whole map (a second camera renders it into a texture a few times a
@@ -4565,7 +5040,11 @@ static void sees_draw(uint32_t who, ui_players *p) {
     }
     Obj bg = u_gc_get(h_sees_bg), t = u_gc_get(h_sees_t);
     vpos_load();
-    int on_ = who && root && u_alive(t) && !(viewer_on && viewer_hidden);   /* mpoverlay: the viewer box's Hide hides this line too */
+    int on_ = who && root && u_alive(t) && !(viewer_on && viewer_hidden)   /* mpoverlay: the viewer box's Hide hides this line too */
+              && !popup_active(1) && !lobby_open();          /* uxpass: not over the Esc menu's windows (PvP Match subtitle, lobby), as the panel */
+    { static int (*teams_modal)(void); static unsigned tries;   /* uxpass (lead): nor while the Teams window is open (it sat on its left edge) */
+      if (!teams_modal && tries++ % 50 == 0) teams_modal = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_modal_open");
+      if (teams_modal && teams_modal()) on_ = 0; }
     show(bg, on_); show(t, on_); sees_shown = on_ ? who : 0;
     if (!on_) return;
     char tx[400], nm[40]; size_t n = 0; int k = 0, cnt = 0;
@@ -4586,8 +5065,18 @@ static void sees_draw(uint32_t who, ui_players *p) {
     float L = -w / 2;              /* centred, but never over the Teams button right of the Players panel: a long name (10 CJK
                                       characters) with a long translation grew the line left onto the button label */
     { float ax, ay, aw, ah; if (ui_panel_anchor(&ax, &ay, &aw, &ah)) { float r = ax + aw + 8 + (uiset.compact ? 88.0f : 112.0f) + 8; if (L < r && r - L < 400) L = r; } }
+    /* uxpass (lead, before-shots 20_game_host 960x540 / 1728x1000): the estimate above left the line on the Teams button's
+       label (or 7 px from it). The button as drawn (ui_teams_button_rect, screen px): the line starts 12 units right of it
+       when they share a row */
+    { static int (*tb)(float *, float *, float *, float *); static unsigned tries;
+      if (!tb && tries++ % 50 == 0) tb = (int (*)(float *, float *, float *, float *))dlsym(RTLD_DEFAULT, "ui_teams_button_rect");
+      float bx, by, bw, bh, x0_, y0_, x1_, y1_;
+      if (tb && tb(&bx, &by, &bw, &bh)) {
+          scr_to_layer(root, bx, by, &x0_, &y0_); scr_to_layer(root, bx + bw, by + bh, &x1_, &y1_);
+          if (cy > y0_ && cy - 26 < y1_ && L < x1_ + 12 && L + w > x0_) L = x1_ + 12;
+      } }
     /* mpoverlay: never over the open Teams window (a free spot clear of the Players panel and the viewer box, else hidden) */
-    { float av[2][4]; int na = 0; Obj pl = u_gc_get(h_plate), vb = u_gc_get(h_vbox); float k = uiset.compact ? 0.75f : 1.0f;
+    { float av[2][4]; int na = 0; Obj pl = u_gc_get(h_plate), vb = u_gc_get(h_vbox); float k = pl_k;
       if (pl_shown && u_alive(pl)) { V2 s = u_rt_size(u_tr(pl)); av[na][0] = pl_cur_L; av[na][1] = pl_cur_L + s.x * k; av[na][2] = pl_cur_Y - s.y * k; av[na][3] = pl_cur_Y; na++; }
       if (viewer_on && u_alive(vb) && u_go_active_self(u_go(vb))) { V2 s = u_rt_size(u_tr(vb)); av[na][0] = vb_cur_x; av[na][1] = vb_cur_x + s.x; av[na][2] = vb_cur_y - s.y - (viewer_min || viewer_hidden ? 0 : 42); av[na][3] = vb_cur_y; na++; }
       if (!teams_free_spot(root, w, 26, &L, &cy, (const float (*)[4])av, na)) { show(bg, 0); show(t, 0); sees_shown = 0; return; } }
@@ -4852,10 +5341,8 @@ static int pmenu_open(int pl, float x, float y) {
     lrow_act[n] = coop_follow == pl ? LA_UNFOLLOW : LA_FOLLOW; lrow_arg[n++] = pl;
     lrow_act[n] = (ping_mute >> (pl & 31) & 1u) ? LA_UNMUTE : LA_MUTE; lrow_arg[n++] = pl;
     memset(lmenu_unit, 0, 16); lmenu_n = n; lmenu_hover = -1; lmenu_player = pl;
-    float w = 240; Obj fr = u_gc_get(h_lmenu);
-    show(fr, 1); place(fr, x, y, w, 26.0f * (float)n + 12); u_set_sibling(u_tr(fr), 1 << 20);
-    for (int i = 0; i < n; i++) { Obj t = u_gc_get(h_lrow[i]); show(t, 1); place(t, x + 12, y - 6 - 26.0f * (float)i, w - 24, 26); u_set_sibling(u_tr(t), 1 << 20); }
     lmenu_draw();
+    lmenu_place(x, y, 0);
     rig_log("ui: player menu for %d", pl);
     return 1;
 }
@@ -4892,7 +5379,9 @@ static char *ui_coop_cmd(const char *line) {
     else if (!strcmp(a, "chatlink")) rc = ui_chat_link_click(1 + ((int)pl << 8 | ((int)x & 255))) ? 0 : -1;   /* chatlink {player, x: id}: the chat line's click */
     else if (!strcmp(a, "mapchanging")) map_changing = now_s();   /* test: an agreed change that never changes the map */
     else if (!strcmp(a, "zoom")) { Obj cs = cam_setting(); if (cs && x > 0.5) F(0xD22DB0, void (*)(Obj, float, void *))(cs, (float)x, NULL); cam_apply(); }   /* zoom {x: ortho size} */
-    else if (!strcmp(a, "camera")) { Obj cs = cam_setting(); if (cs) { V3 cur = F(0xD23584, V3 (*)(Obj, void *))(cs, NULL); F(0xD22C54, void (*)(Obj, V3, void *))(cs, (V3){ (float)x, (float)y, cur.z }, NULL); cam_apply(); } }
+    else if (!strcmp(a, "camera")) { Obj cs = cam_setting(); if (cs) { V3 cur = F(0xD23584, V3 (*)(Obj, void *))(cs, NULL); F(0xD22C54, void (*)(Obj, V3, void *))(cs, (V3){ (float)x, (float)y, cur.z }, NULL);
+        double zo = 0; jnum(line, "zoom", &zo); if (zo > 0.5) F(0xD22DB0, void (*)(Obj, float, void *))(cs, (float)zo, NULL);   /* unitsel test: ortho size */
+        cam_apply(); } }
     pings_draw(); views_draw();
     Obj cs = cam_setting(); V3 cp = cs ? F(0xD23584, V3 (*)(Obj, void *))(cs, NULL) : (V3){ 0, 0, 0 }; float co = cs ? F(0xD23590, float (*)(Obj, void *))(cs, NULL) : 0;
     int mx = 0, my = 0; if (cam_main()) mouse_cell(&mx, &my);
@@ -4932,6 +5421,9 @@ static int escape_ours(void) {
     if (lmenu_n) { lmenu_close(); rig_log("ui: Escape closed the lend menu"); return 1; }
     if (pl_pop) { pl_pop = 0; plist_frame(); rig_log("ui: Escape closed the panel settings"); return 1; }
     if (viewer_on && !viewer_min && !viewer_hidden && !viewer_aside) { viewer_min = 1; viewer_frame(); rig_log("ui: Escape folded the viewer box"); return 1; }
+    /* the spectator's mini overview (owner 2026-10-25: Escape closes our windows): as its X (hidden until O). In this chain,
+       not on the loader kit's stack: it is a HUD panel like the boxes above, which keep their Escape order over it */
+    if (mini_on) { mini_hide(); rig_log("ui: Escape hid the mini overview"); return 1; }
     return 0;
 }
 static void hk_escape(Obj h, Obj msg, void *mi) {
@@ -4944,8 +5436,8 @@ static char *ui_escape_cmd(const char *line) {
     char a[16] = "state"; jstr(line, "action", a, sizeof a);
     if (!strcmp(a, "unfold")) { viewer_min = 0; viewer_frame(); }
     Obj b0 = u_gc_get(h_vbtn_b[0]);
-    Buf b = {0}; bput(&b, "{\"ok\":true,\"lend_menu\":%d,\"settings\":%d,\"viewer\":%d,\"viewer_folded\":%d,\"viewer_buttons\":%d,\"esc_menu\":%d}",
-                      lmenu_n, pl_pop, viewer_on, viewer_min, u_alive(b0) && u_go_active_self(u_go(b0)), popup_active(1));
+    Buf b = {0}; bput(&b, "{\"ok\":true,\"lend_menu\":%d,\"settings\":%d,\"viewer\":%d,\"viewer_folded\":%d,\"viewer_buttons\":%d,\"esc_menu\":%d,\"mini\":%d}",
+                      lmenu_n, pl_pop, viewer_on, viewer_min, u_alive(b0) && u_go_active_self(u_go(b0)), popup_active(1), mini_on);
     return b.p;
 }
 /* lan_v9 owner: a unit that is not mine and not lent to me can be selected and looked at, but its skill bar
@@ -4998,6 +5490,20 @@ static void hk_qs_item(Obj v, void *mi) { if (!qs_refuse(v)) o_qs_item(v, mi); }
 /* Owner chip on each portrait card (the stock status line stays untouched): a small dark chip at the card's top-left,
    "Free" for a free unit, else a dot in the controller's colour (grey when the owner is away). */
 static uintptr_t h_chip_bg[MAX_SC], h_chip_tx[MAX_SC];
+/* final review (ja F3): the level badge (_levelName +0x148) in the picture's units: its left edge and top from the picture's
+   bottom-left corner. 0 = not shown / not known */
+static int chip_badge(Obj pa, Obj pic, float *left, float *top) {
+    Obj lv = AT(pa, 0x148, Obj);
+    if (!u_alive(lv) || !u_alive(pic) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(lv), NULL)) return 0;
+    Obj pr_ = u_tr(pic), lr_ = u_tr(lv);
+    if (!ui_is(pr_, K_RT) || !ui_is(lr_, K_RT)) return 0;
+    RectF4 p = F(0x5106978, RectF4 (*)(Obj, void *))(pr_, NULL), q = F(0x5106978, RectF4 (*)(Obj, void *))(lr_, NULL);
+    V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(pr_, (V3){ p.x, p.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(pr_, (V3){ p.x + p.w, p.y + p.h, 0 }, NULL);
+    V3 c = F(0x510E0AC, V3 (*)(Obj, V3, void *))(lr_, (V3){ q.x, q.y + q.h, 0 }, NULL);
+    if (b.x - a.x < 1 || b.y - a.y < 1) return 0;
+    *left = (c.x - a.x) * p.w / (b.x - a.x); *top = (c.y - a.y) * p.h / (b.y - a.y);
+    return *left > 0 && *left < p.w;
+}
 static void chips_frame(void) {
     for (int i = 0; i < MAX_SC; i++) {
         Obj pa = u_gc_get(sc[i].parts), u = u_gc_get(sc[i].unit), bg = u_gc_get(h_chip_bg[i]), tx = u_gc_get(h_chip_tx[i]);
@@ -5005,14 +5511,15 @@ static void chips_frame(void) {
         if (vis && !u_alive(bg)) {
             /* at the portrait picture's bottom-left (the name is at the top, the level badge at the bottom-right) */
             Obj pic = AT(pa, 0x140, Obj);
-            bg = img_make(u_alive(pic) ? u_tr(pic) : u_tr(pa), NULL, 20, 16);
+            float ch = lang_cjk() ? 20 : 16;                         /* final review (ja F3): Latin 12, CJK 14 (was 11) */
+            bg = img_make(u_alive(pic) ? u_tr(pic) : u_tr(pa), NULL, 20, ch);
             if (bg) {
                 graphic_color(bg, hex_col("#222025", 0.85f));
                 Obj rt = u_tr(bg);
                 F(0x5106B64, void (*)(float, float, Obj, void *))(0, 0, rt, NULL); F(0x5106D48, void (*)(float, float, Obj, void *))(0, 0, rt, NULL);
                 F(0x51072F4, void (*)(float, float, Obj, void *))(0, 0, rt, NULL); u_rt_set_pos(rt, 2, 2);
-                tx = line_clone(rt, 0.5f, 20, 16, -8);
-                if (ui_is(tx, K_TMP)) tmp_style(tx, u_gc_get(h_lora), 11, 514);
+                tx = line_clone(rt, 0.5f, 20, ch, -ch / 2);
+                if (ui_is(tx, K_TMP)) tmp_style(tx, u_gc_get(h_lora), small_pt(11), 514);
             }
             u_gc_free(h_chip_bg[i]); h_chip_bg[i] = u_gc_new(bg); u_gc_free(h_chip_tx[i]); h_chip_tx[i] = u_gc_new(tx);
         }
@@ -5020,17 +5527,20 @@ static void chips_frame(void) {
         if (!vis || !u_alive(tx)) continue;
         if (u_alive(bg)) u_set_sibling(u_tr(bg), 1 << 20);            /* above the dim overlay */
         int o = owner_of(u), e = eff_of(u);
-        char t[64]; float w;
+        char t[64]; float w, ch = u_alive(bg) ? u_rt_size(u_tr(bg)).y : 16, cy = 2;
         if (o == UI_UNCLAIMED) { snprintf(t, sizeof t, "%s", ui_col("#ccbeb8", TR("Free"))); w = 30; }
         else if (o == UI_RESERVED) { snprintf(t, sizeof t, "<color=#8a8088>%s</color>", pl_dot); w = 16; }
         else { snprintf(t, sizeof t, "<color=%s>%s</color>", ui_player_color(e >= 0 ? e : o), pl_dot); w = 16; }
         line_text(tx, t);
         if (o == UI_UNCLAIMED && ui_is(tx, K_TMP)) {                  /* "Free" too long even at 0.75 (ru): the chip grows wider, inside the picture */
             Obj pic = AT(pa, 0x140, Obj); float pw = u_alive(pic) ? u_rt_size(u_tr(pic)).x : 0, cap = pw > 24 ? pw - 4 : 64;
-            float need = txt_fit_w(tx, 30, 16) + 6; if (need > 31) w = need < cap ? need : cap;
+            float need = txt_fit_w(tx, 30, ch) + 6; if (need > 31) w = need < cap ? need : cap;
+            /* final review (ja F3): never over the level badge (bottom-right): a chip wider than the room left of it goes
+               just above the badge */
+            float bl, bt; if (chip_badge(pa, pic, &bl, &bt) && 2 + w + 3 > bl) cy = bt + 2;
         }
-        if (u_alive(bg)) u_rt_set_size(u_tr(bg), w, 16);
-        if (ui_is(tx, K_TMP)) u_rt_set_size(u_tr(tx), w, 16);
+        if (u_alive(bg)) { u_rt_set_size(u_tr(bg), w, ch); u_rt_set_pos(u_tr(bg), 2, cy); }
+        if (ui_is(tx, K_TMP)) u_rt_set_size(u_tr(tx), w, ch);
     }
 }
 
@@ -5177,8 +5687,12 @@ static void recruit_frame(void) {
     }
     Obj l = u_gc_get(h_recruit_line);
     if (!u_alive(l)) {
-        Obj box = tr_find(u_tr(v), "Img_BackGroundBox");
-        l = line_clone(box ? box : u_tr(v), 1, 600, 24, -46);
+        /* uxpass: the line sat on the window's title ("RECRUITMENT", 46 under the box top: v2_v8_recruit_host). It now sits
+           in the free band above the candidate's detail card (stock dump: Img_BackGroundBox/CandidateDetailPanel/
+           Img_FirstSection, 592 wide), under the title's rule; two lines at the smaller size when it is long (FR / JA) */
+        Obj box = tr_find(u_tr(v), "Img_BackGroundBox"), sec = box ? tr_find(box, "CandidateDetailPanel/Img_FirstSection") : NULL;
+        if (sec) l = line_clone(sec, 0, 592, 36, 4);
+        else l = line_clone(box ? box : u_tr(v), 1, 600, 24, -46);
         if (ui_is(l, K_TMP)) tmp_style(l, u_gc_get(h_lora), 16, 514);
         u_gc_free(h_recruit_line); h_recruit_line = u_gc_new(l);
     }
@@ -5409,8 +5923,10 @@ static void tips_frame(void) {
         snprintf(b, sizeof b, TR("The player whose unit used the portal chooses who returns. Everyone else watches; when %s confirms, everyone returns together."), nm);
         tip_at(u_gc_get(h_result_pill), game_text("TEXTKEY_DungeonResultUI_Portal", TR_NOOP("Portal")), b);
     }
-    /* 3.14 Esc menu Save (guest, greyed) */
-    if (me() != 0) { Obj v = u_gc_get(h_sysmenu); Obj sb = u_alive(v) ? AT(v, 0x50, Obj) : NULL;
+    /* 3.14 Esc menu Save (guest, or the hub: greyed) */
+    if (fe_world_hub_any()) { Obj v = u_gc_get(h_sysmenu); Obj sb = u_alive(v) ? AT(v, 0x50, Obj) : NULL;
+        tip_at(sb, game_text("TEXTKEY_SystemMenu_SaveCampaign", TR_NOOP("Save Campaign")), TR("The hub is never saved: a new one is made for each session. Your units' results go home to your own saves.")); }
+    else if (me() != 0) { Obj v = u_gc_get(h_sysmenu); Obj sb = u_alive(v) ? AT(v, 0x50, Obj) : NULL;
         tip_at(sb, game_text("TEXTKEY_SystemMenu_SaveCampaign", TR_NOOP("Save Campaign")), TR("Only the host saves this world. It is saved on the host's computer.")); }
     /* 3.15 portrait chips, recruitment line */
     for (int i = 0; i < MAX_SC && !tip_done; i++) {
@@ -5478,6 +5994,8 @@ void ui_frame(void) {
     lend_mouse();
     viewer_mouse();
     coop_input(); follow_frame(); pings_draw(); views_draw();   /* lan_v10 co-op markers (8j), every frame: smooth */
+    sel_owner_frame();                                       /* unitsel B2: units that changed owner leave the selection */
+    sel_send(); sels_draw();                                 /* unitsel B1: friends' selections (8m) */
     mini_input(); mini_frame();                              /* spectator mini overview (8k) */
     tips_frame();                                            /* lan_v9: the game-format tooltips (ui_tip.c) */
     if (n++ % 6) return;                                     /* 10 times a second is enough */

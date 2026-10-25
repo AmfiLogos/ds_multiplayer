@@ -171,7 +171,19 @@ static void h_setresult(Obj self, int ok, int32_t req, int32_t used, int fallbac
 int trn_flow_busy(void) {
     if (busy()) return 1;
     Obj eq = mf ? AT(mf, 0x48, Obj) : NULL;
-    return eq && AT(eq, 0x40, uint8_t);                                 /* EventQueue._isProcessiningAsync */
+    if (!eq) return 0;
+    /* an async event (a map change) queued inside a sim tick starts at the next EventQueue.Update, a frame later: hold
+       from the tick that queued it, or each peer ran as many more old-map ticks as steps were left in its frame (v0.1.21
+       F4: agreed Return scroll, the guest changed map 1 tick after the host = DESYNC). IsAsyncEventAvailable = these two. */
+    Obj aq = AT(eq, 0x20, Obj);                                         /* EventQueue._asyncEvents (Queue: _size +0x20) */
+    return AT(eq, 0x40, uint8_t) || (aq && AT(aq, 0x20, int32_t) > 0);  /* EventQueue._isProcessiningAsync */
+}
+/* held by a window: the EventQueue waits (a stock Yes/No box such as "Lock Consecration Results" after a load)
+   and no transition / load runs. Only the player can end it by closing the box (we never answer it for him). */
+int trn_flow_window(void) {
+    if (busy()) return 0;
+    Obj eq = mf ? AT(mf, 0x48, Obj) : NULL;
+    return eq && AT(eq, 0x40, uint8_t);
 }
 
 typedef int (*MoveNextFn)(Obj, void *);
@@ -191,18 +203,25 @@ static void *const h_scope[NSCOPE] = { h_scope0, h_scope1, h_scope2, h_scope3, h
 
 /* ---------------------------------------------------------------- 3. host-only autosave */
 void trn_set_role(int is_host) { role = is_host ? 1 : 0; }
+/* session over: a guest that left kept role 0, and every RequestAutoSave of its own single-player world after that was
+   dropped (no autosave until the game restarted); a host kept the multiplayer autosave detour */
+void trn_clear_role(void) { role = -1; }
 static Obj save_helper(void) {                 /* MainFlow._eventHandler -> CampaignEventHandler -> _campaignSaveHelper */
     Obj eh = mf ? AT(mf, 0x50, Obj) : NULL; Obj ce = eh ? AT(eh, 0x20, Obj) : NULL;
     return ce ? AT(ce, 0xA8, Obj) : NULL;
 }
+/* the Foreign Expedition hub is never saved (fe_game.c, mp_game.c h_save): its autosaves are not even asked for, host or
+   not, in a session or not (the host may have turned multiplayer off in the hub) */
+int fe_world_hub_any(void);
+static int no_autosave(void) { return role == 0 || fe_world_hub_any(); }
 static void (*o_save_req)(Obj, int, void *);
 static void h_save_req(Obj self, int force, void *mi) {
-    if (role == 0) { autosave_blocked++; return; }
+    if (no_autosave()) { autosave_blocked++; return; }
     o_save_req(self, force, mi);
 }
 static int (*o_save_start)(Obj, void *), (*o_save_pend)(Obj, void *);
-static int h_save_start(Obj self, void *mi) { if (role == 0) { autosave_blocked++; return 0; } return o_save_start(self, mi); }
-static int h_save_pend(Obj self, void *mi) { if (role == 0) return 0; return o_save_pend(self, mi); }
+static int h_save_start(Obj self, void *mi) { if (no_autosave()) { autosave_blocked++; return 0; } return o_save_start(self, mi); }
+static int h_save_pend(Obj self, void *mi) { if (no_autosave()) return 0; return o_save_pend(self, mi); }
 /* the game-hour autosave goes UI input -> AutoSaveRequested -> async EventQueue. In multiplayer it must never enter
  * the queue (the async queue must be identical on every peer): the host asks the save helper directly instead. */
 static void (*o_as_pres)(Obj, Obj, void *), (*o_as_view)(Obj, Obj, void *);

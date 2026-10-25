@@ -18,7 +18,7 @@ LANG2 = None; PROGRESS = True
 X = 'X'
 T.X = X; T.I = r.idir(X); T.SDIR = os.path.join(T.I, 'softrestart'); T.MODS = os.path.join(T.I, 'data', 'Mods')
 TAG = f'cycle_{CODES[LANG]}'
-OUT = os.path.expanduser(f'~/ds_mp_int016/ext/gate016/i18n/out/{TAG}'); os.makedirs(OUT, exist_ok=True)
+OUT = os.path.expanduser(f'~/ds_int017/i18n_out/{TAG}'); os.makedirs(OUT, exist_ok=True)
 T.OUT = OUT; V.OUT = OUT; V.UI = os.path.join(OUT, 'ui'); os.makedirs(V.UI, exist_ok=True)
 MISS = os.path.join(OUT, 'miss.tsv')
 log, check = T.log, T.check

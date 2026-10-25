@@ -1,16 +1,21 @@
 /* Steam P2P transport + lobby for dsnet. See dsnet_steam.h. Flat API of Steamworks SDK 1.62
- * (Steamworks.NET 2025.162.1 in the game), resolved with dlsym from the game's libsteam_api. */
+ * (Steamworks.NET 2025.162.1 in the game), resolved with dlsym from the game's libsteam_api (Mac) or with GetProcAddress
+ * from its steam_api64.dll (Windows; same 1.62 export names, checked against the build 25846389 DLL). */
 #include "dsnet_steam.h"
 #include "../../ds_i18n.h"                              /* TR_NOOP keys; the text is translated on the main thread (join_error_text) */
+#ifndef _WIN32
 #include <dlfcn.h>
+#endif
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#ifndef _WIN32
 #include <crt_externs.h>
 #include <mach-o/dyld.h>
+#endif
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
@@ -43,6 +48,8 @@ enum {
 typedef struct { int32_t user; int32_t id; uint8_t *param; int32_t cub; } callback_msg;   /* CallbackMsg_t */
 typedef struct { int32_t value, type; union { int32_t i32; int64_t i64; void *ptr; } v; } cfg_value;
 typedef struct { uint64_t game_id; uint32_t ip; uint16_t port, qport; uint64_t lobby; } __attribute__((packed, aligned(4))) friend_game_info;
+_Static_assert(offsetof(friend_game_info, lobby) == 16 && sizeof(friend_game_info) == 24, "FriendGameInfo_t layout");
+_Static_assert(offsetof(callback_msg, param) == 8 && offsetof(callback_msg, cub) == 16, "CallbackMsg_t layout");
 
 typedef void *I;
 static struct {
@@ -101,6 +108,9 @@ static struct {
     const char *(*GetPersonaName)(I);
     int32_t (*GetHSteamPipe)(void);
     void (*MsgRelease)(void *);
+    /* optional (looked up after SYMS; NULL = not in this libsteam_api) */
+    bool (*IsOverlayEnabled)(I);
+    int  (*GetFriendPersonaState)(I, uint64_t);
 } S;
 
 static const struct { const char *name; size_t off; } SYMS[] = {
@@ -160,6 +170,25 @@ static const struct { const char *name; size_t off; } SYMS[] = {
 static char g_err[256];
 const char *dsnet_steam_error(void) { return g_err; }
 
+#ifdef _WIN32
+/* Windows: the game loads steam_api64.dll at SteamAPI_Init (Steamworks.NET P/Invoke "steam_api64"); until then -1 and
+   steam_ready() retries. No LoadLibrary for the game's case: we never pull Steam into a process that did not. The dlfcn
+   shim (win/port/posix/dlfcn.h) cannot be used here: its dlsym ignores the handle. */
+int dsnet_steam_load(const char *path) {
+    if (S.lib) return 0;
+    HMODULE lib = path ? LoadLibraryA(path) : GetModuleHandleA("steam_api64.dll");
+    if (!lib) { snprintf(g_err, sizeof g_err, "steam_api64.dll not %s (error %lu)", path ? "loadable" : "loaded in this process", (unsigned long)GetLastError()); return -1; }
+    for (size_t i = 0; i < sizeof SYMS / sizeof *SYMS; i++) {
+        FARPROC f = GetProcAddress(lib, SYMS[i].name);
+        if (!f) { snprintf(g_err, sizeof g_err, "missing symbol %s", SYMS[i].name); if (path) FreeLibrary(lib); memset(&S, 0, sizeof S); return -1; }
+        memcpy((char *)&S + SYMS[i].off, &f, sizeof f);
+    }
+    S.IsOverlayEnabled = (bool (*)(I))(void *)GetProcAddress(lib, "SteamAPI_ISteamUtils_IsOverlayEnabled");
+    S.GetFriendPersonaState = (int (*)(I, uint64_t))(void *)GetProcAddress(lib, "SteamAPI_ISteamFriends_GetFriendPersonaState");
+    S.lib = (void *)lib;
+    return 0;
+}
+#else
 int dsnet_steam_load(const char *path) {
     if (S.lib) return 0;
     void *lib = NULL;
@@ -176,16 +205,23 @@ int dsnet_steam_load(const char *path) {
         if (!f) { snprintf(g_err, sizeof g_err, "missing symbol %s", SYMS[i].name); dlclose(lib); memset(&S, 0, sizeof S); return -1; }
         memcpy((char *)&S + SYMS[i].off, &f, sizeof f);
     }
+    S.IsOverlayEnabled = (bool (*)(I))dlsym(lib, "SteamAPI_ISteamUtils_IsOverlayEnabled");
+    S.GetFriendPersonaState = (int (*)(I, uint64_t))dlsym(lib, "SteamAPI_ISteamFriends_GetFriendPersonaState");
     S.lib = lib;
     return 0;
 }
+#endif
 
 int dsnet_steam_is_running(void) { return S.lib && S.IsSteamRunning(); }
 
 int dsnet_steam_init_standalone(uint32_t appid) {
     if (!S.lib) { snprintf(g_err, sizeof g_err, "not loaded"); return -1; }
     char id[16]; snprintf(id, sizeof id, "%u", appid);
+#ifdef _WIN32
+    _putenv_s("SteamAppId", id); _putenv_s("SteamGameId", id);
+#else
     setenv("SteamAppId", id, 1); setenv("SteamGameId", id, 1);
+#endif
     char err[1024] = "";
     int r = S.InitFlat(err);
     if (r != 0) { snprintf(g_err, sizeof g_err, "SteamAPI_InitFlat = %d: %s", r, err); return -1; }
@@ -326,6 +362,7 @@ typedef struct bridge {
     bq to_steam, to_fd;
     struct dsnet_steam_host *host;
     struct dsnet_steam_join *join;
+    uint16_t relay_port;                /* host side: loopback source port, marked for the server (dsnet_relay_port_mark) */
 } bridge;
 
 struct dsnet_steam_host {
@@ -375,6 +412,7 @@ static void bridge_close(bridge *b) {
     if (!b->used) return;
     if (b->fd >= 0) close(b->fd);
     if (b->listen_fd >= 0) close(b->listen_fd);
+    if (b->relay_port) dsnet_relay_port_mark(b->relay_port, 0);
     b->tr.close(b->tr.t);
     free(b->to_steam.b); free(b->to_fd.b);
     if (b->join) {
@@ -474,6 +512,8 @@ static int host_bridge(dsnet_steam_host *h, uint32_t conn) {
     bridge *b = fd >= 0 ? bridge_new(conn, fd, -1) : NULL;
     if (!b) { if (fd >= 0) close(fd); return -1; }
     b->host = h;
+    struct sockaddr_in a; socklen_t al = sizeof a;              /* the players rows say "Steam" for this guest (conninfo) */
+    if (!getsockname(fd, (struct sockaddr *)&a, &al)) { b->relay_port = ntohs(a.sin_port); dsnet_relay_port_mark(b->relay_port, 1); }
     return 0;
 }
 
@@ -501,7 +541,9 @@ static void on_conn_status(void *cb) {
 static void parse_connect(const char *s) {
     const char *p = s ? strstr(s, "+connect_lobby") : NULL;
     if (!p) return;
-    uint64_t id = strtoull(p + 14, NULL, 10);
+    p += 14;
+    while (*p == ' ' || *p == '\t' || *p == '"') p++;     /* Windows command line: the id may be quoted */
+    uint64_t id = strtoull(p, NULL, 10);
     if (id) G_join_req = id;
 }
 
@@ -702,22 +744,33 @@ int dsnet_steam_host_invite(dsnet_steam_host *h) {
     LOCK(); uint64_t l = h->lobby; UNLOCK();
     if (!l || l == ~0ull) return -1;
     S.ActivateGameOverlayInviteDialog(S.SteamFriends(), l);
+    dsnet_logf("steam: overlay invite dialog asked for lobby %llu (overlay %d)", (unsigned long long)l, dsnet_steam_overlay_enabled());
     return 0;
 }
 int dsnet_steam_host_invite_friend(dsnet_steam_host *h, uint64_t friend_id) {
     LOCK(); uint64_t l = h->lobby; UNLOCK();
-    if (!l || l == ~0ull) return -1;
-    return S.InviteUserToLobby(S.SteamMatchmaking(), l, friend_id) ? 0 : -1;
+    if (!l || l == ~0ull) { dsnet_logf("steam: invite to a friend: no lobby yet"); return -1; }
+    bool ok = S.InviteUserToLobby(S.SteamMatchmaking(), l, friend_id);
+    dsnet_logf("steam: InviteUserToLobby lobby %llu: %s", (unsigned long long)l, ok ? "sent" : "refused by Steam");
+    return ok ? 0 : -1;
+}
+int dsnet_steam_overlay_enabled(void) {
+    if (!S.lib || !S.IsOverlayEnabled || !S.SteamUtils || !S.SteamUtils()) return -1;
+    return S.IsOverlayEnabled(S.SteamUtils()) ? 1 : 0;
 }
 int dsnet_steam_friends(dsnet_steam_friend *out, int max) {
     if (!S.lib || !S.SteamFriends()) return 0;
     I f = S.SteamFriends();
+    uint32_t app = S.SteamUtils() ? S.GetAppID(S.SteamUtils()) : 0;
     int n = 0, cnt = S.GetFriendCount(f, k_EFriendFlagImmediate);
     for (int i = 0; i < cnt && n < max; i++) {
         uint64_t id = S.GetFriendByIndex(f, i, k_EFriendFlagImmediate);
         friend_game_info gi; memset(&gi, 0, sizeof gi);
         out[n].steamid = id;
-        out[n].lobby = S.GetFriendGamePlayed(f, id, &gi) ? gi.lobby : 0;
+        int playing = S.GetFriendGamePlayed(f, id, &gi);
+        out[n].lobby = playing ? gi.lobby : 0;
+        out[n].in_game = playing && app && (uint32_t)(gi.game_id & 0xFFFFFF) == app;
+        out[n].state = S.GetFriendPersonaState ? S.GetFriendPersonaState(f, id) : -1;
         snprintf(out[n].name, sizeof out[n].name, "%s", S.GetFriendPersonaName(f, id));
         n++;
     }
@@ -734,6 +787,14 @@ int dsnet_steam_host_adopt(dsnet_steam_host *h, uint32_t hconn) {
 
 void dsnet_steam_host_stop(dsnet_steam_host *h) {
     if (!h) return;
+    /* The server is stopped first (mp_game session_teardown): its last bytes (P_BYE, "the host ended the session") are
+       still in our loopback sockets / to_steam. The pump forwards them and closes each bridge itself at the server's
+       EOF (lingering Steam close). Wait for that, at most 500 ms; closing at once lost the BYE (v0.1.21 F3: the guest
+       of a Steam host who pressed Quit saw "connection lost" and tried to rejoin for 60 s). */
+    for (double t0 = dsnet_now_ms(); dsnet_now_ms() - t0 < 500; usleep(5000)) {
+        LOCK(); int n = host_peer_count(h), run = G_running; UNLOCK();
+        if (!n || !run) break;
+    }
     LOCK();
     for (int i = 0; i < MAX_BRIDGES; i++) if (G_br[i].used && G_br[i].host == h) bridge_close(&G_br[i]);
     for (int i = 0; i < 8; i++) if (G_hosts[i] == h) G_hosts[i] = NULL;
@@ -820,9 +881,13 @@ uint64_t dsnet_steam_take_join_request(void) {
     LOCK();
     if (!G_args_checked && S.lib) {
         G_args_checked = 1;
+#ifdef _WIN32
+        parse_connect(GetCommandLineA());                 /* "... +connect_lobby <id>": the id is plain digits */
+#else
         int argc = *_NSGetArgc(); char **argv = *_NSGetArgv();
         for (int i = 0; i + 1 < argc; i++)
             if (!strcmp(argv[i], "+connect_lobby")) G_join_req = strtoull(argv[i + 1], NULL, 10);
+#endif
         char cl[512] = "";
         if (!G_join_req && S.SteamApps() && S.GetLaunchCommandLine(S.SteamApps(), cl, sizeof cl) > 0) parse_connect(cl);
     }
@@ -840,7 +905,8 @@ int dsnet_steam_friends_in_game(dsnet_steam_friend *out, int max) {
         uint64_t id = S.GetFriendByIndex(f, i, k_EFriendFlagImmediate);
         friend_game_info gi; memset(&gi, 0, sizeof gi);
         if (!S.GetFriendGamePlayed(f, id, &gi) || (uint32_t)(gi.game_id & 0xFFFFFF) != app || !gi.lobby) continue;
-        out[n].steamid = id; out[n].lobby = gi.lobby;
+        out[n].steamid = id; out[n].lobby = gi.lobby; out[n].in_game = 1;
+        out[n].state = S.GetFriendPersonaState ? S.GetFriendPersonaState(f, id) : -1;
         snprintf(out[n].name, sizeof out[n].name, "%s", S.GetFriendPersonaName(f, id));
         n++;
     }

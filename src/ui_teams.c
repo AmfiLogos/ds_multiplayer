@@ -29,6 +29,9 @@ int      dsnet_marked_of(dsnet_client *c, int player, uint8_t out[3][16]) __attr
 int      dsnet_expedition_ready(dsnet_client *c, int ready, const uint8_t (*guids)[16], int n) __attribute__((weak_import));
 void    *ord_debug_class(const char *ns, const char *name) __attribute__((weak_import));
 void     ui_portrait_style(void *parts, int owner) __attribute__((weak_import));   /* mpui: colour frame / dim */
+void     ui_vote_hold(int bit, int on) __attribute__((weak_import));
+int      rig_det_mp_ready(void);
+static int pick_hint, pick_done_gen = -1; static double pick_ready_t;   /* unitsel B3 */               /* unitsel: an open vote pauses everyone */
 
 /* ---------------------------------------------------------------- il2cpp / Unity */
 typedef struct { float x, y; } V2;
@@ -105,6 +108,7 @@ static Obj tmp_get(Obj t) {                                  /* TMP_Text.text: v
 }
 void txt_fit(Obj t, float size, int wrap);               /* mpmenu.c: a text too long for its rect auto-sizes (ext/i18n/CJK_FIT.md) */
 void txt_fit_text(Obj t, const char *s);
+float txt_fit_w(Obj t, float w, float h);                  /* mpmenu.c: the width a one-line box needs (too long even at 0.75) */
 static void tmp_set(Obj t, const char *s) {
     if (!tm_is(t, K_TMP)) return;
     void *k = *(void **)t;
@@ -136,9 +140,11 @@ static Obj type_object(const char *ns, const char *name) {
     if (!k) return NULL;
     return F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k));   /* il2cpp_type_get_object(class_get_type) */
 }
+Obj mpmenu_find_any(uintptr_t *h, const char *ns, const char *name) __attribute__((weak_import));   /* mpmenu.c: absent views retried after 2 s (immediate after input / a popup) */
 static Obj find_view(uintptr_t *h, const char *ns, const char *name) {   /* Object.FindObjectOfType(Type, inactive) */
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
+    if (mpmenu_find_any) return mpmenu_find_any(h, ns, name);
     Obj t = type_object(ns, name);
     if (!t) return NULL;
     v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(t, false, NULL);
@@ -544,7 +550,7 @@ static Obj img_of(Obj tr) { static uintptr_t h; return comp_of(tr, &h, "UnityEng
 static void button_off(Obj tr) { static uintptr_t h; Obj b = comp_of(tr, &h, "UnityEngine.UI", "Button"); if (u_alive(b)) u_enabled(b, false); }
 static void centre_anchor(Obj rt) { rt_anchor(rt, 0.5f, 0.5f, 0.5f, 0.5f); rt_pivot(rt, 0.5f, 0.5f); }
 /* a body text (Lora) under parent: size w x h, font size, alignment */
-static void tmp_plain(Obj t);
+static void tmp_look(Obj t, int head);
 static Obj new_text(Obj parent_tr, float w, float h, float size, int align) {
     Obj tpl = u_gc_get(h_tpl_text);
     if (!u_alive(tpl) && load_templates()) return NULL;
@@ -560,19 +566,23 @@ static Obj new_text(Obj parent_tr, float w, float h, float size, int align) {
     (tm_is(t, K_TMP) ? F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, true, NULL) : (void)0);           /* word wrap */
     { static int logged; Obj m0 = (tm_is(t, K_TMP) ? F(0x4F0A6B4, Obj (*)(Obj, void *))(t, NULL) : NULL); char a_[80] = "", b_[80] = "";
       if (!logged && u_alive(m0)) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m0, NULL), a_, sizeof a_);
-      tmp_plain(t);
+      tmp_look(t, 0);
       Obj m1 = (tm_is(t, K_TMP) ? F(0x4F0A6B4, Obj (*)(Obj, void *))(t, NULL) : NULL);
       if (!logged && u_alive(m1)) { str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(m1, NULL), b_, sizeof b_); rig_log("teams: text material %s -> %s", a_, b_); logged = 1; } }
     g_raycast(t, false);
     tmp_set(t, "");
     return t;
 }
-/* the font asset's own default material (TMP_Asset.m_Material +0x88): plain, no outline preset (owner 2026-10-13:
-   the card-name material we cloned from has a black outline the game's windows do not) */
-static void tmp_plain(Obj t) {
+/* Text look (owner 2026-10-24; it replaces the 2026-10-13 "no outline" rule): the game's material for the text's font and
+   size (mpmenu.c mpm_look_material: body font and section heads -> SoftOutline16, other fonts -> plain); head = a title of
+   this window (section heads, "Teams", "Going"): SoftOutline16 at any size. Fallback: the font asset's own plain material
+   (TMP_Asset.m_Material +0x88). */
+Obj mpm_look_material(Obj f, float size, int head);
+static void tmp_look(Obj t, int head) {
     if (!tm_is(t, K_TMP)) return;
     Obj f = F(0x4F0A59C, Obj (*)(Obj, void *))(t, NULL);
-    Obj m = tm_is(f, K_FA) ? AT(f, 0x88, Obj) : NULL;
+    Obj m = tm_is(f, K_FA) ? mpm_look_material(f, F(0x4F0B338, float (*)(Obj, void *))(t, NULL), head) : NULL;   /* TMP_Text.fontSize */
+    if (!u_alive(m) && tm_is(f, K_FA)) m = AT(f, 0x88, Obj);
     if (!u_alive(m)) return;
     void *k = *(void **)t;                                    /* TMP_Text.fontSharedMaterial setter: vtable slot 68 */
     (*(void (**)(Obj, Obj, void *))((char *)k + 0x578))(t, m, *(void **)((char *)k + 0x580));
@@ -586,9 +596,9 @@ static Obj font_body(void) {
     Obj f = lang_font(0);
     return f ? f : (tm_is(tmp_of(u_gc_get(h_tpl_text)), K_TMP) ? F(0x4F0A59C, Obj (*)(Obj, void *))(tmp_of(u_gc_get(h_tpl_text)), NULL) : NULL);
 }
-static void tmp_font(Obj t, Obj f) {                         /* TMP_Text.font, with that font's own material */
+static void tmp_font(Obj t, Obj f, int head) {               /* TMP_Text.font, with the game's look for it */
     if (u_alive(t) && u_alive(f)) (tm_is(t, K_TMP) ? F(0x4F0A5A4, void (*)(Obj, Obj, void *))(t, f, NULL) : (void)0);
-    tmp_plain(t);
+    tmp_look(t, head);
 }
 /* a plain rectangle (the level box clone: sprite and children removed) under parent, stretched between anchors */
 static Obj new_rect(Obj parent_tr, float x0, float y0, float x1, float y1, float w, float h, C4 c) {
@@ -822,8 +832,8 @@ static void set_text(Obj o, float lx, float cy, float w, float h, float size, in
     if (!u_alive(o)) return;
     Obj t = u_tr(o);
     centre_anchor(t); rt_size(t, w, h); rt_pos(t, lx + w / 2, cy);
-    tmp_font(o, cinzel ? font_title() : font_body());
-    (tm_is(o, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(o, size, NULL) : (void)0);
+    (tm_is(o, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(o, size, NULL) : (void)0);   /* size first: the look reads it */
+    tmp_font(o, cinzel ? font_title() : font_body(), cinzel);
     (tm_is(o, K_TMP) ? F(0x4F0B7BC, void (*)(Obj, int, void *))(o, align, NULL) : (void)0);
     txt_fit(o, size, 1);                                                    /* new_text wraps; too long for w x h: auto size */
     tmp_set(o, txt); u_active(o, true); u_last_sibling(t);
@@ -863,10 +873,10 @@ static void fbar_build(Obj rt) {
         Obj fi = img_of(fb); if (u_alive(fi)) g_raycast(fi, true);
         Obj fill = new_rect(fb, 0, 0, 1, 1, -16, -16, (C4){0.133f, 0.125f, 0.145f, 1});
         if (fill) (tm_is(u_tr(fill), K_TR) ? F(0x510EC94, void (*)(Obj, void *))(u_tr(fill), NULL) : (void)0);   /* SetAsFirstSibling */
-        set_text(new_text(fb, 150, 30, 20, AL_LEFT), -FBAR_W / 2 + 20, 0, 150, 30, 20, AL_LEFT, 1, ui_col(C_MAIN, TR("Teams")));
-        Obj t1 = new_text(fb, 56, 26, 14, AL_RIGHT), t2 = new_text(fb, 56, 26, 14, AL_RIGHT);
-        set_text(t1, FBAR_W / 2 - 18 - 56 - 12 - 56, 0, 56, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Show")));
-        set_text(t2, FBAR_W / 2 - 18 - 56, 0, 56, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Close")));
+        set_text(new_text(fb, 110, 30, 20, AL_LEFT), -FBAR_W / 2 + 20, 0, 110, 30, 20, AL_LEFT, 1, ui_col(C_MAIN, TR("Teams")));
+        Obj t1 = new_text(fb, 80, 26, 14, AL_RIGHT), t2 = new_text(fb, 80, 26, 14, AL_RIGHT);   /* "Anzeigen", "Schließen" */
+        set_text(t1, FBAR_W / 2 - 18 - 80 - 12 - 80, 0, 80, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Show")));
+        set_text(t2, FBAR_W / 2 - 18 - 80, 0, 80, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Close")));
         if (u_alive(t1)) g_raycast(t1, true);
         if (u_alive(t2)) g_raycast(t2, true);
         h_fbar = u_gc_new(fb); h_fshow = u_gc_new(t1); h_fclose = u_gc_new(t2);
@@ -886,6 +896,38 @@ static void fold_set(int f) {
     tfold = f; lpop_unit = -1; fold_apply(); hud_save(); shown_sig = 0;
     if (!f && opened) { model_refresh(); layout(); }
     rig_log("teams: window %s", f ? "folded to the bar" : "unfolded");
+}
+/* UX pass 2026-10-21 (owner: at 1728 x 1000 the window was wider than the game window): the root carries the game's
+   UIScaleRoot (user UI scale 0.75..1.75 on a 1080-high canvas), so the 1320 x 888 window (its sprite has the bands
+   painted in: no resize) can be larger than the screen. Measured in pixels, it is scaled down about the centre to fit
+   with FIT_MARGIN free on each side, never up. Clicks stay right: hit() tests the scaled rects. The folded bar is a
+   child of the root, whose top can be above the screen: it keeps 35 root units under the screen's top. */
+#define FIT_MARGIN 16.0f
+static void win_fit(void) {
+    Obj w = win(), r = root();
+    float sw = (float)F(0x5092C94, int (*)(void *))(NULL), sh = (float)F(0x5092CD4, int (*)(void *))(NULL), sr[4];   /* Screen.width / height */
+    if (!r || sw <= 0 || sh <= 0) return;
+    float k0 = w && tm_is(w, K_TR) ? F(0x510AEFC, V3 (*)(Obj, void *))(w, NULL).x : 0;                             /* localScale */
+    if (k0 > 0 && scr_rect(w, sr) && sr[2] > 0 && sr[3] > 0) {
+        float kw = (sw - 2 * FIT_MARGIN) / (sr[2] / k0), kh = (sh - 2 * FIT_MARGIN) / (sr[3] / k0), k = kw < kh ? kw : kh;
+        if (k > 1) k = 1;
+        if (k < 0.2f) k = 0.2f;
+        if (k - k0 > 0.002f || k0 - k > 0.002f) {
+            tr_scale(w, k);
+            rig_log("teams: window %.0fx%.0f px at scale 1 on a %.0fx%.0f screen: scale %.3f", sr[2] / k0, sr[3] / k0, sw, sh, k);
+        }
+        float rs[4]; R4 rr0 = rt_rect(u_tr(r));              /* centred on the screen, even if the popups' parent is not */
+        if (rr0.w > 0 && scr_rect(w, sr) && scr_rect(r, rs) && rs[2] > 0) {
+            float ppu = rs[2] / rr0.w, dx = (sw / 2 - (sr[0] + sr[2] / 2)) / ppu, dy = (sh / 2 - (sr[1] + sr[3] / 2)) / ppu;
+            if (dx > 0.5f || dx < -0.5f || dy > 0.5f || dy < -0.5f) { V2 p = rt_get_pos(w); rt_pos(w, p.x + dx, p.y + dy); }
+        }
+    }
+    Obj fb = u_gc_get(h_fbar); R4 rr = rt_rect(u_tr(r));
+    if (u_alive(fb) && rr.h > 0 && scr_rect(r, sr) && sr[3] > 0) {
+        float over = (sr[1] + sr[3] - sh) / (sr[3] / rr.h);  /* root units above the screen's top */
+        V2 bp = rt_get_pos(fb), want = { 0, -(over > 0 ? over : 0) - 35 };
+        if (bp.y - want.y > 0.5f || want.y - bp.y > 0.5f) rt_pos(fb, want.x, want.y);
+    }
 }
 #define C_WARN "#f16071"
 static Obj cam_for(Obj graphic);
@@ -915,9 +957,16 @@ static void chip_draw(int u, float x, float top, float cw, int owner) {
     else if (lt == st.me && owner >= 0) { pname(owner, nm); snprintf(t, sizeof t, "<color=" C_ACC ">%s </color><color=%s>%s</color>", TR("From"), ui_player_color(owner), nm); }
     else return;
     if (lt >= 0) p_rect(x, top - 1.5f, cw - 4, 3, hexc(ui_player_color(lt), 1), NULL, 0);   /* lent: the controller's colour */
-    float w = owner == st.me && lt < 0 ? 50 : 92;               /* inside the card's top edge, left */
+    float w = owner == st.me && lt < 0 ? 50 : 92;               /* inside the card's top edge, left; never wider than the card */
+    if (w > cw - 4) w = cw - 4;
     Obj r = p_rect(x - cw / 2 + w / 2 + 2, top - 12, w, 22, hexc("#2d2a31", 0.95f), NULL, 0);
-    p_text(x - cw / 2 + 4, top - 12, w - 4, 22, 14, AL_CENTER, 0, t);
+    Obj tx = p_text(x - cw / 2 + 4, top - 12, w - 4, 22, 14, AL_CENTER, 0, t);
+    float need = tx ? txt_fit_w(tx, w - 4, 22) + 4 : w;          /* "Одолжить", "Emprestar": the chip grows, up to the card's width */
+    if (need > w && w < cw - 4) {
+        w = need < cw - 4 ? need : cw - 4;
+        if (r) { rt_size(u_tr(r), w, 22); rt_pos(u_tr(r), x - cw / 2 + w / 2 + 2, top - 12); }
+        set_text(tx, x - cw / 2 + 4, top - 12, w - 4, 22, 14, AL_CENTER, 0, t);
+    }
     if (r) { chip_h[nchip] = pl->r[pl->ur - 1]; chip_u[nchip++] = u; }
 }
 static void lpop_draw(void) {                                /* the menu of the open chip, under it */
@@ -935,12 +984,14 @@ static void lpop_draw(void) {                                /* the menu of the 
     } else if (owner == st.me) { snprintf(lab[0], 80, "%s", TR("Take back control")); lrow_act[0] = LA_TAKE; nlrow = 1; }
     else { snprintf(lab[0], 80, "%s", TR("Give back")); lrow_act[0] = LA_GIVE; nlrow = 1; }
     size_t l = 0;
+    float mx = ap.x - 23, dir = ap.y - 26 - (nlrow - 1) * 30 - 14 < -436 ? 1 : -1;   /* inside the window: right edge, else upwards */
+    if (mx + 220 > 652) mx = 652 - 220;
     for (int i = 0; i < nlrow; i++) {
-        float y = ap.y - 26 - i * 30;
-        Obj r = p_rect(ap.x - 23 + 110, y, 220, 28, hexc("#222025", 0.98f), NULL, 0);
-        p_rect(ap.x - 23, y, 2, 28, hexc("#915847", 1), NULL, 0);
+        float y = ap.y + dir * (26 + i * 30);
+        Obj r = p_rect(mx + 110, y, 220, 28, hexc("#222025", 0.98f), NULL, 0);
+        p_rect(mx, y, 2, 28, hexc("#915847", 1), NULL, 0);
         char t[120]; snprintf(t, sizeof t, "<color=" C_MAIN ">%s</color>", lab[i]);
-        p_text(ap.x - 23 + 8, y, 210, 28, 15, AL_LEFT, 0, t);
+        p_text(mx + 8, y, 210, 28, 15, AL_LEFT, 0, t);
         lrow_h[i] = r ? pl->r[pl->ur - 2] : 0;
         l += (size_t)snprintf(lpop_s + l, sizeof lpop_s - l, "%s%s", i ? "|" : "", lab[i]);
     }
@@ -954,6 +1005,7 @@ static int lend_click(V2 m, Obj cam) {                       /* 1 = taken by a c
     for (int i = 0; i < nchip; i++) if (hit(u_gc_get(chip_h[i]), m, cam)) { lpop_unit = chip_u[i]; shown_sig = 0; return 1; }
     return 0;
 }
+static float row_room;                                       /* the card pitch of the row being laid out, less 4: the widest band */
 static int unit_card(int u, float x, float y, float s, float alpha, int clickable, int owner) {
     Obj pp = card_for(u);
     if (!pp) return 0;
@@ -971,9 +1023,15 @@ static int unit_card(int u, float x, float y, float s, float alpha, int clickabl
         for (int q = 0; q < TM_MAX_UNITS; q++) if (por[q].card && !memcmp(por[q].guid, st.guid[u], 16)) {
             Obj mk = u_gc_get(por[q].mark); if (u_alive(mk)) u_go_active(u_go(mk), run_); }
         if (!run_) card_style(pp, alpha * 0.45f, hsel.picked == u);
-        float cw = card_w * s, by = y - card_h * s / 2 + 11;
-        p_rect(x, by, cw - 6, 18, hexc("#2d2a31", 0.92f), NULL, 0);
-        p_text(x - cw / 2 + 3, by, cw - 6, 18, 12, AL_CENTER, 0, run_ ? ui_col(C_ACC, TR("On the run")) : ui_col(C_SEC, TR("At the settlement")));
+        float bw = card_w * s - 2, by = y - card_h * s / 2 - 11;   /* under the card (BAND_H of row room): the stock name (card y -29..-49 of 54) stays readable */
+        const char *bt = run_ ? ui_col(C_ACC, TR("On the run")) : ui_col(C_SEC, TR("At the settlement"));
+        Obj br = p_rect(x, by, bw, 18, hexc("#2d2a31", 0.92f), NULL, 0), bx = p_text(x - bw / 2, by, bw, 18, 12, AL_CENTER, 0, bt);
+        float need = bx ? txt_fit_w(bx, bw, 18) : bw;            /* "En el asentamiento" on a small card: wider, up to the card pitch */
+        if (need > bw && row_room > bw) {
+            bw = need < row_room ? need : row_room;
+            if (br) rt_size(u_tr(br), bw, 18);
+            set_text(bx, x - bw / 2, by, bw, 18, 12, AL_CENTER, 0, bt);
+        }
     }
     chip_draw(u, x, y + card_h * s / 2, card_w * s, owner);
     return 1;
@@ -981,13 +1039,18 @@ static int unit_card(int u, float x, float y, float s, float alpha, int clickabl
 /* height of the free row and the other players' rows at card scales sf (free) and so (others) */
 #define LX (-630.0f)
 #define ROW_W 1260.0f
-static float rows_h(int n, int per, float s) { int r = n ? (n + per - 1) / per : 0; return r ? r * (card_h * s + 8) : 0; }
+#define BAND_H 20.0f                                         /* in a dungeon: the "On the run" band under each card */
+static float band_h;                                         /* BAND_H in a dungeon, else 0 (set by layout) */
+static float rows_h(int n, int per, float s) { int r = n ? (n + per - 1) / per : 0; return r ? r * (card_h * s + 8 + band_h) : 0; }
+static int per_free(float sf) { int p = (int)(ROW_W / (100 * sf)); return p < 1 ? 1 : p; }
+static float pitch_other(float so) { return 76 * so / 0.75f; }
+static int per_other(float so) { int p = (int)((ROW_W - 24 - card_w * so) / pitch_other(so)) + 1; return p < 1 ? 1 : p; }   /* the last card inside the row */
 static float lower_h(const int *order, int no, float sf, float so) {
     float h = 0;
     for (int i = 0; i < no; i++) {
         tm_column *c = &cols[order[i]];
-        if (c->player == TM_FREE) h += 24 + 46 + (c->n ? rows_h(c->n, (int)(ROW_W / (100 * sf)), sf) + 8 : 44) + 16;
-        else if (c->player != st.me) h += 30 + (c->n ? rows_h(c->n, (int)(ROW_W / (76 * so / 0.75f)), so) : 0) + 8 + 8;
+        if (c->player == TM_FREE) h += 24 + 46 + (c->n ? rows_h(c->n, per_free(sf), sf) + 8 : 44) + 16;
+        else if (c->player != st.me) h += 30 + (c->n ? rows_h(c->n, per_other(so), so) : 0) + 8 + 8;
     }
     return h;
 }
@@ -1006,6 +1069,8 @@ static void layout(void) {
     for (int k = 0; k < ncols; k++) if (cols[k].player >= 0 && cols[k].player != st.me) order[no++] = k;
     for (int k = 0; k < ncols; k++) if (cols[k].player == TM_RESERVED) order[no++] = k;
     int host_admin = st.me == 0 && st.admin;
+    win_fit();
+    band_h = st.in_dungeon ? BAND_H : 0;
     pool_begin(&pool_teams);
     lent_refresh(); nchip = 0; nbar = 0;
     for (int i = 0; i < TM_MAX_UNITS; i++) por[i].used = 0;
@@ -1019,10 +1084,11 @@ static void layout(void) {
     (void)rdy_me;
     snprintf(t, sizeof t, "%s", ui_colf(C_SEC, TRN("%d unit \xC2\xB7 max %d", "%d units \xC2\xB7 max %d", mine), mine, st.max_mark > 0 ? st.max_mark : 3));
     p_text(LX + 10, 272, 220, 24, 14, AL_LEFT, 0, t);
-    float step = 100, s1 = 1.0f;
+    float step = 100, s1 = 1.0f, y1 = st.in_dungeon ? 282 : 271;   /* the light strip (sprite y 338..206); in a dungeon card + band */
     if (mine > 10) { step = mine > 12 ? 1030.0f / mine : 86; s1 = step / 100 * (mine > 12 ? 0.95f : 1.0f); if (s1 > 0.85f) s1 = 0.85f; }
+    row_room = step - 4;
     for (int j = 0; j < mine; j++)
-        unit_card(cols[kme].unit[j], -350 + j * step, 271, s1, 1.0f, !st.in_dungeon, st.me);
+        unit_card(cols[kme].unit[j], -350 + j * step, y1, s1, 1.0f, !st.in_dungeon, st.me);
     for (int e = 0; e < 3; e++) {                              /* no units: three empty stock slots + how to get one */
         Obj es = u_gc_get(h_empty[e]);
         if (mine) { if (u_alive(es)) u_go_active(u_go(es), false); continue; }
@@ -1033,12 +1099,18 @@ static void layout(void) {
                                centre_anchor(u_tr(pp)); tr_scale(u_tr(pp), 1.0f); }
             u_gc_free(h_empty[e]); h_empty[e] = u_gc_new(pp); es = pp;
         }
-        if (u_alive(es)) { rt_pos(u_tr(es), -350 + e * 100, 271); u_go_active(u_go(es), true); }
+        if (u_alive(es)) { rt_pos(u_tr(es), -350 + e * 100, y1); u_go_active(u_go(es), true); }
     }
-    if (!mine) p_text(-190, 271, 420, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("Take a free unit below (left-click).")));
-    /* zones 2 and 3: fit above y -372, cards never below 0.75 (free) / 0.6 (others) */
-    float sf = 1.0f, so = 0.75f;
-    for (int it = 0; it < 8 && lower_h(order, no, sf, so) > 196 + 372; it++) { if (sf > 0.75f) sf -= 0.05f; else if (so > 0.6f) so -= 0.05f; }
+    /* the empty state's hint: right of the three empty slots (they end at x -104), never over them */
+    if (!mine) p_text(-80, y1, 700, 30, 14, AL_LEFT, 0, ui_col(C_SEC, st.in_dungeon ? TR("In a dungeon, a friend can lend you a unit (Lend on their unit).")
+                                                                                    : TR("Take a free unit below (left-click).")));
+    /* zones 2 and 3: fit above y -366 (the bottom line is at -374..-402). Room to spare: the other players' cards grow up to full size (readable names);
+       short of room: theirs shrink first (to 0.75), then the free ones (to 0.75), then both (to 0.5) */
+    float sf = 1.0f, so = 1.0f;
+    for (int it = 0; it < 40 && lower_h(order, no, sf, so) > 196 + 366; it++) {
+        if (so > 0.75f) so -= 0.05f; else if (sf > 0.75f) sf -= 0.05f; else if (so > 0.6f) so -= 0.05f;
+        else if (sf > 0.5f) { sf -= 0.05f; if (so > 0.5f) so -= 0.05f; } else break;
+    }
     float y = 196;
     for (int i = 0; i < no; i++) {
         tm_column *c = &cols[order[i]];
@@ -1052,20 +1124,21 @@ static void layout(void) {
             }
             if (u_alive(band)) { rt_size(band, 556, 44); rt_pos(band, LX + 278, y - 22); u_go_active(u_go(band), true); }
             section_header(nh++, TM_FREE, LX + 24, y - 22, 400, 44, 24, 1, ui_col(C_MAIN, TR("Free units")));
-            p_text(LX + 570, y - 22, 300, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("Left-click to take")));
+            if (c->n && !st.in_dungeon) p_text(LX + 570, y - 22, 300, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("Left-click to take")));   /* locked in a dungeon */
             y -= 46;
-            int per = (int)(ROW_W / (100 * sf)); if (per < 1) per = 1;
+            int per = per_free(sf);
             float rh = c->n ? rows_h(c->n, per, sf) + 8 : 44;
             p_rect(LX + ROW_W / 2, y - rh / 2, ROW_W, rh, hexc("#36323a", 1), NULL, 1);   /* Slot1 */
             if (!c->n) p_text(LX + 20, y - 22, 400, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("No free units")));
+            row_room = 100 * sf - 4;
             for (int j = 0; j < c->n; j++)
-                unit_card(c->unit[j], LX + 60 * sf + (j % per) * 100 * sf, y - 8 - card_h * sf / 2 - (j / per) * (card_h * sf + 8), sf, 1.0f, !st.in_dungeon, TM_FREE);
+                unit_card(c->unit[j], LX + 60 * sf + (j % per) * 100 * sf, y - 8 - card_h * sf / 2 - (j / per) * (card_h * sf + 8 + band_h), sf, 1.0f, !st.in_dungeon, TM_FREE);
             y -= rh + 16;
             continue;
         }
         if (pl == st.me) continue;
         char nm[40], lb[40], hd[300]; ui_players pls; memset(&pls, 0, sizeof pls);
-        int per = (int)(ROW_W / (76 * so / 0.75f)); if (per < 1) per = 1;
+        int per = per_other(so);
         float rh = 30 + (c->n ? rows_h(c->n, per, so) : 0) + 8;
         p_rect(LX + ROW_W / 2, y - rh / 2, ROW_W, rh, hexc("#2b282f", 1), NULL, 1);       /* Slot2 */
         float alpha = host_admin ? 1.0f : pl == TM_RESERVED ? 0.35f : 0.45f;
@@ -1097,8 +1170,9 @@ static void layout(void) {
             (void)rdy;
             section_header(nh++, pl, LX + 32, y - 15, 900, 28, 16, 0, hd);
         }
+        row_room = pitch_other(so) - 4;
         for (int j = 0; j < c->n; j++)
-            unit_card(c->unit[j], LX + 12 + card_w * so / 2 + (j % per) * 76 * so / 0.75f, y - 30 - card_h * so / 2 - (j / per) * (card_h * so + 8),
+            unit_card(c->unit[j], LX + 12 + card_w * so / 2 + (j % per) * pitch_other(so), y - 30 - card_h * so / 2 - (j / per) * (card_h * so + 8 + band_h),
                       so, alpha, !st.in_dungeon && host_admin, pl);
         y -= rh + 8;
     }
@@ -1123,6 +1197,7 @@ static void layout(void) {
     if ((o = u_gc_get(h_hint))) {
         char stl[300] = "";
         if (!mp_running()) snprintf(stl, sizeof stl, "%s", ui_col(C_WARN, TR("Multiplayer is not running yet: changes here are not applied.")));
+        else if (st.in_dungeon && !mine) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>", TR("Pick your units."));   /* how: zone 1 */
         else if (st.in_dungeon) snprintf(stl, sizeof stl, "%s", TR("In a dungeon only lending works: use Lend on your units."));
         else if (host_admin && hsel.picked >= 0) snprintf(stl, sizeof stl, "%s", TR("Host: click a section name to move the picked unit there."));
         else if (st.me == 0 && hsel.target != TM_NO_TARGET) {
@@ -1130,18 +1205,18 @@ static void layout(void) {
             if (hsel.target >= 0) { player_name(hsel.target, nm); snprintf(pls.name[hsel.target], 32, "%s", nm); }
             snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
         }
-        else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "%s", TR("Next: take a free unit (left-click)."));
+        else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>", TR("Pick your units."));   /* how: zone 1; also when opened by hand (review 32) */
         else if (st.me >= 0) snprintf(stl, sizeof stl, "%s", TR("To start an expedition, use the game's Enter Dungeon."));
         snprintf(t, sizeof t, "<color=" C_SEC ">%s</color>", stl);
-        set_text(o, -10, -405, 390, 40, 14, AL_CENTER, 0, t);
+        set_text(o, -620, -388, 1240, 28, 14, AL_CENTER, 0, t);   /* inside the dark box (x +-630, bottom border y -412), centred */
     }
-    if ((o = u_gc_get(h_tfold))) {                            /* viewui: Hide, left of the close button */
-        float sw_[4], sc_[4], cx = 660 - 48 - 64, cy = 444 - 34; R4 wr = rt_rect(w);
+    if ((o = u_gc_get(h_tfold))) {                            /* viewui: Hide, left of the close button (120 wide: "Ausblenden", "Скрыть") */
+        float sw_[4], sc_[4], cx = 660 - 58 - 120, cy = 444 - 54; R4 wr = rt_rect(w);
         if (wr.w > 0 && scr_rect(w, sw_) && scr_rect(u_gc_get(h_close), sc_) && sw_[2] > 0) {
             float k = sw_[2] / wr.w;
-            cx = (sc_[0] - (sw_[0] + sw_[2] / 2)) / k - 10 - 64; cy = (sc_[1] + sc_[3] / 2 - (sw_[1] + sw_[3] / 2)) / k;
+            cx = (sc_[0] - (sw_[0] + sw_[2] / 2)) / k - 10 - 120; cy = (sc_[1] + sc_[3] / 2 - (sw_[1] + sw_[3] / 2)) / k;
         }
-        set_text(o, cx, cy, 64, 28, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Hide")));
+        set_text(o, cx, cy, 120, 28, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Hide")));
         g_raycast(o, true);
     }
     lpop_draw();
@@ -1256,10 +1331,19 @@ static void prop_layout(void) {
     rt_size(w, PW, H);
     { R4 rr = r ? rt_rect(u_tr(r)) : (R4){0, 0, 0, 0};
       /* the holder can be larger than the screen (UIScaleRoot scales it about the centre with the game's UI size): keep
-         the panel's right edge 16 units inside the screen, measured in pixels */
-      float sr[4], dx = 0, sw = (float)F(0x5092C94, int (*)(void *))(NULL);   /* Screen.width */
-      if (r && rr.w > 0 && scr_rect(r, sr) && sr[2] > 0 && sw > 0) dx = (sr[0] + sr[2] - sw) / (sr[2] / rr.w);
-      rt_pos(w, -16 - (dx > 0 ? dx : 0), rr.h > 0 ? rr.h * prop_top_frac : 0); }
+         the panel's right edge 16 units inside the screen, measured in pixels. UX pass 2026-10-21: the bottom too (4+
+         players at a large UI scale went under the screen): moved up, and scaled down when taller than the screen */
+      float sr[4], dx = 0, sw = (float)F(0x5092C94, int (*)(void *))(NULL), sh = (float)F(0x5092CD4, int (*)(void *))(NULL);   /* Screen.width / height */
+      float k = 1, y0 = rr.h > 0 ? rr.h * prop_top_frac : 0;
+      if (r && rr.w > 0 && scr_rect(r, sr) && sr[2] > 0 && sw > 0 && sh > 0) {
+          float ppu = sr[2] / rr.w, vh = sh / ppu;               /* the screen's height in holder units */
+          dx = (sr[0] + sr[2] - sw) / ppu;
+          k = (vh - 32) / H; if (k > 1) k = 1; if (k < 0.3f) k = 0.3f;
+          if (y0 - H * k < -vh / 2 + 16) y0 = -vh / 2 + 16 + H * k;
+          if (y0 > vh / 2 - 16) y0 = vh / 2 - 16;
+      }
+      tr_scale(w, k);
+      rt_pos(w, -16 - (dx > 0 ? dx : 0), y0); }
     p_text(lx, top - 30, tw - 64, 30, 20, AL_LEFT, 1, ui_col(C_MAIN, TR("Expedition proposal")));
     set_text(u_gc_get(h_pfold), PW / 2 - 22 - 64, top - 30, 64, 24, 14, AL_RIGHT, 0, prop_folded ? ui_col(C_ACC, TR("Show")) : ui_col(C_ACC, TR("Hide")));
     snprintf(prop_time_s, sizeof prop_time_s, TR("%d s left"), left);
@@ -1320,6 +1404,8 @@ static void close_screen(void);
 static void stock_countdown(void);
 /* every frame: show / hide / refresh; host: the timeout; everyone: the proposer left; the receiver's steps */
 static void prop_frame(unsigned n) {
+    { static int held; int want = sess() && prop.active && me() >= 0 && prop.proposer == me();   /* unitsel (owner 2026-10-20 late): */
+      if (want != held && ui_vote_hold) { ui_vote_hold(1, want); held = want; } }                /* the proposal pauses everyone */
     if (close_stock) { close_stock = 0; stock_close(); }
     if (pstage == ST_SUPPLIES_PENDING && me() >= 0 && scene() == 2) {
         model_refresh();
@@ -1441,6 +1527,7 @@ static int open_screen(void) {
     return 0;
 }
 static void close_screen(void) {
+    pick_hint = 0;
     opened = 0; hsel = (tm_sel)TM_SEL_INIT;
     if (root()) u_go_active(u_go(root()), false);
 }
@@ -1561,7 +1648,9 @@ static void hud_place(void) {
     static int (*btn_on)(void); static unsigned btn_tries;   /* viewui: the player panel's "Teams button" setting */
     if (!btn_on && btn_tries++ % 60 == 0) btn_on = (int (*)(void))dl("ui_teams_button_on");
     int want = hud_show && !sysmenu_open()                   /* lan_v9: hidden while the Esc menu is open (it covered "Load Campaign") */
-               && !prop_shown                                /* and while the proposal is (lead 2026-10-14); viewui: it stays while Teams is open */
+               && !prop_shown                                /* and while the proposal is (lead 2026-10-14) */
+               && !(opened && !folded())                     /* uxpass: and while the window is open (it only opens Teams; it covered the
+                                                                "Your units" slots); a folded window keeps it (its click = Show) */
                && (!btn_on || btn_on())
                && !busy();                                   /* and on the loading screen (map change, load): gamelane 2026-10-14 */
     if (u_go_active_self(u_go(hr)) != want) u_go_active(u_go(hr), want);
@@ -1584,6 +1673,8 @@ static void hud_place(void) {
     }
     int c = hud_is_compact();
     float W = HUD_WID(c), H = HUD_SIZE(c);
+    static float lab_w[2];                                   /* final review (ru 5): the label's width at its size, measured on a layout */
+    if (H + 6 + lab_w[c] + 4 > W) W = H + 6 + lab_w[c] + 4;  /* a longer label ("Команды") widens the button (it shrank to the box edge) */
     if (hud_px < 0) hud_px = 0; if (hud_px > cr.w - W) hud_px = cr.w - W;          /* stay on screen */
     if (hud_py > 0) hud_py = 0; if (hud_py < -(cr.h - H)) hud_py = -(cr.h - H);
     static float last[4] = {-1}; float now[4] = { hud_px, hud_py, W, (float)c };
@@ -1597,7 +1688,10 @@ static void hud_place(void) {
         if (!ch) continue;
         if (!tx) { rt_size(ch, H, H); Obj ic = img_of(tr_find(ch, "Img_ExitIcon")); if (u_alive(ic)) rt_size(u_tr(ic), H * 0.7f, H * 0.6f); }
         else { rt_size(ch, W - H - 6, H); rt_pos(ch, H + 6, 0); (tm_is(tx, K_TMP) ? F(0x4F0B340, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0);
-               (tm_is(tx, K_TMP) ? F(0x4F0B68C, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0); }   /* fontSizeMax: auto size stays at most this */
+               (tm_is(tx, K_TMP) ? F(0x4F0B68C, void (*)(Obj, float, void *))(tx, c ? 15.0f : 18.0f, NULL) : (void)0);   /* fontSizeMax: auto size stays at most this */
+               void *k = tm_is(tx, K_TMP) ? *(void **)tx : NULL;   /* TMP preferredWidth (slot 84): at fontSizeMax while auto size is on */
+               float pw = k ? (*(float (**)(Obj, void *))((char *)k + 0x678))(tx, *(void **)((char *)k + 0x680)) : 0;
+               if (pw > 1 && (pw > lab_w[c] + 0.5f || pw < lab_w[c] - 0.5f)) { lab_w[c] = pw; hud_dirty = 1; } }
     }
 }
 static void hud_move(float dx, float dy) {                   /* screen pixels -> canvas units */
@@ -1656,7 +1750,7 @@ static void hud_frame(void) {
     }
     Obj t = new_text(rt, HUD_W - lx, HUD_H, 22, AL_LEFT);
     if (t) { rt_anchor(u_tr(t), 0, 0.5f, 0, 0.5f); rt_pivot(u_tr(t), 0, 0.5f); rt_pos(u_tr(t), lx, 0);
-             tmp_font(t, font_title()); tmp_set(t, TR("Teams"));
+             tmp_font(t, font_title(), 1); tmp_set(t, TR("Teams"));
              /* one line that shrinks to fit: a longer word ("Команды", "Équipes") wrapped into two cut lines */
              (tm_is(t, K_TMP) ? F(0x4F0BAB4, void (*)(Obj, bool, void *))(t, false, NULL) : (void)0);     /* no word wrap */
              (tm_is(t, K_TMP) ? F(0x4F0B634, void (*)(Obj, float, void *))(t, 9.0f, NULL) : (void)0);     /* fontSizeMin */
@@ -1725,7 +1819,7 @@ static void stock_side_block(Obj view) {
     u_gc_free(h_side); h_side = u_gc_new(blk);
     float top = pr.h / 2, w = pr.w;
     Obj t = new_text(bt, w - 20, 34, 22, AL_CENTER);
-    if (t) { tmp_font(t, font_title()); rt_pos(u_tr(t), 0, top - 26); tmp_set(t, ui_col(C_MAIN, TR("Going"))); }
+    if (t) { tmp_font(t, font_title(), 1); rt_pos(u_tr(t), 0, top - 26); tmp_set(t, ui_col(C_MAIN, TR("Going"))); }
     model_refresh();
     char pn_[40]; pname(prop.proposer, pn_);
     Obj t2 = new_text(bt, w - 20, 24, 14, AL_CENTER);
@@ -1735,6 +1829,18 @@ static void stock_side_block(Obj view) {
     u_gc_free(h_side_time); h_side_time = t3 ? u_gc_new(t3) : 0;
     if (t3) { rt_pos(u_tr(t3), 0, top - 78); g_raycast(t3, true); }
     float y = top - 100, cs = 0.75f;
+    {   /* UX pass 2026-10-21: every row inside the slot box (3 players or 6 units at 0.75 ran past it) */
+        int nrow = 0, kmax = 1;
+        for (int p = 0; p < TM_MAX_PLAYERS; p++) {
+            if (!(st.present >> p & 1u) || p == st.me) continue;
+            int k = 0; for (int u = 0; u < st.nunits; u++) k += goes_for(u, p);
+            nrow++; if (k > kmax) kmax = k;
+        }
+        float cw_ = (w - 28 - (kmax - 1) * 6) / (kmax * card_w), ch_ = nrow ? ((pr.h - 108) / nrow - 44) / card_h : cs;
+        if (cw_ < cs) cs = cw_;
+        if (ch_ < cs) cs = ch_;
+        if (cs < 0.3f) cs = 0.3f;
+    }
     size_t sl = 0; side_s[0] = 0;
     for (int p = 0; p < TM_MAX_PLAYERS; p++) {
         if (!(st.present >> p & 1u) || p == st.me) continue;
@@ -1948,6 +2054,28 @@ __attribute__((visibility("default"))) int ui_teams_modal_open(void) { return (o
 __attribute__((visibility("default"))) int ui_teams_window_px(float out[4]) {
     if (!opened) return 0;
     return folded() ? scr_rect(u_gc_get(h_fbar), out) : scr_rect(win(), out);
+}
+/* uxpass (lead 2026-10-21): the free part of the open window's title band, left of the centred title and right of the info
+   icon, in screen pixels (x, y = bottom-left, y up). out[4] = the window's top edge (screen px). For ui_game (dlsym): the
+   collapsed Players panel sits there while the window is open (before, it covered the "Your units" slots and hint).
+   0 = no open, unfolded window. */
+__attribute__((visibility("default"))) int ui_teams_band_rect(float out[5]) {
+    float wr[4], ir[4], tr[4];
+    if (!opened || folded() || !scr_rect(win(), wr)) return 0;
+    Obj ti = u_gc_get(h_title);
+    int has_i = scr_rect(u_gc_get(h_info), ir), has_t = scr_rect(ti, tr);
+    float x0 = has_i ? ir[0] + ir[2] * 1.4f : wr[0] + wr[2] * 0.02f, x1 = wr[0] + wr[2] * 0.4f, cy, h;
+    if (has_t) {                                              /* the title's drawn text, not its rect (TMP preferredWidth, slot 84) */
+        R4 r = rt_rect(u_tr(ti)); void *k = *(void **)ti;
+        float pw = tm_is(ti, K_TMP) ? (*(float (**)(Obj, void *))((char *)k + 0x678))(ti, *(void **)((char *)k + 0x680)) : 0;
+        float s = r.w > 1 ? tr[2] / r.w : 1;
+        if (pw > 1) x1 = tr[0] + tr[2] / 2 - pw * s / 2 - (has_i ? ir[2] * 0.4f : 12);
+    }
+    if (has_i) { cy = ir[1] + ir[3] / 2; h = ir[3]; }
+    else if (has_t) { cy = tr[1] + tr[3] / 2; h = tr[3]; }
+    else return 0;
+    out[0] = x0; out[1] = cy - h / 2; out[2] = x1 - x0; out[3] = h; out[4] = wr[1] + wr[3];
+    return 1;
 }
 /* viewui: the player panel draws above the open window; its clicks and tooltips are ui_game's (ui_panel_hit, dlsym) */
 static int panel_hit(V2 m) {
@@ -2201,6 +2329,23 @@ static void tips_frame(void) {
     for (int k = 0; k < nhdr; k++) if (hit(u_gc_get(h_hdr[k]), m, cam)) { tip_header(u_gc_get(h_hdr[k]), hdr_player[k]); return; }
 }
 static void start_frame(void);
+/* unitsel B3 (owner feedback v0.1.20): a guest who arrives in a world with no unit gets the Teams window, once per
+   session, with the hint "Pick your units" (it stays until he has a unit or closes the window). 3 s after the world
+   is ready, so the load's own windows are gone. Not in the lobby: there the units come with Start (co-op) or Bring Units
+   (PvP: the window opened over the guest's card window and took its clicks); the 3 s count after the lobby closes. */
+static void first_open_frame(void) {
+    int gen = (int)mp_game_session_gen();
+    if (pick_done_gen == gen) return;
+    if (!mp_running() || me() <= 0 || spect() || !screen_ok() || !rig_det_mp_ready() || lobby_open()) { pick_ready_t = 0; return; }
+    if (!pick_ready_t) { pick_ready_t = now_s(); return; }
+    if (now_s() - pick_ready_t < 3) return;
+    pick_done_gen = gen;
+    model_refresh();
+    int own = 0; for (int u = 0; u < st.nunits; u++) own += st.owner[u] == st.me;
+    if (own || !st.nunits) { rig_log("teams: arrival: %d unit(s) of mine: no Teams window", own); return; }
+    if (opened) { pick_hint = 1; shown_sig = 0; return; }
+    if (open_screen() == 0) { pick_hint = 1; shown_sig = 0; model_refresh(); layout(); rig_log("teams: arrival with no unit: Teams window opened (Pick your units)"); }
+}
 void ui_teams_frame(void) {
     if (!hooks_done) install_hooks();
 #ifdef TEAMS_MOUSE_TEST
@@ -2217,6 +2362,7 @@ void ui_teams_frame(void) {
     if (n % 3 == 0 && sess()) stock_gear_frame();        /* any stock expedition window in multiplayer */
     if (me() < 0 || scene() != 2) { if (opened) close_screen(); return; }
     start_frame();
+    first_open_frame();
     if (n % 30 == 1) hud_frame();
     hud_place();
     hud_input();
@@ -2245,6 +2391,7 @@ void ui_teams_frame(void) {
     was_dungeon = dun;
     if (!opened || n % 6) return;
     if (!root()) { opened = 0; return; }
+    win_fit();                                               /* the screen size or the UI scale changed */
     model_refresh();
     uint64_t sig = state_sig();
     if (sig != shown_sig) { layout(); shown_sig = sig; }
@@ -2542,7 +2689,8 @@ static char *state_json(int rc) {
       if (u_alive(fb)) str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(fb, NULL), fn2, sizeof fn2);
       bput(&b, ",\"font_title\":"); bstr(&b, fn); bput(&b, ",\"font_body\":"); bstr(&b, fn2);
       Obj ww = win(); R4 wr = ww ? rt_rect(ww) : (R4){0}; Obj rr = root(); R4 rr4 = rr ? rt_rect(u_tr(rr)) : (R4){0};
-      bput(&b, ",\"window\":[%.0f,%.0f],\"root\":[%.0f,%.0f]", wr.w, wr.h, rr4.w, rr4.h); }
+      float wk = ww && tm_is(ww, K_TR) ? F(0x510AEFC, V3 (*)(Obj, void *))(ww, NULL).x : 0;   /* win_fit's scale (1 = fits as is) */
+      bput(&b, ",\"window\":[%.0f,%.0f],\"root\":[%.0f,%.0f],\"win_scale\":%.3f", wr.w, wr.h, rr4.w, rr4.h, wk); }
     str_utf8(tmp_get(u_gc_get(h_ready_txt)), t1, sizeof t1); str_utf8(tmp_get(u_gc_get(h_hint)), t2, sizeof t2);
     snprintf(t3, sizeof t3, "%s", region_line);
     bput(&b, ",\"region_text\":"); bstr(&b, t3);

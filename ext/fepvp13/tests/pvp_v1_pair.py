@@ -108,8 +108,12 @@ def run(H, G, port):
     # the host choice "PvP" (choice 2 under "Host a game"): its page with the PvP rules, Start -> the PvP world -> lobby
     press(H, 'MULTIPLAYER'); press(H, 'HOST_C1'); time.sleep(1)
     ms = c(H, cmd='mpm_status'); log('host page', ms.get('state'))
-    c(H, cmd='mpm_pvp', action='page_arrow', row=1, dir=-1)                  # host page rows: To win, Round time
-    c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1); c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1)
+    for _ in range(6):                                                       # host page rows: To win, Round time; the page remembers
+        q0 = c(H, cmd='mpm_pvp')                                             # the last used values (v0.1.21 rules), so step to best of 1 / 60 s
+        if q0.get('bo') == 1 and q0.get('secs') == 60: break
+        if q0.get('bo') != 1: c(H, cmd='mpm_pvp', action='page_arrow', row=1, dir=-1)
+        if q0.get('secs') != 60: c(H, cmd='mpm_pvp', action='page_arrow', row=2, dir=-1)
+        time.sleep(0.3)
     time.sleep(1); c(H, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'ui_host_page_pvp.png'))
     q = c(H, cmd='mpm_pvp')
     check('0 host page "PvP": rules panel values set (best of 1, 60 s)', ms.get('state') == 'title_host' and q.get('bo') == 1 and q.get('secs') == 60, f"{ms.get('state')} bo {q.get('bo')} secs {q.get('secs')}")
@@ -155,6 +159,8 @@ def run(H, G, port):
     ends = {x: ps[x]['ends'] for x in (H, G)}
     check('3a base ends: two different cells, same on both', ends[H] == ends[G] and ends[H][0] != ends[H][1] and ends[H][0] != [0, 0], json.dumps(ends))
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_start.png'))
+    time.sleep(12)                                           # v0.1.21 (E4): the teams walk to their ends, then a fight vote: G proposes, H agrees
+    c(G, cmd='pvp_vote', op='propose'); wait('vote open', lambda: c(H, cmd='pvp_status').get('vote_open'), timeout=60, every=1); c(H, cmd='pvp_vote', op='agree')
     wait('fight begins (teams in place)', lambda: c(H, cmd='pvp_status').get('fight_start', 0) > 0 and not c(H, cmd='pvp_status').get('placing'), timeout=300, every=2)
     s = c(H, cmd='pvp_status'); cells = {u['guid']: u for u in c(H, cmd='list_units')['units']}
     log('PvP units at the fight', [(cells[u['guid']]['name'], u['guid'][:8], u['team'], cells[u['guid']].get('cell'), cells[u['guid']].get('task'), cells[u['guid']].get('downed')) for u in s['units'] if u['guid'] in cells])
@@ -166,8 +172,18 @@ def run(H, G, port):
     for x in (H, G): c(x, cmd='screenshot', path=os.path.join(OUT, f'frame_{x}_placed.png'))
     hp0 = {u['guid']: u.get('hp', 0) for u in s['units']}
     down = None; lost = None; t_run = time.time()
+    owner = {u['guid']: (H if u['player'] == 0 else G) for u in c(H, cmd='pvp_status')['units']}
+    def orders():                                            # v0.1.21 (E7): no automatic attack orders: each player orders his units, like right-clicks
+        q = c(H, cmd='pvp_status'); cl = {u['guid']: u for u in c(H, cmd='list_units')['units']}
+        al = [u for u in q.get('units', []) if u.get('out_tick', -1) < 0 and 'cell' in cl.get(u['guid'], {})]
+        for u in al:
+            en = [v for v in al if v['team'] != u['team']]
+            if en:
+                c0 = cl[u['guid']]['cell']; tg = min(en, key=lambda v: (cl[v['guid']]['cell'][0] - c0[0]) ** 2 + (cl[v['guid']]['cell'][1] - c0[1]) ** 2); tc = cl[tg['guid']]['cell']
+                rig.send(owner[u['guid']], {'cmd': 'ord_run_attack', 'unit': u['guid'], 'target': tg['guid'], 'x': tc[0], 'y': tc[1], 'mp': 1}, timeout=60)
     while time.time() - t_run < 600:
         s = c(H, cmd='pvp_status')
+        if s.get('active') and not s.get('ending') and not s.get('resetting') and s.get('fight_start') and not s.get('placing'): orders()
         if s.get('units'):
             l = {u['guid']: hp0.get(u['guid'], 0) - u.get('hp', 0) for u in s['units'] if 'hp' in u}
             if not lost and any(v > 0 for g, v in l.items() if any(u['guid'] == g and u['team'] == 1 for u in s['units'])) and \
@@ -189,15 +205,13 @@ def run(H, G, port):
     check('5 match end: same winner + score on both; the world is back (template units, no brought unit)',
           pe[H]['match_winner'] == pe[G]['match_winner'] and pe[H]['score'] == pe[G]['score'] and back[H] == back[G] == tpl_units,
           f"winner {pe[H]['match_winner']} score {pe[H]['score']}, units back {len(back[H])}/{len(tpl_units)}")
-    for x in (H, G): c(x, cmd='mp_pause', on=1)
-    wait('both paused at one tick', lambda: (lambda a, b: a['tick'] == b['tick'] and a.get('mp', {}).get('paused') and b.get('mp', {}).get('paused'))(c(H, cmd='status'), c(G, cmd='status')), timeout=120)
+    # (no pause: a host whose saved rules say "no pause" refuses it; the match's fingerprint logs were copied during the match)
     fh, fg = fp_read_file(os.path.join(OUT, f'fp_match_{H}.log'), t_match), fp_read_file(os.path.join(OUT, f'fp_match_{G}.log'), t_match)
     com = sorted(set(fh) & set(fg)); first = next((t for t in com if fh[t] != fg[t]), None)
     mh, mg = c(H, cmd='status')['mp'], c(G, cmd='status')['mp']
     check('6 fingerprints equal on both for 500+ common ticks from the match start, no desync',
           len(com) >= 500 and first is None and not mh.get('desyncs') and not mg.get('desyncs'),
           f'{len(com)} common ticks ({com[0] if com else None}..{com[-1] if com else None}), first diff {first}, desyncs {mh.get("desyncs")}/{mg.get("desyncs")}')
-    for x in (H, G): c(x, cmd='mp_pause', on=0)
     wait('result window on both', lambda: all(c(x, cmd='mpm_pvp').get('result') for x in (H, G)), timeout=120, every=2)
     for x in (H, G): c(x, cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, f'ui_{x}_result.png'))
     log('H result OK (Back to the Title)', c(H, cmd='mpm_pvp', action='press_ok'))

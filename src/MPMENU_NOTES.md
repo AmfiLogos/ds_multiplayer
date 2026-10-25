@@ -75,7 +75,21 @@ Proof: `build_ux/fix_menu.py` on pair AB, hidden windows 1512x982, results `buil
   <Host> hosts it and invites you." The Multiplayer button stays plain. No box found within 120 frames: text goes to the button line.
 - #14 Lobby: "Share your address, then press Start when everyone is in." and "Friends outside your home: open port N on your
   router, or use Steam invite" (replaces "Internet: needs router port ... open"; "Internet: <ip:port>" still shown when Steam
-  knows it). The world waits in the lobby: dsnet hold reason DSNET_HOLD_LOBBY on at host start, off at Start (every pause mode).
+  knows it). Since extaddr (owner 2026-10-20): the address box shows the INTERNET address (src/extaddr.c: router UPnP
+  GetExternalIPAddress, else https://api.ipify.org, own thread, once per host session; Steam GetPublicIP only when both
+  fail) and Copy copies it; the note says "your router must forward port N to this computer" + "Same home: <local>".
+  Provider NAT (router address in 10/8, 172.16/12, 192.168/16, 100.64/10): no internet address shown, the note says why.
+  Unknown: box = local address, "Internet address unknown ...". Test switches DSRIG_EXTADDR_UPNP=0 / _WEB=0 / _WEB_URL;
+  pair test ext/extaddr/extaddr_lobby.py, host test src/extaddr_test.
+  Since upnpport (owner 2026-10-20, src/upnpport.c): the router port is opened by UPnP on a worker thread (host port =
+  the Host port setting, never changed by the router). Hosting: a listed mapping to this computer:port = "Friends outside
+  your home: <internet>:<external> (your router already forwards this port)"; else AddPortMapping ("Dungeon Settlers
+  host", lease 86400 s, renewed at half, deleted at session end / Application.Quit / Mac exit; only our own) = "...
+  (opened automatically on your router)"; no UPnP / refused = "Your router did not open a port. Friends outside your
+  home need Steam invite, or forward port N on your router." Provider NAT keeps its line. Windows adds "If Windows asks
+  to allow Dungeon Settlers on networks, click Allow." Box + Copy = <internet>:<external>. Test copies (DSRIG_CTL /
+  DSRIG_PORT) never touch the router unless DSRIG_UPNP=1; DSRIG_UPNP=0 off, _LEASE=<s>, _SKIP_EXISTING=1. Pair test
+  ext/upnpport/upnpport_lobby.py (real router), host test src/extaddr_test/upnpport_test.c. The world waits in the lobby: dsnet hold reason DSNET_HOLD_LOBBY on at host start, off at Start (every pause mode).
   Guest: new state MPM_GUEST_LOBBY while that hold is on: the Esc-menu panel in lobby mode with "In <Host>'s lobby / The game
   starts when <Host> presses Start. / Players: ..." and Leave multiplayer.
 - #16 Join / Host pages: text-only lines (title button clones with every Image under them disabled): MPB_LABEL_ADDR "Host
@@ -118,6 +132,14 @@ Not done here: the magnifier icon on the cloned fields (review #16 extra), bold 
   KeyInputDispatcher.IsTextInputFocused (0xD42BBC) hooked true while typing (no hotkeys). Idle lines bottom-left, fade
   after chat_fade s. Right-click drag, position in mp_menu.json. ui lane: mpmenu_chat_config(fade, join_lines, on) /
   mpmenu_chat_config_get. Test: build_ux/chat.py (8/8).
+- Chat move / resize (owner 2026-10-25): the open box also moves with a LEFT drag on its title band or frame, and resizes
+  with a left drag on its bottom-right corner (6-dot grip: width + height) or its bottom edge (height); the top-left
+  corner stays. 470 x 270 to 80 % of the canvas width x 90 % of its height (972), 4 free on each side, 34 at the top.
+  Two clear raycast strips (6 units) under the bottom edge and right of the corner widen the grab and keep the press a
+  UI click. chat_x / chat_y = the box's bottom-left offset, chat_w / chat_h its size (mp_menu.json, saved at the
+  release). History lines fill the height (60 line objects), widths follow the box (box - 24, idle text - 60, plates
+  - 40). Test hooks (control channel only): mpm_chat {local} adds a chat_local line; mpm_chat {drag, x0, y0, x1, y1,
+  button, frames} plays press / move / release through the same drag code. Test: ext/dsdps/chat_drag_test.py.
 
 ## lan_v10 menu + teams lane (2026-10-14; research/ux_flow_v10.md)
 Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_menu.py` (menu); build `build_ux/build_v10.sh`
@@ -165,3 +187,29 @@ Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_men
   until the split. FE "Death permanent" default Off.
 - "Remove tag" text now sits under the world row (not under its open/close button): a click no longer folds the row.
 - Test: ext/wpmenu/tests/menu_pair.py (fake-mouse build), 17/17 on GH.
+
+## Connection words in the players rows (owner 2026-10-20, branch conninfo)
+- dsnet: the server's P_PLAYERS list appends one `enum dsnet_via` byte per entry after the 6-byte entries (older clients
+  stop at 2 + 6 n): HOST (own socket pair), DIRECT (TCP), STEAM (loopback from a port the Steam bridge marked with
+  `dsnet_relay_port_mark`, net/steam/dsnet_steam.c host_bridge). `dsnet_player_via` (every peer: kind only),
+  `dsnet_server_peer` (host only: the guest's "ip:port"). Host test: net/test `--only conn_via`.
+- `mp_game_conn` (mp_game.c) + `mpmenu_conn_words` (mpmenu.c): host's own row "Steam lobby" / its internet (else local)
+  address; host about a guest "Steam" / "Direct (ip:port)"; guest "Steam" / "Direct", the host's row adds the address it
+  joined. Another guest's address is never shown (guests never receive it).
+- Lobby rows (lw_texts): a small grey second line under the name. Guest lobby: T_CONN under the players,
+  "Connected to <host> through Steam" / "Connected to <ip:port>". In game: ui_game.c Players panel right column.
+- Test: `mpm_conn` (rows' via + words; test copies: `{mark:id}` on the host marks that guest's loopback port like the
+  Steam bridge); mpm_status lw.conn, lw.addr_rects (frames mask this Mac's addresses). Pair test ext/conninfo/conninfo_pair.py.
+
+## Lobby Quit / Turn off multiplayer, Steam lobby address (owner 2026-10-20, branch lobbyquit)
+- Lobby bottom bar: Quit (MPB_LOBBY_QUIT, left) + host only "Turn off multiplayer" (MPB_LEAVE, the old host Leave) +
+  Start. Host Quit asks the same box (confirm_leave = 2), then MPA_LEAVE | MPA_QUIT_TITLE: mp_game_quit_to_title = leave
+  (guests get "The host left the game") + the no-autosave QuitToTitleSceneRequested. The stock "Quit to title" asks no
+  save question (SystemMenuView.OnQuitToTitlePressed = a Yes/No box only, then autosave); the lobby runs before Start
+  (the world is still the loaded save), so today's no-autosave quit stays. Guest lobby: only Quit, no box.
+- Turn off multiplayer: the host stays in the world; it stays paused as the lobby held it (the player's play button runs it).
+- Steam lobby (mpm_steam_state steam): the address block is hidden; MPB_SHOW_ADDR "Show address for friends without
+  Steam" shows it (game side only, lw_addr_shown, reset when the lobby ends). "Same home" = lan_ip: en0, else the first
+  real LAN adapter (ui_addr_kind; Windows shim names VPN / virtual adapters utun / vmnet; + Docker, WSL), never 169.254/16
+  or 100.64/10 while a real one is up.
+- Tests: mpmenu_test (host lobby Quit -> MPA_QUIT_TITLE; Turn off -> none; guest Quit), pair rig/lobbyquit_pair.py.

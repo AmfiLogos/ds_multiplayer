@@ -10,7 +10,7 @@ import hashlib, importlib.util, json, os, shutil, signal, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WL = os.path.expanduser('~/ds_winlane013')
-LOADER = os.path.join(WL, 'ds_modloader', 'loader')
+LOADER = os.environ.get('MAC_LOADER') or os.path.join(WL, 'ds_modloader', 'loader')   # MAC_LOADER: another loader checkout's loader/ (its test_env holds the copy)
 BUILD = os.environ.get('MAC_BUILD') or os.path.join(LOADER, 'build')   # MAC_BUILD: another build folder (dsload.dylib + mods_all/mac)
 sys.path.insert(0, os.path.join(LOADER, 'test'))
 import lrig                                                        # noqa: E402
@@ -19,7 +19,7 @@ lrig.LROOT = LOADER
 lrig.INST = os.path.join(LOADER, 'test_env', 'instances')
 lrig.__file__ = os.path.abspath(__file__)                          # lrig.start spawns "<this> _guard W" (same INST)
 X = os.environ.get('MAC_COPY', 'W')
-LANE = 'vmwin-mac'
+LANE = os.environ.get('MAC_LANE', 'vmwin-mac')                  # rig pair lease name (two drivers at once: give each its own)
 RIG = os.path.expanduser('~/ds_multiplayer/rig/rig.py')
 STATE = os.path.join(os.environ.get('WINBOT_STATE') or os.path.expanduser('~/.ds_winbot'), 'mac_state.json')   # outside the repo
 SEED = os.path.join(lrig.SEED_DATA, 'Saves')
@@ -60,7 +60,33 @@ def c(**k):
     if not running():
         raise SystemExit(f'copy {X} is not running (mac.sh start)')
     touch()
-    return lrig.send(X, k, timeout=60, connect_wait=30)
+    return send(k)
+
+
+sys.path.insert(0, os.path.join(HERE, '..', '..', '..', 'rig'))
+import ctl_token                                                   # noqa: E402  v0.1.16: the token goes first on each connection
+
+
+def send(obj, timeout=60, connect_wait=30):
+    """one command to copy X over its control socket, token first (lrig.send of older loader checkouts has no token)"""
+    import socket
+    d = lrig.idir(X); t0 = time.time()
+    while True:
+        try:
+            s = socket.socket(socket.AF_UNIX); s.settimeout(timeout); s.connect(os.path.join(d, 'ctl.sock')); break
+        except OSError:
+            if time.time() - t0 > connect_wait:
+                raise
+            time.sleep(0.5)
+    s.sendall(ctl_token.token_line(d) + json.dumps(obj).encode() + b'\n')
+    buf = b''
+    while not buf.endswith(b'\n'):
+        r = s.recv(1 << 20)
+        if not r:
+            break
+        buf += r
+    s.close()
+    return json.loads(buf)
 
 
 def sha(p):
@@ -124,7 +150,7 @@ def proof():
         mj = os.path.join(md, m, 'mod.json')
         if os.path.exists(mj):
             j = json.load(open(mj)); e = j.get('platforms', {}).get('mac-arm64', {}).get('entry')
-            p['modules'][m] = {'version': j.get('version'), 'entry': e, 'sha256': (sha(os.path.join(md, m, e)) or '')[:16]}
+            p['modules'][m] = {'version': j.get('version'), 'entry': e, 'sha256': (sha(os.path.join(md, m, e)) or '')[:16] if e else None}   # a library mod (dsmp-bridge) has no entry
     return p
 
 

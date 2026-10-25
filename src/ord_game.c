@@ -19,6 +19,10 @@
 #include <math.h>
 #include <dlfcn.h>
 #include <string.h>
+/* PvP (E7b, owner 2026-10-20: a click on an enemy unit must never act on it): an interaction aimed at an enemy PvP unit
+   other than an attack (rescue, first aid, carry, give...) is refused here, on every peer alike (the same order data). */
+int pvp_act_refused(int interaction_type, const uint8_t actor[16], const uint8_t target[16]) __attribute__((weak_import));
+void pvp_units_ordered(const uint8_t (*units)[16], int n) __attribute__((weak_import));
 
 /* ---------------------------------------------------------------- RVAs (dump.cs, build 25846389) */
 #define VA_B8_0            0xD3BAA4   /* InputDispatcher.<Update>b__8_0(IEventData) */
@@ -414,6 +418,7 @@ static int owner_or_unit(const ord_msg *m, ord_guid *owner) {
     }
 }
 
+static int use_is_scroll;                 /* unitsel B5: h_use_skill saw a SKILL_ReturnScroll object (class name) */
 static int ord_trace(void) {               /* DSRIG_ORD_TRACE=1: one log line per captured / applied order (tests) */
     static int t = -1; if (t < 0) t = getenv("DSRIG_ORD_TRACE") != NULL; return t;
 }
@@ -444,6 +449,13 @@ static void send(ord_msg *m) {
     if (!(m->kind == ORD_K_EVENT && (m->ev->flags & ORD_EF_EQUIP) && gear_check) && !owner_or_unit(m, &owner)) {
         rig_log("ord: order kind %d (%s) is about a unit but has no owner Guid: dropped", m->kind, m->ev ? m->ev->name : "-");
         st.blocked++; free(w.p); return;
+    }
+    /* unitsel B5 (owner feedback v0.1.20): a Return scroll pulls everyone out of the dungeon: in multiplayer it goes to
+       a vote of every player first (ui_scroll_propose; the user sends this same order once the vote agreed) */
+    if (m->kind == ORD_K_USE_SKILL && (strstr(m->key, "ReturnScroll") || use_is_scroll)) {
+        static int (*fn)(const uint8_t *, const uint8_t *, size_t); static int looked;
+        if (!looked) { looked = 1; fn = (int (*)(const uint8_t *, const uint8_t *, size_t))dlsym(RTLD_DEFAULT, "ui_scroll_propose"); }
+        if (fn && fn(owner.b, w.p, w.n)) { rig_log("ord: Return scroll (%s) handed to the vote", m->key); st.captured++; free(w.p); return; }
     }
     emit_fn(emit_user, owner.b, w.p, w.n);
     st.captured++;
@@ -942,7 +954,9 @@ static void h_use_skill(Obj self, Obj user, Obj target, Obj skill, Obj selector,
     const ord_seldesc *d = seldesc_of(selector);
     if (d) m->sel = *d;
     else if (selector) rig_log("ord: UseSkill selector %s has no descriptor: the replay will skip it", cls_name(selector));
+    use_is_scroll = is_cls(skill, "SKILL_ReturnScroll");
     send(m); free(m);
+    use_is_scroll = 0;
 }
 
 /* selector factories: record what each returned selector was built from (only during a LOCAL handler) */
@@ -1231,6 +1245,9 @@ static int apply_msg(ord_msg *m, int player) {
             Obj u = g_ent_find(map, &m->act[i].unit);
             int skip = !u || !may_command(u, player);
             for (int k = 0; k < ndone && !skip; k++) if (done[k] == u) skip = 1;
+            if (!skip && pvp_act_refused && m->act[i].ia.has_target && pvp_act_refused(m->act[i].ia.type, (const uint8_t *)&m->act[i].unit, (const uint8_t *)&m->act[i].ia.target)) {
+                rig_log("ord: RUN by player %d: interaction %d on an enemy PvP unit refused (only an attack may target it)", player, m->act[i].ia.type); continue;
+            }
             if (skip) continue;
             uint8_t ia[ORD_IA_SIZE] __attribute__((aligned(8))) = { 0 };
             ord_ia_to_mem(&genv, &m->act[i].ia, map, ia);
@@ -1296,6 +1313,14 @@ int ord_apply(int player, const uint8_t *payload, size_t len) {
     if (rc) rig_log("ord: bad order payload (%d, %zu bytes)", rc, len);
     else {
         if (ord_trace()) rig_log("ord trace: apply player %d kind %d %s nsel %d", player, m->kind, m->ev ? m->ev->name : "-", m->ctx.nsel);
+        if (pvp_units_ordered) {                                          /* PvP (E7): these units got their player's order (every peer, same step) */
+            int cmd = m->kind >= ORD_K_MOVE_ALL && m->kind <= ORD_K_USE_SKILL;   /* move / waypoint / run / action / skill: a unit command */
+            if (cmd) pvp_units_ordered((const uint8_t (*)[16])m->ctx.sel, m->ctx.nsel);
+            for (int i = 0; cmd && i < m->nact; i++) pvp_units_ordered((const uint8_t (*)[16])&m->act[i].unit, 1);
+            if (m->kind == ORD_K_EVENT && m->ev && !strcmp(m->ev->name, "ToggleBehaviourOption")) {   /* hold position on that unit */
+                ord_guid ow; memset(&ow, 0, sizeof ow); ord_owner(&genv, m, &ow); pvp_units_ordered((const uint8_t (*)[16])&ow, 1);
+            }
+        }
         rc = apply_msg(m, player);
     }
     executing = 0;
@@ -1377,6 +1402,33 @@ int ord_debug_select(int map, const uint8_t (*g)[16], int n, int group) {
     SETREF(l, (char *)l + 0x10, a); AT(l, 0x18, int32_t) = k; AT(l, 0x1C, int32_t) = 1;
     AT(sc, 0x10, int32_t) = group; SETREF(sc, (char *)sc + 0x18, l);
     return k;
+}
+/* unitsel B2: replace the local selection with these units through the stock SelectProcessor (Select 0xD54B7C, Clear
+   0xD54C84 when n is 0): the selection view (rings, unit panel) follows, as after a player's own click. Local UI only:
+   never inside a step or a replay. 0 = done, -1 no processor. */
+int ord_select_units(int map, const uint8_t (*g)[16], int n) {
+    Obj p = pc_handler(); Obj sp = p ? AT(p, 0x28, Obj) : NULL;      /* PlayerControlEventHandler._selectProcessor */
+    if (!is_cls(sp, "SelectProcessor") || executing) return -1;
+    if (n <= 0) { F(0xD54C84, void (*)(Obj, void *))(sp, NULL); return 0; }
+    Obj l = obj_new(TI_LIST_IENTITY);
+    Obj a = arr_new(md(TI_IENTITY), (size_t)(n > 4 ? n : 4));
+    int k = 0;
+    for (int i = 0; i < n; i++) { Obj e = g_ent_find(map, (const ord_guid *)g[i]); if (e) SETREF(a, (char *)a + 0x20 + (k++) * 8, e); }
+    SETREF(l, (char *)l + 0x10, a); AT(l, 0x18, int32_t) = k; AT(l, 0x1C, int32_t) = 1;
+    if (!k) F(0xD54C84, void (*)(Obj, void *))(sp, NULL);
+    else F(0xD54B7C, void (*)(Obj, Obj, void *))(sp, l, NULL);
+    return 0;
+}
+/* PvP test (E7b, rig pvp_selgroup): a left click's selection of one unit, through SelectProcessor.Select (hooked: the same
+   path as a click, ui_game.c + pvp_select_after); returns the selection group after it (3003 my units, 3001 enemy view) */
+int ord_debug_click_select(int map, const uint8_t g[16]) {
+    Obj ih = item_handler(); Obj sp = ih ? AT(ih, 0x38, Obj) : NULL; Obj sc = sel_container();
+    if (!is_cls(sp, "SelectProcessor") || !sc) return -1;
+    Obj e = g_ent_find(map, (const ord_guid *)g); if (!e) return -2;
+    Obj l = obj_new(TI_LIST_IENTITY); Obj a = arr_new(md(TI_IENTITY), 4);
+    SETREF(a, (char *)a + 0x20, e); SETREF(l, (char *)l + 0x10, a); AT(l, 0x18, int32_t) = 1; AT(l, 0x1C, int32_t) = 1;
+    F(0xD54B7C, void (*)(Obj, Obj, void *))(sp, l, NULL);                  /* SelectProcessor.Select */
+    return AT(sc, 0x10, int32_t);
 }
 int ord_debug_selection(uint8_t (*out)[16], int max, int *group) {
     ord_ctx c; ctx_capture(&c, NULL);
