@@ -21,6 +21,8 @@
 #include "extaddr.h"                                     /* the host's internet address for the lobby (background lookup) */
 #include "upnpport.h"                                    /* the router port for friends outside the home (UPnP, background) */
 #include "fe_ui_api.h"                                  /* fe_mode_get: the hub lobby's hint line */
+#include "mp_worldsave.h"                                /* mp_hub_guid: the hub is never saved, tagged or listed */
+#include "mp_solo.h"                                     /* the single-player copy of a world new to multiplayer */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
 #include <stdio.h>
 #include <stdlib.h>
@@ -2258,6 +2260,7 @@ static int world_get(const char *guid, mpm_settings *out) {
     fclose(f); return found;
 }
 static void world_put(const char *guid, const mpm_settings *st) {
+    if (mp_hub_guid(guid)) return;                                          /* a hub is made new each session: nothing to keep */
     char p[1200], tmp[1300], line[256]; app_path(p, sizeof p, "mp_worlds.txt"); snprintf(tmp, sizeof tmp, "%s.tmp", p);
     FILE *in = fopen(p, "r"), *out = fopen(tmp, "w"); if (!out) { if (in) fclose(in); return; }
     while (in && fgets(line, sizeof line, in)) { char g[64]; if (sscanf(line, "%63s", g) == 1 && strcmp(g, guid)) fputs(line, out); }
@@ -2626,7 +2629,7 @@ static void notice_frame(const mpm_obs *o) {
  * actions; _txtConfirm +0x40 primary right "End for everyone", _txtCancle +0x50 "Cancel"). The ui lane's
  * OnClick_Confirm / OnClick_Cancle hooks hand clicks on a box that is not theirs to mpmenu_notice_click (dlsym). If
  * another box takes the view (its text changes) or it closes another way, it counts as Cancel. */
-enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK, BX_HOSTMODS, BX_HOSTMODS_INFO, BX_REJOIN };   /* REJOIN: "Connection lost, rejoining..." + Cancel (mp_game_autorejoin) */   /* HOSTMODS: the host's mods + "Get the host's mods"; _INFO: its progress / failure */   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
+enum { BX_NONE, BX_LEAVE, BX_INVITE, BX_NOSAVE, BX_JOINING, BX_SPECT_OFF, BX_UNTAG, BX_LANBLOCK, BX_HOSTMODS, BX_HOSTMODS_INFO, BX_REJOIN, BX_SOLO };   /* SOLO: "Keep a single-player copy of this world?" */   /* REJOIN: "Connection lost, rejoining..." + Cancel (mp_game_autorejoin) */   /* HOSTMODS: the host's mods + "Get the host's mods"; _INFO: its progress / failure */   /* SPECT_OFF: "Remove the spectators now?"; UNTAG: "Remove the multiplayer tag?" */             /* which of our boxes is up (one view, one at a time) */
 static char lbox_text[2048]; static int lbox_up;                             /* lbox_up = BX_* */
 static Obj lbox_view(void) { return find_view_x(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }
 static Obj lbox_view_now(void) { return find_view_now(&h_cnv, &k_cnv, "Refactor.UI", "CommonNoticeView", true); }   /* showing a box */
@@ -2883,6 +2886,7 @@ static void invite_answer(int choice) {
     }
 }
 static void hostmods_click(int confirm);
+static void solo_answer(int yes);
 static void invite_click(int confirm) {
     int k = lbox_up; lbox_up = BX_NONE;
     if (k == BX_INVITE) invite_answer(confirm ? 2 : 0);
@@ -2894,6 +2898,7 @@ static void invite_click(int confirm) {
     else if (k == BX_UNTAG) tag_answer(confirm);
     else if (k == BX_LANBLOCK && confirm) lanblock_open_settings();
     else if (k == BX_HOSTMODS) hostmods_click(confirm);
+    else if (k == BX_SOLO) solo_answer(confirm);
 }
 static void invite_frame(const mpm_obs *o) {
     static int looked; if (!looked) { looked = 1; inv_pending = (int (*)(char *, size_t))dlsym(RTLD_DEFAULT, "mp_game_invite_pending"); inv_answer = (int (*)(int))dlsym(RTLD_DEFAULT, "mp_game_invite_answer"); }
@@ -3085,6 +3090,7 @@ static void hist_update(void) {
     char gid[64] = ""; campaign_guid(gid, sizeof gid);
     Obj clan = AT(cd, 0x50, Obj); if (clan) str_utf8(AT(clan, 0x20, Obj), e.world, sizeof e.world);     /* ClanDataContainer.ClanName */
     Obj td = AT(cd, 0xA8, Obj); if (td) e.day = AT(td, 0x20, int64_t);                              /* CampaignDataContainer.TimeData (dump 25846389) .Day */
+    if (in.is_host && mp_hub_guid(gid)) return;                             /* no hub row to host again: the hub is never saved */
     if (in.is_host) { snprintf(e.how, sizeof e.how, "host"); snprintf(e.addr, sizeof e.addr, "%s", M.direct); snprintf(e.host, sizeof e.host, "%s", my_name); }
     else if (!strcmp(joined_how, "ip")) { snprintf(e.how, sizeof e.how, "ip"); snprintf(e.addr, sizeof e.addr, "%s", joined_addr); snprintf(e.host, sizeof e.host, "%s", in.host_name); }
     else { snprintf(e.how, sizeof e.how, "steam"); e.steamid = joined_steamid ? joined_steamid : dsnet_steam_lobby_owner(in.lobby); snprintf(e.host, sizeof e.host, "%s", in.host_name); }
@@ -4222,7 +4228,7 @@ static void tag_frame(const mpm_obs *o) {
     if (!c || mp_is_spectator(s) || dsnet_player_id(c) < 0) return;
     uint32_t pm = dsnet_present_mask(c);
     if (__builtin_popcount(pm) < 2) return;
-    char gid[64] = ""; if (!campaign_guid(gid, sizeof gid)) return;
+    char gid[64] = ""; if (!campaign_guid(gid, sizeof gid) || mp_hub_guid(gid)) return;   /* no tag on a hub: it is never saved */
     const char *nm[DSNET_MAX_PLAYERS]; char buf[DSNET_MAX_PLAYERS][32]; int n = 0;
     for (int p = 0; p < DSNET_MAX_PLAYERS; p++) {                           /* slot order: the host first */
         if (!(pm >> p & 1u)) continue;
@@ -4231,6 +4237,114 @@ static void tag_frame(const mpm_obs *o) {
     }
     tag_seed(); char p[1200]; tag_path(p, sizeof p);
     if (mpm_tag_add(p, gid, nm, n)) rig_log("mpmenu: Multiplayer tag on world %s (%d players present)", gid, n);
+}
+
+/* ---------------------------------------------------------------- single-player copy (owner 2026-10-25, mp_solo.c)
+ * "when logging in multiplayer into a world for the first time, i should have the option to create a backup of it which
+ * stays single player". Host from Your save (or a Recent worlds host row): once the world is open and before the session
+ * starts (the model waits in HOST_LOADING while obs.solo_hold), a world never played with others (no Multiplayer tag) and
+ * never asked before (<app data>/mp_solo.txt) asks once: Yes = its newest save becomes a NEW single-player world in the same
+ * folder (new guid, "<name> (solo)", the original's mods in the loader's worlds.json, no tag), then the session starts with
+ * the original; No = the session starts. Not for New save, the hub or a Foreign Expedition pick (no world of the player's is
+ * played there). A guest is never asked: its game keeps no save of the host's world (mp_game.c h_save, mp_sync deleted). */
+void fe_new_guid(char out[37]);                                             /* fe_save.c */
+const char *fe_game_saves_dir(char *b, size_t n);                           /* fe_game.c: the normal game's Saves folder (tests: none) */
+enum { SOLO_OFF, SOLO_CHECK, SOLO_ASK };
+static int solo_st, solo_shows; static int64_t solo_t0;
+static char solo_guid[40], solo_world[160];
+static uint64_t solo_asked_n, solo_made_n;                                  /* test read-back (mpm_status) */
+static void solo_path(char *p, size_t cap) { app_path(p, cap, "mp_solo.txt"); }
+static int solo_dirs(char d[2][1100]) {
+    snprintf(d[0], sizeof d[0], "%s/data/Saves", rig_dir);
+    return fe_game_saves_dir(d[1], sizeof d[1]) ? 2 : 1;
+}
+static void solo_suffix(char *pre, char *post, size_t cap) {               /* "%s (solo)" in the player's language, around the name */
+    const char *f = TR("%s (solo)"), *k = strstr(f, "%s");
+    if (!k) { snprintf(pre, cap, "%s", ""); snprintf(post, cap, "%s", " (solo)"); return; }
+    snprintf(pre, cap, "%.*s", (int)(k - f), f); snprintf(post, cap, "%s", k + 2);
+}
+/* the loader's worlds.json: the copy gets the original's mods. dsl_world_copy_mods (loader kit 0.1.27+, Mac + Windows);
+   an older Mac loader: its dsl_world_mods / dsl_world_set_mods (the Mods window's own calls). 0 ok. */
+static int solo_copy_mods(const char *from, const char *to) {
+    int (*cp)(const char *, const char *) = (int (*)(const char *, const char *))mpmenu_loader_sym("dsl_world_copy_mods");
+    if (cp) return cp(from, to);
+#ifndef _WIN32
+    int (*get)(const char *, const char **, int) = (int (*)(const char *, const char **, int))mpmenu_loader_sym("dsl_world_mods");
+    int (*set)(const char *, const char *const *, int) = (int (*)(const char *, const char *const *, int))mpmenu_loader_sym("dsl_world_set_mods");
+    if (get && set) {
+        const char *ids[64]; char keep[64][64]; const char *kp[64];
+        int n = get(from, ids, 64);
+        for (int i = 0; i < n; i++) { snprintf(keep[i], sizeof keep[i], "%s", ids[i]); kp[i] = keep[i]; }   /* the loader's buffer is static */
+        return set(to, kp, n);
+    }
+#endif
+    return -2;                                                              /* no loader (test copies): nothing to copy */
+}
+static int solo_make(char cg[37], char *name, size_t nn) {
+    char d[2][1100]; int nd = solo_dirs(d); const char *dp[2] = { d[0], d[1] }; mps_save sv;
+    if (!mps_newest(dp, nd, solo_guid, &sv)) { rig_log("mpmenu: single-player copy: no save of world %s any more", solo_guid); return -1; }
+    do fe_new_guid(cg); while (mp_hub_guid(cg));
+    char pre[96], post[96], out[1400], err[300] = ""; solo_suffix(pre, post, sizeof pre);
+    snprintf(name, nn, "%s%s%s", pre, solo_world, post); dsi_utf8_fix_end(name);
+    if (mps_copy(sv.path, cg, pre, post, out, sizeof out, err, sizeof err)) { rig_log("mpmenu: single-player copy of %s FAILED: %s", sv.path, err); return -1; }
+    int mrc = solo_copy_mods(solo_guid, cg);
+    Obj ld = mf ? AT(mf, 0x180, Obj) : NULL;                                 /* the Load list reads the new save */
+    if (ld) F(0x812AB8, void (*)(Obj, void *))(ld, NULL);                    /* CampaignSaveLoader.TryRefreshSave */
+    solo_made_n++;
+    rig_log("mpmenu: single-player copy of world %s: %s -> %s (world %s); mods in worlds.json: %s", solo_guid, sv.path, out, cg,
+            !mrc ? "copied" : mrc == -2 ? "no loader" : "NOT copied (the copy takes the mods it is first opened with)");
+    return 0;
+}
+static void solo_answer(int yes) {
+    if (solo_st != SOLO_ASK) return;
+    solo_st = SOLO_OFF;
+    char p[1200], cg[37] = "", name[260] = ""; solo_path(p, sizeof p);
+    if (yes && solo_make(cg, name, sizeof name)) {                         /* not written: asked again next time */
+        if (ui_notice) ui_notice(TR("The single-player copy could not be made. Your world is not changed."));
+        return;
+    }
+    mps_asked_put(p, solo_guid, yes, cg);
+    rig_log("mpmenu: single-player copy box for world %s: %s", solo_guid, yes ? "Yes" : "No");
+    if (yes && ui_notice) { char t[400]; snprintf(t, sizeof t, TR("Single-player copy made: %s"), name); dsi_utf8_fix_end(t); ui_notice(t); }
+}
+/* before the model step: the world is open (HOST_LOADING), first time? */
+static void solo_obs(mpm_obs *o) {
+    if (solo_st && M.state != MPM_HOST_LOADING) { if (lbox_up == BX_SOLO) box_close(); solo_st = SOLO_OFF; }   /* failed / left */
+    if (solo_st == SOLO_CHECK && o->campaign_ready) {                       /* the same frame the model would start the lobby */
+        solo_st = SOLO_OFF;
+        char g[64] = "", nm[MPM_TAG_NAMES][32], p[1200]; solo_path(p, sizeof p);
+        if (o->tutorial || !campaign_guid(g, sizeof g)) return;               /* the tutorial never hosts (model) */
+        char d[2][1100]; int nd = solo_dirs(d); const char *dp[2] = { d[0], d[1] }; mps_save sv;
+        const char *why = mp_hub_guid(g) ? "a hub" : tag_get(g, nm) >= 0 ? "it has the Multiplayer tag" : mps_asked(p, g) ? "asked before"
+                        : !mps_newest(dp, nd, g, &sv) ? "no save of it on this computer" : NULL;
+        if (why) { rig_log("mpmenu: single-player copy: not asked for world %s (%s)", g, why); return; }
+        snprintf(solo_guid, sizeof solo_guid, "%s", g);
+        Obj c = cdc(), clan = c ? AT(c, 0x50, Obj) : NULL; solo_world[0] = 0;
+        if (clan) str_utf8(AT(clan, 0x20, Obj), solo_world, sizeof solo_world);   /* ClanDataContainer.ClanName */
+        solo_st = SOLO_ASK; solo_shows = 0; solo_t0 = frames;
+        rig_log("mpmenu: single-player copy: world %s (%s) is new to multiplayer, newest save %s: asking", g, solo_world, sv.path);
+    }
+    o->solo_hold = solo_st == SOLO_ASK;
+}
+/* the box: over nothing else; shown again if another box took the view (max 3 times); no box within 20 s = the session starts */
+static void solo_frame(void) {
+    if (solo_st != SOLO_ASK) return;
+    Obj v = lbox_view();
+    if (lbox_up == BX_SOLO && lbox_ours(v)) return;                         /* up: waiting for the click */
+    if (lbox_up == BX_SOLO) { lbox_up = BX_NONE; rig_log("mpmenu: single-player copy box closed another way"); }
+    if (solo_shows >= 3 || frames - solo_t0 > 1200) {
+        solo_st = SOLO_OFF; rig_log("mpmenu: single-player copy box: no answer, the session starts (asked again next time)"); return;
+    }
+    if (lbox_up != BX_NONE || (u_alive(v) && u_on(v)) || M.confirm_leave) return;   /* another box first */
+    char pre[96], post[96], copy[260], bd[400], sm[500], t[1400]; solo_suffix(pre, post, sizeof pre);
+    snprintf(copy, sizeof copy, "%s%s%s", pre, solo_world, post); dsi_utf8_fix_end(copy);
+    snprintf(bd, sizeof bd, TR("%s becomes a multiplayer world. A copy stays single-player, so you can go on with it alone."), solo_world);
+    snprintf(sm, sizeof sm, TR("Yes makes a new world, \"%s\", from your newest save, in the same folder. You are asked once for each world."), copy);
+    snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", TR("Keep a single-player copy of this world?"), bd, sm);
+    dsi_utf8_fix_end(t);
+    box_show(BX_SOLO, t, mpm_word("TEXTKEY_CommonPopUp_Yes", TR_NOOP("Yes")), mpm_word("TEXTKEY_CommonPopUp_No", TR_NOOP("No")));
+    solo_shows++;
+    if (lbox_up == BX_SOLO) solo_asked_n++;
 }
 /* the load list's rows we decorated: world rows (case, guid, its stock name text string, our "Remove tag" text) and save rows */
 /* world rows (SubUI_SettlerNameCase) and save rows we know, for every live load list. The title's Load list and the
@@ -4464,6 +4578,9 @@ __attribute__((visibility("default"))) int dsl_loadlist_hidden(int *kind) {
 /* the loader's filter panel: 1 = this filter decides the open list now (Your save, the Expedition pick), so the panel stays
    away; 0 = the single-player list, the panel decides */
 __attribute__((visibility("default"))) int dsl_loadlist_own(void) { return mpm_list_mode(&M) != MPM_LIST_SOLO; }
+/* the loader (dsl_world.c): 1 = a temporary world it never registers in worlds.json: the hub, made new for each session and
+   never saved (owner 2026-10-25, mp_worldsave.h) */
+__attribute__((visibility("default"))) int dsl_world_temporary(const char *guid) { return mp_hub_guid(guid); }
 /* the loader's filter panel: 1 = a Multiplayer world (its tag, mp_tags.txt) */
 __attribute__((visibility("default"))) int dsl_loadlist_world_mp(const char *guid) {
     char nm[MPM_TAG_NAMES][32]; return guid && *guid && tag_get(guid, nm) >= 0;
@@ -4594,6 +4711,7 @@ void mpmenu_frame(void) {
     join_poll();
     assets_scan();                                                          /* every 300 frames until all are found */
     mpm_obs o; observe(&o);
+    solo_obs(&o);                                                           /* host from Your save: the single-player copy box first */
     o.edited = fields_edited; fields_edited = 0;
     int c = pending_click; pending_click = MPB_NONE;
     mpm_choices_to_model(&hcl, &M);
@@ -4601,6 +4719,7 @@ void mpmenu_frame(void) {
     int st0 = M.state;
     int a = mpm_step(&M, &o, c);
     if (M.state != st0) rig_log("mpmenu: state %d -> %d (click %d)", st0, M.state, c);
+    if (st0 == MPM_PICK_SAVE && M.state == MPM_HOST_LOADING && !M.set.fe) solo_st = SOLO_CHECK;   /* a world of the player's: first time? */
     if (o.failed && o.msg[0] && (M.state == MPM_FAILED || M.state == MPM_IDLE)) mp_steam_ack();   /* the message is in M.msg now */
     if (a & ~MPA_REFRESH) run_actions(a, &o);
     choice_page_frame();
@@ -4635,6 +4754,7 @@ void mpmenu_frame(void) {
     notice_frame(&o);
     leave_box_frame();
     invite_frame(&o);
+    solo_frame();
     hostmods_frame();
     lbox_fit_frame();
     rejoin_frame(&o);
@@ -5230,6 +5350,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           bput(&b, ",\"confirm_leave\":%d,\"lbox_up\":%d,\"box\":{\"on\":%d,\"text\":", M.confirm_leave, lbox_up, bon); bstr(&b, bt);
           bput(&b, ",\"confirm\":"); bstr(&b, bc); bput(&b, ",\"cancel\":"); bstr(&b, bx); bput(&b, "},\"notice\":"); bstr(&b, M.notice);
           bput(&b, ",\"message\":"); bstr(&b, last_message); }
+        bput(&b, ",\"solo\":{\"state\":%d,\"asked\":%llu,\"made\":%llu,\"world\":", solo_st, (unsigned long long)solo_asked_n, (unsigned long long)solo_made_n); bstr(&b, solo_guid); bput(&b, "}");
         bput(&b, ",\"obs\":{\"scene\":%d,\"ready\":%d,\"title\":%d,\"picker\":%d,\"role\":%d,\"guest_loading\":%d,\"failed\":%d,\"esc\":%d},\"visible\":%llu",
              o.scene, o.campaign_ready, o.title_visible, o.picker_open, o.role, o.guest_loading, o.failed, o.esc_open, (unsigned long long)mpm_visible(&M, &o));
         mp_session *ss = mp_game_session();

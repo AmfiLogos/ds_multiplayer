@@ -5,9 +5,12 @@
  * without units, made by tools/make_hub_template.py; base_<build>.json, the day-0 starting base, if it is missing). The
  * map files are not in git (maps/, see maps/README.md); the mod build copies them next to the module.
  * The hub is then unlocked: every research done, every region open.
- * The host writes it as a new save (data/Saves/<name>.json) and loads it; the multiplayer menu then opens the lobby as
- * for "Your save". The template's own clan units (the base template has 4, the hub file none) stay until the start: the
- * expedition start replaces the clan with the brought units (fe_build_hub). */
+ * The host writes it as data/Saves/mp_hub.json (the game loads only <SaveName>.json from Saves/) and loads it; the
+ * multiplayer menu then opens the lobby as for "Your save". The template's own clan units (the base template has 4, the
+ * hub file none) stay until the start: the expedition start replaces the clan with the brought units (fe_build_hub).
+ * The hub is made new for each session and leaves no file (owner 2026-10-25: "Foreign Expedition Hub shouldn't create a
+ * local save as well"): mp_hub.json goes as soon as the hub is open (fe_hub_frame), the game never saves a hub
+ * (mp_game.c h_save, trn_game.c), and no tag or world line names it (mpmenu.c, mp_worldsave.h mp_hub_guid). */
 #include "rig.h"
 #include "mp_modes_text.h"
 #include "fe_json.h"
@@ -23,6 +26,9 @@
 #include <unistd.h>
 
 enum { FE_WORLD_HUB = 0 };
+/* the hub's file in Saves/ while it loads: an mp_* name, so the loader never routes it to the game's folder or backs it up
+   (dsl_save_is_mp_temp), and one fixed name, so a file left by a crash goes at the next start */
+#define HUB_SAVE_NAME "mp_hub"
 /* a neutral hub world before its expedition starts: campaign guid prefix (every peer); the start (fe_join_point_save)
    gives the hub its run prefix fe5ea00x, so the stock below comes once */
 #define FE_HUB_TPL_PREFIX "fe5eb"
@@ -119,7 +125,7 @@ static jv *fe_world_build(int kind, char *out_name, size_t on, char *err, size_t
     fe_new_guid(cg);
     memcpy(cg, FE_HUB_TPL_PREFIX, 5);
     game_version(ver, sizeof ver);
-    snprintf(stem, sizeof stem, "MPHub_%.8s", cg);
+    snprintf(stem, sizeof stem, "%s", HUB_SAVE_NAME);
     const char *disp = "Foreign Expedition Hub";
     time_t t = time(NULL); struct tm tm; localtime_r(&t, &tm); strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", &tm);
     jset(h, "CampaignGuid", jstrv(cg)); jset(h, "SaveName", jstrv(stem)); jset(h, "DisplayName", jstrv(disp));
@@ -155,11 +161,40 @@ int fe_world_write(int kind, char *name, size_t nn, char *path, size_t pn, char 
     char dir[1100], p[1300];
     snprintf(dir, sizeof dir, "%s/data/Saves", rig_dir); mkdir(dir, 0755);
     snprintf(p, sizeof p, "%s/%s.json", dir, name);
+    unlink(p);                                                             /* our own temporary name: a file left by a crash */
     int rc = jsave_new(w, p); jfree(w);
     if (rc) { snprintf(err, errn, "%s", TR("The hub map could not be written into the Saves folder.")); rig_log("fe hub: write %s failed (%s)", p, strerror(errno)); return -1; }
     if (path) snprintf(path, pn, "%s", p);
     rig_log("fe hub: %s written", p);
     return 0;
+}
+/* mp_hub.json goes once the hub is open, or when its load did not start (back on the title). Test copies (DSRIG_CTL=1,
+   rig) keep it as data/fe/hub_built.json, outside Saves/, for the hub tests that read the built hub. */
+static int hub_file_up;             /* this process wrote mp_hub.json and queued its load */
+static double hub_file_t0;
+static double mono_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
+static void hub_file_drop(const char *why) {
+    hub_file_up = 0;
+    char p[1300]; snprintf(p, sizeof p, "%s/data/Saves/%s.json", rig_dir, HUB_SAVE_NAME);
+    if (access(p, F_OK)) return;
+    const char *t = getenv("DSRIG_CTL"); int kept = 0;
+    if (t && !strcmp(t, "1")) {
+        char d[1200], q[1300]; snprintf(d, sizeof d, "%s/data/fe", rig_dir); mkdir(d, 0755);
+        snprintf(q, sizeof q, "%s/hub_built.json", d); kept = !rename(p, q);
+    }
+    if (!kept) unlink(p);
+    Obj ld = mf ? AT(mf, 0x180, Obj) : NULL;                             /* the save list's header cache forgets it */
+    if (ld) F(0x812AB8, void (*)(Obj, void *))(ld, NULL);                /* CampaignSaveLoader.TryRefreshSave */
+    rig_log("fe hub: %s.json %s (%s)", HUB_SAVE_NAME, kept ? "moved to data/fe/hub_built.json (test copy)" : "deleted", why);
+}
+/* every frame (mp_modes.c, MP_FRAME_ALWAYS) */
+void fe_hub_frame(void) {
+    static int first = 1;
+    if (first) { first = 0; hub_file_drop("left over from an earlier run"); }
+    if (!hub_file_up) return;
+    int fe_world_hub_any(void);
+    if (scene() == 2 && !busy() && fe_world_hub_any()) hub_file_drop("the hub is open");
+    else if (scene() == 1 && !busy() && mono_s() - hub_file_t0 > 30) hub_file_drop("its load did not start");
 }
 /* host, at the title: build the world, write it into data/Saves and load it. 0 = the load is queued. */
 int fe_world_start(int kind, char *err, size_t errn) {
@@ -167,6 +202,7 @@ int fe_world_start(int kind, char *err, size_t errn) {
     char name[64];
     if (fe_world_write(kind, name, sizeof name, NULL, 0, err, errn)) return -1;
     queue_load(name);
+    hub_file_up = 1; hub_file_t0 = mono_s();
     rig_log("fe hub: load of %s queued", name);
     return 0;
 }

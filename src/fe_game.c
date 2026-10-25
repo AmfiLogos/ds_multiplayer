@@ -101,6 +101,14 @@ int fe_world_is_hub(void) {
     char gs[40]; guid_str(AT(clan, 0x10, Guid), gs);
     return !strncmp(gs, FE_HUB_PREFIX, 7) && (gs[7] == '0' || gs[7] == '1') ? 1 + (gs[7] == '1') : 0;
 }
+/* any hub world open: before its expedition starts (template guid, fe_hub.c) or running. Never saved (mp_game.c h_save,
+   trn_game.c autosave), no tag or world line (mpmenu.c): mp_worldsave.h mp_hub_guid */
+int fe_world_hub_any(void) {
+    Obj c = cdc(); Obj clan = c ? AT(c, 0x50, Obj) : NULL;
+    if (!clan) return 0;
+    char gs[40]; guid_str(AT(clan, 0x10, Guid), gs);
+    return mp_hub_guid(gs);
+}
 /* recruiting allowed in this world: not a hub, or a hub whose host turned "Recruiting in the hub" On. Recruits then
    belong to the recruiter (normal recruit rule) and stay in the hub: they are not in the run, so nothing sends them home. */
 int fe_recruit_allowed(void) { return fe_world_is_hub() != 1; }
@@ -386,7 +394,7 @@ static char *cmd_end(const char *line) {
     int hr = dsnet_hold(c, 1, DSNET_HOLD_OTHER, NULL);
     const char *rid = jget(run_m, "run_id")->s;
     char name[64]; snprintf(name, sizeof name, "MPFE_%.8s_end", rid);
-    if (!rig_save_campaign(name)) { bput(&b, "{\"ok\":false,\"error\":\"the game did not save\"}"); return b.p; }
+    if (!mp_game_save_temp(name)) { bput(&b, "{\"ok\":false,\"error\":\"the game did not save\"}"); return b.p; }   /* the hub itself is never saved */
     char sp[1400], rp[1400], sub[300], err[300];
     snprintf(sp, sizeof sp, "%s/data/Saves/%s.json", rig_dir, name);
     snprintf(sub, sizeof sub, "runs/%s/hub_end.json", rid); fe_path(rp, sizeof rp, sub);
@@ -620,6 +628,7 @@ static const char *game_saves_dir(char *b, size_t n) {
     const char *home = getenv("HOME"); if (!home) return NULL;
     snprintf(b, n, "%s/Library/Application Support/CanOpener/Dungeon Settlers/Saves", home); return b;
 }
+const char *fe_game_saves_dir(char *b, size_t n) { return game_saves_dir(b, n); }   /* mpmenu.c: the single-player copy */
 int fe_list_saves(fe_save_info *out, int max) {
     char dirs[2][1100]; const char *lab[2] = { TR_NOOP("Multiplayer folder"), TR_NOOP("Game folder") };   /* English kept (TR when shown) */ int nd = 0, n = 0;
     snprintf(dirs[nd++], sizeof dirs[0], "%s/data/Saves", rig_dir);
@@ -826,7 +835,7 @@ static char *cmd_status(void) {
 }
 char *fe_exec(const char *cmd, const char *line) {
     if (!strcmp(cmd, "fe_stats")) return cmd_stats(line);
-    if (!strcmp(cmd, "fe_save")) { char nm[200] = "fe_test"; jstr(line, "name", nm, sizeof nm); Buf b = { 0 }; bput(&b, "{\"ok\":%s}", rig_save_campaign(nm) ? "true" : "false"); return b.p; }
+    if (!strcmp(cmd, "fe_save")) { char nm[200] = "fe_test"; jstr(line, "name", nm, sizeof nm); Buf b = { 0 }; bput(&b, "{\"ok\":%s}", mp_game_save_temp(nm) ? "true" : "false"); return b.p; }   /* test read of the world, the hub too */
     if (!strcmp(cmd, "fe_bring")) return cmd_bring(line);
     if (!strcmp(cmd, "fe_start")) return cmd_start(line);
     if (!strcmp(cmd, "fe_end")) return cmd_end(line);

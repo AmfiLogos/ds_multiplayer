@@ -210,14 +210,18 @@ static Obj save_helper(void) {                 /* MainFlow._eventHandler -> Camp
     Obj eh = mf ? AT(mf, 0x50, Obj) : NULL; Obj ce = eh ? AT(eh, 0x20, Obj) : NULL;
     return ce ? AT(ce, 0xA8, Obj) : NULL;
 }
+/* the Foreign Expedition hub is never saved (fe_game.c, mp_game.c h_save): its autosaves are not even asked for, host or
+   not, in a session or not (the host may have turned multiplayer off in the hub) */
+int fe_world_hub_any(void);
+static int no_autosave(void) { return role == 0 || fe_world_hub_any(); }
 static void (*o_save_req)(Obj, int, void *);
 static void h_save_req(Obj self, int force, void *mi) {
-    if (role == 0) { autosave_blocked++; return; }
+    if (no_autosave()) { autosave_blocked++; return; }
     o_save_req(self, force, mi);
 }
 static int (*o_save_start)(Obj, void *), (*o_save_pend)(Obj, void *);
-static int h_save_start(Obj self, void *mi) { if (role == 0) { autosave_blocked++; return 0; } return o_save_start(self, mi); }
-static int h_save_pend(Obj self, void *mi) { if (role == 0) return 0; return o_save_pend(self, mi); }
+static int h_save_start(Obj self, void *mi) { if (no_autosave()) { autosave_blocked++; return 0; } return o_save_start(self, mi); }
+static int h_save_pend(Obj self, void *mi) { if (no_autosave()) return 0; return o_save_pend(self, mi); }
 /* the game-hour autosave goes UI input -> AutoSaveRequested -> async EventQueue. In multiplayer it must never enter
  * the queue (the async queue must be identical on every peer): the host asks the save helper directly instead. */
 static void (*o_as_pres)(Obj, Obj, void *), (*o_as_view)(Obj, Obj, void *);

@@ -48,9 +48,11 @@ static const mp_api_table *A;
    co-op expeditions or start PvP matches (Esc > PvP Match, pvp_ui.c). Owner 2026-10-21: "keep only the Hub: Co-op or
    PvP" (the separate PvP choice and its PvP world are gone). */
 int fe_world_start(int kind, char *err, size_t errn);
+void fe_hub_frame(void);
 static int fe_page_start(char *err, size_t errn) { return fe_world_start(0, err, errn); }
 static int fe_lobby_start(char *err, size_t errn) { return fe_menu_start(M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, err, errn); }
 static void fe_ui_flags(void) {                          /* hub with Recruiting Off: Guild Contact hidden, popup 8 not offered */
+    fe_hub_frame();                                      /* every frame too: the hub's load file goes once the hub is open */
     int off = !fe_recruit_allowed();
     A->ui_set_flag(MPUI_HIDE_GUILD_CONTACT, off);
     A->ui_set_flag(MPUI_NO_RECRUIT_POPUP, off);

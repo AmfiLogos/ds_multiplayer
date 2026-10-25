@@ -287,14 +287,30 @@ static void owners_restore(void) {
     rig_log("mp: owners restored from the world (%ld bytes): rc %d", n, rc);
     free(b);
 }
+int fe_world_hub_any(void);                                 /* fe_game.c: a Foreign Expedition hub is open */
+static uint64_t hub_saves_blocked;
 static bool h_save(Obj ld, Obj name, bool is_auto, Obj disp, void *mi) {
     if (!mp_saving && (guest_world || (S && !cfg.host))) {
         saves_blocked++;
         rig_log("mp: guest save blocked (%s): the world's save lives on the host", is_auto ? "auto" : "manual");
         return false;
     }
+    /* the hub is made new for each session from the map in the mod (fe_hub.c) and never saved, on the host too (owner
+       2026-10-25: "Foreign Expedition Hub shouldn't create a local save as well"): autosave, manual save, save on exit.
+       The join point and the checks save through mp_saving (mp_sync / mp_fullcheck, deleted after use). */
+    if (!mp_saving && fe_world_hub_any()) {
+        hub_saves_blocked++;
+        rig_log("mp: hub save blocked (%s): the hub is never saved", is_auto ? "auto" : "manual");
+        return false;
+    }
     bool ok = o_save(ld, name, is_auto, disp, mi);
     if (ok && !mp_saving) owners_store();
+    return ok;
+}
+/* a temporary save of the open world that the caller moves out of Saves/ or deletes at once (Foreign Expedition end,
+   test reads): allowed in the hub, no owners table, no iron-mode cleanup. 1 ok. */
+int mp_game_save_temp(const char *name) {
+    mp_saving = 1; int ok = rig_save_campaign(name); mp_saving = 0;
     return ok;
 }
 /* In iron mode Save(isAutoSave = true) keeps ONLY the save just written and deletes the campaign's others: the
@@ -1735,8 +1751,8 @@ void mp_game_status(Buf *b) {
     bput(b, ",\"partials\":%u,\"partial_fails\":%u,\"reports_sent\":%u,\"reports_saved\":%u,\"patch_state\":%d,\"report_seq\":%u,\"report_path\":",
          st.partials, st.partial_fails, st.reports_sent, st.reports_saved, dsnet_patch_state(mp_client(S)), report_seq);
     bstr(b, report_path);
-    bput(b, ",\"guest_world\":%s,\"saves_blocked\":%llu,\"sync_files_deleted\":%llu,\"sync_file_pending\":%s,\"cache_refreshes\":%llu,\"game_deletes_blocked\":%llu,\"load_retries\":%d",
-         guest_world ? "true" : "false", (unsigned long long)saves_blocked, (unsigned long long)sync_files_deleted, sync_file_pending ? "true" : "false", (unsigned long long)cache_refreshes, (unsigned long long)game_deletes_blocked, load_retries);
+    bput(b, ",\"guest_world\":%s,\"saves_blocked\":%llu,\"hub_saves_blocked\":%llu,\"sync_files_deleted\":%llu,\"sync_file_pending\":%s,\"cache_refreshes\":%llu,\"game_deletes_blocked\":%llu,\"load_retries\":%d",
+         guest_world ? "true" : "false", (unsigned long long)saves_blocked, (unsigned long long)hub_saves_blocked, (unsigned long long)sync_files_deleted, sync_file_pending ? "true" : "false", (unsigned long long)cache_refreshes, (unsigned long long)game_deletes_blocked, load_retries);
     bput(b, ",\"load_stab_skips\":%u,\"load_poll_frames\":%u,\"join_fast\":%d,\"load_fade_skips\":%u", stab_skips, poll_frames, fast_opt(), fade_skips);
     dsnet_client *dc = mp_client(S);
     {   /* owner tables (cross-play check: same on every peer) and why a desync was flagged (bit 1 game, 2 owners) */
