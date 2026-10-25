@@ -526,8 +526,6 @@
  "Leave": "退出",
  "Leave Multiplayer": "マルチプレイを終了",
  "Leave multiplayer": "マルチプレイを終了",
- "Leave multiplayer to load another world": "別のワールドを読み込むにはマルチプレイを終了してください",
- "Leave multiplayer to load another world.": "別のワールドを読み込むにはマルチプレイを終了してください。",
  "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it.": "フリーユニットを左クリックで取得、自分のユニットを左クリックで解放します。ホストのプレイヤーごとのユニット数まで操作できます。探索を始めるには、ゲームの「ダンジョンに入る」を使ってください。全プレイヤーが承認します。",
  "Left-click to take": "左クリックで取得",
  "Left-click: free this unit. Use Lend to give control to another player.": "左クリック：このユニットを解放。「貸す」で別のプレイヤーに操作を貸せます。",
@@ -1119,6 +1117,8 @@
   "最大%d体まで連れていけます。先に1体のチェックを外してください。"
  ],
  "You can control at most %d units (host rule)": "操作できるユニットは最大%d体です（ホストのルール）",
+ "You can load another world when multiplayer ends": "マルチプレイが終わると別のワールドを読み込めます",
+ "You can load another world when multiplayer ends.": "マルチプレイが終わると別のワールドを読み込めます。",
  "You can no longer watch this world.": "このワールドはもう観戦できません。",
  "You can only mark your own units": "自分のユニットにしか印を付けられません",
  "You cannot equip this unit": "このユニットは装備できません",

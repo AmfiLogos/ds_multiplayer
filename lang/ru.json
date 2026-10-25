@@ -554,8 +554,6 @@
  "Leave": "Выйти",
  "Leave Multiplayer": "Выйти из мультиплеера",
  "Leave multiplayer": "Выйти из мультиплеера",
- "Leave multiplayer to load another world": "Выйдите из мультиплеера, чтобы загрузить другой мир",
- "Leave multiplayer to load another world.": "Выйдите из мультиплеера, чтобы загрузить другой мир.",
  "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it.": "Левый клик по свободному юниту, чтобы его забрать, или по своему, чтобы освободить. Вы можете управлять не больше чем «Юнитов на игрока» хоста. Чтобы начать экспедицию, используйте в игре «Войти в Подземелье»; каждый игрок одобряет её.",
  "Left-click to take": "Левый клик, чтобы забрать",
  "Left-click: free this unit. Use Lend to give control to another player.": "Левый клик: освободить этот юнит. Нажмите «Одолжить», чтобы передать управление другому игроку.",
@@ -1165,6 +1163,8 @@
   "Можно взять не больше %d юнитов. Сначала снимите один."
  ],
  "You can control at most %d units (host rule)": "Вы можете управлять не более чем %d юнитами (правило хоста)",
+ "You can load another world when multiplayer ends": "Другой мир можно загрузить, когда мультиплеер закончится",
+ "You can load another world when multiplayer ends.": "Другой мир можно загрузить, когда мультиплеер закончится.",
  "You can no longer watch this world.": "Вы больше не можете наблюдать за этим миром.",
  "You can only mark your own units": "Вы можете отмечать только свои юниты",
  "You cannot equip this unit": "Вы не можете экипировать этот юнит",

@@ -540,8 +540,6 @@
  "Leave": "Salir",
  "Leave Multiplayer": "Salir del multijugador",
  "Leave multiplayer": "Salir del multijugador",
- "Leave multiplayer to load another world": "Sal del multijugador para cargar otro mundo",
- "Leave multiplayer to load another world.": "Sal del multijugador para cargar otro mundo.",
  "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it.": "Clic izquierdo en una unidad libre para tomarla, o en tu unidad para liberarla. Puedes controlar hasta el límite de Unidades por jugador del anfitrión. Para empezar una expedición, usa «Entrar a la mazmorra» en el juego; todos los jugadores deben aprobarla.",
  "Left-click to take": "Clic izquierdo para tomar",
  "Left-click: free this unit. Use Lend to give control to another player.": "Clic izquierdo: libera esta unidad. Usa Prestar para dar el control a otro jugador.",
@@ -1142,6 +1140,8 @@
   "Puedes traer %d unidades como máximo. Desmarca una primero."
  ],
  "You can control at most %d units (host rule)": "Puedes controlar como máximo %d unidades (regla del anfitrión)",
+ "You can load another world when multiplayer ends": "Podrás cargar otro mundo cuando termine el multijugador",
+ "You can load another world when multiplayer ends.": "Podrás cargar otro mundo cuando termine el multijugador.",
  "You can no longer watch this world.": "Ya no puedes mirar este mundo.",
  "You can only mark your own units": "Solo puedes marcar tus propias unidades",
  "You cannot equip this unit": "No puedes equipar esta unidad",

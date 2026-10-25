@@ -526,8 +526,6 @@
  "Leave": "떠나기",
  "Leave Multiplayer": "멀티플레이 나가기",
  "Leave multiplayer": "멀티플레이 나가기",
- "Leave multiplayer to load another world": "다른 월드를 불러오려면 멀티플레이를 나가십시오",
- "Leave multiplayer to load another world.": "다른 월드를 불러오려면 멀티플레이를 나가십시오.",
  "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it.": "자유 유닛을 왼쪽 클릭하면 가져오고, 내 유닛을 왼쪽 클릭하면 해제합니다. 호스트가 정한 플레이어당 유닛 수까지 조작할 수 있습니다. 탐사를 시작하려면 게임의 \"던전 입장\"을 사용하십시오. 모든 플레이어가 승인해야 합니다.",
  "Left-click to take": "왼쪽 클릭하여 가져오기",
  "Left-click: free this unit. Use Lend to give control to another player.": "왼쪽 클릭: 이 유닛을 해제합니다. 다른 플레이어에게 조작권을 주려면 빌려주기를 사용하십시오.",
@@ -1119,6 +1117,8 @@
   "최대 %d개 유닛만 데려갈 수 있습니다. 먼저 하나를 해제하십시오."
  ],
  "You can control at most %d units (host rule)": "최대 %d개 유닛만 조작할 수 있습니다 (호스트 규칙)",
+ "You can load another world when multiplayer ends": "멀티플레이가 끝나면 다른 월드를 불러올 수 있습니다",
+ "You can load another world when multiplayer ends.": "멀티플레이가 끝나면 다른 월드를 불러올 수 있습니다.",
  "You can no longer watch this world.": "이 월드를 더 이상 관전할 수 없습니다.",
  "You can only mark your own units": "자신의 유닛만 표시할 수 있습니다",
  "You cannot equip this unit": "이 유닛은 장착할 수 없습니다",

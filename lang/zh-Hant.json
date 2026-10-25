@@ -526,8 +526,6 @@
  "Leave": "離開",
  "Leave Multiplayer": "退出多人遊戲",
  "Leave multiplayer": "退出多人遊戲",
- "Leave multiplayer to load another world": "退出多人遊戲以載入其他世界",
- "Leave multiplayer to load another world.": "退出多人遊戲以載入其他世界。",
  "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it.": "左鍵點擊空閒單位即可接管，點擊你的單位即可釋放。你最多可控制房主設定的每位玩家單位數。若要開始探險，請使用遊戲的「進入地下城」；每位玩家都要同意。",
  "Left-click to take": "左鍵點擊即可接管",
  "Left-click: free this unit. Use Lend to give control to another player.": "左鍵：釋放此單位。使用「借出」可將控制權交給其他玩家。",
@@ -1119,6 +1117,8 @@
   "最多只能帶入 %d 個單位。請先取消勾選一個。"
  ],
  "You can control at most %d units (host rule)": "你最多可控制 %d 個單位（房主規則）",
+ "You can load another world when multiplayer ends": "多人遊戲結束後才能載入其他世界",
+ "You can load another world when multiplayer ends.": "多人遊戲結束後才能載入其他世界。",
  "You can no longer watch this world.": "你無法再觀戰此世界。",
  "You can only mark your own units": "你只能標記自己的單位",
  "You cannot equip this unit": "你無法裝備此單位",

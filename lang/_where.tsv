@@ -497,8 +497,6 @@
 "Leave"	mpmenu.c:1952
 "Leave Multiplayer"	mpmenu_model.c:562
 "Leave multiplayer"	mpmenu.c:2322
-"Leave multiplayer to load another world"	mpmenu.c:1724
-"Leave multiplayer to load another world."	mpmenu.c:4360
 "Left-click a free unit to take it, or your unit to free it. You can control up to the host's Units per Player. To start an expedition, use the game's Enter Dungeon; every player approves it."	ui_teams.c:2252
 "Left-click to take"	ui_teams.c:1127
 "Left-click: free this unit. Use Lend to give control to another player."	ui_teams.c:2219
@@ -1072,6 +1070,8 @@
 "You asked %s a moment ago"	ui_game.c:4033
 "You can bring %d unit at most. Untick one first.||You can bring %d units at most. Untick one first."	mu_bring.c:160
 "You can control at most %d units (host rule)"	ui_game.c:570 ui_game.c:780
+"You can load another world when multiplayer ends"	mpmenu.c:1724
+"You can load another world when multiplayer ends."	mpmenu.c:4360
 "You can no longer watch this world."	mpmenu_model.c:266
 "You can only mark your own units"	ui_teams.c:1509
 "You cannot equip this unit"	mp_game.c:1199

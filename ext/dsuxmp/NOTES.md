@@ -13,7 +13,8 @@ Fixes M4, M8, M11 (+ Title Case), M12, M13 of `UX_REVIEW_2026-10-25.md`. Branch 
 - M8: the host's Esc menu button says "Turn Off Multiplayer" (the lobby's word, owner 2026-10-20); a guest keeps
   "Leave Multiplayer". New model field `role` (last obs.role). The host's box in play = the lobby's box: "Turn off
   multiplayer?" / "Turn Off". The Esc tooltip title follows the button and its body says only that role's effect
-  (two new strings, 9 languages).
+  (two new strings, 9 languages). The Esc menu's note under Load Campaign said "Leave multiplayer to load another
+  world" to the host too: now role-neutral "You can load another world when multiplayer ends" (9 languages).
 - M11: English Title Case on our button labels, menu rows, settings rows (Rules, cog list, PvP rules) and box buttons.
   Sentences, notes, values and box questions stay sentence case. A sentence that names a renamed button or rule follows
   the new name ("use Join by Address", "Bring Units, then press Start", "Vanilla Check is on"). Keys renamed in every

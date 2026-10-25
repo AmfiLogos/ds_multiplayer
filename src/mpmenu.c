@@ -1721,7 +1721,7 @@ static void esc_build(Obj v) {
     Obj seed = AT(v, 0x88, Obj);                                            /* design #7: why Load is off, a seed-style line */
     if (u_alive(seed)) {
         Obj r = u_instantiate(seed, u_tr_parent(u_tr(seed)));
-        if (u_alive(r)) { { char lr[200]; snprintf(lr, sizeof lr, "<color=#A69085>%s</color>", TR("Leave multiplayer to load another world")); tmp_set(r, lr); }
+        if (u_alive(r)) { { char lr[200]; snprintf(lr, sizeof lr, "<color=#A69085>%s</color>", TR("You can load another world when multiplayer ends")); tmp_set(r, lr); }
             /* one line: as wide as its text (the seed line's width wrapped de "zu laden" alone onto a second line, onto the seed) */
             if (mm_is(r, K_TMP) && fit_methods() && mm_is(u_tr(r), K_RT)) {
                 float fs = F(0x4F0B338, float (*)(Obj, void *))(r, NULL), fl = lang_cjk() ? 14 : 12;   /* the seed's 12: ja unreadable at 960 */
@@ -4357,7 +4357,7 @@ static void tips_frame(const mpm_obs *o) {
           TIP(eb(MPB_LEAVE), ll, M.role == 1 ? TR("Asks first, then ends the game for everyone. The world stays on your computer and you keep playing alone.")
                                              : TR("You return to the title. Your units stay reserved for you.")); }
         if (in_session()) { char lc[128]; snprintf(lc, sizeof lc, "%s", load_label[0] ? load_label : mpm_word("TEXTKEY_SystemMenu_LoadCampaign", TR_NOOP("Load Campaign")));   /* the stock button's own label */
-                            TIP(AT(ev, 0x60, Obj), lc, TR("Leave multiplayer to load another world.")); }
+                            TIP(AT(ev, 0x60, Obj), lc, TR("You can load another world when multiplayer ends.")); }
     }
     if (o->scene != 1) return;
     /* Recent worlds (3.1) */
