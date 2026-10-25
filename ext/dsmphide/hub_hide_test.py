@@ -13,10 +13,14 @@ Seeded in the copy's modded Saves folder (the wiki's public base save, header ch
   MPHub_fe5eb1a2                                        the hub temp world of multiplayer before 0.1.26: must not show
   ForeignExpeditionHub__AutoSave_fe5ea000..._0          the game's autosave of a running hub: must not show
   PvPBase__AutoSave_b45e0..._0                          the game's autosave of the PvP world: must not show
-The Load Campaign list opens with every filter box on (Vanilla, Modded, Solo, Multiplayer). Multiplayer before this fix
-shows all four worlds: the three hidden checks fail there. A loader before dsmphide (ds_modloader dsl_rows.c) then adds the
-false line "3 worlds are hidden by a filter under the list." (no box can show them): the line check fails there.
+With them the loader's test module rows-demo (never shipped): a filter WITH a label ("Show demo worlds", off at each
+opening = every world hidden). The Load Campaign list opens with every filter box on (Vanilla, Modded, Solo, Multiplayer):
+  toggle off: rows-demo hides Template, the hidden-worlds line counts that 1 world (the player's own filter keeps its line);
+  toggle on:  Template shows, the three mod worlds do not, and no hidden-worlds line names them (no box can show them).
+Multiplayer before this fix shows the three mod worlds (toggle on). A loader before ds_modloader 623130c counts them as
+hidden "by a filter under the list" (4 with the toggle off, a false "3 worlds" line with it on): the line checks fail there.
 Usage: LD_ROOT=<ds_modloader checkout with loader/build/dsload.dylib> DSL_TEST_MODS=<built mods> python3 hub_hide_test.py [out]
+       ROWS_DEMO_DIR = built rows-demo (default LD_ROOT/loader/build/test_mods/rows-demo, the gate's rowsdemo())
 Output: RESULT line, <out>/summary.json, <out>/dsload.log, <out>/lf_state.json. Exit 0 = PASS."""
 import json, os, shutil, subprocess, sys, threading, time
 
@@ -36,6 +40,7 @@ X, I, MSAVES, GSAVES = S.X, S.I, S.MSAVES, S.GSAVES
 LANE = 'dsmphide'
 TPL_SRC = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')   # public (the wiki's base save)
 TPL_GUID = '491bc260-98aa-4cd1-b63f-82da78369aaf'                    # its own world
+ROWS_DEMO = os.environ.get('ROWS_DEMO_DIR') or os.path.join(LD, 'loader', 'build', 'test_mods', 'rows-demo')
 
 
 def name_of(clan, guid, n=0):
@@ -89,6 +94,10 @@ def seed():
         json.dump(t, open(os.path.join(MSAVES, name + '.json'), 'w'))
 
 
+def rows_of(st):
+    return {w['guid'].lower(): w for w in st.get('worlds', [])}
+
+
 def lf_state():
     """the open Load list as the loader sees it (dsl_rows.c test request lf_state)"""
     if os.path.exists(STATE): os.replace(STATE, STATE + '.old')
@@ -102,24 +111,34 @@ def run():
     S.install()
     seed()
     cr = os.path.join(I, 'crashrep_test'); os.makedirs(cr, exist_ok=True); open(os.path.join(cr, 'answer'), 'w').write('no')   # a fresh copy's consent box: No
+    d = os.path.join(I, 'DungeonSettlers.app', 'Contents', 'Resources', 'mods', 'rows-demo'); os.makedirs(d, exist_ok=True)
+    for f in ('rows-demo.dylib', 'mod.json'): shutil.copy2(os.path.join(ROWS_DEMO, f), os.path.join(d, f))
     r.cap_wait(f'{X}: start')                                        # the machine-wide test copy cap (copies, load, swap)
-    S.start_modded(('multiplayer',), worlds={}, extra_env={'DSL_UPDATE': '0', 'DSL_CRASHREP_TEST': cr})
+    S.start_modded(('multiplayer', 'rows-demo'), worlds={}, extra_env={'DSL_UPDATE': '0', 'DSL_CRASHREP_TEST': cr})
     T.request({'cmd': 'warn_cancel'}); time.sleep(1)
     mark = len(T.dlog())
     r.send(X, {'cmd': 'mpm_open_load'}, timeout=20, connect_wait=0)
     check('setup: the Load list opened (rows: Load list rebuilt)', S.wait_line('rows: Load list rebuilt', mark, 30))
     time.sleep(2.5); lf_state(); time.sleep(2)                       # the multiplayer list filter, then the loader's poll
-    st = lf_state()
-    json.dump(st, open(os.path.join(OUT, 'lf_state.json'), 'w'), indent=1)
-    rows = {w['guid'].lower(): w for w in st.get('worlds', [])}
-    log('rows:', [(w['guid'][:8], w['shown']) for w in st.get('worlds', [])], '| hidden-worlds line:', st.get('hid_lines'))
-    seen = [n for n, g, _, _ in [TEMPLATE] + OURS if g in rows]
-    check('setup: the game listed all four seeded worlds (a row each, shown or not)', len(seen) == 4, (seen, list(rows)))
-    check('Template (a normal world) shows', rows.get(TPL_GUID, {}).get('shown') == 1, rows.get(TPL_GUID))
+    a = lf_state(); ra = rows_of(a)                                  # rows-demo's toggle is off at each opening
+    log('toggle off: rows', [(w['guid'][:8], w['shown']) for w in a.get('worlds', [])], '| line', a.get('hidden_line'), a.get('hid_lines'))
+    seen = [n for n, g, _, _ in [TEMPLATE] + OURS if g in ra]
+    check('setup: the game listed all four seeded worlds (a row each, shown or not)', len(seen) == 4, (seen, list(ra)))
+    end = (a.get('hid_lines') or [{}, {}])[1]
+    check('toggle off: the filter WITH a label (rows-demo) hides Template and its line counts that 1 world, not the mod\'s own',
+          ra.get(TPL_GUID, {}).get('shown') == 0 and end.get('shown') and a.get('hidden_line') == 1, (a.get('hidden_line'), end))
+    T.request({'cmd': 'toggles', 'on': True}); t0 = time.time()
+    while os.path.exists(os.path.join(T.SDIR, 'reg_request.json')) and time.time() - t0 < 5: time.sleep(0.1)   # one request file: read first
+    b = lf_state()
+    while rows_of(b).get(TPL_GUID, {}).get('shown') != 1 and time.time() - t0 < 10: time.sleep(0.5); b = lf_state()
+    time.sleep(1); b = lf_state(); rb = rows_of(b)
+    log('toggle on: rows', [(w['guid'][:8], w['shown']) for w in b.get('worlds', [])], '| line', b.get('hidden_line'), b.get('hid_lines'))
+    json.dump({'toggle_off': a, 'toggle_on': b}, open(os.path.join(OUT, 'lf_state.json'), 'w'), indent=1)
+    check('toggle on: Template (a normal world) shows', rb.get(TPL_GUID, {}).get('shown') == 1, rb.get(TPL_GUID))
     for name, guid, _, _ in OURS:
-        check(f'{name} (the mod\'s own world) does not show', guid in rows and rows[guid].get('shown') == 0, rows.get(guid))
-    end = (st.get('hid_lines') or [{}, {}])[1]                       # no box can show them: a line about them is false
-    check('no hidden-worlds line under the list for the mod\'s own worlds ("hidden by a filter under the list")', not end.get('shown'), end)
+        check(f'toggle on: {name} (the mod\'s own world) does not show', guid in rb and rb[guid].get('shown') == 0, rb.get(guid))
+    end = (b.get('hid_lines') or [{}, {}])[1]                       # no box can show them: a line about them is false
+    check('toggle on: no hidden-worlds line for the mod\'s own worlds ("hidden by a filter under the list")', not end.get('shown'), end)
     S.stop_all()
 
 
