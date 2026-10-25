@@ -22,6 +22,9 @@ New Save", "Host a Game" showed in English in de).
 - Expedition Results list: the line under the subtitle showed the text template's own word ("Abspann" / "Credits"); it is
   empty now.
 - Test command `mpm_esc` opens the Esc menu again (c4c4b26 had shadowed it); `mpm_esc {list:1}` = our windows + red X only.
+- Lobby cog (found by the fake-mouse click, de / ru at 960x540 UI 1.4): its tooltip had no room beside the scaled lobby and
+  `ui_tip.c` place_card put it "inside", over the cog; a click then hit the tooltip and the Rules never opened. The card now
+  goes below the element (else above) when it would cover it. (`src/ui_tip.c`: not in this lane's file list; 3 lines.)
 
 ## Decisions (question, pick, why)
 - M10 how to make room: cut the NAME with "..." (after the "with" part), not a smaller label or a second line. The link keeps
@@ -50,3 +53,19 @@ New Save", "Host a Game" showed in English in de).
   ">" (host page), the lobby cog (Rules open) and Start (playing). The old EventSystem raycast probe `mpm_hit` found no
   hit in hidden copies at any scale (a probe fault); dropped. M5_chat dropped (lane dsdps owns the chat).
 - Seeds: one Expedition result, already brought home (so the title list shows it and a session never opens it by itself).
+
+## Runs (2026-10-25, copy UMN, loader 83636d0; logs ~/ToDelete_2026-10-25/dsuxmp2/dsuxmp2-menu/runs, shots .../shots/dsuxmp2-menu)
+BEFORE = origin/main e7ba260 (module + its lang); AFTER = this branch (final build).
+| check | BEFORE en 960 1.4 / de 1728 1.0 / ru 960 1.4 (de 960 1.4) | AFTER (all four) |
+|---|---|---|
+| M10_remove_tag_inside (+ _title_load) | FAIL / FAIL / FAIL (FAIL): past the list edge or under [Change] | PASS |
+| X_fe_results_red_x | FAIL (no red X) | PASS |
+| M3_solo_box_visible | FAIL (Yes 0.000) | PASS |
+| M5_rules_panel, M5_recent_worlds, M5_hub_rules_panel | FAIL (no read-back / not scaled) | PASS |
+| M5_lobby | FAIL at 1.4 (1.000 x), PASS at 1.0 | PASS |
+| M6_hub_lobby_rules / _no_cog / _gear_matches_start | FAIL | PASS |
+| M9_hostmods_button | FAIL (label outside its button) | PASS |
+| K12_esc_column_on_screen | FAIL at 960 1.4 | PASS |
+| M5_lobby_cog_click | PASS (lobby not scaled) | PASS; FAIL de/ru 960 1.4 before the ui_tip fix |
+| M5_lobby_start_click | PASS | PASS (regression guard) |
+| M5_rules_click | no read-back on origin/main | PASS (regression guard) |

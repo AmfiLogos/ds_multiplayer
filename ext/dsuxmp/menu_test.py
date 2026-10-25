@@ -336,6 +336,8 @@ def click_check(name, rect, what, after, want):
     if not rect: result(name, False, f'{what}: no rect in the read-back'); return False
     x, y, a = fake_click(rect)
     v = after(); ok = bool(want(v)) and a.get('ok') is not False
+    if not ok:                                                       # what lies at that point (a tooltip over the button?)
+        shot(name + '_fail', 0.0); note(name + '_texts_at_click', c(cmd='mpm_find_text', px=x, py=y).get('hits'))
     result(name, ok, f'{what} drawn at {[round(q) for q in rect]}: fake click at ({x:.0f}, {y:.0f}) -> {v} (mouse at {a.get("mouse")}, over UI {a.get("over_ui_raycast")})')
     return ok
 
@@ -419,6 +421,17 @@ def part_title():
 
 
 # ------------------------------------------------------------------ "Your save" list (M10), host a world (M3, M5 lobby + chat)
+def loader_rows():
+    """the loader's own read-back of the open Load list (dsl_rows.c lf_state, the same loader for both builds): per world its
+    [Change] rect and the "Remove Tag" rect it sees (screen px, y up)"""
+    st = os.path.join(T.SDIR, 'lf_state.json')
+    if os.path.exists(st): os.replace(st, st + '.old')
+    T.request({'cmd': 'lf_state'}); t0 = time.time()
+    while time.time() - t0 < 10 and not os.path.exists(st): time.sleep(0.2)
+    try: return {w['guid']: w for w in json.load(open(st)).get('worlds', [])}
+    except Exception as e: return {'error': repr(e)}
+
+
 def check_tag_row(name='M10_remove_tag_inside', shot_name='19_host_load_list'):
     t = wait('tag rows', lambda: (lambda q: q if any(rw.get('guid') == MOON_G for rw in q.get('rows', [])) else None)(c(cmd='mpm_tag')), 30, 1)
     c(cmd='mpm_list', scroll_to=MOON_G); time.sleep(1.5)            # the fit runs every 10 frames; the loader's rows once per rebuild
@@ -432,7 +445,8 @@ def check_tag_row(name='M10_remove_tag_inside', shot_name='19_host_load_list'):
     geo = row.get('geo') == 1                                        # this branch's read-back; origin/main: rects only
     vr = row['vp_rect'] if geo and row.get('vp_rect', [0, 0, 0, 0])[2] > 0 else (vpn[0]['rect'] if vpn else None)
     rm, nr, cr = row['rm_rect'], row['name_rect'], row.get('row_rect')
-    note(shot_name, {'row': row, 'viewport': vr, 'short': ash})
+    lr = loader_rows(); lw = lr.get(MOON_G, {}) if isinstance(lr, dict) else {}
+    note(shot_name, {'row': row, 'viewport': vr, 'short': ash, 'loader': lw})
     if not row.get('remove'): result(name, False, f'no "Remove Tag" shown on {MOON_NAME!r}'); return
     edges = [e for e in ((cr[2] if cr and cr[2] > cr[0] else None), (vr[2] if vr else None)) if e]
     right = min(edges) if edges else nr[2]
@@ -441,7 +455,9 @@ def check_tag_row(name='M10_remove_tag_inside', shot_name='19_host_load_list'):
     w = rm[2] - rm[0]
     whole = (row.get('rm_pref', 0) <= w + 1 and row.get('rm_trunc') == 0) if geo else True   # origin/main: its box is its preferred width + 6
     size_ok = row.get('rm_fs', 0) >= 13.5 if geo else True          # never shrunk (design size 14)
-    hit = [o for o in (row.get('obst') or []) if o[0] < rm[2] - 0.5 and o[2] > rm[0] + 0.5]
+    chg = lw.get('chg_rect') if lw.get('chg_rect') and lw['chg_rect'][2] > lw['chg_rect'][0] else None
+    obst = list(row.get('obst') or []) + ([chg] if chg else [])     # the loader's [Change] too (origin/main has no obst read-back)
+    hit = [o for o in obst if o[0] < rm[2] - 0.5 and o[2] > rm[0] + 0.5 and o[1] < rm[3] - 0.5 and o[3] > rm[1] + 0.5]
     clear_name = (row.get('name_end', 0) <= rm[0] + 1) if geo else True
     short_ok = True; sdet = ''
     if ash:                                                          # a short name: no cut, its link inside too
@@ -453,7 +469,7 @@ def check_tag_row(name='M10_remove_tag_inside', shot_name='19_host_load_list'):
         im = img(p); vis = ink_box(im, (rm[0], rm[1], min(rm[2], right), rm[3]), 110) is not None
     result(name, ok, f'"Remove Tag" {rm[0]:.0f}..{rm[2]:.0f} px, row/list {left:.0f}..{right:.0f} px (viewport {vr}); inside {inside}, '
            f'whole {whole} (pref {row.get("rm_pref")} of {w:.0f} px, truncated {row.get("rm_trunc")}), size {row.get("rm_fs")}, '
-           f'over [Change] {hit}, name text ends {row.get("name_end")} px; name now {row.get("cut") or row.get("name", "")[:60]!r}; ink {vis}{sdet}'
+           f'[Change] {chg}, overlaps {hit}, name text ends {row.get("name_end")} px; name now {row.get("cut") or row.get("name", "")[:60]!r}; ink {vis}{sdet}'
            + ('' if geo else ' (origin/main read-back: rects only)'))
 
 
