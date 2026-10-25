@@ -49,5 +49,10 @@ for f in sorted(os.listdir(mp)):
     t = os.path.join(out, f + '.tmp'); open(t, 'w').write(json.dumps({**m, **c}, ensure_ascii=False, indent=1)); os.replace(t, os.path.join(out, f)); n += 1
 print(f'built {out}: {n} language tables')
 E
-# the map files (maps/README.md, not in git) next to the rig dylib, as the mod build puts them next to the module
-for m in ../maps/hub_*.json(N) ../maps/base_*.json(N); do cp -c $m $OUT/ 2>/dev/null || cp $m $OUT/; done
+# the map files (maps/README.md, not in git) next to the rig dylib, as the mod build puts them next to the module. A fresh
+# worktree (a gate tree, a lane) has none in its maps/: then the main clone's, like the loader's build_mods.sh (MP_MAPS = another
+# folder). Without them every Foreign Expedition / hub test fails on "no map" (v0.1.26 gate, g026_fe_noul).
+MAPS=${MP_MAPS:-../maps}; maps=($MAPS/hub_*.json(N) $MAPS/base_*.json(N))
+(( ${#maps} )) || { MAPS=$HOME/ds_multiplayer/maps; maps=($MAPS/hub_*.json(N) $MAPS/base_*.json(N)); }
+(( ${#maps} )) || echo "warning: no map files in $MAPS (maps/README.md): Foreign Expedition / hub tests will fail on \"no map\"" >&2
+for m in $maps; do cp -c $m $OUT/ 2>/dev/null || cp $m $OUT/; done
