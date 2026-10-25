@@ -56,6 +56,10 @@ def install():
     mp = os.path.join(md, 'multiplayer')                             # this worktree's build and its string tables
     shutil.copy2(os.path.join(MPW, 'build', 'dsrig.dylib'), os.path.join(mp, 'multiplayer.dylib.tmp'))
     os.replace(os.path.join(mp, 'multiplayer.dylib.tmp'), os.path.join(mp, 'multiplayer.dylib'))
+    import hashlib                                                    # the loader loads only files that match mod.json
+    mj = os.path.join(mp, 'mod.json'); m = json.load(open(mj))
+    m['platforms']['mac-arm64']['files']['multiplayer.dylib'] = hashlib.sha256(open(os.path.join(mp, 'multiplayer.dylib'), 'rb').read()).hexdigest()
+    json.dump(m, open(mj, 'w'), indent=1)
     for f in glob.glob(os.path.join(MPW, 'lang', '*.json')): shutil.copy2(f, os.path.join(mp, 'lang'))
     subprocess.run(['codesign', '-f', '-s', '-', os.path.join(app, 'Contents', 'MacOS', 'Dungeon Settlers')], capture_output=True)
     if os.path.isdir(aside): os.replace(aside, ld)
