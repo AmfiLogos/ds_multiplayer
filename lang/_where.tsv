@@ -229,14 +229,14 @@
 "Both"	ui_model.c:612
 "Bow"	mu_ui.c:120
 "Bring"	mu_bring.c:452 pvp_ui.c:653 pvp_ui.c:1033
-"Bring Units"	fe_menu.c:166 fe_menu.c:479 mu_bring.c:395 pvp_ui.c:661 pvp_ui.c:1025 pvp_ui.c:1215
+"Bring Units"	fe_menu.c:166 fe_menu.c:479 mu_bring.c:395 pvp_ui.c:661 pvp_ui.c:1025 pvp_ui.c:1227
 "Bring Units..."	pvp_ui.c:308 pvp_ui.c:810 pvp_ui.c:912
 "Bring home to"	fe_menu.c:286 fe_menu.c:424 fe_menu.c:425
 "Bring these units"	fe_menu.c:211 fe_menu.c:212 fe_menu.c:418
 "Bring this unit"	fe_menu.c:416
 "Bring units"	mpmenu.c:1953
 "Bring units, then press Start. In the hub: co-op expeditions or PvP matches."	mpmenu.c:1984
-"Brought %d unit. The host starts the match with them.||Brought %d units. The host starts the match with them."	pvp_ui.c:1198
+"Brought %d unit. The host starts the match with them.||Brought %d units. The host starts the match with them."	pvp_ui.c:1210
 "Brought home"	fe_menu.c:244
 "Brought home %s"	fe_menu.c:225
 "Brought: %s. The host starts the match with them."	pvp_ui.c:706
@@ -301,7 +301,7 @@
 "Copy the host's address, then press Connect"	mpmenu_model.c:505
 "Could not bring %s: %s"	fe_game.c:184 fe_game.c:191
 "Could not bring the units. Try again."	pvp_ui.c:708
-"Could not bring the units: %s"	pvp_ui.c:707 pvp_ui.c:1196
+"Could not bring the units: %s"	pvp_ui.c:707 pvp_ui.c:1208
 "Could not bring these units."	fe_game.c:679
 "Could not bring these units: the save could not be read."	fe_game.c:679
 "Could not connect to the host"	mp_game.c:1053
@@ -326,7 +326,7 @@
 "Death is not permanent"	fe_menu.c:64
 "Death is permanent"	fe_menu.c:64
 "Decline"	ui_teams.c:1393 ui_teams.c:2260
-"Delete preset"	pvp_ui.c:295 pvp_ui.c:1021
+"Delete Preset"	pvp_ui.c:295 pvp_ui.c:1021
 "Deletes the preset shown. The rules stay as they are."	pvp_ui.c:1021
 "Died · home as at the last hub save"	fe_menu.c:259
 "Died · removed at home, with its gear"	fe_menu.c:258
@@ -349,12 +349,12 @@
 "Each team needs at least one unit. Right-click a unit's portrait to take it."	pvp_ui.c:434 pvp_ui.c:490
 "End for everyone"	mpmenu.c:2779
 "End the game for everyone?"	mpmenu.c:2764
-"Enemy health bars"	pvp_rules.c:230
-"Enemy portraits"	pvp_rules.c:230
-"Enemy status"	pvp_rules.c:231
-"Enemy view range"	pvp_rules.c:231
-"Enemy vision"	pvp_rules.c:230
-"Enemy windows"	pvp_rules.c:230
+"Enemy Health Bars"	pvp_rules.c:230
+"Enemy Portraits"	pvp_rules.c:230
+"Enemy Status"	pvp_rules.c:231
+"Enemy View Range"	pvp_rules.c:231
+"Enemy Vision"	pvp_rules.c:230
+"Enemy Windows"	pvp_rules.c:230
 "Enter the dungeon?"	ui_model.c:389
 "Event Choice"	ui_game.c:5932
 "Event Choices"	mpmenu_model.c:56
@@ -619,13 +619,13 @@
 "Nobody is hosting at %s. Check the address and the port."	mpmenu.c:2542
 "Normal"	ui_game.c:2817 ui_model.c:122
 "Normal or Compact. Compact makes the Players panel and the Teams button smaller."	ui_game.c:5838
+"Not Yet"	pvp_ui.c:822 pvp_ui.c:912
 "Not Your Unit"	ui_game.c:5904
 "Not allowed"	mpmenu_model.c:77
 "Not allowed: %s."	pvp_modcheck.c:131
 "Not in a multiplayer session."	fe_game.c:199 fe_game.c:213 pvp_units.c:98 pvp_units.c:126
 "Not permanent"	mpmenu_model.c:91
 "Not sent"	ui_friends.c:130 ui_friends.c:234
-"Not yet"	pvp_ui.c:822 pvp_ui.c:912
 "Not yet: the fight waits until everyone agrees."	pvp_game.c:1169
 "Not your unit (%s)"	ui_game.c:815
 "Not your unit (free: only the host orders it)"	ui_game.c:817
@@ -722,13 +722,13 @@
 "Preparation: place your units, then propose the fight. It starts when every player agreed."	pvp_game.c:1172
 "Prepares the world for this mode and opens the lobby. Friends join you there."	mpmenu.c:4250
 "Preset"	pvp_ui.c:286 pvp_ui.c:422 pvp_ui.c:1019
-"Preset \"%s\" applied."	pvp_ui.c:1227
-"Preset \"%s\" deleted. The rules stay as they are."	pvp_ui.c:1276
-"Preset \"%s\" replaced."	pvp_ui.c:1259
-"Preset \"%s\" saved."	pvp_ui.c:1259
-"Preset name"	pvp_ui.c:1234
+"Preset \"%s\" applied."	pvp_ui.c:1239
+"Preset \"%s\" deleted. The rules stay as they are."	pvp_ui.c:1288
+"Preset \"%s\" replaced."	pvp_ui.c:1271
+"Preset \"%s\" saved."	pvp_ui.c:1271
+"Preset name"	pvp_ui.c:1246
 "Press B over it to remove it. It goes away when a unit reaches it."	ui_game.c:5866
-"Propose fight"	pvp_ui.c:911
+"Propose Fight"	pvp_ui.c:911
 "Proposed by"	ui_teams.c:1356
 "Proposed by you"	ui_teams.c:1355
 "Proposed this expedition."	ui_teams.c:2268
@@ -772,7 +772,7 @@
 "Round %d - Capture the flag!"	pvp_game.c:1155
 "Round %d - Fight!"	pvp_game.c:1155
 "Round %d is a draw"	pvp_ui.c:936
-"Round time"	pvp_ui.c:227
+"Round Time"	pvp_ui.c:227
 "Rounds:"	pvp_ui.c:998
 "Rules"	mpmenu.c:1128 mpmenu.c:1468 mpmenu.c:1995 mpmenu.c:4212 mpmenu.c:4213 mpmenu.c:4257 mpmenu_model.c:482 pvp_ui.c:278
 "Rules:"	fe_menu.c:239
@@ -783,7 +783,7 @@
 "Save"	mu_bring.c:117 pvp_ui.c:295 pvp_ui.c:1031
 "Save Campaign"	ui_game.c:5940 ui_game.c:5942
 "Save and join"	mpmenu.c:2950
-"Save as preset..."	pvp_ui.c:295 pvp_ui.c:1020
+"Save as Preset..."	pvp_ui.c:295 pvp_ui.c:1020
 "Saved %s"	mu_bring.c:312
 "Saved as \"%s\". Load it from Load campaign.\nYour old save is not changed, and a backup copy was made first."	fe_menu.c:243
 "Saved with this world. New worlds start with your last rules."	mpmenu.c:1405 mpmenu.c:1960
@@ -1001,8 +1001,8 @@
 "Time Left"	ui_teams.c:2263 ui_teams.c:2274
 "Time for one round of game time at normal speed. When it runs out: Fight gives the round to the team with more health left; Capture the Flag counts it as a draw."	pvp_ui.c:231
 "Time to pack and answer the proposal. When it runs out, the expedition is cancelled for everyone. Next shows the proposal with Approve and Decline."	ui_teams.c:2274
+"To Win"	pvp_ui.c:227
 "To start an expedition, use the game's Enter Dungeon."	ui_teams.c:1209
-"To win"	pvp_ui.c:227
 "Torch"	mu_ui.c:124
 "Tower of Apocalypse"	ui_teams.c:291
 "Turn Off Multiplayer"	mpmenu.c:4210
@@ -1010,7 +1010,7 @@
 "Turn off multiplayer"	mpmenu.c:1950
 "Turn off multiplayer?"	mpmenu.c:2764
 "Turns the chat on or off on your screen."	ui_game.c:5842
-"Type a name for the preset first."	pvp_ui.c:1256
+"Type a name for the preset first."	pvp_ui.c:1268
 "Unit"	fe_menu.c:247 mu_bring.c:149 mu_bring.c:174 mu_ui.c:174 mu_ui.c:225 pvp_ui.c:1032
 "Unit Outline"	ui_game.c:5830
 "Unit outline"	ui_game.c:2836
@@ -1032,12 +1032,12 @@
 "Unknown address: %s. Check the address."	mpmenu.c:2543
 "Unsaved progress in this world will be lost."	mpmenu.c:2941
 "Up to %d unit each in this hub.||Up to %d units each in this hub."	fe_menu.c:314
-"Up to %d unit for the match. Copies only: your saves do not change.||Up to %d units for the match. Copies only: your saves do not change."	pvp_ui.c:1212
+"Up to %d unit for the match. Copies only: your saves do not change.||Up to %d units for the match. Copies only: your saves do not change."	pvp_ui.c:1224
 "Use a Return scroll?"	ui_model.c:390
 "VPN"	ui_game.c:2651
-"Vanilla check"	pvp_ui.c:227
-"Vanilla check is on: %s has the gameplay mod %s. %s must turn it off in the Mods window.||Vanilla check is on: %s has the gameplay mods %s. %s must turn them off in the Mods window."	pvp_modcheck.c:119
-"Vanilla check is on: turn off your gameplay mod %s, or set Vanilla check to Off.||Vanilla check is on: turn off your gameplay mods %s, or set Vanilla check to Off."	pvp_modcheck.c:115
+"Vanilla Check"	pvp_ui.c:227
+"Vanilla Check is on: %s has the gameplay mod %s. %s must turn it off in the Mods window.||Vanilla Check is on: %s has the gameplay mods %s. %s must turn them off in the Mods window."	pvp_modcheck.c:119
+"Vanilla Check is on: turn off your gameplay mod %s, or set Vanilla Check to Off.||Vanilla Check is on: turn off your gameplay mods %s, or set Vanilla Check to Off."	pvp_modcheck.c:115
 "Veil of Silence"	ui_teams.c:290
 "Visitors see these rules before they choose units."	mpmenu.c:1218
 "Vote sent"	ui_game.c:2066
@@ -1113,7 +1113,7 @@
 "You control %s's units until they return"	ui_game.c:2865
 "You decide (no answer in 60 s)"	ui_model.c:273
 "You gave back %s"	ui_game.c:3883
-"You have %d presets: delete one first."	pvp_ui.c:1257
+"You have %d presets: delete one first."	pvp_ui.c:1269
 "You have given your orders. The planning pause ends when every player pressed Ready, or after 5 seconds."	pvp_ui.c:1014
 "You have no units on this run. You can watch and chat; %s gives the orders."	ui_game.c:5909
 "You hosted"	mpmenu.c:1506

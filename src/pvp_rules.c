@@ -110,6 +110,7 @@ int pvp_rules_view_send(const pvpr_vals *v, const uint8_t teams[PVPR_VIEW_TEAMS]
     dsnet_client *c = cli(); if (!c || !dsnet_is_host(c)) return -1;
     char b[1024]; size_t n = pvpr_view_format(v, teams, b, sizeof b); if (!n) return -2;
     uint32_t pm = dsnet_present_mask(c); uint8_t me[16], u[16]; dsnet_my_uid(c, me); int k = 0, bad = 0;
+    int my = dsnet_player_id(c); if (my < 0 || my > 31 || !(pm & ~(1u << my))) return 0;   /* nobody else here: nothing to send (a joiner changes the mask) */
     for (int p = 0; p < 32; p++) if (pm >> p & 1 && !dsnet_player_uid(c, p, u) && memcmp(u, me, 16)) { if (dsnet_mail_send(c, u, PVP_M_RULES_VIEW, b, n)) bad++; else k++; }
     view_sent++;
     char t[1100]; snprintf(t, sizeof t, "%s", b); for (char *q = t; *q; q++) if (*q == '\n') *q = ' ';
@@ -227,8 +228,8 @@ void pvp_rules_start(void) {
 
 /* ---- texts of the rows this lane added to the PvP Rules box (pvp_ui.c draws them) */
 static const char *vis_ids[6] = { "enemy_vision", "enemy_windows", "enemy_portraits", "enemy_hpbars", "enemy_status", "enemy_viewrange" };
-static const char *vis_label[6] = { TR_NOOP("Enemy vision"), TR_NOOP("Enemy windows"), TR_NOOP("Enemy portraits"), TR_NOOP("Enemy health bars"),
-                                    TR_NOOP("Enemy status"), TR_NOOP("Enemy view range") };
+static const char *vis_label[6] = { TR_NOOP("Enemy Vision"), TR_NOOP("Enemy Windows"), TR_NOOP("Enemy Portraits"), TR_NOOP("Enemy Health Bars"),
+                                    TR_NOOP("Enemy Status"), TR_NOOP("Enemy View Range") };
 static const char *vis_tip[6] = {
     TR_NOOP("Shown: everyone sees the enemy team's units everywhere on the map.\n\nHidden: you see enemy units only where your own units can see."),
     TR_NOOP("Shown: clicking an enemy unit opens its full unit window.\n\nHidden: clicking an enemy unit shows only what you see of a monster."),
