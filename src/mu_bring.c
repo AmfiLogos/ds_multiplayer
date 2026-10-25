@@ -456,6 +456,10 @@ static int build_ui(void) {
 }
 void mu_bring_close(void) { finish(0); }
 int  mu_bring_is_open(void) { return B.open; }
+/* M7 (UX review 2026-10-25): the game's windows sit above its HUD, and so does this one: a screen point (pixels, y up) on
+   the open window is the window's, never a click, drag or hover of our HUD under it (Teams button, Players panel, viewer
+   box, mini overview). ui_teams.c / ui_game.c ask before their own hit tests. */
+int  mu_bring_hit(float x, float y) { return B.open && B.win && mu_ui_screen_hit(B.win, x, y); }
 
 /* ------------------------------------------------------------------ tests (driver "bring:<name>", rig bring_state) */
 void *mu_bring_test_find(const char *n) {
@@ -482,8 +486,15 @@ size_t mu_bring_test_state(char *out, size_t cap) {
         { const char *b = strrchr(f, '\\'); if (b) f = b + 1; }
         char e[260]; jesc(e, sizeof e, f); fo += (size_t)snprintf(files + fo, sizeof files - fo, "%s\"%.120s\"", i ? "," : "", e);
     }
-    return (size_t)snprintf(out, cap, "{\"ul\":%d,\"src\":%d,\"lib_units\":%d,\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
+    float wr[4] = { 0, 0, 0, 0 }; int won = B.open && B.win && mu_ui_screen_rect(B.win, wr);   /* M7 test: where it is drawn, and above what */
+    char tp[700] = ""; size_t to = 0;                                  /* tests: where the main parts are drawn (a fake mouse clicks there) */
+    { static const char *const tn[] = { "row0", "row1", "tick0", "tick1", "bring", "cancel", "left0" };
+      for (size_t i = 0; i < sizeof tn / sizeof *tn && to + 80 < sizeof tp; i++) {
+          float r[4]; DSLObj o = B.open ? mu_bring_test_find(tn[i]) : NULL;
+          if (o && mu_ui_screen_rect(o, r)) to += (size_t)snprintf(tp + to, sizeof tp - to, "%s\"%s\":[%.0f,%.0f,%.0f,%.0f]", to ? "," : "", tn[i], r[0], r[1], r[2], r[3]);
+      } }
+    return (size_t)snprintf(out, cap, "{\"tgt_px\":{%s},\"win_px\":[%.0f,%.0f,%.0f,%.0f],\"win_shown\":%d,\"win_order\":%d,\"ul\":%d,\"src\":%d,\"lib_units\":%d,\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
                             "\"page\":%d,\"pages\":%d,\"msg\":\"%s\",\"saves\":%d,\"sel_save\":%d,\"units\":%d,\"w\":%.0f,\"h\":%.0f}",
-                            ul_api() != NULL, B.src, B.nlu, files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
+                            tp, wr[0], wr[1], wr[2], wr[3], won, B.open && B.win ? mu_ui_canvas_order(B.win) : -1, ul_api() != NULL, B.src, B.nlu, files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
                             B.page, B.pages, m, B.nsaves, B.sel_save, B.nsu, B.w, B.h);
 }

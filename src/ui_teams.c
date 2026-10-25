@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 #include <dlfcn.h>
 #include "ds_i18n.h"
 #include "ui_utf8.h"
@@ -1540,22 +1541,27 @@ static int hit(Obj comp, V2 m, Obj cam) {
     if (!u_alive(comp) || !u_go_active_self(u_go(comp))) return 0;
     return (tm_is(u_tr(comp), K_RT) ? F(0x5473D40, bool (*)(Obj, V2, Obj, void *))(u_tr(comp), m, cam, NULL) : false);
 }
+int mu_bring_is_open(void); int mu_bring_hit(float x, float y);   /* mu_bring.c: the Bring Units card window (M7) */
+float mu_ui_scale(void);                                      /* mu_ui.c: the game's UI scale (M5) */
+/* M7 (UX review 2026-10-25): the Teams button, unless the point is on the open Bring Units window: that window sits above
+   the button (as the game's windows sit above its HUD) and the click, drag or hover there is the window's */
+static int hud_hit(Obj hud, V2 m) { return hit(hud, m, cam_for(hud)) && !mu_bring_hit(m.x, m.y); }
 /* button 0/1 at screen point m: 1 = handled */
 static int click_at(V2 m, int button) {
     if (prop_click(m, button)) return 1;                     /* the proposal side panel (only clicks on it) */
     Obj hud = u_gc_get(h_hud);
     if (!opened) {
-        if (hit(hud, m, cam_for(hud))) { if (button == 0 && open_screen()) notice("%s", TR("The Teams screen is not available here")); return 1; }
+        if (hud_hit(hud, m)) { if (button == 0 && open_screen()) notice("%s", TR("The Teams screen is not available here")); return 1; }
         return 0;
     }
     Obj cam = cam_for(root());
     if (folded()) {                                          /* viewui: only the bar; elsewhere the world's click */
-        if (hit(hud, m, cam_for(hud))) { if (button == 0) fold_set(0); return 1; }
+        if (hud_hit(hud, m)) { if (button == 0) fold_set(0); return 1; }
         if (button == 0 && hit(u_gc_get(h_fshow), m, cam)) { fold_set(0); return 1; }
         if (button == 0 && hit(u_gc_get(h_fclose), m, cam)) { close_screen(); return 1; }
         return hit(u_gc_get(h_fbar), m, cam);
     }
-    if (hit(hud, m, cam_for(hud))) { if (button == 0) close_screen(); return 1; }   /* right = drag (hud_input) */
+    if (hud_hit(hud, m)) { if (button == 0) close_screen(); return 1; }   /* right = drag (hud_input) */
     if (panel_hit(m)) return 1;                              /* viewui: the Players panel is on top there */
     if (hit(u_gc_get(h_close), m, cam)) { close_screen(); return 1; }
     if (button == 0 && hit(u_gc_get(h_tfold), m, cam)) { fold_set(1); return 1; }
@@ -1655,8 +1661,10 @@ static void hud_place(void) {
                && !busy();                                   /* and on the loading screen (map change, load): gamelane 2026-10-14 */
     if (u_go_active_self(u_go(hr)) != want) u_go_active(u_go(hr), want);
     if (!want) return;
-    {   /* viewui: above the open window (32000), like the player panel; else above the stock popups */
-        int o = opened && !folded() ? 32020 : 31000;
+    {   /* viewui: above the open window (32000), like the player panel; else above the stock popups.
+           M7 (UX review 2026-10-25): under an open Bring Units window (the loader kit's layer, 30900), as the game's own HUD
+           sits under its windows; its clicks there go to the window (hud_hit) */
+        int o = opened && !folded() ? 32020 : mu_bring_is_open() ? 30800 : 31000;
         static uintptr_t h_cv, h_cv_of; Obj cv = u_gc_get(h_cv);
         if (u_gc_get(h_cv_of) != hr || !u_alive(cv)) { Obj cty = type_object("UnityEngine", "Canvas"); cv = cty ? go_component(u_go(hr), cty) : NULL;
             u_gc_free(h_cv); h_cv = u_gc_new(cv); u_gc_free(h_cv_of); h_cv_of = u_gc_new(hr); }
@@ -1664,23 +1672,30 @@ static void hud_place(void) {
     }
     hud_load();
     Obj ct = u_tr_parent(hr); R4 cr = ct ? rt_rect(ct) : (R4){0, 0, 1920, 1080};
+    /* M5 (UX review 2026-10-25): the button follows the game's UI scale like the Players panel next to it (ui_game.c scales
+       its whole layer by it); its top-left corner stays, it grows right and down */
+    float us = mu_ui_scale();
     if (!hud_dragged) {                                      /* never dragged: snapped right of the player panel, any panel size */
-        static int (*anchor)(float *, float *, float *, float *);
+        static int (*anchor)(float *, float *, float *, float *); static float (*lsc)(void);
         if (!anchor) anchor = (int (*)(float *, float *, float *, float *))dl("ui_panel_anchor");
-        float x, y, w, h;
-        if (anchor && anchor(&x, &y, &w, &h)) { hud_px = cr.w / 2 + x + w + 8; hud_py = y; hud_pos_set = 1; }
+        if (!lsc) lsc = (float (*)(void))dl("ui_layer_scale");
+        float x, y, w, h, ls = lsc ? lsc() : 1;              /* the panel's layer units -> canvas units (the layer is at the top centre) */
+        if (anchor && anchor(&x, &y, &w, &h)) { hud_px = cr.w / 2 + (x + w + 8) * ls; hud_py = y * ls; hud_pos_set = 1; }
         else if (!hud_pos_set) { hud_px = HUD_X; hud_py = HUD_Y; }
     }
     int c = hud_is_compact();
     float W = HUD_WID(c), H = HUD_SIZE(c);
     static float lab_w[2];                                   /* final review (ru 5): the label's width at its size, measured on a layout */
     if (H + 6 + lab_w[c] + 4 > W) W = H + 6 + lab_w[c] + 4;  /* a longer label ("Команды") widens the button (it shrank to the box edge) */
-    if (hud_px < 0) hud_px = 0; if (hud_px > cr.w - W) hud_px = cr.w - W;          /* stay on screen */
-    if (hud_py > 0) hud_py = 0; if (hud_py < -(cr.h - H)) hud_py = -(cr.h - H);
-    static float last[4] = {-1}; float now[4] = { hud_px, hud_py, W, (float)c };
+    if (hud_px < 0) hud_px = 0; if (hud_px > cr.w - W * us) hud_px = cr.w - W * us;          /* stay on screen (as drawn) */
+    if (hud_py > 0) hud_py = 0; if (hud_py < -(cr.h - H * us)) hud_py = -(cr.h - H * us);
+    static float last[5] = {-1}; float now[5] = { hud_px, hud_py, W, (float)c, us };
     if (!hud_dirty && !memcmp(now, last, sizeof now) && c == hud_compact) return;
     memcpy(last, now, sizeof now); hud_compact = c; hud_dirty = 0;
     rt_anchor(hr, 0, 1, 0, 1); rt_pivot(hr, 0, 1); rt_size(hr, W, H); rt_pos(hr, hud_px, hud_py);
+    if (tm_is(hr, K_TR) && fabsf(F(0x510AEFC, V3 (*)(Obj, void *))(hr, NULL).x - us) > 0.001f) {
+        tr_scale(hr, us); rig_log("teams: HUD button at UI scale %.2f", us);
+    }
     int n = (tm_is(hr, K_TR) ? F(0x510EAE4, int (*)(Obj, void *))(hr, NULL) : 0);
     for (int i = 0; i < n; i++) {
         Obj ch = (tm_is(hr, K_TR) ? F(0x510FC60, Obj (*)(Obj, int, void *))(hr, i, NULL) : NULL);
@@ -1706,7 +1721,7 @@ static void hud_input(void) {                                   /* right-drag (t
     Obj hud = u_gc_get(h_hud);
     if (!u_alive(hud) || !u_go_active_self(u_go(u_gc_get(h_hud_root)))) { hud_drag = 0; return; }
     V3 mp = F(0x51AD4DC, V3 (*)(void *))(NULL);
-    int over = hit(hud, (V2){mp.x, mp.y}, cam_for(hud));
+    int over = hud_hit(hud, (V2){mp.x, mp.y});
     static void (*tip)(const char *); static unsigned tries;
     if (!tip && tries++ % 60 == 0) tip = (void (*)(const char *))dl("ui_tooltip");
     if (!hud_drag && over && F(0x51ACDD0, bool (*)(int, void *))(1, NULL)) { hud_drag = 1; hud_last = mp; }   /* right button down */
@@ -2286,7 +2301,7 @@ static void tips_frame(void) {
     }
     V3 mp3 = F(0x51AD4DC, V3 (*)(void *))(NULL); V2 m = { mp3.x, mp3.y };
     Obj hud = u_gc_get(h_hud);
-    if (!hud_drag && u_alive(hud) && u_go_active_self(u_go(u_gc_get(h_hud_root))) && hit(hud, m, cam_for(hud))) { tip_hud(); return; }
+    if (!hud_drag && u_alive(hud) && u_go_active_self(u_go(u_gc_get(h_hud_root))) && hud_hit(hud, m)) { tip_hud(); return; }
     if (prop_shown && proot() && prop_over(m)) {            /* the side panel; elsewhere the screen's other tips */
         Obj cam = cam_for(proot());
         if (hit(u_gc_get(h_pfold), m, cam)) { tip_prop(4); return; }
@@ -2677,7 +2692,10 @@ static char *state_json(int rc) {
         bput(&b, ",\"panel\":[%d,%.0f,%.0f,%.0f,%.0f],\"hud_canvas_w\":%.0f", av, ax, ay, aw, ah, cw.w);
         int (*tr_)(void) = (int (*)(void))dlsym(RTLD_DEFAULT, "game_tip_ready"); bput(&b, ",\"tip_ready\":%d", tr_ ? tr_() : -1); 
         V3 hc = u_alive(hr) && tm_is(hr, K_TR) ? F(0x510E0AC, V3 (*)(Obj, V3, void *))(hr, (V3){ hz.x + hz.w / 2, hz.y + hz.h / 2, 0 }, NULL) : (V3){0, 0, 0};
-        bput(&b, ",\"hud_screen\":[%.0f,%.0f]", hc.x, hc.y); }   /* the button's centre (overlay canvas: world = screen px) */
+        bput(&b, ",\"hud_screen\":[%.0f,%.0f]", hc.x, hc.y);   /* the button's centre (overlay canvas: world = screen px) */
+        { Obj cty = type_object("UnityEngine", "Canvas"), cv = u_alive(hr) && cty ? go_component(u_go(hr), cty) : NULL;   /* M7 test: drawn above or under */
+          V3 hs = u_alive(hr) && tm_is(hr, K_TR) ? F(0x510AEFC, V3 (*)(Obj, void *))(hr, NULL) : (V3){ 0, 0, 0 };
+          bput(&b, ",\"hud_order\":%d,\"hud_scale\":%.3f", u_alive(cv) && tm_is(cv, K_CV) ? F(0x5476320, int (*)(Obj, void *))(cv, NULL) : -1, hs.x); } }
       bput(&b, ",\"hud_pos\":[%.0f,%.0f],\"hud_shown\":%d,\"lobby_open\":%d,\"hud_text\":", hp.x, hp.y,
            u_alive(hr) && (tm_is(u_go(hr), K_GO) ? F(0x50F3724, bool (*)(Obj, void *))(u_go(hr), NULL) : false), lobby_open()); bstr(&b, ht); }
     char t1[200] = "", t2[700] = "", t3[400] = "", t5[200] = "";
