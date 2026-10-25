@@ -24,8 +24,6 @@ int  ui_map_propose(int kind, const uint8_t *order, size_t len);
 char *ui_exec(const char *cmd, const char *line);
 /* Teams lane: dim / owner-colour a portrait clone (SubUI_UnitShortCutParts) like the unit bar. */
 void ui_portrait_style(void *parts, int owner);
-/* Lobby (mpmenu.c): default player name = the Mac account's full name, else the login name. */
-const char *ui_default_player_name(void);
 
 /* ---- What ui_game.c needs from other lanes (weak imports: missing = feature degrades, no crash) ----
  * mpglue (mp_game.c):                                                                             */

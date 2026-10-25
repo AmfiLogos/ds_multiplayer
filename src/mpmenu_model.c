@@ -569,6 +569,39 @@ const char *mpm_list_toggle_label(int mode) {
     return mode == MPM_LIST_MP ? TR("Show single-player worlds") : mode == MPM_LIST_SOLO ? TR("Show multiplayer worlds") : "";
 }
 
+/* ---------------------------------------------------------------- player name (mpmenu.h) */
+#include <pwd.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <time.h>
+const char *mpm_default_name(void) {
+    static char nm[16];
+    if (!nm[0]) {                                       /* the time and a stack address: two copies started together differ */
+        unsigned s = (unsigned)time(NULL) ^ (unsigned)clock() ^ (unsigned)((uintptr_t)&s >> 4);
+        s *= 2654435761u;
+        snprintf(nm, sizeof nm, "Player %u", 1000 + (s >> 12) % 9000);
+    }
+    return nm;
+}
+void mpm_fill_name(char *name, size_t cap) {
+    if (name[0] && strcmp(name, "player")) return;
+    snprintf(name, cap, "%s", mpm_default_name());
+}
+/* the pre-fill before 2026-10-25: the account's full name up to the first comma, else the login name (USER on Windows).
+   Only compared with a remembered name here, never shown, stored or sent. */
+static int old_prefill(const char *nm) {
+    struct passwd *pw = getpwuid(getuid());
+    const char *g = pw && pw->pw_gecos && pw->pw_gecos[0] ? pw->pw_gecos : pw ? pw->pw_name : getenv("USER");
+    if (!g || !g[0]) return 0;
+    char o[64]; snprintf(o, sizeof o, "%s", g); o[strcspn(o, ",")] = 0;
+    return !strcmp(nm, o);
+}
+void mpm_start_name(char *out, size_t cap, const char *remembered, int name_v, const char *steam) {
+    if (remembered && remembered[0] && (name_v >= 2 || !old_prefill(remembered))) snprintf(out, cap, "%s", remembered);
+    else snprintf(out, cap, "%s", steam && steam[0] ? steam : mpm_default_name());
+}
+
 /* ---------------------------------------------------------------- Multiplayer world tag (mp_tags.txt) */
 static void tag_clean(const char *in, char out[32]) {                  /* one name: no tab / newline / control byte */
     size_t o = 0;

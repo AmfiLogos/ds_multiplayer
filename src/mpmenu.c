@@ -802,7 +802,7 @@ static Obj tb(int id) { Obj b = u_gc_get(h_tb[id]); return u_alive(b) ? b : NULL
  * (popup 5) is opened for a moment, its field taken, and it is closed. Their listeners are runtime ones: not cloned. */
 static uintptr_t h_anyf, h_slv, h_namefield; static void *k_anyf, *k_slv;
 static int primed;
-char my_name[64];                                                   /* current name (file / Steam / Mac user) */
+char my_name[64];                                                   /* current name (typed / file / Steam / "Player 4821") */
 static Obj field_source(const char **from) {
     Obj slv = find_view_now(&h_slv, &k_slv, "Refactor", "SaveLoadView", true), fld = slv ? AT(slv, 0xB8, Obj) : NULL;   /* immediate: self-paced (fields_find) */
     *from = "the load list's name field";
@@ -1818,23 +1818,14 @@ static void h_clip_set(Obj v, void *mi) {
     FILE *f = fopen(p, "w"); if (f) { fputs(b, f); fclose(f); }
 }
 
-/* player name when none is set (no Steam persona, no mp.json): the first word of the Mac user's full name */
-#include <pwd.h>
-#include <unistd.h>
-static void default_name(char *name, size_t cap) {
-    if (name[0] && strcmp(name, "player")) return;
-    struct passwd *pw = getpwuid(getuid());
-    const char *g = pw && pw->pw_gecos && pw->pw_gecos[0] ? pw->pw_gecos : pw ? pw->pw_name : "Player";
-    size_t n = strcspn(g, " ,");
-    snprintf(name, cap, "%.*s", (int)(n < cap - 1 ? n : cap - 1), g);
-}
+/* player name when none is set (no Steam persona, no mp.json): mpm_default_name ("Player" and four digits, UX review M1) */
+static void default_name(char *name, size_t cap) { mpm_fill_name(name, cap); }
 
 /* ---------------------------------------------------------------- remembered settings (owner 2026-10-13)
  * <app data folder>/mp_menu.json  {"pause":1,"speedup":1,"gear":0,"name":"The owner"}: the last used host settings + name.
  * <app data folder>/mp_worlds.txt one line per world played in multiplayer: "<campaign guid> <pause> <speedup> <gear>".
  * The app data folder (DSRIG_DIR) is shared by every lan_vN build, so both survive app updates. A world's own line
  * is its stored settings (loading it uses them); a new world gets the last used ones. The load list tags these worlds. */
-const char *ui_default_player_name(void);                                   /* ui_game.c */
 static void app_path(char *p, size_t cap, const char *f) { snprintf(p, cap, "%s/%s", rig_dir, f); }
 static void prefs_load(void) {
     char p[1200], b[1024] = ""; app_path(p, sizeof p, "mp_menu.json");
@@ -1860,9 +1851,9 @@ static void prefs_load(void) {
     if (jnum(b, "chat_on", &v)) chat_on = v != 0;
     if (jnum(b, "chat_x", &v)) chat_x = (float)v;
     if (jnum(b, "chat_y", &v)) chat_y = (float)v;
-    if (!jstr(b, "name", my_name, sizeof my_name) || !my_name[0]) {
+    {   char rn[64] = ""; double nv = 0; jstr(b, "name", rn, sizeof rn); jnum(b, "name_v", &nv);
         const char *st = dsnet_steam_load(NULL) == 0 ? dsnet_steam_my_name() : "";
-        snprintf(my_name, sizeof my_name, "%s", st && st[0] ? st : ui_default_player_name());
+        mpm_start_name(my_name, sizeof my_name, rn, (int)nv, st);
     }
     rig_log("mpmenu: remembered settings pause %d speed-up %d gear %d, name \"%s\"%s", M.set.pause_mode, M.set.speedup, M.set.gear, my_name, b[0] ? "" : " (defaults)");
 }
@@ -1870,7 +1861,7 @@ static void prefs_save(void) {
     char p[1200]; app_path(p, sizeof p, "mp_menu.json");
     FILE *f = fopen(p, "w"); if (!f) return;
     Buf b = {0}; bput(&b, "{\"pause\":%d,\"speedup\":%d,\"gear\":%d,\"units\":%d,\"admin\":%d,\"events\":%d,\"population\":%d,\"fog\":%d,\"spectators\":%d,\"fe\":%d,\"fe_death\":%d,\"fe_xp\":%d,\"fe_loot\":%d,\"fe_recruit\":%d,\"fe_v\":2,\"chat_fade\":%d,\"chat_join_lines\":%d,\"chat_on\":%d,\"chat_x\":%.0f,\"chat_y\":%.0f,\"name\":",
-        M.set.pause_mode, M.set.speedup, M.set.gear, M.set.units, M.set.admin, M.set.events, M.set.population, M.set.fog, M.set.spectators, M.set.fe, M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, chat_fade_s, chat_show_join, chat_on, chat_x, chat_y); bstr(&b, my_name); bput(&b, "}\n");
+        M.set.pause_mode, M.set.speedup, M.set.gear, M.set.units, M.set.admin, M.set.events, M.set.population, M.set.fog, M.set.spectators, M.set.fe, M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.fe_recruit, chat_fade_s, chat_show_join, chat_on, chat_x, chat_y); bstr(&b, my_name); bput(&b, ",\"name_v\":2}\n");
     fputs(b.p, f); fclose(f); free(b.p);
 }
 static int world_get(const char *guid, mpm_settings *out) {

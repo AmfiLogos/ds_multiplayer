@@ -5237,18 +5237,6 @@ static void owner_views_frame(void) {
     owners_ro = nro; owners_toggles = nd;
 }
 
-/* 8c. Default player name for the lobby (mpmenu.c): the Mac account's full name, else the login name. */
-#include <pwd.h>
-#include <unistd.h>
-const char *ui_default_player_name(void) {
-    static char nm[64];
-    struct passwd *pw = getpwuid(getuid());
-    const char *g = pw && pw->pw_gecos && pw->pw_gecos[0] ? pw->pw_gecos : pw ? pw->pw_name : getenv("USER");
-    snprintf(nm, sizeof nm, "%s", g ? g : "Player");
-    char *comma = strchr(nm, ','); if (comma) *comma = 0;
-    return nm;
-}
-
 /* lan_v10 (core lane): the host is told when a desync report was written (mp_game_desync_report: counter + newest path) */
 static void report_frame(void) {
     static uint32_t (*fn)(char *, size_t); static unsigned tries; static uint32_t seen; static int init;
