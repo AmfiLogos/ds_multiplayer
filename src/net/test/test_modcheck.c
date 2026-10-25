@@ -1,4 +1,4 @@
-/* ds_modcheck.h tests that catch real breaks of "Get the host's mods" (v0.1.14):
+/* ds_modcheck.h tests that catch real breaks of "Get the Host's Mods" (v0.1.14):
  *  - the DSMP_REJOIN line not surviving format -> parse (the new process would join nobody, or the wrong host);
  *  - the loader's plan JSON misread (wrong rows, or the button shown for a mod that cannot be downloaded);
  *  - the box printing raw setting lines ("settings-demo/gold_mult@7") instead of "<label>: host 7, you 1". */
@@ -36,11 +36,11 @@ static void plan_json(void) {
     CHECK(!strcmp(pl.row[0].name, "Hell \"difficulty\" \xc3\xa9") && !strcmp(pl.row[0].action, "update") && !strcmp(pl.row[0].my_ver, "0.1.3"), "row 0 name '%s'", pl.row[0].name);
     CHECK(!strcmp(pl.row[1].name, "\xe5\x86\xb7\xe5\x8d\xb4") && !strcmp(pl.row[1].host_set, "a=1"), "row 1 '%s'", pl.row[1].name);
     char t[2048]; int d = dsmc_hostmods_text(&pl, 0, t, sizeof t, 6);
-    CHECK(d == 2 && strstr(t, "0.1.3") && strstr(t, "the host should update") && strstr(t, "Same as the host:") && strstr(t, "Get the host's mods"), "box text: %s", t);
+    CHECK(d == 2 && strstr(t, "0.1.3") && strstr(t, "the host should update") && strstr(t, "Same as the host:") && strstr(t, "Get the Host's Mods"), "box text: %s", t);
     const char *k = "{\"rows\":[{\"id\":\"x\",\"name\":\"X\",\"host_ver\":\"1\",\"my_ver\":\"\",\"my_on\":0,\"official\":0,\"action\":\"not_official\"}],\"can_fix\":1,\"downloads\":0}";
     CHECK(dsmc_plan_parse(k, &pl) == 1 && pl.can_fix == 0, "not_official: no button (can_fix %d)", pl.can_fix);
     dsmc_hostmods_text(&pl, 0, t, sizeof t, 6);
-    CHECK(strstr(t, "it cannot be downloaded") && !strstr(t, "\"Get the host's mods\" downloads"), "not_official text: %s", t);
+    CHECK(strstr(t, "it cannot be downloaded") && !strstr(t, "\"Get the Host's Mods\" downloads"), "not_official text: %s", t);
     /* the host's version, on, but it does not run here (crash guard): its own line with the loader's reason, never the
        button (a soft restart leaves it off: refused again, restart again), never "you have it, turned off" */
     const char *nr = "{\"rows\":[{\"id\":\"gcd-cdr\",\"name\":\"Global cooldown fix\",\"host_ver\":\"0.1.7\",\"my_ver\":\"0.1.7\",\"my_on\":0,"
