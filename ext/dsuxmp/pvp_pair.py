@@ -418,7 +418,10 @@ def pvp_window_rules(sw, sh):
     check('CLOSE the PvP Match window shows the game\'s red X at the top-right of its title band', x_on_band(w, r0, 'window'), f'{w} window {r0}')
     check('CLOSE the PvP Match window\'s bottom Close button is gone (the red X closes it)', r0 is not None and p.get('close') is None, p.get('close'))
     shot(HOST, 'X1_pvp_window_red_x', 0.3)
-    if not r0: check('MOVE a right-drag moves the PvP Match window', False, 'no window rect'); return
+    if not r0:
+        for n in ('MOVE a right-drag moves the PvP Match window by the drag', 'CLOSE a mouse click on the red X closes the PvP Match window', 'MOVE the PvP Match window opens again at the moved place'):
+            check(n, False, 'no window rect')
+        return
     k = (r0[3] - r0[1]) / WIN_H['window']
     sx, sy = r0[0] + 300 * k, r0[3] - 84 * k                            # the hint row under the title (no button there)
     left, right, down, up = r0[0], sw - r0[2], r0[1], sh - r0[3]
@@ -427,7 +430,7 @@ def pvp_window_rules(sw, sh):
     drag(HOST, sx, sy, dx, dy)
     r1 = rect(probe(HOST), 'window')
     moved = r1 and abs((r1[0] - r0[0]) - dx) <= 3 and abs((r1[1] - r0[1]) - dy) <= 3 and abs((r1[2] - r1[0]) - (r0[2] - r0[0])) <= 2
-    check(f'MOVE a right-drag by {dx:.0f}, {dy:.0f} px moves the PvP Match window by that much', moved, f'{r0} -> {r1}')
+    check('MOVE a right-drag moves the PvP Match window by the drag', moved, f'drag {dx:.0f}, {dy:.0f} px: {r0} -> {r1}')
     shot(HOST, 'X2_pvp_window_moved', 0.3)
     w = red_x(HOST, 'PvP Match window')
     if w and w.get('x') and w.get('x_rect'):
@@ -546,19 +549,24 @@ def run(port):
         shot(HOST, f'P15_planning_ui{A.scale:.1f}', 0.0)
     safe('P2', planning)
     touch_lease()
+    shown = False
     try:
         wait('round over', lambda: (lambda q: q if q.get('ending') or not q.get('active') or q.get('resetting') else None)(c(HOST, cmd='pvp_status')), 240, 0.5)
         wait('result window on both', lambda: all(pv(x).get('result') for x in (HOST, GUEST)), 300, 1)
-        time.sleep(1.5)
-        a, b = m5_window('result window', 'result', other, sw, sh)
+        time.sleep(1.5); shown = True
+    except Exception as e:
+        check('the match ends and the result window shows', False, repr(e)); log(traceback.format_exc())
+    def result_m5():
+        m5_window('result window', 'result', other, sw, sh)
         if probe(HOST).get('ui_scale', 1) < 1.2: set_scale(HOST, 1.4)
         shot(HOST, 'P17_result_ui1.4', 0.5)
         p = probe(HOST)
-        if p.get('result_ok'):
+        if rect(p, 'result_ok'):
             click(HOST, p['result_ok'], 'Back to the World')
             check('M5 a mouse click on the scaled result window works (Back to the World closes it)', not pv(HOST).get('result'), p['result_ok'])
         else: check('M5 a mouse click on the scaled result window works (Back to the World closes it)', False, 'no button rect')
         set_scale(HOST, A.scale)
+    def result_close():                                                   # CLOSE on the guest's result window
         w = red_x(GUEST, 'PvP result window'); pg = probe(GUEST)
         check('CLOSE the result window shows the red X at the top-right of its title band (guest)', x_on_band(w, rect(pg, 'result'), 'result'), f'{w} window {pg.get("result")}')
         shot(GUEST, 'X4_result_red_x', 0.3)
@@ -566,9 +574,11 @@ def run(port):
             click(GUEST, w['x_rect'], 'red X of the result window')
             check('CLOSE a mouse click on the red X closes the result window (guest)', not pv(GUEST).get('result'), w['x_rect'])
         else: check('CLOSE a mouse click on the red X closes the result window (guest)', False, f'no red X: {w}')
-        if pv(GUEST).get('result'): pv(GUEST, action='press_ok'); time.sleep(2)
-    except Exception as e:
-        check('the match ends and the result window shows', False, repr(e)); log(traceback.format_exc())
+    if shown:
+        safe('M5 result window', result_m5)
+        safe('CLOSE result window', result_close)
+    for x in (HOST, GUEST):
+        if pv(x).get('result'): pv(x, action='press_ok'); time.sleep(2)
     touch_lease()
     safe('M2', m2_refused)
     log('desyncs', {x: st(x).get('mp', {}).get('desyncs') for x in (HOST, GUEST)})
