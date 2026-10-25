@@ -8,9 +8,9 @@ forced desync -> full resync of the guest (lane dslock probe 2026-10-25). The so
 snapshotted (a click changes nothing there), so those tests never saw it.
 
 ONE leased pair (rig.py lease), started only while the 1-minute load is under 15. Hidden WINDOWED copies (the unit panel
-runs as in a player's game), multiplayer only (DSRIG_CUSTOM=0), the host listens on an OS-chosen port (never a shared
-fixed port: other lanes' copies joined runs there). World: the wiki's public base save (4 player units, notices not yet
-snapshotted). The guest claims 2 units. For --minutes (default 3): every ~10 s each player clicks units through the game's
+runs as in a player's game), multiplayer only (DSRIG_CUSTOM=0), the host listens on the run's own leased port
+(rig.pair_port, from rigports.py; never a shared fixed port: other lanes' copies joined runs there). World: the wiki's
+public base save (4 player units, notices not yet snapshotted). The guest claims 2 units. For --minutes (default 3): every ~10 s each player clicks units through the game's
 own selection event (ord_inject SelectPlayerUnitRequested: the guest its own units and a host unit, the host its own
 units) and moves one of its units (select + right-click a near cell). Full-state check every --full-every steps (default
 300); DSRIG_FULL_KEEP=1 keeps each check's save so the test can see the clicks reached the unit panel.
@@ -21,15 +21,17 @@ Checks:
          state changed on one side): without this the run proves nothing
  full    no full-state difference, no desync, no reload on the guest; full checks ran (>= 4) and were all equal
  fp      step fingerprints equal over the common ticks (>= 1000)
+ players no player beyond the two copies in the session, after the join and at the end (rigports.players_guard)
 Usage: selnotice_pair.py [--dylib PATH] [--minutes 3] [--full-every 300]
   --dylib  default: this worktree's build/dsrig.dylib
 Output: PASS <name> / FAIL <name> [info] per check, then RESULT PASS|FAIL <n> PASS, <m> FAIL.
 Logs: ext/dsmpfix/out/selnotice_<time>/ (run.log, each copy's rig.log part, the kept check saves' notices)."""
-import json, os, random, shutil, socket, subprocess, sys, time, traceback
+import json, os, random, shutil, subprocess, sys, time, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__)); W = os.path.abspath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, os.path.join(W, 'rig'))
 import rig
+import rigports
 
 ARG = lambda k, d: type(d)(sys.argv[sys.argv.index(k) + 1]) if k in sys.argv else d
 rig.DYLIB = os.path.abspath(os.path.expanduser(ARG('--dylib', os.path.join(W, 'build', 'dsrig.dylib'))))
@@ -77,8 +79,6 @@ def aside(p):                                          # never delete: earlier r
     if os.path.exists(p):
         d = os.path.join(OUT, 'aside'); os.makedirs(d, exist_ok=True)
         shutil.move(p, os.path.join(d, os.path.relpath(p, rig.INST).replace(os.sep, '_')))
-def free_port():                                       # OS-chosen, not listened on by anyone right now
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
 def log_from(x, pos):
     p = os.path.join(rig.idir(x), 'rig.log')
     with open(p, errors='replace') as f: f.seek(pos); return f.read()
@@ -122,6 +122,8 @@ def run(X, Y, port):
     same = sorted(u['guid'] for u in hp) == sorted(u['guid'] for u in gp) and len(hp) >= 4
     check('setup: the guest joined and loaded THIS host world (same 4 player units)', ok and same, (mp(Y), len(hp), len(gp)))
     if not (ok and same): return
+    pok, pls = rigports.players_guard(rig.send, [X, Y], 2, 'start')   # another run's copy in this session = EXTRA PLAYER
+    check('players: no extra player at the start', pok, '; '.join(pls))
     mine = {Y: [u['guid'] for u in hp[:2]], X: [u['guid'] for u in hp[2:4]]}
     for g in mine[Y]: log('guest claims', g, c(Y, cmd='mp_claim', guid=g))
     time.sleep(3)
@@ -174,6 +176,8 @@ def run(X, Y, port):
     a, b = fp(X, t_fp), fp(Y, t_fp)
     cm = sorted(set(a) & set(b)); first = next((t for t in cm if a[t] != b[t]), None)
     check('fp: step fingerprints equal over the common ticks', len(cm) >= 1000 and first is None, f'{len(cm)} common, first difference at tick {first}')
+    pok, pls = rigports.players_guard(rig.send, [X, Y], 2, 'end')     # the copies stop next (main's finally)
+    check('players: no extra player at the end', pok, '; '.join(pls))
 
 
 def main():
@@ -188,10 +192,9 @@ def main():
     while not pair and time.time() - t0 < LEASE_WAIT_S:
         log('no free pair: retry in 60 s'); time.sleep(60); pair = rig.lease(LANE, os.getpid())
     if not pair: print('RESULT FAIL 0 PASS, 1 FAIL (no rig lease)'); sys.exit(2)
-    X, Y = pair[0], pair[1]; port = free_port()
-    rig.pair_port = lambda x, _p=port: _p              # rig.start's fix_mp_port writes this port, not the pair's fixed one
+    X, Y = pair[0], pair[1]; port = rig.pair_port(X)  # the run's own port (rigports lease), the one rig.start writes too
     for k, v in (('DSRIG_CUSTOM', '0'), ('DSRIG_FULL_KEEP', '1'), ('DSRIG_BG', '1')): os.environ[k] = v
-    log('pair', pair, 'port', port, '(OS-chosen)', 'host', X, 'guest', Y)
+    log('pair', pair, 'port', port, '(leased)', 'host', X, 'guest', Y)
     try:
         assert rig.check_prefs(), 'owner prefs differ from backup before start'
         run(X, Y, port)

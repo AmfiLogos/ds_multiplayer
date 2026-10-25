@@ -3,7 +3,8 @@
 #   start                 take one rig pair lease (lane vmwin-mac), put the int013 dsload + mods_all/mac into copy W, start it
 #                         hidden (batchmode, muted, guard kills it on any visible window / focus). Title after ~40-90 s.
 #   stop                  quit the copy, release the lease
-#   host [hub|dungeon|<save file>]  title > Multiplayer > Host > Load: hosts a save over direct TCP (menu port 47777)
+#   host [hub|dungeon|<save file>]  title > Multiplayer > Host > Load: hosts a save over direct TCP (menu port = pair_port
+#                         printed by start: the pair's leased port, rig/rigports.py; never 47777)
 #                         hub (default) = MoonlightBrigade base map (Teams / expedition), dungeon = ElvenExpedition map 1
 #   join <ip> <port>      title > Multiplayer > Join by address > type ip:port > Connect
 #   status                scene/map/tick, lockstep, MP (peers, slot, paused, desyncs), menu state + port, own / other

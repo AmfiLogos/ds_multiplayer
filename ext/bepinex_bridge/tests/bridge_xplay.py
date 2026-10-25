@@ -12,6 +12,7 @@ gold equal on both; full-state checks equal; fingerprints equal; 0 desyncs. Then
 import os, sys, json, time, shutil
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig
+import rigports
 LANE = os.path.expanduser('~/ds_multiplayer/ext/bepinex_bridge')
 SAVE = os.path.join(rig.SEED_DATA, 'Saves', 'MoonlightBrigade__AutoSave_41e9c1bb8790492cbdc10f4dcad22179_0.json')
 results = {}
@@ -54,6 +55,7 @@ def main():
     a = sys.argv
     rig.DYLIB = os.path.abspath(a[a.index('--dylib') + 1]) if '--dylib' in a else os.path.join(LANE, 'build', 'mac', 'dsrig.dylib')
     pair = rig.lease(f'bepinex-{os.getpid()}'); X, Y = pair[0], pair[1]; PORT = rig.PAIR_PORTS[pair]
+    rigports.expect_peers(1)   # the Windows copy W is in the Mac copy's session: rig.stop's player check allows it
     MACBIE = '--mac-bie' in a
     if MACBIE:
         sys.path.insert(0, os.path.join(LANE, 'tools')); import mac_bie_host

@@ -16,7 +16,7 @@ python3 winrig.py gshot shot.png                      # the game's own frame
 python3 winrig.py logs out/; python3 winrig.py stop
 python3 win_checklist.py --out OUT --setup NEW_Setup.exe --prev-setup OLD_Setup.exe --mac-build MACBUILD
 ```
-In Python: `import winrig; w = winrig.Win(); w.up(); w.start(); w.join('172.16.175.1:47777', wait='lobby'); w.wait(...)`.
+In Python: `import winrig; w = winrig.Win(); w.up(); w.start(); w.join('172.16.175.1:<pair_port printed by mac.sh start>', wait='lobby'); w.wait(...)`.
 `WINBOT_TARGET=wine` runs the same driver against the DSMP CrossOver bottle (agent under Wine, hub on 127.0.0.1).
 
 ## Game-side change (branch winbot)

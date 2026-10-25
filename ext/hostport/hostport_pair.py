@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """Host port setting (multiplayer mod.json "host_port", scope local) on a leased pair of hidden loader copies.
 
-Run 1: host's data/Mods/settings.json = {"multiplayer": {"host_port": PORT}}. Host: title > Multiplayer > Host > Load
-save (menu flow, mpmenu MPA_HOST_START). Checks: the session listens on PORT (mpm_status port), the lobby's
-"open port N" line names PORT (lw.inv_note), the guest (no setting = default) joins 127.0.0.1:PORT by the menu.
-Run 2: no setting on either copy. Checks: the host listens on 47777, the guest joins "127.0.0.1" (default port).
+Run 1: host's data/Mods/settings.json = {"multiplayer": {"host_port": PORT}}, PORT = the run's own leased port
+(~/ds_multiplayer/rig/rigports.py; never a fixed one). Host: title > Multiplayer > Host > Load save (menu flow, mpmenu
+MPA_HOST_START). Checks: the session listens on PORT (mpm_status port), the lobby's "open port N" line names PORT
+(lw.inv_note), the guest (no setting = default) joins 127.0.0.1:PORT by the menu, no player beyond the two copies.
+Run 2 (only with --default-run, never while the owner's game runs: it listens on 47777, the owner's game port): no
+setting on either copy. Checks: the host listens on 47777, the guest joins "127.0.0.1" (default port).
 Both runs: gcd-cdr (a gameplay mod) on both copies, so the mod-set hash ("modset" in data/Mods/worlds.json) is
 non-empty; it must be identical for host run 1, host run 2 and the guest (host_port never enters it).
 
-  HP_BUILD=<loader build folder: dsload.dylib + mods/multiplayer + mods/gcd-cdr> hostport_pair.py [--port 12345]
+  HP_BUILD=<loader build folder: dsload.dylib + mods/multiplayer + mods/gcd-cdr> hostport_pair.py [--default-run]
 
 Copies HPH / HPG in ~/ds_launcher/loader/test_env/instances (APFS clones of Z: own bundle id, background-only,
 windowed 960x540, muted by the rig env, DSL_NOTCH=0, nice 5). Lease from ~/ds_multiplayer/rig/rig.py. Never rm."""
@@ -19,10 +21,10 @@ sys.path.insert(0, LT)
 import lrig  # noqa: E402
 sys.path.insert(1, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig as realrig  # noqa: E402  (leases only)
+rp = realrig.rigports                                           # each run's own TCP port + the EXTRA PLAYER guard (rigports.py)
 
 H, G = 'HPH', 'HPG'
 B = dict(MULTIPLAYER=1, HOST=2, LOAD_SAVE=7, JOIN_ADDR=14, CONNECT=15)
-PORT = int(sys.argv[sys.argv.index('--port') + 1]) if '--port' in sys.argv else 12345
 BUILD = os.environ['HP_BUILD']
 GP = 'gcd-cdr'
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'out', time.strftime('%Y%m%d-%H%M%S')); os.makedirs(OUT, exist_ok=True)
@@ -148,6 +150,10 @@ def start(x):
            'DSML_DATA': os.path.join(I, 'data'), 'DSL_UPDATE_API': 'http://127.0.0.1:9', 'DSL_CRASHREP_TEST': os.path.join(I, 'crashrep'),
            'DSL_SOFT_TEST': '1', 'DSL_SOFT_STAGE': '-20000,-20000', 'DSL_SOFT_NOACTIVATE': '1', 'DSL_NO_ALERT': '1', 'DSL_NOTCH': '0', 'DSMP_TEST': '1'}
     env.update(lrig.soft_test_env())
+    sf = rp.loader_settings_file(I, env)
+    rp.clear_stale_mp(I)                                          # an mp.json from before this run (another lane's): set aside
+    rp.check_start(I, sf)                                         # GUARD: mp.json / host_port at a port this run does not own = refused
+    rp.note_started(I, x)
     args = [exe(x), '-logFile', os.path.join(I, 'player.log'), '-screen-fullscreen', '0', '-screen-width', '960', '-screen-height', '540']
     p = subprocess.Popen(args, env=env, cwd=I, stdin=subprocess.DEVNULL, stdout=open(os.path.join(I, 'stdout.log'), 'ab'),
                          stderr=subprocess.STDOUT, preexec_fn=lambda: os.nice(5), start_new_session=True)
@@ -156,6 +162,11 @@ def start(x):
 
 
 def stop(x):
+    if pids(x):
+        try:
+            rp.end_check(lrig.send, x, lrig.idir(x))              # EXTRA PLAYER: more players in its session than this run's copies
+        except Exception as e:
+            log(x, 'stop check failed', repr(e))
     for p in pids(x):
         try:
             lrig.send(x, {'cmd': 'quit'}, timeout=5, connect_wait=0)
@@ -213,6 +224,8 @@ def one_run(name, host_set, want_port, join_text):
     try:
         sg = wait('guest joined', lambda: (lambda s: s if s.get('mp', {}).get('loads', 0) >= 1 and s.get('mp', {}).get('started') else None)(st(G)), timeout=900, every=2)
         check(f'{name}: guest joined by address {join_text!r}', True, f"map {sg.get('map')} tick {sg.get('tick')}")
+        ok, lines = rp.players_guard(lrig.send, [H, G], 2, name)    # another run's copy in this session = EXTRA PLAYER
+        check(f'{name}: players: no extra player in the session', ok, '; '.join(lines))
     except RuntimeError as e:
         check(f'{name}: guest joined by address {join_text!r}', False, f'{e}; guest mpm msg {ms(G).get("msg")!r}')
     res = {'host_modset': modset(H), 'guest_modset': modset(G)}
@@ -238,13 +251,13 @@ def main():
     try:
         for x in (H, G):
             make_copy(x)
-        assert port_free(PORT), f'{PORT} is taken on this Mac'
-        r1 = one_run('setting', {'multiplayer': {'host_port': PORT}}, PORT, f'127.0.0.1:{PORT}')
+        port = realrig.PAIR_PORTS[pair]                           # the pair lease's own port (rigports.py): unique on the Mac
+        r1 = one_run('setting', {'multiplayer': {'host_port': port}}, port, f'127.0.0.1:{port}')
         rs = [r1]
-        if port_free(47777) and '--no-default' not in sys.argv:   # never bind 47777 while another game (the owner's) listens there
+        if '--default-run' in sys.argv and port_free(47777) and not realrig.owner_game_running():   # 47777 = the owner's game port
             rs.append(one_run('default', None, 47777, '127.0.0.1'))
         else:
-            log('default run skipped: 47777 is in use on this Mac (or --no-default)')
+            log('default run skipped: it listens on 47777 (the owner\'s game port); only with --default-run, 47777 free and his game not running')
         hs = {r[k] for r in rs for k in ('host_modset', 'guest_modset')}
         check('mod-set hash identical (host with host_port, host default, guests)', len(hs) == 1 and None not in hs and '' not in hs, rs)
     except Exception as e:

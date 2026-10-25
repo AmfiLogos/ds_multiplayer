@@ -9,6 +9,7 @@ button lambda (OnClickChoice inlined on Windows -> lambda wrapper, test command 
 import os, sys, json, time, shutil
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig
+import rigports
 SAVE = os.path.join(rig.SEED_DATA, 'Saves', 'MoonlightBrigade__AutoSave_41e9c1bb8790492cbdc10f4dcad22179_0.json')
 results = {}
 
@@ -61,6 +62,7 @@ def main():
     a = sys.argv
     rig.DYLIB = a[a.index('--dylib') + 1] if '--dylib' in a else os.path.expanduser('~/ds_multiplayer/build/dsrig.dylib')
     pair = rig.lease(f'windows2-{os.getpid()}'); X, Y = pair[0], pair[1]; PORT = rig.PAIR_PORTS[pair]
+    rigports.expect_peers(1)   # the Windows copy W is in the Mac copy's session: rig.stop's player check allows it
     log('pair', pair, 'dylib', rig.DYLIB)
     try:
         json.dump({'role': 'host', 'port': PORT, 'name': 'The owner', 'allow_speedup': True, 'allow_pause': True}, open(os.path.join(rig.idir(X), 'mp.json'), 'w'))

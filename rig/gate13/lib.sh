@@ -2,7 +2,7 @@
 #   chk <name> <pass-regex> <cwd> <command...>   runs the command (nice 19), log $OUT/<name>.log;
 #   PASS = exit 0 AND the log matches <pass-regex> AND no Traceback AND no prefs leak line ("PREFS CHANGED", "prefs
 #   DIFFERENT", "prefs identical after: False": rig.py check_prefs() restores the owner's prefs and only prints that, so a
-#   later prefs check would see them restored).
+#   later prefs check would see them restored) AND no "EXTRA PLAYER" line (rigports.py players guard).
 #   Second try (v0.1.22): a FAIL is run once more ONLY when try1's log shows an environment error (machine load, no free
 #   pair, nothing ran, owner check, prefs leak: GATE_ENV_RE) and try1 did not print a result with failed checks
 #   (GATE_RESFAIL_RE) or a hard error (GATE_HARD_RE). WHY (v0.1.19-21): 45 of 58 second tries failed again (1.7 h of
@@ -40,7 +40,8 @@ _once() {   # <name> <regex> <cwd> <cmd...> -> 0 pass / 1 fail
   # suites run through merger13's gate.sh keep their own log (named in our log as det_out/...log): read those too
   local sub=(${(f)"$(command grep -v '^--- ' $OUT/$n.log | command grep -oE 'det_out/[^ )]+\.log' | sed "s|^|$HOME/ds_multiplayer/rig/|")"})
   [[ $rc == 0 ]] && grep -qE -- "$re" $OUT/$n.log && ! grep -q Traceback $OUT/$n.log && \
-    ! { command grep -v '^--- ' $OUT/$n.log; cat ${sub:#} /dev/null 2>/dev/null; } | command grep -qiE 'PREFS CHANGED|prefs DIFFERENT|prefs identical after: False'
+    ! { command grep -v '^--- ' $OUT/$n.log; cat ${sub:#} /dev/null 2>/dev/null; } | command grep -qiE 'PREFS CHANGED|prefs DIFFERENT|prefs identical after: False' && \
+    ! command grep -q 'EXTRA PLAYER' $OUT/$n.log    # rig/rigports.py: another run's player was in this run's session (2026-10-25)
 }
 # second-try rule: environment signs (retry) / a finished run with failed checks / hard errors (never retry)
 GATE_ENV_RE=${GATE_ENV_RE:-'took too long|timed? ?out|timeout|process died|no room|no free pair|[^0-9]0 PASS, 0 FAIL|ok 0 fails 0|CalledProcessError|owner is playing|owner.s game runs|PREFS CHANGED|prefs DIFFERENT|prefs identical after: False'}
