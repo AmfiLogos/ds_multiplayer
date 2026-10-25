@@ -1,9 +1,10 @@
-# Multiplayer API for mod makers (MP_API_VERSION 2, bridge api 2)
+# Multiplayer API for mod makers (MP_API_VERSION 3, bridge api 2)
 
 Two ways in:
 - **C / native mods** (loader modules): `mp_api.h`. Find the multiplayer image with `module_loaded("multiplayer")`,
   then `dlsym(<image>, "mp_api_get")` (Windows: `GetProcAddress` on `multiplayer.dll`). Ask for the version you need:
-  `mp_api_get(2)` returns NULL on an older multiplayer. Fields are only appended: check `version` / `size`.
+  `mp_api_get(2)` returns NULL on an older multiplayer (`mp_api_get(3)` for `chat_local`). Fields are only appended:
+  check `version` / `size`.
 - **C# / BepInEx mods**: `DsmpBridge.dll` (mod id `dsmp-bridge`, plugin id `dsmp.bridge`), or the copy-in file
   `ext/bepinex_bridge/plugin/DsmpLite/DsmpLite.cs`. Both call the `dsmp_bridge_*` exports of `mp_bridge.h`.
 
@@ -59,6 +60,30 @@ With no multiplayer mod installed, every call below still works: random draws ar
   -5 rate limited (the line is dropped); -6 not sent (no connection). C# also has `NoNative` (no multiplayer mod).
 - Chat runs outside the simulation. Never use a chat line to carry game state; use a bridge channel or a sim command.
 - The player's "Chat: Off" setting hides mod lines too.
+
+## 2b. Local lines (v3)
+
+| C | Export | C# | |
+|---|---|---|---|
+| `chat_local(mod_name, text, MP_CHATL_LINE)` | - | - | a line on this screen only, never sent |
+| `chat_local(mod_name, NULL, MP_CHATL_CLEAR)` | - | - | remove every local line from the chat history |
+
+- For lines a mod writes often on this screen (for example Units Laboratory's DPS check: one line per hit). Check
+  `version >= 3` (or ask `mp_api_get(3)`).
+- Shown as the text only (no `<Mod> mod:`), in the normal text colour. Rich-text tags are shown as typed (escaped).
+  Newlines and other control bytes become spaces. `mod_name` is still needed (it is not shown).
+- Never sent to the other players, also during a session (there the local lines show among the others).
+- No rate limit: no line is refused. Keep it to what a player can read. Call it on the game's main thread.
+- Single player: the chat shows in a world while a local line is in its history (idle lines fade as usual, Enter opens
+  the box, the wheel and PageUp / PageDown scroll, right-click and drag moves it, Escape closes it). A message the
+  player types there is not sent: the chat says so. `MP_CHATL_CLEAR` (or the title screen with no session) removes the local lines;
+  with none left and no session, the chat is hidden again.
+- An open box that is scrolled up stays on the same lines while new local lines come in.
+- Limits: text 200 bytes, cut on a character boundary. The history keeps 3000 lines (all kinds); when it is full, the
+  oldest 300 are dropped.
+- Results: 0 shown (`MP_CHATL_CLEAR`: 0 done); -1 bad arguments (unknown flag, empty mod name, empty text for a line);
+  -7 `MP_CHAT_OFF`: the player's "Chat: Off" setting is on, nothing is shown or kept (show it your own way).
+- C# bridge: not added (C only for now).
 
 ## 3. Actions through the lockstep (unchanged, api 1)
 `dsmp_bridge_send(channel, data)` / C# `Multiplayer.Send` / `Do`: one order that runs on every player at the same step.
