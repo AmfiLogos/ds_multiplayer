@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""uxmp-hud test + shots (lane dsuxmp, UX review 2026-10-25 M7 + M5). One hidden loader test copy UXH (make it once with
-hud_make_instance.sh UXH): dsload + custom-modes from the shared loader build ~/ds_launcher_wt_dsuxmp/loader/build, and the
-multiplayer module = <dylib> (mod.json sha256 rewritten in the copy only). Adapted from the review's shot driver
-~/ds_launcher_wt_dsux/ux_uxmp/shoot.py.
+"""uxmp-hud test + shots (lanes dsuxmp + dsuxmp2-hud, UX review 2026-10-25 M7 + M5, owner rules CLOSE / ESCAPE / MOVE).
+One hidden loader test copy UXH (make it once with hud_make_instance.sh UXH): dsload + custom-modes from the shared loader
+build (LOADER, default ~/ds_launcher_wt_dsuxmp2/loader/build: kit 0.1.28 red X, UI Scale, right-drag move), the loader's
+test module uikit-demo (built here from its test/mods_src: REAL Escape key events into the game's view; its own fake mouse
+hooks are refused, ours load first) and the multiplayer module = <dylib> (mod.json sha256 rewritten in the copy only).
+Adapted from the review's shot driver ~/ds_launcher_wt_dsux/ux_uxmp/shoot.py.
 
-  hud_test.py <en|de|ru> <W>x<H> <dylib> [--parts game,hub] [--shots DIR]
+  hud_test.py <en|de|ru> <W>x<H> <dylib> [--parts game,hub] [--ui 1.0|1.4] [--shots DIR]
+  --ui: the UI scale of the close / Escape / move / M7b checks (M5 and M7a always compare 1.0 with 1.4).
 
 <dylib>: a multiplayer build with -DTEAMS_MOUSE_TEST (EXTRA_CFLAGS=-DTEAMS_MOUSE_TEST OUT=<dir> zsh src/build.sh): the
 fake mouse goes through the game's own UnityEngine.Input, so a click is decided by the same code as a real one.
@@ -17,20 +20,29 @@ Real breaks caught (each FAILS on origin/main + the test probes only, ext/dsuxmp
   M5a  Players panel header at UI 1.4 = 1.4 x its size at 1.0; old: the same size.
   M5b  Teams button at UI 1.4 = 1.4 x; old: the same size.
   M5c  Steam friends picker (fake friends list) at UI 1.4 = 1.4 x (or fit to the screen with 16 px free); old: the same.
-Guards (pass on both; they catch a scale done wrong): M5d the open cog list stays inside the game window (16 px free) at 1.4,
-M5e a cog click at 1.4 (fake mouse on the drawn cog) closes and opens the cog list (hit tests on the scaled rects).
+  C1a  Teams window: the kit's red X (on the kit's Escape stack, mpm_esc {list:1}) in the title band's right end, the
+       prefab's own X hidden (one close); old: the window is not on the kit's stack.
+  C1b  a fake-mouse click on that X closes the Teams window and the game's Esc menu does not open.
+  C1d  folded Teams bar: its close is the game's red X (not the text "Close") and a click on it closes Teams; old: text.
+  C2a  Steam friends picker (lobby): the red X in its title band, the "Close" button gone; old: no X, a Close button.
+  C2b  a click on the picker's X closes it; the lobby stays.
+  C3   a right-drag on the Teams window's title moves it by the drag (60 px left) and it reopens there; old: it does not move.
+Guards (pass on both; they catch a scale done wrong or one press closing two things): M5d the open cog list stays inside
+the game window (16 px free) at 1.4, M5e a cog click at 1.4 (fake mouse on the drawn cog) closes and opens the cog list
+(hit tests on the scaled rects), C1c one REAL Escape closes the open Teams window and the Esc menu stays shut (the next
+press opens it: the key path works), C2c one REAL Escape closes the picker and the lobby (the Esc view under it) stays.
 Shots (never committed): <shots>/<lang>_<W>x<H>_ui<scale>/<state>.png. Prints RESULT lines; exit 0 = all PASS."""
 import json, os, sys, time, glob, shutil, subprocess, threading, signal, traceback, hashlib, argparse
 HERE = os.path.dirname(os.path.abspath(__file__))
-LB = os.path.expanduser('~/ds_launcher_wt_dsuxmp/loader'); LT = os.path.join(LB, 'test')
+LB = os.path.abspath(os.path.expanduser(os.environ.get('LOADER', '~/ds_launcher_wt_dsuxmp2/loader'))); LT = os.path.join(LB, 'test')
 ap = argparse.ArgumentParser()
 ap.add_argument('lang'); ap.add_argument('size'); ap.add_argument('dylib')
-ap.add_argument('--parts', default='game,hub'); ap.add_argument('--shots', default=os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp/shots/uxmp-hud'))
-ap.add_argument('--run', default=os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp/hud/runs'))
+ap.add_argument('--parts', default='game,hub'); ap.add_argument('--shots', default=os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp2/shots/hud'))
+ap.add_argument('--run', default=os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp2/hud/runs')); ap.add_argument('--ui', type=float, default=1.0)
 A = ap.parse_args()
 LANGS = {'en': 0, 'de': 3, 'ru': 4}
 LANG = A.lang; W, H = (int(v) for v in A.size.split('x')); DYLIB = os.path.abspath(os.path.expanduser(A.dylib))
-TAGB = f'{LANG}_{W}x{H}'
+TAGB = f'{LANG}_{W}x{H}'; UI = A.ui
 RUN = os.path.join(A.run, TAGB + time.strftime('_%H%M%S')); os.makedirs(RUN, exist_ok=True)
 os.environ['DSL_TEST_COPY'] = 'UXH'; os.environ['LRIG_SIZE'] = f'{W}x{H}'
 sys.argv[1:] = [RUN]
@@ -50,6 +62,8 @@ BTN = btn_ids()
 TPL = os.path.expanduser('~/dungeonsettlersdb/site/assets/saves/base_25846389.json')   # the wiki's public base save
 SOLO_G = 'b0c0ffee-0000-4000-8000-0000000000a1'; SOLO_STEM = 'Brightwood__AutoSave_' + SOLO_G.replace('-', '') + '_0'
 RES = []
+UDRV = os.path.join(I, 'uikit')                                       # uikit-demo driver dir (req.json / resp.json)
+UKIT = os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp2/hud/uikit-demo')   # built here from the loader's test source
 
 
 def result(name, ok, detail):
@@ -66,10 +80,16 @@ def install():
     os.replace(os.path.join(fw, 'dsload.dylib.tmp'), os.path.join(fw, 'dsload.dylib'))
     os.makedirs(md, exist_ok=True)
     old = os.path.join(I, 'old'); os.makedirs(old, exist_ok=True)
-    for m in ('multiplayer', 'custom-modes'):
+    os.makedirs(UKIT, exist_ok=True)                                  # uikit-demo (test only): REAL Escape keys (key 53)
+    src = os.path.join(LB, 'test', 'mods_src', 'uikit-demo')
+    subprocess.run(f'cd "{LB}" && nice -n 19 clang -arch arm64 -O2 -Wall -Isdk -dynamiclib -framework CoreFoundation -framework CoreGraphics -lobjc '
+                   f'-install_name @rpath/uikit-demo.dylib -o "{UKIT}/uikit-demo.dylib.tmp" "{src}/uikit_demo.c" && codesign -f -s - "{UKIT}/uikit-demo.dylib.tmp" 2>/dev/null; '
+                   f'mv -f "{UKIT}/uikit-demo.dylib.tmp" "{UKIT}/uikit-demo.dylib"', shell=True, check=True, capture_output=True)
+    shutil.copyfile(os.path.join(src, 'mod.json'), os.path.join(UKIT, 'mod.json'))
+    for m in ('multiplayer', 'custom-modes', 'uikit-demo'):
         d = os.path.join(md, m)
         if os.path.exists(d): shutil.move(d, os.path.join(old, f'{m}.{time.time():.0f}'))
-        shutil.copytree(os.path.join(LB, 'build', 'mods_all', 'mac', m), d)
+        shutil.copytree(UKIT if m == 'uikit-demo' else os.path.join(LB, 'build', 'mods_all', 'mac', m), d)
     mp = os.path.join(md, 'multiplayer')                              # this build's module; its sha256 in the copy's mod.json
     shutil.copy2(DYLIB, os.path.join(mp, 'multiplayer.dylib.tmp')); os.replace(os.path.join(mp, 'multiplayer.dylib.tmp'), os.path.join(mp, 'multiplayer.dylib'))
     mj = json.load(open(os.path.join(mp, 'mod.json')))
@@ -95,7 +115,8 @@ def world_save(path, guid, stem, clan):
 def seed():
     old = os.path.join(I, 'old', time.strftime('%Y%m%d-%H%M%S')); os.makedirs(old, exist_ok=True)
     for p in ('data/Saves', 'mp_solo.txt', 'mp_tags.txt', 'mp_worlds.txt', 'mp_menu.json', 'mp.json', 'mp_history.json', 'mp_ui.json',
-              'mp_teams_button.json', 'data/fe', 'data/mp_owners', 'data/SaveHeaderCache.json', 'data/Mods/worlds.json', 'data/Mods/save_copies'):
+              'mp_teams_button.json', 'data/fe', 'data/mp_owners', 'data/SaveHeaderCache.json', 'data/Mods/worlds.json', 'data/Mods/save_copies',
+              'data/Mods/ui_places.tsv', 'uikit'):                   # the kit's kept places (Teams window move): every run starts centred
         q = os.path.join(I, p)
         if os.path.exists(q): shutil.move(q, os.path.join(old, p.replace('/', '_')))
     sv = os.path.join(I, 'data', 'Saves'); os.makedirs(sv)
@@ -120,7 +141,7 @@ def start():
     r.cap_wait(f'{X}: start')
     r.prepare_data(X)
     os.makedirs(T.MODS, exist_ok=True)
-    en = ['multiplayer', 'custom-modes']
+    en = ['multiplayer', 'custom-modes', 'uikit-demo']
     json.dump({'enabled': en, 'order': en}, open(os.path.join(T.MODS, 'active.json'), 'w'))
     json.dump({'worlds': {}}, open(os.path.join(T.MODS, 'worlds.json'), 'w'))
     if os.path.exists(r.sockpath(X)): os.unlink(r.sockpath(X))
@@ -131,7 +152,8 @@ def start():
            'DSML_DATA': os.path.join(I, 'data'), 'DSML_GAME_SAVES': S.GSAVES, 'DSL_CLOUD': '0', 'DSL_UPDATE': '0',
            'DSL_SOFT_TEST': '1', 'DSL_SOFT_STAGE': T.STAGE, 'DSL_SOFT_NOACTIVATE': '1', 'DSL_NO_ALERT': '1', 'DSL_NOTCH': '0',
            'DSRIG_HIDEWIN': '1', 'DSL_CRASHREP_TEST': os.path.join(I, 'crashrep_test'), 'DSRIG_TEST_STEAMFRIENDS': '1',
-           'DSRIG_EXTADDR_UPNP': '0', 'DSRIG_EXTADDR_WEB_URL': 'file://' + os.path.join(I, 'ux_extip.txt')}
+           'DSRIG_EXTADDR_UPNP': '0', 'DSRIG_EXTADDR_WEB_URL': 'file://' + os.path.join(I, 'ux_extip.txt'), 'DSL_UIKIT_TEST': UDRV}
+    os.makedirs(UDRV, exist_ok=True)
     env.update(r.soft_test_env())
     r.require_windowed(X)
     args = [os.path.join(I, r.EXE_REL), '-logFile', os.path.join(I, 'player.log'), '-screen-fullscreen', '0',
@@ -197,6 +219,41 @@ def fake_click(x, y, button=0, settle=1.2):
     a = c(cmd='ui_teams', action='mouse', x=x, y=y, button=button); time.sleep(settle); return a
 
 
+USEQ = [int(time.time()) % 100000]
+def ui(cmd, timeout=15, **kw):                                         # the uikit-demo driver (keys, the Esc menu state)
+    USEQ[0] += 1; kw['seq'] = USEQ[0]; kw['cmd'] = cmd
+    tmp = os.path.join(UDRV, 'req.json.tmp'); open(tmp, 'w').write(json.dumps(kw)); os.replace(tmp, os.path.join(UDRV, 'req.json'))
+    t0 = time.time()
+    while time.time() - t0 < timeout:
+        try:
+            j = json.load(open(os.path.join(UDRV, 'resp.json')))
+            if str(j.get('seq')) == str(USEQ[0]): return j
+        except Exception: pass
+        time.sleep(0.05)
+    return {'timeout': kw}
+
+
+def esc_key(settle=1.2):                                               # one REAL Escape (keyDown + keyUp on the game's view)
+    a = ui('key', code=53); time.sleep(settle); return a
+def sysmenu(): return ui('state').get('sysmenu')
+def esc_menu_closed():
+    for _ in range(3):
+        if sysmenu() != 1: return True
+        c(cmd='mpm_return_game'); time.sleep(1.5)
+    return sysmenu() != 1
+NEW = [None]
+def is_new():                                                          # this build has the CLOSE / ESCAPE / MOVE work (its probes)
+    if NEW[0] is None: NEW[0] = 'kit_x' in c(cmd='ui_teams')
+    return NEW[0]
+def esc_win(name):                                                     # our window on the kit's Escape stack (mpm_esc {list:1}); None = not there
+    if not is_new(): return None                                       # origin/main: plain mpm_esc opens the Esc menu; it has no list
+    for w in c(cmd='mpm_esc', list=1).get('windows', []):
+        if w.get('name') == name: return w
+    return None
+def xywh(r): return [r[0], r[1], r[0] + r[2], r[1] + r[3]] if r and r[0] >= 0 else None   # ui_teams rects: x, y, w, h -> x0, y0, x1, y1
+def inside(a, b, m=1): return bool(a and b and a[0] >= b[0] - m and a[1] >= b[1] - m and a[2] <= b[2] + m and a[3] <= b[3] + m)
+
+
 def state_is(*names): return lambda: (lambda s: s if s.get('state') in names else None)(ms())
 def safe(name, fn):
     try:
@@ -232,6 +289,32 @@ def part_game():
                f'friends picker width {w0:.0f} px at UI 1.0, {w1:.0f} px at 1.4 (ratio {w1 / w0 if w0 else 0:.3f}; 16 px free: {fit}) {sz}')
         set_scale(1.0)
     safe('M5c_friends_scale', friends)
+
+    def picker_close():                                                # CLOSE + ESCAPE RULES on the Steam friends picker (lobby)
+        set_scale(UI)
+        c(cmd='mpm_friends', action='open')
+        wait('friends picker', lambda: (lambda q: q if q.get('open') and q.get('win_shown') else None)(c(cmd='mpm_friends')), 15, 0.5)
+        time.sleep(1.5); f = c(cmd='mpm_friends'); e = esc_win('the Steam friends picker'); shot('15g_friends_redx', 0.3)
+        win = f.get('win_px'); xr = e.get('x_rect') if e and e.get('x') else None
+        band = win and [win[2] - 0.2 * (win[2] - win[0]), win[3] - 0.12 * (win[3] - win[1]), win[2], win[3]]   # top-right of the title band
+        result('C2a_picker_red_x', bool(xr) and inside(xr, band) and f.get('close_button') == 0 and e.get('pushed') == 1,
+               f'picker {win}: red X {xr} (pushed {e and e.get("pushed")}) in the title band {band}: {inside(xr, band)}; Close button shown {f.get("close_button")} (want 0)')
+        if xr:
+            fake_click(*centre(xr), settle=1.5); f2 = c(cmd='mpm_friends'); s = ms()
+            result('C2b_picker_x_closes', f2.get('open') == 0 and s.get('state') == 'lobby',
+                   f'click on the red X at {centre(xr)}: picker open {f2.get("open")} (want 0), menu state {s.get("state")} (want lobby)')
+        else:
+            result('C2b_picker_x_closes', False, 'no red X to click (precondition)')
+            c(cmd='mpm_friends', action='close'); time.sleep(1)
+        c(cmd='mpm_friends', action='open')                            # one REAL Escape: the picker only
+        wait('friends picker', lambda: (lambda q: q if q.get('open') and q.get('win_shown') else None)(c(cmd='mpm_friends')), 15, 0.5)
+        time.sleep(1.0); esc_key(0.4); m1 = sysmenu(); time.sleep(1.2)
+        f3 = c(cmd='mpm_friends'); s = ms(); m2 = sysmenu()
+        result('C2c_picker_escape_once', f3.get('open') == 0 and s.get('state') == 'lobby' and m1 == 1 and m2 == 1,
+               f'Escape: picker open {f3.get("open")} (want 0), menu state {s.get("state")} (want lobby), the Esc view under the lobby {m1} / {m2} (want 1 / 1)')
+        if f3.get('open'): c(cmd='mpm_friends', action='close'); time.sleep(1)
+        set_scale(1.0)
+    safe('C2_picker', picker_close)
     press('START', 2.0)
     wait('playing', state_is('playing'), 60, 1); time.sleep(4)
 
@@ -258,12 +341,62 @@ def part_game():
         g = probe().get('gear_px'); ok = False; det = f'cog {g}'
         if g:
             x, y = centre(g); fake_click(x, y); a1 = probe().get('pop')
-            fake_click(x, y); a2 = probe().get('pop')
-            ok = a1 == 0 and a2 == 1; det = f'cog drawn at {g}: click -> pop {a1} (want 0), click -> pop {a2} (want 1)'
+            g2 = probe().get('gear_px') or g                           # the list closed: the panel's fit (k) can change, the cog with it
+            fake_click(*centre(g2)); a2 = probe().get('pop')
+            ok = a1 == 0 and a2 == 1; det = f'cog drawn at {g}: click -> pop {a1} (want 0); cog then at {g2}: click -> pop {a2} (want 1)'
         result('M5e_cog_click_scaled', ok, det)
         c(cmd='ui_pop', open=0); time.sleep(0.5)
         set_scale(1.0)
     safe('M5_panel', panel)
+
+    def teams_t(): return c(cmd='ui_teams')
+    def teams_open():
+        if not teams_t().get('open'): c(cmd='ui_teams', action='open'); time.sleep(1.5)
+        if teams_t().get('tfold'): c(cmd='ui_teams', action='tfold', on=0); time.sleep(1.0)
+        return wait('Teams window', lambda: (lambda t: t if t.get('open') and xywh(t.get('win_rect')) else None)(teams_t()), 10, 0.5)
+
+    def teams_close():                                                 # CLOSE + ESCAPE RULES on the Teams window
+        set_scale(UI); esc_menu_closed()
+        t = teams_open(); time.sleep(1.0); t = teams_t()
+        e = esc_win('the Teams window'); shot('26c_teams_redx', 0.3)
+        wr = xywh(t.get('win_rect')); xr = e.get('x_rect') if e and e.get('x') else None
+        band = wr and [wr[2] - 0.12 * (wr[2] - wr[0]), wr[3] - 0.12 * (wr[3] - wr[1]), wr[2], wr[3]]
+        result('C1a_teams_red_x', bool(xr) and inside(xr, band) and e.get('pushed') == 1 and t.get('prefab_x_rect', [0])[0] == -1,
+               f'window {wr}: kit red X {xr} (pushed {e and e.get("pushed")}) in the title band {band}: {inside(xr, band)}; prefab X {t.get("prefab_x_rect")} (want hidden, -1)')
+        if xr:
+            fake_click(*centre(xr), settle=1.5); t2 = teams_t(); m = sysmenu()
+            result('C1b_teams_x_closes', t2.get('open') == 0 and m != 1, f'click on the red X at {centre(xr)}: Teams open {t2.get("open")} (want 0), Esc menu {m} (want 0)')
+        else:
+            result('C1b_teams_x_closes', False, 'no kit red X to click (precondition)')
+        if teams_t().get('open'): c(cmd='ui_teams', action='close'); time.sleep(1)
+        # one REAL Escape: the Teams window only (the game's Esc menu stays shut); the next press reaches the game
+        teams_open(); time.sleep(1.0); esc_key(0.4); m1 = sysmenu(); time.sleep(1.0); t3 = teams_t(); m2 = sysmenu()
+        esc_key(1.5); m3 = sysmenu()
+        result('C1c_teams_escape_once', t3.get('open') == 0 and m1 != 1 and m2 != 1 and m3 == 1,
+               f'Escape: Teams open {t3.get("open")} (want 0), Esc menu {m1} / {m2} (want 0 / 0); the next Escape opens the Esc menu: {m3} (want 1)')
+        esc_menu_closed()
+        # the folded bar: its close is the game's red X
+        teams_open(); c(cmd='ui_teams', action='tfold', on=1); time.sleep(1.5); t = teams_t(); shot('26d_teams_folded', 0.3)
+        bc = xywh(t.get('bar_close_rect')); br = xywh(t.get('bar_rect'))
+        ok = bool(bc) and t.get('bar_close_text') == 0 and inside(bc, br) and abs((bc[2] - bc[0]) - (bc[3] - bc[1])) < 2
+        if ok:
+            fake_click(*centre(bc), settle=1.5); t4 = teams_t()
+            ok = t4.get('open') == 0
+        else: t4 = {}
+        result('C1d_folded_bar_red_x', ok, f'folded bar {br}: close {bc} text {t.get("bar_close_text")} (want 0: the red X); click -> Teams open {t4.get("open")} (want 0)')
+        if teams_t().get('open'): c(cmd='ui_teams', action='tfold', on=0); time.sleep(0.5); c(cmd='ui_teams', action='close'); time.sleep(1)
+        # MOVE RULE: a right-drag on the title band moves the window; it reopens there
+        t = teams_open(); time.sleep(1.0); r0 = xywh(teams_t().get('win_rect'))
+        x, y = (r0[0] + r0[2]) / 2, r0[3] - 0.04 * (r0[3] - r0[1])     # the title band, centre (y up)
+        c(cmd='ui_teams', action='mouse', x=x, y=y, button=1, dx=-60, dy=0); time.sleep(2.5)
+        r1 = xywh(teams_t().get('win_rect')); shot('26e_teams_moved', 0.3)
+        c(cmd='ui_teams', action='close'); time.sleep(1.0); teams_open(); time.sleep(1.5); r2 = xywh(teams_t().get('win_rect'))
+        d1 = (r1[0] - r0[0], r1[1] - r0[1]) if r0 and r1 else None; d2 = (r2[0] - r1[0], r2[1] - r1[1]) if r1 and r2 else None
+        result('C3_teams_move', bool(d1 and d2) and abs(d1[0] + 60) <= 3 and abs(d1[1]) <= 3 and abs(d2[0]) <= 2 and abs(d2[1]) <= 2,
+               f'right-drag 60 px left from {x:.0f},{y:.0f}: window {r0} -> {r1} (moved {d1}, want -60, 0); reopened at {r2} (moved {d2}, want 0, 0); movable {teams_t().get("movable")}')
+        c(cmd='ui_teams', action='close'); time.sleep(1)
+        set_scale(1.0)
+    safe('C1_teams', teams_close)
     c(cmd='mpm_quit_title', timeout=120)
     wait('title', lambda: (lambda s: s if s.get('scene') == 1 and not s.get('busy') else None)(st()), 300, 2)
     wait('menu idle', state_is('idle', 'title_menu', 'failed'), 120, 1); time.sleep(3)
@@ -296,15 +429,17 @@ def part_hub():
     wait('hub playing', state_is('playing'), 180, 1); time.sleep(4)
     shot('36_hub_hud', 1.0)
 
+    # The card window over the world with the HUD showing (the review's state 41 and a match's preparation: the HUD's own
+    # "Bring Units" button, pvp_ui.c PVB_HUD_BRING). Opened through the PvP Bring action with the Esc menu shut: the PvP window
+    # lives in the Esc menu, which hides the Teams button, so the window's own Bring button never shows the overlap.
     def bring_open():
-        c(cmd='mpm_esc'); time.sleep(2)
-        log('pvp esc', c(cmd='mpm_pvp', action='press_esc')); time.sleep(2.5)
-        log('pvp bring', c(cmd='mpm_pvp', action='bring'))
+        esc_menu_closed()
+        log('pvp bring', {k: v for k, v in c(cmd='mpm_pvp', action='bring').items() if k in ('ok', 'window', 'bring')})
         return wait('Bring Units window', lambda: (lambda q: q if q.get('open') == 1 else None)(c(cmd='mpm_bring_state')), 20, 0.5)
 
     def bring_close():
         if c(cmd='mpm_bring_state').get('open'): c(cmd='mpm_bring_close'); time.sleep(1)
-        log('pvp close', c(cmd='mpm_pvp', action='press_close')); time.sleep(1)
+        esc_menu_closed()
 
     def m7():
         for v in (1.0, 1.4):
@@ -320,7 +455,7 @@ def part_hub():
             else:
                 result(f'M7a_drawn_under_ui{v}', hud_o is not None and win_o is not None and hud_o < win_o,
                        f'Teams button {tb} over the window {win}: button canvas order {hud_o}, window order {win_o} (want button < window)')
-            if v == 1.0:
+            if abs(v - UI) < 0.01:
                 if ov:
                     x, y = centre([max(win[0], tb[0]), max(win[1], tb[1]), min(win[2], tb[2]), min(win[3], tb[3])])
                     fake_click(x, y, settle=2.0)

@@ -9,6 +9,7 @@
 #include "ord_api.h"
 #include "ds_i18n.h"
 #include "ui_utf8.h"
+#include "mp_esc.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5474,6 +5475,9 @@ static char *ui_coop_cmd(const char *line) {
    makes no Escape event while a field has the focus (mpmenu.c h_textfocus also covers the chat). */
 static void (*o_escape)(Obj, Obj, void *);
 static int escape_ours(void) {
+    /* one press, one close (owner 2026-10-25): a press the loader kit takes for a window on its Escape stack (Teams, the friends
+       picker, Bring Units, PvP, ...) is that window's; none of the boxes below closes with it, and the game does not get it */
+    if (mpesc_took()) { rig_log("ui: Escape taken by the kit for a window on its stack (nothing else closes)"); return 1; }
     static int (*mm_esc)(void); if (!mm_esc) mm_esc = (int (*)(void))dlsym(RTLD_DEFAULT, "mpmenu_escape_ours");
     if (mm_esc && mm_esc()) { rig_log("ui: Escape taken by mpmenu (chat / lobby rules)"); return 1; }   /* modal: first */
     if (tip_until > 0) { show(u_gc_get(h_tip_box), 0); show(u_gc_get(h_tip_txt), 0); tip_until = 0; }   /* not a box: no stop */
