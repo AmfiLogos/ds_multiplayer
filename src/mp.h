@@ -67,6 +67,10 @@ int  mp_config_parse(const char *json, mp_config *out);
 /* Gameplay mods + match rule from the launcher's session file (DSML_SESSION), for the HELLO (dsnet_set_modset):
  * mods = modset_lines '\n'-joined (give DSNET_MODLINES_MAX bytes). */
 int  mp_session_mods(int *vanilla, char modset[65], char *mods, size_t n);
+/* the lines of mods that run but are not in the session set now (the loader's custom difficulty mods, export
+   dsl_mp_optional_lines), '\n'-joined, for the HELLO (dsnet_set_modset_optional). Set by the game side (mp_game.c);
+   NULL = none (tests, an older loader). */
+extern int (*mp_session_optional)(char *out, size_t n);
 
 typedef struct mp_game_api {
     void *user;

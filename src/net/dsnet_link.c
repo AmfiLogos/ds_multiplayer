@@ -40,6 +40,12 @@ void dsnet_set_modset(int rule, const char *modset, const char *lines) {
     snprintf(dsnet_mod_lines, sizeof dsnet_mod_lines, "%s", lines ? lines : "");
 }
 const char *dsnet_my_mod_lines(void) { return dsnet_mod_lines; }
+char dsnet_mod_opt[DSNET_MODOPT_MAX];
+void dsnet_set_modset_optional(const char *lines) {
+    size_t n = lines ? strlen(lines) : 0;
+    if (n >= sizeof dsnet_mod_opt) n = 0;                  /* cut lines would never match the host's: none */
+    memcpy(dsnet_mod_opt, lines ? lines : "", n); dsnet_mod_opt[n] = 0;
+}
 char dsnet_reject_host_rel[16];
 static char my_rel[16]; static int my_rel_set;
 static void rel_clean(char *out, size_t n, const char *s) {        /* keep [0-9A-Za-z._-], drop a leading 'v' */

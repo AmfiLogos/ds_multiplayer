@@ -584,6 +584,7 @@ void mp_get_stats(mp_session *s, mp_stats *o) {
     o->player = dsnet_player_id(s->c);
 }
 
+int (*mp_session_optional)(char *out, size_t n);
 /* ---------------------------------------------------------------- session */
 /* mp_start in two halves: begin connects and sends the HELLO (no wait); the WELCOME part runs in start_welcomed. */
 mp_session *mp_start_begin(const mp_config *cfg, const mp_game_api *api) {
@@ -598,6 +599,14 @@ mp_session *mp_start_begin(const mp_config *cfg, const mp_game_api *api) {
         dsnet_set_modset(van ? DSNET_MATCH_VANILLA : DSNET_MATCH_MODS, ms, mods);
         if (!rc) { int nm = 0; for (const char *q = mods; *q; q++) nm += *q == '\n'; if (mods[0]) nm++;
                    mlog("launcher session: rule %s, %d gameplay mod(s), set %.12s", van ? "vanilla" : "mods", nm, ms[0] ? ms : "-"); }
+        /* custom difficulty mods that run but are not counted now (Hell at the title): the host lets this guest join a
+           world on that level with them (dsnet.h dsnet_set_modset_optional) */
+        static char opt[DSNET_MODOPT_MAX]; int no = mp_session_optional ? mp_session_optional(opt, sizeof opt) : 0;
+        if (no <= 0) opt[0] = 0;
+        dsnet_set_modset_optional(opt);
+        if (no > 0) { char ids[200]; size_t k = 0; ids[0] = 0;
+                      for (const char *q = opt; *q && k + 2 < sizeof ids; ) { size_t l = strcspn(q, ":\n"); k += (size_t)snprintf(ids + k, sizeof ids - k, "%s%.*s", k ? ", " : "", (int)l, q); q += strcspn(q, "\n"); if (*q) q++; }
+                      mlog("launcher session: also running, not counted now (a host on that difficulty counts them): %s", ids); }
     }
     if (cfg->host) {
         dsnet_cfg d = dsnet_cfg_defaults();
