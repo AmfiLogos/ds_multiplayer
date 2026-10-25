@@ -819,23 +819,34 @@ static void test_modset(void) {
     int ok = 1; double t0 = now_ms();
     const char *M1 = "1111111111111111111111111111111111111111111111111111111111111111";
     const char *M2 = "2222222222222222222222222222222222222222222222222222222222222222";
-    struct { int hrule; const char *hset, *hmods; const char *jset, *jmods; int want; const char *words; } cases[] = {
-        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0", M1, "hell-difficulty@2.0.0", 0, NULL },
-        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "host: hell-difficulty@2.0.0; you: none" },
-        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0:aa:bb\nzz-mod@1.2.0:cc", M2, "cheaper-recruits@1.0.0:dd", DSNET_REJ_MODSET, "(host: hell-difficulty@2.0.0, zz-mod@1.2.0; you: cheaper-recruits@1.0.0)" },
-        { DSNET_MATCH_MODS,    "", "", DSNET_MODSET_NONE, "", 0, NULL },            /* no launcher == the hash of no mods */
-        { DSNET_MATCH_VANILLA, "", "", "", "", 0, NULL },
-        { DSNET_MATCH_VANILLA, "", "", M1, "hell-difficulty@2.0.0", DSNET_REJ_MODSET, "allows no gameplay mods: turn off hell-difficulty@2.0.0 in the Mods window" },
-        { DSNET_MATCH_VANILLA, M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "the host allows no gameplay mods but has some on" },
+    /* jopt: the joiner's loaded but not counted lines (custom difficulty: Hell at the title, owner 2026-10-25). A joiner gets
+       in with them only when its lines + them are exactly the host's (same version + sha256s): else the host's world on
+       Hell would run Hell code on one peer only (desync), or a joiner with other files would join */
+    struct { int hrule; const char *hset, *hmods; const char *jset, *jmods; int want; const char *words; const char *jopt; } cases[] = {
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa", 0, NULL, "hell-difficulty@0.1.7:hh" },
+        { DSNET_MATCH_MODS,    M1, "hell-difficulty@0.1.7:hh", "", "", 0, NULL, "hell-difficulty@0.1.7:hh" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa", DSNET_REJ_MODSET, "your gameplay mods", "hell-difficulty@0.1.7:XX" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa", DSNET_REJ_MODSET, "your gameplay mods", "hell-difficulty@0.1.6:hh" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa\nzz-mod@1.2.0:cc", DSNET_REJ_MODSET, "your gameplay mods", "hell-difficulty@0.1.7:hh" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh\nzz-mod@1.2.0:cc", M2, "gcd-cdr@0.1.7:aa", DSNET_REJ_MODSET, "your gameplay mods", "hell-difficulty@0.1.7:hh" },
+        { DSNET_MATCH_MODS,    M1, "gcd-cdr@0.1.7:aa\nhell-difficulty@0.1.7:hh", M2, "gcd-cdr@0.1.7:aa", DSNET_REJ_MODSET, "your gameplay mods", "" },
+        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0", M1, "hell-difficulty@2.0.0", 0, NULL, NULL },
+        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "host: hell-difficulty@2.0.0; you: none", NULL },
+        { DSNET_MATCH_MODS,    M1, "hell-difficulty@2.0.0:aa:bb\nzz-mod@1.2.0:cc", M2, "cheaper-recruits@1.0.0:dd", DSNET_REJ_MODSET, "(host: hell-difficulty@2.0.0, zz-mod@1.2.0; you: cheaper-recruits@1.0.0)", NULL },
+        { DSNET_MATCH_MODS,    "", "", DSNET_MODSET_NONE, "", 0, NULL, NULL },            /* no launcher == the hash of no mods */
+        { DSNET_MATCH_VANILLA, "", "", "", "", 0, NULL, NULL },
+        { DSNET_MATCH_VANILLA, "", "", M1, "hell-difficulty@2.0.0", DSNET_REJ_MODSET, "allows no gameplay mods: turn off hell-difficulty@2.0.0 in the Mods window", NULL },
+        { DSNET_MATCH_VANILLA, M1, "hell-difficulty@2.0.0", "", "", DSNET_REJ_MODSET, "the host allows no gameplay mods but has some on", NULL },
     };
     int n = (int)(sizeof cases / sizeof *cases), in = 0, out = 0;
     for (int i = 0; i < n; i++) {
         dsnet_cfg cfg = test_cfg(1);
         dsnet_server *srv = dsnet_server_start(&cfg);
-        dsnet_set_modset(cases[i].hrule, cases[i].hset, cases[i].hmods);
+        dsnet_set_modset(cases[i].hrule, cases[i].hset, cases[i].hmods); dsnet_set_modset_optional("");
         dsnet_client *h = dsnet_client_connect_local(srv, "host");
         CHECK(dsnet_wait_welcome(h, 2000) == 0, "case %d: host not in", i);
         dsnet_set_modset(DSNET_MATCH_MODS, cases[i].jset, cases[i].jmods);   /* a joiner's rule is not used */
+        dsnet_set_modset_optional(cases[i].jopt);
         dsnet_client *c = dsnet_client_connect_tcp("127.0.0.1", dsnet_server_port(srv), "j");
         int r = dsnet_wait_welcome(c, 2000), why = dsnet_reject_reason(c);
         if (cases[i].want) {
@@ -848,7 +859,7 @@ static void test_modset(void) {
         dsnet_client_close(c); dsnet_client_close(h);
         dsnet_server_stop(srv);
     }
-    dsnet_set_modset(DSNET_MATCH_MODS, "", "");
+    dsnet_set_modset(DSNET_MATCH_MODS, "", ""); dsnet_set_modset_optional("");
     printf("%s modset: %d joins let in, %d refused with the host's / joiner's mod lists in the words (%.1fs)\n",
            ok ? "PASS" : "FAIL", in, out, (now_ms() - t0) / 1000);
 }

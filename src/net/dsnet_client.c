@@ -422,7 +422,7 @@ static dsnet_client *client_new(int fd, const char *name, int want_host, int rol
     pthread_cond_init(&c->cv, NULL);
     c->player = -1; c->exec_player = -1; c->fp_interval = 30; c->tpt_ms = 1000.0f / 60; c->role = role; c->local = want_host != 0;
     /* fixed part 28 + build (u8 len) + rule + modset (u8 len) + lines (u16 len) + role + name: every field bounded */
-    uint8_t b[28 + 1 + sizeof dsnet_build_id + 2 + sizeof dsnet_modset + 2 + DSNET_MODLINES_MAX + 1 + 32], *p = b;
+    uint8_t b[28 + 1 + sizeof dsnet_build_id + 2 + sizeof dsnet_modset + 2 + DSNET_MODLINES_MAX + 1 + 32 + 1 + DSNET_RELEASE_MAX + 1 + DSNET_MODOPT_MAX], *p = b;
     size_t nl = name ? utf8_len31(name) : 0;                        /* at most 31 bytes, whole characters */
     size_t bl = strnlen(dsnet_build_id, sizeof dsnet_build_id - 1), ml = strnlen(dsnet_modset, sizeof dsnet_modset - 1),
            dl = strnlen(dsnet_mod_lines, DSNET_MODLINES_MAX - 1);
@@ -436,8 +436,9 @@ static dsnet_client *client_new(int fd, const char *name, int want_host, int rol
     p = put16(p, (uint16_t)dl); memcpy(p, dsnet_mod_lines, dl); p += dl;
     p = put8(p, (uint8_t)role);
     memcpy(p, name, nl); p += nl;
-    const char *rel = dsnet_my_release(); size_t rl = strlen(rel);
-    if (rl) { *p++ = 0; memcpy(p, rel, rl); p += rl; }       /* release after a NUL: older servers end the name there */
+    const char *rel = dsnet_my_release(); size_t rl = strnlen(rel, DSNET_RELEASE_MAX), ol = strnlen(dsnet_mod_opt, DSNET_MODOPT_MAX - 1);
+    if (rl || ol) { *p++ = 0; memcpy(p, rel, rl); p += rl; }  /* release after a NUL: older servers end the name there */
+    if (ol) { *p++ = 0; memcpy(p, dsnet_mod_opt, ol); p += ol; }   /* loaded custom difficulty lines after one more NUL (older servers end the release there) */
     dsnet_link_send(&c->link, b, p - b);
     c->last_rx = dsnet_now_ms();
     c->running = 1;
