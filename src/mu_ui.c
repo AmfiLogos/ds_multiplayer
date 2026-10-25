@@ -78,10 +78,48 @@ DSLObj mu_icon(DSLObj parent, float x, float y, float s, int kind, const char *k
 /* ------------------------------------------------------------------ the window */
 /* the game's UI scale (Settings > UI scale, UIScaleManager.Scale: 0.75 .. 1.4); 1 when unknown */
 float mu_ui_scale(void) {
+    if (!U) mu_kit();                                  /* M5: the HUD asks before any card window opened (il2cpp names not set up yet) */
     static cm_m inst, get; if (!inst.fn) { inst = cm_il_method("Refactor", "UIScaleManager", "get_Instance", 0, NULL); get = cm_il_method("Refactor", "UIScaleManager", "get_Scale", 0, NULL); }
     Obj m = inst.fn ? CM_CALL(inst, Obj, const void *)(inst.mi) : NULL;
     float s = cm_alive(m) && get.fn ? CM_CALL(get, float, Obj, const void *)(m, get.mi) : 1.f;
     return s >= 0.5f && s <= 2.f ? s : 1.f;
+}
+/* test only (ui_scale_probe): the game's own UIScaleManager.SetScale, as the Settings slider. 0 = done */
+int mu_ui_scale_set(float v) {
+    if (!U) mu_kit();
+    static cm_m inst, set; if (!inst.fn) { inst = cm_il_method("Refactor", "UIScaleManager", "get_Instance", 0, NULL); set = cm_il_method("Refactor", "UIScaleManager", "SetScale", 2, NULL); }
+    Obj m = inst.fn ? CM_CALL(inst, Obj, const void *)(inst.mi) : NULL;
+    if (!cm_alive(m) || !set.fn) return -1;
+    CM_CALL(set, void, Obj, float, bool, const void *)(m, v, false, set.mi);
+    return 0;
+}
+/* M7: the screen point x, y (pixels, y up) is on rt (shown); its screen rect r = x0, y0, x1, y1. Overlay canvas (the kit's
+   layer): world = screen pixels, no camera */
+typedef struct { float x, y, z; } V3s;
+typedef struct { float x, y, w, h; } R4s;
+int mu_ui_screen_rect(DSLObj rt, float r[4]) {
+    static cm_m act, rect, tp;
+    if (!act.fn) { act = cm_il_method("UnityEngine", "GameObject", "get_activeInHierarchy", 0, NULL); rect = cm_il_method("UnityEngine", "RectTransform", "get_rect", 0, NULL);
+                   tp = cm_il_method("UnityEngine", "Transform", "TransformPoint", 1, "UnityEngine.Vector3"); }
+    Obj g = rt ? cm_go(rt) : NULL;
+    if (!g || !act.fn || !rect.fn || !tp.fn || !CM_CALL(act, bool, Obj, const void *)(g, act.mi)) return 0;
+    R4s q = CM_CALL(rect, R4s, Obj, const void *)(rt, rect.mi);
+    V3s a = CM_CALL(tp, V3s, Obj, V3s, const void *)(rt, (V3s){ q.x, q.y, 0 }, tp.mi), b = CM_CALL(tp, V3s, Obj, V3s, const void *)(rt, (V3s){ q.x + q.w, q.y + q.h, 0 }, tp.mi);
+    r[0] = a.x < b.x ? a.x : b.x; r[2] = a.x < b.x ? b.x : a.x; r[1] = a.y < b.y ? a.y : b.y; r[3] = a.y < b.y ? b.y : a.y;
+    return r[2] > r[0] && r[3] > r[1];
+}
+int mu_ui_screen_hit(DSLObj rt, float x, float y) {
+    float r[4];
+    return mu_ui_screen_rect(rt, r) && x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3];
+}
+/* test: the sorting order the widget is drawn with (its nearest Canvas: the kit's layer 30900, or an override) */
+int mu_ui_canvas_order(DSLObj rt) {
+    static cm_m inparent, order; static void *k_cv;
+    if (!inparent.fn) { inparent = cm_il_method("UnityEngine", "Component", "GetComponentInParent", 1, "System.Type"); order = cm_il_method("UnityEngine", "Canvas", "get_sortingOrder", 0, NULL);
+                        k_cv = cm_il_class("UnityEngine", "Canvas"); }
+    if (!rt || !inparent.fn || !order.fn || !k_cv) return -1;
+    Obj cv = CM_CALL(inparent, Obj, Obj, Obj, const void *)(rt, cm_il_type_obj(k_cv), inparent.mi);
+    return cm_alive(cv) ? CM_CALL(order, int, Obj, const void *)(cv, order.mi) : -1;
 }
 /* a plain colour rect (no sprite): the stock "Box" sprite stretched over a large area shows its own darker footer band */
 DSLObj mu_plate(DSLObj parent, float x, float y, float w, float h, uint32_t rgba) {
@@ -90,7 +128,6 @@ DSLObj mu_plate(DSLObj parent, float x, float y, float w, float h, uint32_t rgba
     if (p) { cm_set_sprite(p, NULL, rgba); cm_raycast(p, false); }
     return p;
 }
-typedef struct { float x, y, z; } V3s;
 DSLObj mu_window(const char *title, float want_w, float want_h, float *w, float *h) {
     if (!U) return NULL;
     DSLObj p = U->panel(NULL, 0, 0, want_w, want_h, 0);

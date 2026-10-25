@@ -25,6 +25,11 @@ void mu_log(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 /* the window: a panel centred on the kit's screen layer, w x h clamped to the layer minus a margin. title in Cinzel.
    Returns the panel (NULL = kit not ready); *w / *h get the size used. */
 float mu_ui_scale(void);
+int mu_ui_scale_set(float v);                                /* test only: UIScaleManager.SetScale (the Settings slider) */
+/* M7: screen rect (pixels, y up: x0, y0, x1, y1) of a shown widget on an overlay canvas; 1 = shown. hit: the point is on it */
+int mu_ui_screen_rect(DSLObj rt, float r[4]);
+int mu_ui_screen_hit(DSLObj rt, float x, float y);
+int mu_ui_canvas_order(DSLObj rt);                           /* test: sorting order of its nearest Canvas, -1 = none */
 DSLObj mu_window(const char *title, float want_w, float want_h, float *w, float *h);
 /* a plain colour rect, no sprite, clicks through (rgba 0: invisible, a holder for other widgets) */
 DSLObj mu_plate(DSLObj parent, float x, float y, float w, float h, uint32_t rgba);

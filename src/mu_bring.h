@@ -40,6 +40,7 @@ typedef struct mu_bring_req {
 int  mu_bring_open(const mu_bring_req *req);
 void mu_bring_close(void);       /* closes it like Cancel (done(NULL, -1)) */
 int  mu_bring_is_open(void);
+int  mu_bring_hit(float x, float y);   /* M7: screen point (pixels, y up) on the open window: our HUD under it leaves it alone */
 int  mu_bring_available(void);   /* 1 = the loader's widget kit is there (the card window can open) */
 /* E3 (owner 2026-10-20): Units Laboratory, when this player has it (found at run time, no link): the window gets a source
    switch Saves / My Units and a "Build a unit" button; a My Units pick travels as its full entry (others need nothing). */
