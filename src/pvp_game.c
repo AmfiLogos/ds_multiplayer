@@ -1126,13 +1126,20 @@ int pvp_ui_unit_name(int i, char *out, int cap) {        /* the unit's name (DAS
     void utf16_to_utf8(Obj s, char *out, size_t cap);                   /* multiplayer (mpmenu_kit.h): whole characters */
     utf16_to_utf8(nm, out, cap > 0 ? (size_t)cap : 0); return 0;
 }
-static void center(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
-static void center(const char *fmt, ...) {
+/* UX review 2026-10-25 (P2): while the match HUD shows, a message goes under its score panel (pvp_ui.c); the game's centred
+   notice sat over the Teams button, the Players panel icons and the panel's top edge. Else the game's notice, as before. */
+int pvp_ui_hud_say(const char *text, int hold) __attribute__((weak_import));
+static void center_v(int hold, const char *fmt, va_list ap) {
     static void (*cm)(const char *); static int looked;
     if (!looked) { looked = 1; cm = (void (*)(const char *))dlsym(RTLD_DEFAULT, "ui_center_message"); }
-    char b[400]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap); dsi_utf8_fix_end(b);
-    if (cm) cm(b); rig_log("pvp: message \"%s\"", b);
+    char b[400]; vsnprintf(b, sizeof b, fmt, ap); dsi_utf8_fix_end(b);
+    if (!(pvp_ui_hud_say && pvp_ui_hud_say(b, hold)) && cm) cm(b);
+    rig_log("pvp: message \"%s\"", b);
 }
+static void center(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+static void center(const char *fmt, ...) { va_list ap; va_start(ap, fmt); center_v(0, fmt, ap); va_end(ap); }
+static void center_hold(const char *fmt, ...) __attribute__((format(printf, 1, 2)));   /* shown while the planning pause lasts */
+static void center_hold(const char *fmt, ...) { va_list ap; va_start(ap, fmt); center_v(1, fmt, ap); va_end(ap); }
 /* local messages from the shared state (every peer shows the same ones at the same step) */
 static void messages_frame(void) {
     static uint32_t seen_match, seen_round, seen_fight, seen_plans, seen_ctf, seen_prep; static int seen_reset, seen_cd = -1;
@@ -1147,7 +1154,7 @@ static void messages_frame(void) {
             seen_fight = g.fight_start;
             if (g.arena) center(g.mode == PVP_MODE_CTF ? TR("Round %d - Capture the flag!") : TR("Round %d - Fight!"), g.round);
         }
-        if (g.plans != seen_plans && g.planning) { seen_plans = g.plans; center("%s", TR("Planning pause: give your orders, then press Ready")); }
+        if (g.plans != seen_plans && g.planning) { seen_plans = g.plans; center_hold("%s", TR("Planning pause: give your orders, then press Ready")); }
         if (ctf_seq != seen_ctf) {
             seen_ctf = ctf_seq; char nm[96]; pvp_ui_unit_name(ctf_last_unit, nm, sizeof nm);
             int red = ctf_last_team == PVP_TEAM_RED;                       /* whole sentences per team (word order, gender) */
@@ -1159,7 +1166,7 @@ static void messages_frame(void) {
         }
         { static int was_open; static uint32_t was_match;                     /* E4: a proposal closed without agreement */
           if (was_match != g.matches) { was_match = g.matches; was_open = 0; }
-          if (was_open && !g.vote_open && !g.countdown_at && g.placing) center("%s", TR("Not yet: the fight waits until everyone agrees."));
+          if (was_open && !g.vote_open && !g.countdown_at && g.placing) center("%s", TR("Not Yet: the fight waits until everyone agrees."));
           was_open = g.vote_open; }
         if (g.placing && !g.countdown_at && g.round <= 1 && seen_prep != g.matches) {   /* E8: the preparation starts */
             seen_prep = g.matches; center("%s", TR("Preparation: place your units, then propose the fight. It starts when every player agreed."));

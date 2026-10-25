@@ -66,8 +66,8 @@ def main():
         time.sleep(5)
         inv = lambda: c(Y, cmd='mp_test_invite', port=port, **{'from': 'The owner'})
         r = inv(); time.sleep(2); m = ms(Y)
-        check('F9: an invite during a single-player game asks first: "Join the owner?" [Cancel] [Save and join]; nothing joined yet',
-              r.get('pending') == 1 and m['box']['on'] and 'Join the owner?' in m['box']['text'] and m['box']['confirm'] == 'Save and join' and m['box']['cancel'] == 'Cancel'
+        check('F9: an invite during a single-player game asks first: "Join the owner?" [Cancel] [Save and Join]; nothing joined yet',
+              r.get('pending') == 1 and m['box']['on'] and 'Join the owner?' in m['box']['text'] and m['box']['confirm'] == 'Save and Join' and m['box']['cancel'] == 'Cancel'
               and m['obs']['role'] == 0, f"{r} {json.dumps(m['box'])}")
         shot(Y, 'ask_guest')
         e = c(Y, cmd='mpm_escape_ours'); time.sleep(2); w = c(Y, cmd='mp_world'); m = ms(Y)
@@ -83,8 +83,8 @@ def main():
             os.chmod(sdir, mode0)
         saved = [l.strip() for l in log_since(Y, off) if 'save before joining' in l][-1:]
         if saved and 'FAILED' in saved[0]:
-            check('failed save: a second box "Your game could not be saved. Join the owner\'s game anyway?" [Cancel] [Join anyway]; the invite stays open',
-                  m['box']['on'] and 'could not be saved' in m['box']['text'] and m['box']['confirm'] == 'Join anyway' and w.get('invite_pending') == 1, f"{json.dumps(m['box'])} {w}")
+            check('failed save: a second box "Your game could not be saved. Join the owner\'s game anyway?" [Cancel] [Join Anyway]; the invite stays open',
+                  m['box']['on'] and 'could not be saved' in m['box']['text'] and m['box']['confirm'] == 'Join Anyway' and w.get('invite_pending') == 1, f"{json.dumps(m['box'])} {w}")
             shot(Y, 'nosave_guest')
             c(Y, cmd='mpm_box', action='cancel'); time.sleep(2); w = c(Y, cmd='mp_world')
             check('... Cancel there: no join, the world stays', w.get('invite_pending') == 0 and not w.get('session') and not ms(Y)['box']['on'], str(w))

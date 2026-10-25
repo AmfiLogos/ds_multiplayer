@@ -92,3 +92,15 @@ const char *pvp_rules_path(void);                      /* the file (for logs and
 /* host at Start: send the current choices (+ the map pick) to every player. 0 = sent. */
 int  pvp_rules_send(const pvp_map_pick *map);
 int  pvp_rules_synced(void);                           /* 1 = the host's rules arrived in this session */
+/* ---- the host's PvP window as shown (UX review 2026-10-25, P1): display only, never the match's rules (those still go
+   in the stamped order at Start). Mail outside the sim: the host sends its rules + teams to every other player whenever
+   they change, a player joins or a guest opens its window (it asks); a guest's window shows them. teams[p] per player
+   slot (PVP_MAX_PLAYERS): 0 unknown, 1 Blue, 2 Red. */
+#define PVPR_VIEW_TEAMS 32
+int  pvp_rules_view_send(const pvpr_vals *v, const uint8_t teams[PVPR_VIEW_TEAMS]);   /* host: 0 = sent to everyone present */
+int  pvp_rules_view_ask(void);                         /* guest: ask the host for its window (0 = mailed) */
+int  pvp_rules_view_asked(void);                       /* host: 1 once after a guest asked */
+const pvpr_vals *pvp_rules_view(uint8_t teams[PVPR_VIEW_TEAMS]);   /* guest: the host's last view, NULL = none yet */
+/* the view as text ("id=value" lines, then "teams=" + one digit per slot); pure (pvp_rules_core.c). Parse returns 0 ok, -1 bad. */
+size_t pvpr_view_format(const pvpr_vals *v, const uint8_t teams[PVPR_VIEW_TEAMS], char *out, size_t cap);
+int  pvpr_view_parse(const char *text, size_t n, pvpr_vals *v, uint8_t teams[PVPR_VIEW_TEAMS]);

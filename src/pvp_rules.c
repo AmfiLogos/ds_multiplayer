@@ -92,11 +92,58 @@ static int rules_order(mp_session *s, int player, const uint8_t guid[16], const 
     if (!apply_wire(a, n, "order")) n_recv++;
     return 0;
 }
+static pvpr_vals view_v; static uint8_t view_team[PVPR_VIEW_TEAMS]; static int view_have, view_asked, view_sent, view_recv;   /* P1 */
 static void session_check(void) {
     mp_session *s = sess();
-    if (!s) { if (synced) rig_log("pvp rules: session over: the host's rules are forgotten"); synced = 0; reg_sess = NULL; return; }
+    if (!s) { if (synced) rig_log("pvp rules: session over: the host's rules are forgotten"); synced = 0; reg_sess = NULL; view_have = 0; return; }
     if (s == reg_sess) return;
-    reg_sess = s; mp_set_order_handler(s, PVPR_ORDER_TYPE, rules_order);
+    reg_sess = s; mp_set_order_handler(s, PVPR_ORDER_TYPE, rules_order); view_have = 0;
+}
+
+/* ---- the host's PvP window for the guests (UX review 2026-10-25, P1: a guest's window showed its own default rules until
+   Start). Mail outside the sim, display only: pvp_rule_get, the fingerprint and the join-point block never read it. */
+#define PVP_M_RULES_VIEW 17                  /* host -> a player: pvpr_view_format text (pvp_units.c mail loop; PvP uses 11-18) */
+#define PVP_M_RULES_ASK 18                   /* player -> host: "send me your window" (its PvP window opened) */
+static dsnet_client *cli(void) { mp_session *s = sess(); return s ? mp_client(s) : NULL; }
+int pvp_rules_view_send(const pvpr_vals *v, const uint8_t teams[PVPR_VIEW_TEAMS]) {
+    session_check();
+    dsnet_client *c = cli(); if (!c || !dsnet_is_host(c)) return -1;
+    char b[1024]; size_t n = pvpr_view_format(v, teams, b, sizeof b); if (!n) return -2;
+    uint32_t pm = dsnet_present_mask(c); uint8_t me[16], u[16]; dsnet_my_uid(c, me); int k = 0, bad = 0;
+    int my = dsnet_player_id(c); if (my < 0 || my > 31 || !(pm & ~(1u << my))) return 0;   /* nobody else here: nothing to send (a joiner changes the mask) */
+    for (int p = 0; p < 32; p++) if (pm >> p & 1 && !dsnet_player_uid(c, p, u) && memcmp(u, me, 16)) { if (dsnet_mail_send(c, u, PVP_M_RULES_VIEW, b, n)) bad++; else k++; }
+    view_sent++;
+    char t[1100]; snprintf(t, sizeof t, "%s", b); for (char *q = t; *q; q++) if (*q == '\n') *q = ' ';
+    rig_log("pvp rules: window sent to %d player(s)%s: %s", k, bad ? " (a mail failed)" : "", t);
+    return bad ? -3 : 0;
+}
+int pvp_rules_view_ask(void) {
+    session_check();
+    dsnet_client *c = cli(); if (!c || dsnet_is_host(c)) return -1;
+    return dsnet_mail_send(c, NULL, PVP_M_RULES_ASK, "?", 1);
+}
+int pvp_rules_view_asked(void) { int a = view_asked; view_asked = 0; return a; }
+const pvpr_vals *pvp_rules_view(uint8_t teams[PVPR_VIEW_TEAMS]) {
+    session_check();
+    if (!view_have) return NULL;
+    if (teams) memcpy(teams, view_team, PVPR_VIEW_TEAMS);
+    return &view_v;
+}
+/* from pvp_units.c's mail loop: 1 = this mail was ours */
+int pvp_rules_view_mail(dsnet_client *c, const uint8_t from[16], uint8_t kind, const uint8_t *data, size_t len) {
+    if (kind == PVP_M_RULES_ASK) { if (dsnet_is_host(c)) view_asked = 1; return 1; }
+    if (kind != PVP_M_RULES_VIEW) return 0;
+    session_check();
+    uint8_t hu[16];
+    if (dsnet_is_host(c) || dsnet_player_uid(c, 0, hu) || memcmp(hu, from, 16)) { rig_log("pvp rules: a window mail not from the host: ignored"); return 1; }
+    pvpr_vals v; uint8_t t[PVPR_VIEW_TEAMS];
+    if (pvpr_view_parse((const char *)data, len, &v, t)) { rig_log("pvp rules: bad window mail from the host (%zu bytes)", len); return 1; }
+    int changed = !view_have || !pvpr_vals_equal(&v, &view_v) || memcmp(t, view_team, sizeof t);
+    view_v = v; memcpy(view_team, t, sizeof t); view_have = 1; view_recv++;
+    if (changed) { char s[700]; pvpr_format(&v, s, sizeof s); for (char *q = s; *q; q++) if (*q == '\n') *q = ' ';
+                   char tt[PVPR_VIEW_TEAMS + 1]; for (int k = 0; k < PVPR_VIEW_TEAMS; k++) tt[k] = (char)('0' + t[k]); tt[PVPR_VIEW_TEAMS] = 0;
+                   rig_log("pvp rules: the host's window: %s teams %s", s, tt); }
+    return 1;
 }
 int pvp_rules_send(const pvp_map_pick *m) {
     session_check();
@@ -157,7 +204,7 @@ static char *exec(const char *cmd, const char *line) {
     else if (strcmp(cmd, "pvpr_status")) return NULL;
     Buf b = { 0 };
     bput(&b, "{\"ok\":true,\"file\":"); bstr(&b, pvp_rules_path());
-    bput(&b, ",\"saves\":%d,\"save_fail\":%d,\"sent\":%d,\"received\":%d,\"synced\":%d,\"local\":", n_saves, n_save_fail, n_sent, n_recv, synced);
+    bput(&b, ",\"saves\":%d,\"save_fail\":%d,\"sent\":%d,\"received\":%d,\"synced\":%d,\"view_sent\":%d,\"view_recv\":%d,\"view_have\":%d,\"local\":", n_saves, n_save_fail, n_sent, n_recv, synced, view_sent, view_recv, view_have);
     put_vals(&b, &s->last); bput(&b, ",\"match\":"); put_vals(&b, synced ? &match_v : &s->last);
     const pvp_map_pick *m = pvp_map_now();
     bput(&b, ",\"map\":{\"here\":%d,\"region\":%d,\"floor\":%d,\"seed\":%d,\"boss\":%d,\"random_starts\":%d},\"get\":{", m->here, m->region, m->floor, m->seed, m->boss, m->random_starts);
@@ -181,8 +228,8 @@ void pvp_rules_start(void) {
 
 /* ---- texts of the rows this lane added to the PvP Rules box (pvp_ui.c draws them) */
 static const char *vis_ids[6] = { "enemy_vision", "enemy_windows", "enemy_portraits", "enemy_hpbars", "enemy_status", "enemy_viewrange" };
-static const char *vis_label[6] = { TR_NOOP("Enemy vision"), TR_NOOP("Enemy windows"), TR_NOOP("Enemy portraits"), TR_NOOP("Enemy health bars"),
-                                    TR_NOOP("Enemy status"), TR_NOOP("Enemy view range") };
+static const char *vis_label[6] = { TR_NOOP("Enemy Vision"), TR_NOOP("Enemy Windows"), TR_NOOP("Enemy Portraits"), TR_NOOP("Enemy Health Bars"),
+                                    TR_NOOP("Enemy Status"), TR_NOOP("Enemy View Range") };
 static const char *vis_tip[6] = {
     TR_NOOP("Shown: everyone sees the enemy team's units everywhere on the map.\n\nHidden: you see enemy units only where your own units can see."),
     TR_NOOP("Shown: clicking an enemy unit opens its full unit window.\n\nHidden: clicking an enemy unit shows only what you see of a monster."),

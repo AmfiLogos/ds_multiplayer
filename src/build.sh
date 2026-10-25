@@ -18,6 +18,7 @@
 # Needs win/math/build/libdsmath_arm64.a (run win/math/build_math.sh once).
 set -e; cd "${0:A:h}"; OUT=${OUT:-../build}; mkdir -p $OUT
 python3 ../tools/rv_gate.py > /dev/null || { python3 ../tools/rv_gate.py >&2; exit 1; }   # every game address through rv() (src/rig_rv.c)
+python3 ../tools/close_x_guard.py . > /dev/null || exit 1   # CLOSE RULE: every window of ours has the game's red X (mp_esc.h mpesc_close_x) or says why not
 nice -n 19 clang -arch arm64 -mmacosx-version-min=12.0 -O2 ${=EXTRA_CFLAGS} -Wall -Wno-unused-function -D_DARWIN_C_SOURCE -I../sdk -dynamiclib -framework AppKit -framework CoreGraphics -framework CoreFoundation \
   -install_name @rpath/multiplayer.dylib -o $OUT/dsrig.dylib.tmp \
   rig_main.c rig_hook.c rig_sock.c rig_cmd.c rig_win.c rig_det.c rig_rv.c \

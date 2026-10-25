@@ -1,0 +1,200 @@
+diff --git a/src/mu_bring.c b/src/mu_bring.c
+index dad7835..afef889 100644
+--- a/src/mu_bring.c
++++ b/src/mu_bring.c
+@@ -5,6 +5,7 @@
+ // (mu_card_draw, the game's own icons), a tick per card, a per-player cap. Read only: a save is only read (mu_save.c).
+ #include "mu_bring.h"
+ #include "mu_ui.h"
++int mu_ui_screen_rect(DSLObj rt, float r[4]); int mu_ui_canvas_order(DSLObj rt);
+ #include "mu_save.h"
+ #include "cm_il.h"
+ #include "ds_i18n.h"
+@@ -482,8 +483,15 @@ size_t mu_bring_test_state(char *out, size_t cap) {
+         { const char *b = strrchr(f, '\\'); if (b) f = b + 1; }
+         char e[260]; jesc(e, sizeof e, f); fo += (size_t)snprintf(files + fo, sizeof files - fo, "%s\"%.120s\"", i ? "," : "", e);
+     }
+-    return (size_t)snprintf(out, cap, "{\"ul\":%d,\"src\":%d,\"lib_units\":%d,\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
++    float wr[4] = { 0, 0, 0, 0 }; int won = B.open && B.win && mu_ui_screen_rect(B.win, wr);
++    char tp[700] = ""; size_t to = 0;
++    { static const char *const tn[] = { "row0", "row1", "tick0", "tick1", "bring", "cancel", "left0" };
++      for (size_t i = 0; i < sizeof tn / sizeof *tn && to + 80 < sizeof tp; i++) {
++          float r[4]; DSLObj o = B.open ? mu_bring_test_find(tn[i]) : NULL;
++          if (o && mu_ui_screen_rect(o, r)) to += (size_t)snprintf(tp + to, sizeof tp - to, "%s\"%s\":[%.0f,%.0f,%.0f,%.0f]", to ? "," : "", tn[i], r[0], r[1], r[2], r[3]);
++      } }
++    return (size_t)snprintf(out, cap, "{\"tgt_px\":{%s},\"win_px\":[%.0f,%.0f,%.0f,%.0f],\"win_shown\":%d,\"win_order\":%d,\"ul\":%d,\"src\":%d,\"lib_units\":%d,\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
+                             "\"page\":%d,\"pages\":%d,\"msg\":\"%s\",\"saves\":%d,\"sel_save\":%d,\"units\":%d,\"w\":%.0f,\"h\":%.0f}",
+-                            ul_api() != NULL, B.src, B.nlu, files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
++                            tp, wr[0], wr[1], wr[2], wr[3], won, B.open && B.win ? mu_ui_canvas_order(B.win) : -1, ul_api() != NULL, B.src, B.nlu, files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
+                             B.page, B.pages, m, B.nsaves, B.sel_save, B.nsu, B.w, B.h);
+ }
+diff --git a/src/mu_ui.c b/src/mu_ui.c
+index 6e84079..73d807b 100644
+--- a/src/mu_ui.c
++++ b/src/mu_ui.c
+@@ -78,11 +78,41 @@ DSLObj mu_icon(DSLObj parent, float x, float y, float s, int kind, const char *k
+ /* ------------------------------------------------------------------ the window */
+ /* the game's UI scale (Settings > UI scale, UIScaleManager.Scale: 0.75 .. 1.4); 1 when unknown */
+ float mu_ui_scale(void) {
++    if (!U) mu_kit();
+     static cm_m inst, get; if (!inst.fn) { inst = cm_il_method("Refactor", "UIScaleManager", "get_Instance", 0, NULL); get = cm_il_method("Refactor", "UIScaleManager", "get_Scale", 0, NULL); }
+     Obj m = inst.fn ? CM_CALL(inst, Obj, const void *)(inst.mi) : NULL;
+     float s = cm_alive(m) && get.fn ? CM_CALL(get, float, Obj, const void *)(m, get.mi) : 1.f;
+     return s >= 0.5f && s <= 2.f ? s : 1.f;
+ }
++int mu_ui_scale_set(float v) {
++    if (!U) mu_kit();
++    static cm_m inst, set; if (!inst.fn) { inst = cm_il_method("Refactor", "UIScaleManager", "get_Instance", 0, NULL); set = cm_il_method("Refactor", "UIScaleManager", "SetScale", 2, NULL); }
++    Obj m = inst.fn ? CM_CALL(inst, Obj, const void *)(inst.mi) : NULL;
++    if (!cm_alive(m) || !set.fn) return -1;
++    CM_CALL(set, void, Obj, float, bool, const void *)(m, v, false, set.mi);
++    return 0;
++}
++typedef struct { float x, y, w, h; } R4s;
++typedef struct { float x, y, z; } V3p;
++int mu_ui_screen_rect(DSLObj rt, float r[4]) {
++    static cm_m act, rect, tp;
++    if (!act.fn) { act = cm_il_method("UnityEngine", "GameObject", "get_activeInHierarchy", 0, NULL); rect = cm_il_method("UnityEngine", "RectTransform", "get_rect", 0, NULL);
++                   tp = cm_il_method("UnityEngine", "Transform", "TransformPoint", 1, "UnityEngine.Vector3"); }
++    Obj g = rt ? cm_go(rt) : NULL;
++    if (!g || !act.fn || !rect.fn || !tp.fn || !CM_CALL(act, bool, Obj, const void *)(g, act.mi)) return 0;
++    R4s q = CM_CALL(rect, R4s, Obj, const void *)(rt, rect.mi);
++    V3p a = CM_CALL(tp, V3p, Obj, V3p, const void *)(rt, (V3p){ q.x, q.y, 0 }, tp.mi), b = CM_CALL(tp, V3p, Obj, V3p, const void *)(rt, (V3p){ q.x + q.w, q.y + q.h, 0 }, tp.mi);
++    r[0] = a.x < b.x ? a.x : b.x; r[2] = a.x < b.x ? b.x : a.x; r[1] = a.y < b.y ? a.y : b.y; r[3] = a.y < b.y ? b.y : a.y;
++    return r[2] > r[0] && r[3] > r[1];
++}
++int mu_ui_canvas_order(DSLObj rt) {
++    static cm_m inparent, order; static void *k_cv;
++    if (!inparent.fn) { inparent = cm_il_method("UnityEngine", "Component", "GetComponentInParent", 1, "System.Type"); order = cm_il_method("UnityEngine", "Canvas", "get_sortingOrder", 0, NULL);
++                        k_cv = cm_il_class("UnityEngine", "Canvas"); }
++    if (!rt || !inparent.fn || !order.fn || !k_cv) return -1;
++    Obj cv = CM_CALL(inparent, Obj, Obj, Obj, const void *)(rt, cm_il_type_obj(k_cv), inparent.mi);
++    return cm_alive(cv) ? CM_CALL(order, int, Obj, const void *)(cv, order.mi) : -1;
++}
+ /* a plain colour rect (no sprite): the stock "Box" sprite stretched over a large area shows its own darker footer band */
+ DSLObj mu_plate(DSLObj parent, float x, float y, float w, float h, uint32_t rgba) {
+     if (!U) return NULL;
+diff --git a/src/ui_friends.c b/src/ui_friends.c
+index 70afcaa..9e683a7 100644
+--- a/src/ui_friends.c
++++ b/src/ui_friends.c
+@@ -227,7 +227,9 @@ static char *uf_exec(const char *cmd, const char *line) {
+         if (mm_is(b, K_SMB)) F(0xF2DC30, void (*)(Obj, void *))(b, NULL);
+     }
+     Buf b = {0};
+-    bput(&b, "{\"ok\":true,\"open\":%d,\"overlay\":%d,\"page\":%d,\"pages\":%d,\"n\":%d,\"rows\":[", uf_open, mp_steam_overlay_enabled(), uf_page, npages(), uf_n);
++    { float r[4] = { 0, 0, 0, 0 }; Obj root = uo(h_root); int rs = root && u_on(root) && rect_of(root, r);
++      bput(&b, "{\"ok\":true,\"k\":%.3f,\"win_px\":[%.0f,%.0f,%.0f,%.0f],\"win_shown\":%d,", 1.0, r[0], r[1], r[2], r[3], rs); }
++    bput(&b, "\"open\":%d,\"overlay\":%d,\"page\":%d,\"pages\":%d,\"n\":%d,\"rows\":[", uf_open, mp_steam_overlay_enabled(), uf_page, npages(), uf_n);
+     for (int i = 0; uf_open && i < UF_ROWS && uf_page * UF_ROWS + i < uf_n; i++) {
+         int k = uf_page * UF_ROWS + i; Col c;
+         bput(&b, "%s{\"name\":", i ? "," : ""); bstr(&b, uf_list[k].name); bput(&b, ",\"state\":");
+diff --git a/src/ui_game.c b/src/ui_game.c
+index f9362b2..2feaef8 100644
+--- a/src/ui_game.c
++++ b/src/ui_game.c
+@@ -1741,7 +1741,7 @@ static void hk_ev_click(Obj v, int idx, void *mi); static uintptr_t h_chip_tx[],
+ static double tip_until; static char tip_shown[160]; int ui_conn_text(int player, char *out, int cap); static int ev_rule(void);
+ static char *ui_lend_cmd(const char *line); static char *ui_host_addr_cmd(const char *line); static char *ui_escape_cmd(const char *line); static char *ui_tip_hover_cmd(const char *line); static char *ui_tip_where_cmd(void); static char *ui_players_lists_cmd(const char *line); static void viewer_geom(float *g); static void viewer_move_test(const char *line, int reset); static void viewer_overlay_json(Buf *b, const char *action); static void viewer_follow(int on_); static void viewer_ask(void); static Obj cam_setting(void);
+ static int viewer_on, viewer_leader, follow_target; static uintptr_t h_vtitle; static uint32_t followers[UI_MAX_PLAYERS];
+-static char *selshow_exec(const char *line);
++static char *selshow_exec(const char *line); static char *ui_scale_probe_cmd(const char *line);
+ char *ui_exec(const char *cmd, const char *line) {
+     teams_lookup();
+     if (ui_teams_exec) { char *r = ui_teams_exec(cmd, line); if (r) return r; }
+@@ -1785,6 +1785,7 @@ char *ui_exec(const char *cmd, const char *line) {
+         double o = 1; jnum(line, "open", &o); pl_pop = o != 0; plist_frame();
+         Buf b = {0}; bput(&b, "{\"ok\":true,\"pop\":%d}", pl_pop); return b.p;
+     }
++    if (!strcmp(cmd, "ui_scale_probe")) return ui_scale_probe_cmd(line);
+     if (!strcmp(cmd, "ui_host_addr")) return ui_host_addr_cmd(line);   /* {copy: k}: the host's address lines (+ Copy line k) */
+     if (!strcmp(cmd, "ui_units")) { double d = 1; jnum(line, "dir", &d); ui_debug_units(d < 0 ? -1 : 1); Buf b = {0}; bput(&b, "{\"ok\":true}"); return b.p; }
+     if (!strcmp(cmd, "ui_texts")) {                          /* ui_texts {min}: active TMP texts at fontSize >= min (finding stock views) */
+@@ -3259,6 +3260,30 @@ int ui_panel_move_by(float dx, float dy) {
+     settings_save(); plist_frame();
+     return 0;
+ }
++float mu_ui_scale(void); int mu_ui_scale_set(float v);
++static int scr_rect_of(Obj g, float r[4]) {
++    if (!u_alive(g) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(g), NULL)) return 0;
++    Obj rt = u_tr(g); if (!ui_is(rt, K_RT)) return 0;
++    RectF4 q = F(0x5106978, RectF4 (*)(Obj, void *))(rt, NULL);
++    V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ q.x, q.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ q.x + q.w, q.y + q.h, 0 }, NULL);
++    r[0] = fminf(a.x, b.x); r[2] = fmaxf(a.x, b.x); r[1] = fminf(a.y, b.y); r[3] = fmaxf(a.y, b.y);
++    return 1;
++}
++static void bput_rect(Buf *b, const char *name, Obj g) {
++    float r[4]; if (scr_rect_of(g, r)) bput(b, ",\"%s\":[%.1f,%.1f,%.1f,%.1f]", name, r[0], r[1], r[2], r[3]); else bput(b, ",\"%s\":null", name);
++}
++static char *ui_scale_probe_cmd(const char *line) {
++    double v = 0; int rc = 1;
++    if (jnum(line, "set", &v) && v > 0.3 && v < 3) rc = mu_ui_scale_set((float)v);
++    Obj top = layer_top(); V3 ls = top && ui_is(top, K_TR) ? F(0x510AEFC, V3 (*)(Obj, void *))(top, NULL) : (V3){ 0, 0, 0 };
++    Buf b = {0};
++    bput(&b, "{\"ok\":true,\"rc\":%d,\"scale\":%.3f,\"layer\":%.3f,\"k\":%.3f,\"pop\":%d,\"list_open\":%d,\"shown\":%d,\"screen\":[%d,%d]",
++         rc, mu_ui_scale(), ls.x, pl_k, pl_pop, uiset.list_open, pl_shown, scr_w(), scr_h());
++    bput_rect(&b, "hdr_px", u_gc_get(h_hdrbg)); bput_rect(&b, "plate_px", u_gc_get(h_plate)); bput_rect(&b, "gear_px", u_gc_get(h_gear));
++    { static int (*tb)(float *, float *, float *, float *); if (!tb) tb = (int (*)(float *, float *, float *, float *))dlsym(RTLD_DEFAULT, "ui_teams_button_rect");
++      float x, y, w, h; if (tb && tb(&x, &y, &w, &h)) bput(&b, ",\"teams_px\":[%.1f,%.1f,%.1f,%.1f]", x, y, x + w, y + h); else bput(&b, ",\"teams_px\":null"); }
++    bput(&b, "}"); return b.p;
++}
+ /* test: ui_panel_move {x, y} = a drag that ends there; {reset: 1} = back to the default place */
+ static char *ui_panel_move_cmd(const char *line) {
+     double x = 0, y = 0, rs = 0; jnum(line, "x", &x); jnum(line, "y", &y); jnum(line, "reset", &rs);
+diff --git a/src/ui_teams.c b/src/ui_teams.c
+index 0a84d4c..25a57bb 100644
+--- a/src/ui_teams.c
++++ b/src/ui_teams.c
+@@ -2157,17 +2157,22 @@ static void install_hooks(void) {
+    what decides. ui_teams {action:"mouse", x, y, button}. */
+ static bool (*o_mb)(int, void *), (*o_mbd)(int, void *), (*o_mbu)(int, void *);
+ static V3 (*o_mpos)(void *);
+-static int fk_on, fk_btn; static float fk_x, fk_y; static int64_t fk_start;
++static int fk_on, fk_btn, fk_up = 1; static float fk_x, fk_y, fk_x1, fk_y1; static int64_t fk_start;   /* fk_up > 1: a drag */
+ /* a real pointer rests on the spot before it presses: FK_HOVER frames of position only, then the press. A press in the
+    first frame at a new spot made the stock right-click throw (NRE in InteractionOptionControl.GetQuickAction: the hover
+    option is computed a frame later; gamelane 2026-10-14), which no real mouse can do. */
+ #define FK_HOVER 10
+ static int fk_phase(void) { return fk_on ? (int)(rig_frames - fk_start) : -1000; }   /* <0 hover, 0 = down frame, 1 = up frame */
+-static bool hk_mb(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mb(b, mi); return ph == 0 && b == fk_btn; }
++/* a drag (MOVE RULE test): held from the down frame to fk_up; the pointer goes from x, y to x1, y1 over frames 2..22 */
++static bool hk_mb(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mb(b, mi); return ph >= 0 && ph < fk_up && b == fk_btn; }
+ static bool hk_mbd(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbd(b, mi); return ph == 0 && b == fk_btn; }
+-static bool hk_mbu(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbu(b, mi); return ph == 1 && b == fk_btn; }
+-static V3 hk_mpos(void *mi) { if (fk_on) return (V3){fk_x, fk_y, 0}; return o_mpos(mi); }
+-static void fake_frame(void) { if (fk_on && fk_phase() > 100) fk_on = 0; }   /* hold the position ~100 frames, then real mouse */
++static bool hk_mbu(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbu(b, mi); return ph == fk_up && b == fk_btn; }
++static V3 hk_mpos(void *mi) {
++    if (!fk_on) return o_mpos(mi);
++    int ph = fk_phase(); float t = fk_up <= 1 || ph <= 2 ? 0 : ph >= 22 ? 1 : (ph - 2) / 20.0f;
++    return (V3){ fk_x + (fk_x1 - fk_x) * t, fk_y + (fk_y1 - fk_y) * t, 0 };
++}
++static void fake_frame(void) { if (fk_on && fk_phase() > fk_up + 100) fk_on = 0; }   /* hold the position ~100 frames, then real mouse */
+ #endif
+ void ui_teams_install(void) {
+     install_hooks();
+@@ -2680,7 +2685,10 @@ static char *state_json(int rc) {
+         bput(&b, ",\"panel\":[%d,%.0f,%.0f,%.0f,%.0f],\"hud_canvas_w\":%.0f", av, ax, ay, aw, ah, cw.w);
+         int (*tr_)(void) = (int (*)(void))dlsym(RTLD_DEFAULT, "game_tip_ready"); bput(&b, ",\"tip_ready\":%d", tr_ ? tr_() : -1); 
+         V3 hc = u_alive(hr) && tm_is(hr, K_TR) ? F(0x510E0AC, V3 (*)(Obj, V3, void *))(hr, (V3){ hz.x + hz.w / 2, hz.y + hz.h / 2, 0 }, NULL) : (V3){0, 0, 0};
+-        bput(&b, ",\"hud_screen\":[%.0f,%.0f]", hc.x, hc.y); }   /* the button's centre (overlay canvas: world = screen px) */
++        bput(&b, ",\"hud_screen\":[%.0f,%.0f]", hc.x, hc.y);
++        { Obj cty = type_object("UnityEngine", "Canvas"), cv = u_alive(hr) && cty ? go_component(u_go(hr), cty) : NULL;
++          V3 hs = u_alive(hr) && tm_is(hr, K_TR) ? F(0x510AEFC, V3 (*)(Obj, void *))(hr, NULL) : (V3){ 0, 0, 0 };
++          bput(&b, ",\"hud_order\":%d,\"hud_scale\":%.3f", u_alive(cv) && tm_is(cv, K_CV) ? F(0x5476320, int (*)(Obj, void *))(cv, NULL) : -1, hs.x); } }
+       bput(&b, ",\"hud_pos\":[%.0f,%.0f],\"hud_shown\":%d,\"lobby_open\":%d,\"hud_text\":", hp.x, hp.y,
+            u_alive(hr) && (tm_is(u_go(hr), K_GO) ? F(0x50F3724, bool (*)(Obj, void *))(u_go(hr), NULL) : false), lobby_open()); bstr(&b, ht); }
+     char t1[200] = "", t2[700] = "", t3[400] = "", t5[200] = "";
+@@ -2735,8 +2743,10 @@ char *ui_teams_exec(const char *cmd, const char *line) {
+         double x = -1, y = -1; jnum(line, "x", &x); jnum(line, "y", &y);
+         if (x < 0) x = F(0x5092C94, int (*)(void *))(NULL) / 2.0;   /* Screen.width / height: centre by default */
+         if (y < 0) y = F(0x5092CD4, int (*)(void *))(NULL) / 2.0;
+-        fk_x = (float)x; fk_y = (float)y; fk_btn = (int)bt; fk_start = rig_frames + 1 + FK_HOVER; fk_on = 1;
+-        rig_log("teams: fake mouse %d at %.0f,%.0f from frame %lld", fk_btn, x, y, (long long)fk_start);
++        double dx = 0, dy = 0; jnum(line, "dx", &dx); jnum(line, "dy", &dy);    /* a drag by dx, dy screen px (y up) */
++        fk_x = (float)x; fk_y = (float)y; fk_x1 = (float)(x + dx); fk_y1 = (float)(y + dy); fk_up = dx || dy ? 25 : 1;
++        fk_btn = (int)bt; fk_start = rig_frames + 1 + FK_HOVER; fk_on = 1;
++        rig_log("teams: fake mouse %d at %.0f,%.0f%s from frame %lld", fk_btn, x, y, fk_up > 1 ? " (drag)" : "", (long long)fk_start);
+ #endif
+     } else if (!strcmp(act, "debug")) {                     /* raycast facts for the open screen and its parents */
+         Buf d = {0}; Obj r = root();

@@ -9,6 +9,7 @@
 #include "ord_api.h"
 #include "ds_i18n.h"
 #include "ui_utf8.h"
+#include "mp_esc.h"
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -564,7 +565,7 @@ static void hk_sc_click(Obj parts, Obj ev, void *mi) {
         break;
     case UI_ACT_DENY_OWNED:
         if (a.target == UI_RESERVED) { char rn[64]; reserved_name(g, rn, sizeof rn); notice(TR("%s is reserved for %s"), un, rn); }
-        else if (me() == 0) notice(TR("%s belongs to %s (Admin mode lets the host take it)"), un, ui_player_label(&p, a.target, pn));
+        else if (me() == 0) notice(TR("%s belongs to %s (Admin Mode lets the host take it)"), un, ui_player_label(&p, a.target, pn));
         else notice(TR("%s belongs to %s"), un, ui_player_label(&p, a.target, pn));
         break;
     case UI_ACT_DENY_FULL: notice(TR("You can control at most %d units (host rule)"), ui_max_owned); break;
@@ -650,9 +651,14 @@ static Obj img_make(Obj parent, Obj sprite, float w, float h) {
     return im;
 }
 static void img_sprite(Obj im, Obj sprite) { if (ui_is(im, K_IMG) && sprite) F(0x5257600, void (*)(Obj, Obj, void *))(im, sprite, NULL); }
-/* the mouse is over this UI object (RectTransformUtility.RectangleContainsScreenPoint with its canvas camera) */
+int mu_bring_hit(float x, float y);                           /* mu_bring.c: the point is on the open Bring Units window (M7) */
+float mu_ui_scale(void); int mu_ui_scale_set(float v);       /* mu_ui.c: the game's UI scale (M5); test: set it */
+/* the mouse is over this UI object (RectTransformUtility.RectangleContainsScreenPoint with its canvas camera).
+   M7 (UX review 2026-10-25): never through the open Bring Units window: it sits above our HUD (the game's windows sit above
+   its HUD), so a click, drag or hover there is the window's, not the Players panel's, the viewer box's or a menu's under it */
 static int ui_hit(Obj g, float mx, float my) {
     if (!ui_is(g, K_GR) || !u_go_active_self(u_go(g)) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(g), NULL)) return 0;
+    if (mu_bring_hit(mx, my)) return 0;
     Obj cv = F(0x5260544, Obj (*)(Obj, void *))(g, NULL);                                   /* Graphic.canvas */
     Obj cam = cv && F(0x5475018, int (*)(Obj, void *))(cv, NULL) != 0 ? F(0x5477610, Obj (*)(Obj, void *))(cv, NULL) : NULL;
     return F(0x5473D40, bool (*)(Obj, V2, Obj, void *))(u_tr(g), (V2){ mx, my }, cam, NULL);
@@ -1075,7 +1081,7 @@ static char left_name[32]; static double left_t0;
 static void left_body(char *m, size_t cap) {
     int s = (int)(now_s() - left_t0); if (s < 0) s = 0;
     snprintf(m, cap, TR("<size=150%%>%s disconnected</size>  <color=#f16071>X</color>\nThe game is paused for everyone.\n"
-             "<size=88%%><color=#a69085>Waiting %d:%02d\nKeep playing: you control %s's units until %s comes back.</color></size>"),
+             "<size=88%%><color=#a69085>Waiting %d:%02d\nKeep Playing: you control %s's units until %s comes back.</color></size>"),
              left_name, s / 60, s % 60, left_name, left_name);
 }
 static void left_frame(void) {
@@ -1110,7 +1116,7 @@ static void left_frame(void) {
     snprintf(wait, sizeof wait, TR("Wait for %s"), names[0]);
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str(txt), NULL, NULL, false, NULL);   /* Show_Select */
     tmp_set(AT(v, 0x40, Obj), wait);                          /* _txtConfirm: primary, right */
-    tmp_set(AT(v, 0x50, Obj), TR("Keep playing"));                /* _txtCancle: secondary, left */
+    tmp_set(AT(v, 0x50, Obj), TR("Keep Playing"));                /* _txtCancle: secondary, left */
     left_body(body, sizeof body);
     box_style(v, body);
     u_go_active(u_go(v), true);
@@ -1155,6 +1161,7 @@ static void prompt_show(void) {
    floor 3? Waiting for Ben (1 of 2 agree) · 52 s" and a stock BottomButton "Cancel" (120x30) */
 static uintptr_t h_strip_bg, h_strip_txt, h_strip_btn, h_strip_btxt;
 static char strip_shown[300];
+static float top_scale = 1;                                  /* M5: the top layer's scale = the game's UI scale (top_layer_scale) */
 static void strip_place(float w, float h, float *x, float *y);
 static void strip_frame(void) {
     ui_players p; players(&p);
@@ -1196,10 +1203,15 @@ static void strip_frame(void) {
     snprintf(line, sizeof line, TR("<color=#ccbeb8>%s %s · %d s</color>"), ui_map_question(mapv.kind, next_floor_no(), q, sizeof q), wl, left);
     if (strcmp(line, strip_shown)) { snprintf(strip_shown, sizeof strip_shown, "%s", line); tmp_set(tx, line); }
     float y, x0; strip_place(760, 40, &x0, &y);              /* under the pause banner, top centre (uxpass: measured) */
-    if (u_alive(bg)) u_rt_set_pos(u_tr(bg), x0, y);
-    if (u_alive(tx)) { u_rt_set_pos(u_tr(tx), x0 + 16, y); u_rt_set_size(u_tr(tx), 600, 40); }
-    if (u_alive(bt)) u_rt_set_pos(u_tr(bt), x0 + 760 - 130, y - 5);
-    if (u_alive(btx)) { u_rt_set_pos(u_tr(btx), x0 + 760 - 130, y - 5); u_rt_set_size(u_tr(btx), 120, 30); }
+    /* M5: strip_place works in top-layer units; the strip sits on the root canvas (under the panel's layer), anchored at its
+       top centre like the layer: canvas = layer units x the layer's scale (the game's UI scale), and drawn at that scale */
+    float k = top_scale;
+    for (int i = 0; i < 4; i++) if (u_alive(parts[i]) && fabsf(F(0x510AEFC, V3 (*)(Obj, void *))(u_tr(parts[i]), NULL).x - k) > 0.001f)
+        F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(parts[i]), (V3){ k, k, 1 }, NULL);
+    if (u_alive(bg)) u_rt_set_pos(u_tr(bg), x0 * k, y * k);
+    if (u_alive(tx)) { u_rt_set_pos(u_tr(tx), (x0 + 16) * k, y * k); u_rt_set_size(u_tr(tx), 600, 40); }
+    if (u_alive(bt)) u_rt_set_pos(u_tr(bt), (x0 + 760 - 130) * k, (y - 5) * k);
+    if (u_alive(btx)) { u_rt_set_pos(u_tr(btx), (x0 + 760 - 130) * k, (y - 5) * k); u_rt_set_size(u_tr(btx), 120, 30); }
 }
 static void map_cancel_send(int why) {                     /* proposer: UI_MAP_CANCEL (timeout) or UI_MAP_CANCEL_USER */
     uint8_t a[5]; static const uint8_t zero[16];
@@ -1741,7 +1753,7 @@ static void hk_ev_click(Obj v, int idx, void *mi); static uintptr_t h_chip_tx[],
 static double tip_until; static char tip_shown[160]; int ui_conn_text(int player, char *out, int cap); static int ev_rule(void);
 static char *ui_lend_cmd(const char *line); static char *ui_host_addr_cmd(const char *line); static char *ui_escape_cmd(const char *line); static char *ui_tip_hover_cmd(const char *line); static char *ui_tip_where_cmd(void); static char *ui_players_lists_cmd(const char *line); static void viewer_geom(float *g); static void viewer_move_test(const char *line, int reset); static void viewer_overlay_json(Buf *b, const char *action); static void viewer_follow(int on_); static void viewer_ask(void); static Obj cam_setting(void);
 static int viewer_on, viewer_leader, follow_target; static uintptr_t h_vtitle; static uint32_t followers[UI_MAX_PLAYERS];
-static char *selshow_exec(const char *line);
+static char *selshow_exec(const char *line); static char *ui_scale_probe_cmd(const char *line);
 char *ui_exec(const char *cmd, const char *line) {
     teams_lookup();
     if (ui_teams_exec) { char *r = ui_teams_exec(cmd, line); if (r) return r; }
@@ -1785,6 +1797,7 @@ char *ui_exec(const char *cmd, const char *line) {
         double o = 1; jnum(line, "open", &o); pl_pop = o != 0; plist_frame();
         Buf b = {0}; bput(&b, "{\"ok\":true,\"pop\":%d}", pl_pop); return b.p;
     }
+    if (!strcmp(cmd, "ui_scale_probe")) return ui_scale_probe_cmd(line);   /* M5 test: {set} the game's UI scale; the panel as drawn */
     if (!strcmp(cmd, "ui_host_addr")) return ui_host_addr_cmd(line);   /* {copy: k}: the host's address lines (+ Copy line k) */
     if (!strcmp(cmd, "ui_units")) { double d = 1; jnum(line, "dir", &d); ui_debug_units(d < 0 ? -1 : 1); Buf b = {0}; bput(&b, "{\"ok\":true}"); return b.p; }
     if (!strcmp(cmd, "ui_texts")) {                          /* ui_texts {min}: active TMP texts at fontSize >= min (finding stock views) */
@@ -2342,7 +2355,7 @@ static float bar_bottom_y(Obj root) {                       /* y just under the 
 #define PL_MAXROWS 18                                        /* players (8), left players, "Watching (n)" + spectators (8) */
 static void scr_to_layer(Obj layer, float sx, float sy, float *ux, float *uy);
 static int scr_w(void); static int scr_h(void);
-static Obj layer_top(void);
+static Obj layer_top(void); static float pl_scale(void);
 /* uxpass: the game window in units of our top layer (x0 left, x1 right, yb bottom; the top is 0). 0 = not known yet */
 static int layer_screen(float *x0, float *x1, float *yb) {
     Obj top = layer_top(); float t;
@@ -2470,6 +2483,21 @@ static void top_layer_order(int teams_open) {
     F(0x547640C, void (*)(Obj, int, void *))(cv, want, NULL); top_order = want;
     rig_log("ui: top layer sorting order %d", want);
 }
+/* M5 (UX review 2026-10-25, owner decision: every multiplayer window follows the game's UI Scale, Settings > UI scale,
+   0.75 .. 1.4): the whole top layer (Players panel + cog rows, lend / player menu, viewer box, vote strip, "sees this too"
+   line, spectator mini overview, off-screen marks, our tooltip box) is drawn at the game's UI scale, as the game's own HUD
+   grows with it. Everything on the layer already places itself in layer units through scr_to_layer / pl_scale (the
+   layer's lossy scale), so places, drags and hit tests (RectangleContainsScreenPoint on the drawn rects) follow. A box
+   too big for the screen at that scale is drawn smaller by its own fit (the panel: plist_frame, 16 px free). The Teams
+   button (ui_teams.c) reads ui_layer_scale for its place right of the panel and uses the same scale. */
+static void top_layer_scale(void) {
+    Obj top = layer_top(); float s = mu_ui_scale();
+    if (!top || !ui_is(top, K_TR)) return;
+    V3 cur = F(0x510AEFC, V3 (*)(Obj, void *))(top, NULL);   /* localScale */
+    if (fabsf(cur.x - s) > 0.001f) { F(0x510AFF8, void (*)(Obj, V3, void *))(top, (V3){ s, s, 1 }, NULL); rig_log("ui: top layer at UI scale %.2f (was %.2f)", s, cur.x); }
+    top_scale = s;
+}
+float ui_layer_scale(void) { return top_scale; }             /* ui_teams.c (dlsym): layer units -> HUD canvas units */
 /* panelfix (owner 2026-10-17): every frame (cheap: one call into ui_teams), on the frame the Teams window opens the
    panel goes above it and shows the collapsed view (the player can still expand it); when Teams closes, the view the
    player had before comes back */
@@ -2706,6 +2734,7 @@ static void plist_frame(void) {
     { static int (*teams_modal)(void); static unsigned tm_tries;   /* viewui: above the open Teams window */
       if (!teams_modal && tm_tries++ % 50 == 0) teams_modal = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_modal_open");
       top_layer_order(teams_modal && teams_modal()); }
+    top_layer_scale();                                       /* M5: the game's UI scale */
     /* viewui (owner 2026-10-15): the panel stays while the Teams window is open (no game interface hides on a click);
        the top layer goes above the Teams window while it is open (top_layer_order) */
     int hide = !on() || lobby_open() || popup_active(1) || left_prompt   /* Esc menu: design #3 */
@@ -2798,53 +2827,53 @@ static void plist_frame(void) {
     plist_set(PL_HDR, h2);
     plist_set(PL_BODY, bl); plist_set(PL_BODYR, br);
     int host = me() == 0;
-    plist_set(PL_SEE, ui_col("#a69085", TR("Fade other units")));
-    plist_set(PL_NAMES, ui_col("#a69085", TR("Names above units")));
-    plist_set(PL_UNITS, ui_col("#a69085", TR("Units per player")));
-    plist_set(PL_ADMIN, ui_col("#a69085", TR("Admin mode (host)")));
+    plist_set(PL_SEE, ui_col("#a69085", TR("Fade Other Units")));
+    plist_set(PL_NAMES, ui_col("#a69085", TR("Names Above Units")));
+    plist_set(PL_UNITS, ui_col("#a69085", TR("Units per Player")));
+    plist_set(PL_ADMIN, ui_col("#a69085", TR("Admin Mode (Host)")));
     if (uiset.see_through) snprintf(row, sizeof row, "<color=#ccbeb8>%d%%</color>", uiset.see_through); else snprintf(row, sizeof row, "%s", ui_col("#ccbeb8", TR("Off")));
     plist_set(PL_SEER, row);
     snprintf(row, sizeof row, "<color=#ccbeb8>%s</color>", ui_names_text(uiset.names)); plist_set(PL_NAMESR, row);
     snprintf(row, sizeof row, "<color=#ccbeb8>%d</color>", ui_max_owned); plist_set(PL_UNITSR, row);
     {   int nw = 0; for (int i = 0; i < UI_MAX_PLAYERS; i++) nw += ui_spectators >> i & 1u;
-        plist_set(PL_SPECT, ui_col("#a69085", TR("Spectators (host)")));
+        plist_set(PL_SPECT, ui_col("#a69085", TR("Spectators (Host)")));
         if (!dsnet_spectators_allowed(c)) snprintf(row, sizeof row, "%s", ui_col("#ccbeb8", TR("Off")));
         else if (nw) snprintf(row, sizeof row, TR("<color=#ccbeb8>On (%d)</color>"), nw);
         else snprintf(row, sizeof row, "%s", ui_col("#ccbeb8", TR("On")));
         plist_set(PL_SPECTR, row); }
-    plist_set(PL_TIPS, ui_col("#a69085", TR("Hover tooltips")));
-    plist_set(PL_SIZE, ui_col("#a69085", TR("Panel size")));
+    plist_set(PL_TIPS, ui_col("#a69085", TR("Hover Tooltips")));
+    plist_set(PL_SIZE, ui_col("#a69085", TR("Panel Size")));
     plist_set(PL_SIZER, uiset.compact ? ui_col("#ccbeb8", TR("Compact")) : ui_col("#ccbeb8", TR("Normal")));
-    plist_set(PL_TEAMS, ui_col("#a69085", TR("Teams button")));
+    plist_set(PL_TEAMS, ui_col("#a69085", TR("Teams Button")));
     plist_set(PL_TEAMSR, uiset.teams_button ? ui_col("#ccbeb8", TR("Show")) : ui_col("#ccbeb8", TR("Hide")));
     plist_set(PL_TIPSR, uiset.tooltips ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
     plist_set(PL_HINT, TR("<size=86%><color=#a69085>Right-click and drag to move these windows</color></size>"));
     { int fade = 12, join = 1, en = 1; chat_get(&fade, &join, &en);
-      plist_set(PL_CFADE, ui_col("#a69085", TR("Chat fade time")));
+      plist_set(PL_CFADE, ui_col("#a69085", TR("Chat Fade Time")));
       snprintf(row, sizeof row, TR("<color=#ccbeb8>%d s</color>"), fade); plist_set(PL_CFADER, row);
-      plist_set(PL_CJOIN, ui_col("#a69085", TR("Join / leave lines")));
+      plist_set(PL_CJOIN, ui_col("#a69085", TR("Join / Leave Lines")));
       plist_set(PL_CJOINR, join ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
       plist_set(PL_CHAT, ui_col("#a69085", TR("Chat")));
       plist_set(PL_CHATR, en ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off"))); }
     plist_set(PL_ADMINR, admin_on() ? ui_col("#f16071", TR("On")) : ui_col("#ccbeb8", TR("Off")));
     /* lan_v10 rows */
-    { static const struct { int lab, val; const char *txt; } onoff[] = { { PL_PINGS, PL_PINGSR, TR_NOOP("Show pings") }, { PL_PSOUND, PL_PSOUNDR, TR_NOOP("Ping sound") },
-          { PL_PCHAT, PL_PCHATR, TR_NOOP("Ping lines in chat") }, { PL_VIEWS, PL_VIEWSR, TR_NOOP("Show friends' views") }, { PL_OFFS, PL_OFFSR, TR_NOOP("Off-screen friends") } };
+    { static const struct { int lab, val; const char *txt; } onoff[] = { { PL_PINGS, PL_PINGSR, TR_NOOP("Show Pings") }, { PL_PSOUND, PL_PSOUNDR, TR_NOOP("Ping Sound") },
+          { PL_PCHAT, PL_PCHATR, TR_NOOP("Ping Lines in Chat") }, { PL_VIEWS, PL_VIEWSR, TR_NOOP("Show Friends' Views") }, { PL_OFFS, PL_OFFSR, TR_NOOP("Off-screen Friends") } };
       int vals[5] = { uiset.pings, uiset.ping_sound, uiset.ping_chat, uiset.views, uiset.offscreen };
       for (int k = 0; k < 5; k++) { snprintf(row, sizeof row, "<color=#a69085>%s</color>", TR(onoff[k].txt)); plist_set(onoff[k].lab, row);
                                     plist_set(onoff[k].val, vals[k] ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off"))); }
-      plist_set(PL_OUTL, ui_col("#a69085", TR("Unit outline")));
-      plist_set(PL_FJOIN, ui_col("#a69085", TR("Fast join")));
+      plist_set(PL_OUTL, ui_col("#a69085", TR("Unit Outline")));
+      plist_set(PL_FJOIN, ui_col("#a69085", TR("Fast Join")));
       plist_set(PL_FJOINR, uiset.fast_join ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
-      plist_set(PL_MINI, ui_col("#a69085", TR("Mini overview (O)")));
+      plist_set(PL_MINI, ui_col("#a69085", TR("Mini Overview (O)")));
       plist_set(PL_MINIR, uiset.mini ? ui_col("#ccbeb8", TR("Show")) : ui_col("#ccbeb8", TR("Hide")));
-      plist_set(PL_MSIZE, ui_col("#a69085", TR("Overview size")));
+      plist_set(PL_MSIZE, ui_col("#a69085", TR("Overview Size")));
       snprintf(row, sizeof row, "<color=#ccbeb8>%s</color>", ui_mini_size_text(uiset.mini_size)); plist_set(PL_MSIZER, row);
       snprintf(row, sizeof row, "<color=#ccbeb8>%s</color>", ui_outline_text(uiset.outline)); plist_set(PL_OUTLR, row);
       int lab2[PL_SETMAX], val2[PL_SETMAX], arg2[PL_SETMAX], n2 = set_rows(lab2, val2, arg2);
       for (int k = 0; k < n2; k++) if (arg2[k] >= 0) {
           char nm[40]; ui_player_label(&p, arg2[k], nm);
-          snprintf(row, sizeof row, TR("<color=#a69085>%s's colour</color>"), nm); plist_set(lab2[k], row);
+          snprintf(row, sizeof row, TR("<color=#a69085>%s's Colour</color>"), nm); plist_set(lab2[k], row);
           int ov = color_override_of(arg2[k]);
           snprintf(row, sizeof row, "<color=%s>%s</color>", ui_player_color(arg2[k]), ov >= 0 ? ui_palette_name(ov) : TR("Auto")); plist_set(val2[k], row);
       } }
@@ -2872,7 +2901,7 @@ static void plist_frame(void) {
         Obj cv = F(0x5260544, Obj (*)(Obj, void *))(u_gc_get(h_pl[PL_HDR]), NULL);
         if (cv) cv = F(0x5476FAC, Obj (*)(Obj, void *))(cv, NULL);
         float yb = cv ? bar_bottom_y(u_tr(cv)) : 0;
-        pl_y0 = yb < -1 ? yb - 6.0f : -PL_TOP;
+        pl_y0 = yb < -1 ? yb / top_scale - 6.0f : -PL_TOP;    /* M5: canvas units -> layer units (the layer sits at the canvas top) */
     }
     /* lan_v8: the player may drag the panel; its place is saved in mp_ui.json (pos_*), else the default place */
     float L = uiset.pos_set ? (float)uiset.pos_x : PL_LEFT, Y0 = uiset.pos_set ? (float)uiset.pos_y : pl_y0;
@@ -2991,8 +3020,14 @@ static void plist_frame(void) {
        pos_x / pos_y keep the player's place; pl_cur_* is where it is drawn (drag, Teams button, viewer box use it). */
     float k = uiset.compact ? 0.75f : 1.0f, dl = L, dy = Y0, sx0, sx1, syb;
     if (layer_screen(&sx0, &sx1, &syb)) {
-        float room = -2 - (syb + 8);
-        if (ph * k > room && ph > 1) k = room / ph;
+        /* M5: at a large UI scale (1.4) the open cog list is taller than the screen under the portrait bar: drawn smaller to
+           fit with 16 px free, from its top down to the screen's bottom. Its top may go up to the bar's bottom (the default
+           place), never over the game's HUD there (the clock / resources at the top left), unless the player put it higher */
+        float m = 16 / pl_scale(), top_lim = pl_anchor_bar && pl_y0 < -2 ? pl_y0 : -2;
+        if (Y0 > top_lim) top_lim = Y0;
+        float room = top_lim - (syb + m), roomw = sx1 - sx0 - 2 * m;
+        if (ph * k > room && ph > 1 && room > 40) k = room / ph;
+        if (PL_W * k > roomw && roomw > 40) k = roomw / PL_W;
         layer_keep_in(PL_W * k, ph * k, &dl, &dy);
     }
     /* uxpass (lead 2026-10-21): while the Teams window is open (not folded) the panel sits in the window's title band, left
@@ -3258,6 +3293,32 @@ int ui_panel_move_by(float dx, float dy) {
     uiset.pos_set = 1; uiset.pos_x = (int)nx; uiset.pos_y = (int)ny;
     settings_save(); plist_frame();
     return 0;
+}
+/* M5 test: ui_scale_probe {set}: set = the game's UI scale through its own UIScaleManager.SetScale (as the Settings slider;
+   the panel follows at its next layout, ~0.3 s). Answer: the scale, the top layer's scale, the panel's drawn scale k, and the
+   screen rects (pixels, y up: x0, y0, x1, y1; null = not shown) of the header, the frame, the cog and the Teams button */
+static int scr_rect_of(Obj g, float r[4]) {
+    if (!u_alive(g) || !F(0x50F3724, bool (*)(Obj, void *))(u_go(g), NULL)) return 0;
+    Obj rt = u_tr(g); if (!ui_is(rt, K_RT)) return 0;
+    RectF4 q = F(0x5106978, RectF4 (*)(Obj, void *))(rt, NULL);
+    V3 a = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ q.x, q.y, 0 }, NULL), b = F(0x510E0AC, V3 (*)(Obj, V3, void *))(rt, (V3){ q.x + q.w, q.y + q.h, 0 }, NULL);
+    r[0] = fminf(a.x, b.x); r[2] = fmaxf(a.x, b.x); r[1] = fminf(a.y, b.y); r[3] = fmaxf(a.y, b.y);   /* overlay canvas: world = screen pixels */
+    return 1;
+}
+static void bput_rect(Buf *b, const char *name, Obj g) {
+    float r[4]; if (scr_rect_of(g, r)) bput(b, ",\"%s\":[%.1f,%.1f,%.1f,%.1f]", name, r[0], r[1], r[2], r[3]); else bput(b, ",\"%s\":null", name);
+}
+static char *ui_scale_probe_cmd(const char *line) {
+    double v = 0; int rc = 1;
+    if (jnum(line, "set", &v) && v > 0.3 && v < 3) rc = mu_ui_scale_set((float)v);
+    Obj top = layer_top(); V3 ls = top && ui_is(top, K_TR) ? F(0x510AEFC, V3 (*)(Obj, void *))(top, NULL) : (V3){ 0, 0, 0 };
+    Buf b = {0};
+    bput(&b, "{\"ok\":true,\"rc\":%d,\"scale\":%.3f,\"layer\":%.3f,\"k\":%.3f,\"pop\":%d,\"list_open\":%d,\"shown\":%d,\"screen\":[%d,%d]",
+         rc, mu_ui_scale(), ls.x, pl_k, pl_pop, uiset.list_open, pl_shown, scr_w(), scr_h());
+    bput_rect(&b, "hdr_px", u_gc_get(h_hdrbg)); bput_rect(&b, "plate_px", u_gc_get(h_plate)); bput_rect(&b, "gear_px", u_gc_get(h_gear));
+    { static int (*tb)(float *, float *, float *, float *); if (!tb) tb = (int (*)(float *, float *, float *, float *))dlsym(RTLD_DEFAULT, "ui_teams_button_rect");
+      float x, y, w, h; if (tb && tb(&x, &y, &w, &h)) bput(&b, ",\"teams_px\":[%.1f,%.1f,%.1f,%.1f]", x, y, x + w, y + h); else bput(&b, ",\"teams_px\":null"); }
+    bput(&b, "}"); return b.p;
 }
 /* test: ui_panel_move {x, y} = a drag that ends there; {reset: 1} = back to the default place */
 static char *ui_panel_move_cmd(const char *line) {
@@ -3797,9 +3858,9 @@ static void lmenu_draw(void) {
         else if (lrow_act[i] == LA_UNFOLLOW) snprintf(txt, sizeof txt, TR("<color=%s>Stop following</color>"), col);
         else if (lrow_act[i] == LA_MUTE) snprintf(txt, sizeof txt, TR("<color=%s>Mute %s's pings</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
         else if (lrow_act[i] == LA_UNMUTE) snprintf(txt, sizeof txt, TR("<color=%s>Show %s's pings</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
-        else if (lrow_act[i] == LA_LEND) snprintf(txt, sizeof txt, TR("<color=%s>Lend control to %s</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
-        else if (lrow_act[i] == LA_TAKE) snprintf(txt, sizeof txt, TR("<color=%s>Take back control</color>"), col);
-        else if (lrow_act[i] == LA_GIVE) snprintf(txt, sizeof txt, TR("<color=%s>Give back %s</color>"), col, un);
+        else if (lrow_act[i] == LA_LEND) snprintf(txt, sizeof txt, TR("<color=%s>Lend Control to %s</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
+        else if (lrow_act[i] == LA_TAKE) snprintf(txt, sizeof txt, TR("<color=%s>Take Back Control</color>"), col);
+        else if (lrow_act[i] == LA_GIVE) snprintf(txt, sizeof txt, TR("<color=%s>Give Back %s</color>"), col, un);
         else snprintf(txt, sizeof txt, TR("<color=%s>Release (free unit)</color>"), col);
         line_text(t, txt);
     }
@@ -3927,7 +3988,7 @@ static void lend_frame(void) {
             float lh = txt_fit_h(lb, 76, 18);
             if (u_alive(bg)) u_rt_set_size(u_tr(bg), 76, lh);
             if (u_alive(lb)) { u_rt_set_size(u_tr(lb), 76, lh); u_rt_set_pos(u_tr(lb), 0, -lh / 2); }
-            line_text(btx, act == LA_TAKE ? ui_col("#ccbeb8", TR("Take back")) : ui_col("#ccbeb8", TR("Give back")));
+            line_text(btx, act == LA_TAKE ? ui_col("#ccbeb8", TR("Take Back")) : ui_col("#ccbeb8", TR("Give Back")));
         }
     }
     if (lmenu_n && lmenu_player < 0) {                       /* the menu's unit still lendable by me? */
@@ -4204,7 +4265,7 @@ static void viewer_frame(void) {
     else snprintf(t, sizeof t, TR("<color=#a69085>You have no units on this run. You can watch and chat; %s gives the orders.</color>"), nm);
     place(u_gc_get(h_vtext), X0 + 18, Y0 - 38, 620, 22); line_text(u_gc_get(h_vtext), t);
     /* HUD A (owner 2026-10-14 ~19:55): "Follow the owner" / "Following the owner" */
-    const char *lab[3] = { coop_follow == leader ? TR("Following %s") : TR("Follow %s"), TR("Free camera"), sv ? TR("Next player ›") : TR("Ask %s to lend a unit") };
+    const char *lab[3] = { coop_follow == leader ? TR("Following %s") : TR("Follow %s"), TR("Free Camera"), sv ? TR("Next Player ›") : TR("Ask %s to Lend a Unit") };
     int nb = 3;
     if (sv) { int np = 0; for (int i = 0; i < UI_MAX_PLAYERS; i++) np += p.present >> i & 1u; if (np < 2) nb = 2; }   /* one player: nobody else to pick */
     for (int k = nb; k < 3; k++) { show(u_gc_get(h_vbtn_b[k]), 0); show(u_gc_get(h_vbtn_bg[k]), 0); show(u_gc_get(h_vbtn_t[k]), 0); }
@@ -5414,6 +5475,9 @@ static char *ui_coop_cmd(const char *line) {
    makes no Escape event while a field has the focus (mpmenu.c h_textfocus also covers the chat). */
 static void (*o_escape)(Obj, Obj, void *);
 static int escape_ours(void) {
+    /* one press, one close (owner 2026-10-25): a press the loader kit takes for a window on its Escape stack (Teams, the friends
+       picker, Bring Units, PvP, ...) is that window's; none of the boxes below closes with it, and the game does not get it */
+    if (mpesc_took()) { rig_log("ui: Escape taken by the kit for a window on its stack (nothing else closes)"); return 1; }
     static int (*mm_esc)(void); if (!mm_esc) mm_esc = (int (*)(void))dlsym(RTLD_DEFAULT, "mpmenu_escape_ours");
     if (mm_esc && mm_esc()) { rig_log("ui: Escape taken by mpmenu (chat / lobby rules)"); return 1; }   /* modal: first */
     if (tip_until > 0) { show(u_gc_get(h_tip_box), 0); show(u_gc_get(h_tip_txt), 0); tip_until = 0; }   /* not a box: no stop */
@@ -5662,7 +5726,7 @@ static void hk_recruit_click(Obj v, int idx, void *mi) {
         rig_log("ui: recruit click: check %d (clan %d/%d, own %d, cap %d, pool %d)", why, count, base, own, cap, pool);
         if (why != DSNET_RECRUIT_OK) {
             dsnet_rules r; dsnet_rules_get(c, &r);
-            if (why == DSNET_RECRUIT_UNITS_FULL) notice(TR("You already have %d units: host rule Units per player"), own);
+            if (why == DSNET_RECRUIT_UNITS_FULL) notice(TR("You already have %d units: host rule Units per Player"), own);
             else if (pool) notice(TR("Population full (%d/%d): host rule %s"), count, cap, pop_mode_text(r.population));
             else notice(TR("Population full for you (%d/%d): host rule %s"), own, cap, pop_mode_text(r.population));
             return;
@@ -5884,7 +5948,7 @@ static void tips_frame(void) {
     tip_at(u_gc_get(h_tog), TR("Show / Hide"), TR("Shows or hides the player list. The header stays."));
     tip_at(u_gc_get(h_pl[PL_HDR]), TR("Players"), TR("Everyone in this world and their connection. Right-click and drag to move this panel."));
     tip_at(u_gc_get(h_hdrbg), TR("Players"), TR("Everyone in this world and their connection. Right-click and drag to move this panel."));
-    tip_at(u_gc_get(h_pl[PL_NOTE]), TR("Temporary Control"), TR("A player disconnected and you chose Keep playing. You order their units until they come back; they stay theirs."));
+    tip_at(u_gc_get(h_pl[PL_NOTE]), TR("Temporary Control"), TR("A player disconnected and you chose Keep Playing. You order their units until they come back; they stay theirs."));
     /* 3.9 skill bar of a unit that is not mine */
     if (qs_foreign) { char who[256] = ""; Obj v = u_gc_get(h_quick); qs_selected_foreign(v, who, sizeof who);
         if (spect()) tip_at(u_gc_get(h_qs_line), TR("Spectator"), TR("You are watching. You can look at every unit's details, but spectators give no orders."));

@@ -76,6 +76,26 @@ int pvpr_parse(pvpr_vals *v, const char *text, size_t n) {
     }
     return k;
 }
+/* the host's window for a guest (P1): the rules, then "teams=" one digit per player slot (0 none, 1 Blue, 2 Red) */
+size_t pvpr_view_format(const pvpr_vals *v, const uint8_t teams[PVPR_VIEW_TEAMS], char *out, size_t cap) {
+    size_t o = pvpr_format(v, out, cap);
+    if (!o || cap - o < 8 + PVPR_VIEW_TEAMS) { if (cap) out[0] = 0; return 0; }
+    memcpy(out + o, "teams=", 6); o += 6;
+    for (int p = 0; p < PVPR_VIEW_TEAMS; p++) out[o++] = (char)('0' + (teams[p] <= 2 ? teams[p] : 0));
+    out[o++] = '\n'; out[o] = 0;
+    return o;
+}
+int pvpr_view_parse(const char *text, size_t n, pvpr_vals *v, uint8_t teams[PVPR_VIEW_TEAMS]) {
+    pvpr_defaults(v); memset(teams, 0, PVPR_VIEW_TEAMS);
+    if (!text || !n || pvpr_parse(v, text, n) <= 0) return -1;            /* the team line is skipped there (unknown id) */
+    for (size_t i = 0; i + 6 <= n; ) {
+        size_t j = i; while (j < n && text[j] != '\n') j++;
+        if (j - i >= 6 && !memcmp(text + i, "teams=", 6))
+            for (size_t k = 0; k < PVPR_VIEW_TEAMS && i + 6 + k < j; k++) { char c = text[i + 6 + k]; teams[k] = c == '1' ? 1 : c == '2' ? 2 : 0; }
+        i = j + 1;
+    }
+    return 0;
+}
 uint64_t pvpr_hash(const pvpr_vals *v) {
     uint64_t h = 1469598103934665603ULL;
     for (int i = 0; i < NDEFS; i++) { uint32_t x = (uint32_t)v->v[i]; for (int b = 0; b < 4; b++) { h ^= (x >> (8 * b)) & 0xFF; h *= 1099511628211ULL; } }

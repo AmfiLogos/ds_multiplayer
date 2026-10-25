@@ -32,18 +32,18 @@ int main(void) {
     /* LAN app (no Steam): "Join a friend" is greyed and does nothing; Steam: the friends page, Escape = Back */
     mpm_label(&m, MPB_JOIN_FRIEND, l, sizeof l); CHECK(strstr(l, "Needs the Steam version") != NULL);
     CHECK(mpm_step(&m, &o, MPB_JOIN_FRIEND) == 0 && m.state == MPM_TITLE_MENU);
-    o.steam = 1; mpm_step(&m, &o, MPB_NONE); mpm_label(&m, MPB_JOIN_FRIEND, l, sizeof l); CHECK(!strcmp(l, "Join a friend on Steam"));
+    o.steam = 1; mpm_step(&m, &o, MPB_NONE); mpm_label(&m, MPB_JOIN_FRIEND, l, sizeof l); CHECK(!strcmp(l, "Join a Friend on Steam"));
     CHECK((mpm_step(&m, &o, MPB_JOIN_FRIEND) & MPA_FRIENDS) && m.state == MPM_TITLE_FRIENDS);
     mpm_label(&m, MPB_INFO, l, sizeof l); CHECK(strstr(l, "No Steam friend is hosting") != NULL);
     m.nfriends = 2; strcpy(m.friends[0], "Alex"); strcpy(m.friends[1], "Ana");
     CHECK((mpm_visible(&m, &o) & B(MPB_FRIEND1)) && !(mpm_visible(&m, &o) & B(MPB_FRIEND2)));
-    mpm_label(&m, MPB_FRIEND1, l, sizeof l); CHECK(!strcmp(l, "Join Ana's world"));
+    mpm_label(&m, MPB_FRIEND1, l, sizeof l); CHECK(!strcmp(l, "Join Ana's World"));
     CHECK((mpm_step(&m, &o, MPB_FRIEND1) & MPA_JOIN_FRIEND) && m.friend_pick == 1);
     o.escape = 1; mpm_step(&m, &o, MPB_NONE); o.escape = 0; CHECK(m.state == MPM_TITLE_MENU);
     mpm_step(&m, &o, MPB_JOIN_ADDR); o.escape = 1; mpm_step(&m, &o, MPB_NONE); o.escape = 0; CHECK(m.state == MPM_TITLE_MENU);   /* join page: Escape = Back */
     o.steam = 0;
     mpm_step(&m, &o, MPB_JOIN_ADDR); CHECK(m.state == MPM_TITLE_JOIN && mpm_visible(&m, &o) == (B(MPB_HEADER) | B(MPB_LABEL_ADDR) | B(MPB_LABEL_NAME) | B(MPB_DIVIDER) | B(MPB_CONNECT) | B(MPB_BACK)));
-    mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Join a multiplayer world"));
+    mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Join a Multiplayer World"));
     CHECK(mpm_step(&m, &o, MPB_CONNECT) & MPA_JOIN_ADDR);
     /* connecting (ux #1): the game side sets `connecting`; Cancel replaces Connect, INFO says so; Cancel stops it */
     strcpy(m.connecting, "10.255.255.1:47777");
@@ -63,19 +63,19 @@ int main(void) {
     mpm_step(&m, &o, MPB_BACK); CHECK(m.state == MPM_TITLE_MENU);
     mpm_step(&m, &o, MPB_BACK); CHECK(m.state == MPM_IDLE);
     mpm_step(&m, &o, MPB_MULTIPLAYER); mpm_step(&m, &o, MPB_HOST); CHECK(m.state == MPM_TITLE_HOST && (mpm_visible(&m, &o) & B(MPB_LABEL_NAME)) && !(mpm_visible(&m, &o) & B(MPB_MULTIPLAYER)));
-    mpm_label(&m, MPB_LABEL_NAME, l, sizeof l); CHECK(!strcmp(l, "Your name"));
+    mpm_label(&m, MPB_LABEL_NAME, l, sizeof l); CHECK(!strcmp(l, "Your Name"));
     /* layout v2 §2a: header, settings row + summary; the selectors replace the summary when open */
     { uint64_t v = mpm_visible(&m, &o);
       CHECK((v & B(MPB_HEADER)) && !(v & B(MPB_SETTINGS)) && (v & B(MPB_DIVIDER)) && !(v & B(MPB_SUMMARY)) && !(v & B(MPB_SEL_PAUSE)) && !(v & B(MPB_PAUSE_MODE)));
-      mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host your save"));
+      mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host Your Save"));
       mpm_label(&m, MPB_SETTINGS, l, sizeof l); CHECK(!strcmp(l, "Rules"));
       mpm_settings_summary(&m.set, l, sizeof l); CHECK(!strcmp(l, "Pause: anyone \xC2\xB7 Speed-up: on \xC2\xB7 Gear: own units \xC2\xB7 Units: 3 \xC2\xB7 Population: shared \xC2\xB7 Events: owner \xC2\xB7 Admin: off \xC2\xB7 Shared fog: off \xC2\xB7 Spectators: on"));
-      { char rv[64]; mpm_rule_value(&m.set, 0, rv, sizeof rv); CHECK(!strcmp(rv, "Anyone can pause") && !strcmp(mpm_rule_label(3), "Units per player") && !strcmp(mpm_rule_label(5), "Event choices") && !strcmp(mpm_rule_label(MPM_RULE_POP), "Population")); }
+      { char rv[64]; mpm_rule_value(&m.set, 0, rv, sizeof rv); CHECK(!strcmp(rv, "Anyone can pause") && !strcmp(mpm_rule_label(3), "Units per Player") && !strcmp(mpm_rule_label(5), "Event Choices") && !strcmp(mpm_rule_label(MPM_RULE_POP), "Population")); }
       mpm_step(&m, &o, MPB_SETTINGS); mpm_step(&m, &o, MPB_POP_PREV); CHECK(m.set.population == 3);
       { char rv[64]; mpm_rule_value(&m.set, MPM_RULE_POP, rv, sizeof rv); CHECK(!strcmp(rv, "Multiplied") && !strcmp(mpm_population_desc(3), "Clan limit x players connected, shared by all")); }
       mpm_step(&m, &o, MPB_POP_NEXT); CHECK(m.set.population == 0);
       { char rv[64]; CHECK(m.set.fog == 0); mpm_step(&m, &o, MPB_FOG_NEXT); mpm_rule_value(&m.set, 7, rv, sizeof rv);   /* Shared fog: default Off */
-        CHECK(m.set.fog == 1 && !strcmp(rv, "On") && !strcmp(mpm_rule_label(7), "Shared fog") && mpm_rule_tip(7)[0]); mpm_step(&m, &o, MPB_FOG_PREV); CHECK(m.set.fog == 0); }
+        CHECK(m.set.fog == 1 && !strcmp(rv, "On") && !strcmp(mpm_rule_label(7), "Shared Fog") && mpm_rule_tip(7)[0]); mpm_step(&m, &o, MPB_FOG_PREV); CHECK(m.set.fog == 0); }
       mpm_step(&m, &o, MPB_RULES_DONE);
       mpm_step(&m, &o, MPB_SETTINGS); mpm_step(&m, &o, MPB_EVENTS_NEXT); CHECK(m.set.events == 1);
       { char rv[64]; mpm_rule_value(&m.set, 5, rv, sizeof rv); CHECK(!strcmp(rv, "Host only")); }
@@ -144,9 +144,14 @@ int main(void) {
     CHECK(!m.lobby_settings_open && m.state == MPM_LOBBY);                    /* lan_v9: Escape closes the lobby Rules, the lobby stays */
     o.escape = 1; mpm_step(&m, &o, MPB_NONE); o.escape = 0; CHECK(m.state == MPM_LOBBY);   /* Escape with the Rules closed: nothing */
     CHECK(mpm_rule_tip(0)[0] && mpm_rule_tip(MPM_RULE_ROWS - 1)[0] && !mpm_rule_tip(MPM_RULE_ROWS)[0]);
-    mpm_label(&m, MPB_INVITE, l, sizeof l); CHECK(!strcmp(l, "Steam invite"));
+    mpm_label(&m, MPB_INVITE, l, sizeof l); CHECK(!strcmp(l, "Steam Invite"));
     CHECK(mpm_step(&m, &o, MPB_INVITE) == 0 && m.state == MPM_LOBBY);           /* no Steam: greyed, nothing */
     o.steam = 1; CHECK(mpm_step(&m, &o, MPB_INVITE) == MPA_INVITE && m.state == MPM_LOBBY); o.steam = 0;
+    {   /* UX M8: one host action, one name. The host's Esc menu says the lobby's "Turn Off Multiplayer"; a guest leaves to the title */
+        mpm_model q = m; mpm_obs e = o; q.state = MPM_PLAYING; e.esc_open = 1; mpm_step(&q, &e, MPB_NONE);
+        mpm_label(&q, MPB_LEAVE, l, sizeof l); CHECK(!strcmp(l, "Turn Off Multiplayer"));
+        e.role = 2; mpm_step(&q, &e, MPB_NONE); mpm_label(&q, MPB_LEAVE, l, sizeof l); CHECK(!strcmp(l, "Leave Multiplayer"));
+    }
     /* lobby Leave (host): the same confirm box */
     { mpm_model q = m; int aa = mpm_step(&q, &o, MPB_LEAVE); CHECK(q.state == MPM_LOBBY && (aa & MPA_CONFIRM_LEAVE) && !(aa & MPA_LEAVE));
       aa = mpm_step(&q, &o, MPB_LEAVE_CONFIRM); CHECK(q.state == MPM_IDLE && (aa & MPA_LEAVE) && (aa & MPA_LOBBY_HIDE) && !(aa & MPA_QUIT_TITLE)); }   /* Turn off multiplayer: the host stays in the world */
@@ -240,7 +245,7 @@ int main(void) {
     mpm_lobby_text(&m, names, 0, t, sizeof t); CHECK(strstr(t, "\xC2\xB7 You (host)"));
     CHECK(!strstr(t, "Local:"));
     strcpy(m.direct, "192.168.1.20:47777"); mpm_lobby_text(&m, names, 2, t, sizeof t);
-    CHECK(strstr(t, "\nLocal: 192.168.1.20:47777\nFriends outside your home: open port 47777 on your router, or use Steam invite") && !strstr(t, "needs router"));
+    CHECK(strstr(t, "\nLocal: 192.168.1.20:47777\nFriends outside your home: open port 47777 on your router, or use Steam Invite") && !strstr(t, "needs router"));
     strcpy(m.internet, "81.2.3.4:47777"); mpm_lobby_text(&m, names, 2, t, sizeof t); CHECK(strstr(t, "\nInternet: 81.2.3.4:47777"));
     /* guest joins by address from the join page */
     mpm_init(&m); o = title(); mpm_step(&m, &o, MPB_MULTIPLAYER); mpm_step(&m, &o, MPB_JOIN_ADDR);
@@ -285,16 +290,16 @@ int main(void) {
         mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Expedition X"));
         h.host_choice_label[0] = 0;
         CHECK(mpm_is_visible(&h, &t, MPB_HOST_SAVE) && mpm_is_visible(&h, &t, MPB_HOST_NEW) && mpm_is_visible(&h, &t, MPB_HOST_FE));
-        mpm_label(&h, MPB_HOST_SAVE, s, sizeof s); CHECK(!strcmp(s, "Your save"));
-        mpm_label(&h, MPB_HOST_NEW, s, sizeof s); CHECK(!strcmp(s, "New save"));
+        mpm_label(&h, MPB_HOST_SAVE, s, sizeof s); CHECK(!strcmp(s, "Your Save"));
+        mpm_label(&h, MPB_HOST_NEW, s, sizeof s); CHECK(!strcmp(s, "New Save"));
         mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Hub: Co-op or PvP"));
         mpm_model k = h; mpm_step(&k, &t, MPB_HOST_SAVE); uint64_t v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)) && !mpm_is_visible(&k, &t, MPB_HOST_SAVE));
-        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host your save"));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host Your Save"));
         CHECK(mpm_step(&k, &t, MPB_LOAD_SAVE) & MPA_OPEN_LOAD_LIST);
         k = h; mpm_step(&k, &t, MPB_HOST_NEW); v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_NEW_CAMPAIGN)) && !(v & B(MPB_LOAD_SAVE)));
-        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a new save"));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a New Save"));
         CHECK(mpm_step(&k, &t, MPB_NEW_CAMPAIGN) & MPA_OPEN_NEW);
         k = h; mpm_step(&k, &t, MPB_HOST_FE); v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && k.set.fe == 1 && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)));
@@ -314,7 +319,8 @@ int main(void) {
         CHECK(strstr(mpm_fe_desc(&f.set, 5), "stay in the hub") != NULL);
         mpm_step(&f, &t, MPB_FED_PREV); CHECK(f.set.fe_death == 0 && strstr(mpm_fe_desc(&f.set, 0), "last save") != NULL);
         mpm_step(&f, &t, MPB_FEU_NEXT); CHECK(f.set.units == 4);
-        mpm_settings_summary(&f.set, s, sizeof s); CHECK(strstr(s, "Foreign Expedition") && strstr(s, "Recruiting: on") && strstr(s, "Death: not permanent"));
+        mpm_settings_summary(&f.set, s, sizeof s); CHECK(!strncmp(s, "Hub \xC2\xB7", 5) && strstr(s, "Recruiting: on") && strstr(s, "Death: not permanent"));   /* UX M13: the mode is the Hub */
+        CHECK(strstr(mpm_fe_tip(4), "Fixed in the Hub:") != NULL);
         mpm_step(&f, &t, MPB_SETTINGS); CHECK(f.settings_open); mpm_step(&f, &t, MPB_FE_DONE); CHECK(!f.settings_open);
         f.state = MPM_LOBBY; mpm_obs g = {0}; g.scene = 2; g.campaign_ready = 1; g.role = 1;
         int a = mpm_step(&f, &g, MPB_START); CHECK(a == MPA_FE_START && f.state == MPM_LOBBY);   /* the game side starts it */
@@ -328,11 +334,14 @@ int main(void) {
         CHECK(mpm_list_show(MPM_LIST_SOLO, 0, 1, 1));                      /* the world being played stays */
         CHECK(mpm_list_show(MPM_LIST_MP, 0, 1, 0) && !mpm_list_show(MPM_LIST_MP, 0, 0, 0) && mpm_list_show(MPM_LIST_MP, 1, 0, 0));
         CHECK(mpm_list_show(MPM_LIST_ALL, 0, 0, 0) && mpm_list_show(MPM_LIST_ALL, 0, 1, 0));
-        snprintf(s, sizeof s, "%s", mpm_list_toggle_label(MPM_LIST_SOLO)); CHECK(!strcmp(s, "Show multiplayer worlds"));
-        snprintf(s, sizeof s, "%s", mpm_list_toggle_label(MPM_LIST_MP)); CHECK(!strcmp(s, "Show single-player worlds"));
+        snprintf(s, sizeof s, "%s", mpm_list_toggle_label(MPM_LIST_SOLO)); CHECK(!strcmp(s, "Show Multiplayer Worlds"));
+        snprintf(s, sizeof s, "%s", mpm_list_toggle_label(MPM_LIST_MP)); CHECK(!strcmp(s, "Show Single-Player Worlds"));
         CHECK(!mpm_list_toggle_label(MPM_LIST_ALL)[0]);
         mpm_step(&l, &t, MPB_MULTIPLAYER); mpm_step(&l, &t, MPB_HOST_SAVE); CHECK(mpm_list_mode(&l) == MPM_LIST_SOLO);   /* host page: no list yet */
-        mpm_step(&l, &t, MPB_LOAD_SAVE); CHECK(l.state == MPM_PICK_SAVE && mpm_list_mode(&l) == MPM_LIST_MP);
+        mpm_step(&l, &t, MPB_LOAD_SAVE); CHECK(l.state == MPM_PICK_SAVE);
+        /* UX M4: a first-time host (no world with the Multiplayer tag in the list) got an empty list: every world shows, no toggle */
+        CHECK(mpm_list_mode(&l) == MPM_LIST_ALL && mpm_list_show(mpm_list_mode(&l), 0, 0, 0) && !mpm_list_toggle_label(mpm_list_mode(&l))[0]);
+        l.mp_worlds = 1; CHECK(mpm_list_mode(&l) == MPM_LIST_MP);              /* one multiplayer world: the multiplayer list, as before */
         mpm_model e; mpm_init(&e); e.host_choice = 1; mpm_step(&e, &t, MPB_MULTIPLAYER); mpm_step(&e, &t, MPB_HOST_FE); mpm_step(&e, &t, MPB_LOAD_SAVE);
         CHECK(e.state == MPM_PICK_SAVE && mpm_list_mode(&e) == MPM_LIST_ALL);   /* an expedition copies any world */
     }
@@ -426,6 +435,24 @@ int main(void) {
         po.role = 0; po.failed = 1; strcpy(po.msg, "Impossible de rejoindre : la partie est pleine"); po.end = MPM_END_REFUSED; mpm_step(&q, &po, MPB_NONE);
         CHECK(q.state == MPM_FAILED && !strcmp(q.notice, "<size=150%>Impossible de rejoindre la partie de Alex</size>\nLa partie est pleine."));
         mpm_label(&q, MPB_MULTIPLAYER, l, sizeof l); CHECK(!strcmp(l, "Multiplayer"));   /* the dropped entry: English */
+        /* UX M12: a Russian reason starts with a capital and ends with a full stop (the old code: a-z only, "." after ASCII only);
+           Japanese ends with "。" */
+        snprintf(fp, sizeof fp, "%s/ru.json", dir); z = fopen(fp, "w");
+        if (z) { fputs("{\"Could not join: %s\": \"\xD0\x9D\xD0\xB5 \xD1\x83\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xBE\xD1\x81\xD1\x8C: %s\",\n"
+                       " \"Could not join %s's game\": \"%s: \xD0\xBE\xD1\x88\xD0\xB8\xD0\xB1\xD0\xBA\xD0\xB0\"}\n", z); fclose(z); }
+        CHECK(dsi_set_lang(4) == 1);
+        mpm_init(&q); po = title(); po.role = 2; strcpy(po.host_name, "Alex"); mpm_step(&q, &po, MPB_NONE);
+        po.role = 0; po.failed = 1; po.end = MPM_END_REFUSED;                  /* "Не удалось: игра заполнена" */
+        strcpy(po.msg, "\xD0\x9D\xD0\xB5 \xD1\x83\xD0\xB4\xD0\xB0\xD0\xBB\xD0\xBE\xD1\x81\xD1\x8C: \xD0\xB8\xD0\xB3\xD1\x80\xD0\xB0 \xD0\xB7\xD0\xB0\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB0");
+        mpm_step(&q, &po, MPB_NONE);                                           /* -> "Игра заполнена." */
+        CHECK(q.state == MPM_FAILED && strstr(q.notice, "</size>\n\xD0\x98\xD0\xB3\xD1\x80\xD0\xB0 \xD0\xB7\xD0\xB0\xD0\xBF\xD0\xBE\xD0\xBB\xD0\xBD\xD0\xB5\xD0\xBD\xD0\xB0."));
+        snprintf(fp, sizeof fp, "%s/ja.json", dir); z = fopen(fp, "w");
+        if (z) { fputs("{\"Could not join: %s\": \"\xE5\x8F\x82\xE5\x8A\xA0\xEF\xBC\x9A%s\"}\n", z); fclose(z); }
+        CHECK(dsi_set_lang(7) == 1);
+        mpm_init(&q); po = title(); po.role = 2; mpm_step(&q, &po, MPB_NONE);
+        po.role = 0; po.failed = 1; po.end = MPM_END_REFUSED;                  /* "参加：満員" -> "満員。" */
+        strcpy(po.msg, "\xE5\x8F\x82\xE5\x8A\xA0\xEF\xBC\x9A\xE6\xBA\x80\xE5\x93\xA1"); mpm_step(&q, &po, MPB_NONE);
+        { size_t nl = strlen(q.notice); CHECK(q.state == MPM_FAILED && nl > 9 && !strcmp(q.notice + nl - 9, "\xE6\xBA\x80\xE5\x93\xA1\xE3\x80\x82")); }
         CHECK(dsi_set_lang(0) == 1); mpm_label(&q, MPB_BACK, l, sizeof l); CHECK(!strcmp(l, "Back"));
     }
     {   /* player name (UX review M1): without Steam the computer account's name went to strangers as the pre-fill and the

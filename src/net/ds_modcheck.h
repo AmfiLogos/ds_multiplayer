@@ -439,10 +439,10 @@ __attribute__((unused)) static int dsmc_hostmods_text(const dsmc_plan *pl, int v
     }
     dsmc_put(&b, "</size>\n");
     if (pl->can_fix) {
-        dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("\"Get the host's mods\" downloads what is missing from our official releases, sets your gameplay mods like the host's, then joins the host again.")));
+        dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("\"Get the Host's Mods\" downloads what is missing from our official releases, sets your gameplay mods like the host's, then joins the host again.")));
         if (older) dsmc_put(&b, " %s", DSMC_TR(TR_NOOP("Where the host has an older version, you get the host's version.")));
     } else if (broken)                                               /* a restart would leave it off: no button */
-        dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("\"Get the host's mods\" cannot fix a mod that does not start on this computer. Update or reinstall it, or ask the host to turn it off.")));
+        dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("\"Get the Host's Mods\" cannot fix a mod that does not start on this computer. Update or reinstall it, or ask the host to turn it off.")));
     else
         dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("The host uses a mod that is not one of our official mods, so the game cannot get the host's mods for you. Ask the host for it, or ask the host to turn it off.")));
     return diff;

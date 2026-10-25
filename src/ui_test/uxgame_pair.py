@@ -660,7 +660,7 @@ def run(X, Y, PORT):
         c(X, cmd='ui_story', action='pop', value=1); time.sleep(1)
         c(X, cmd='ui_units', dir=-1); time.sleep(1); c(X, cmd='ui_units', dir=-1); time.sleep(2)
         bf, af, lg = hire(Y)
-        check('units per player: a hire above it says "You already have N units: host rule Units per player"', af == bf and 'You already have' in lg and 'Units per player' in lg, [l for l in lg.splitlines() if 'already' in l][-1:])
+        check('units per player: a hire above it says "You already have N units: host rule Units per Player"', af == bf and 'You already have' in lg and 'Units per Player' in lg, [l for l in lg.splitlines() if 'already' in l][-1:])
     step('population', population)
 
     # ---- item 26: world name tags (owner dot + name, no brackets)

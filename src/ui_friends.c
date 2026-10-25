@@ -18,6 +18,7 @@
 #include "mp_game.h"
 #include "mp_steam.h"
 #include "ds_i18n.h"
+#include "mp_esc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -40,6 +41,15 @@ static int uf_open, uf_click = -1, uf_page, uf_n, uf_registered, uf_hid_area;
 static dsnet_steam_friend uf_list[UF_MAX];
 static uint8_t uf_sent[UF_MAX];                /* 1 = invite sent this time the window is open, 2 = failed */
 static char uf_status[200], uf_status_kind;    /* 'o' sent, 'e' error */
+static float uf_k = 1;                         /* M5: the window's drawn scale (UI scale, fit to the screen) */
+/* ESCAPE + CLOSE RULES (owner 2026-10-25): the open picker is on the loader kit's Escape stack (mp_esc.h: one press closes it,
+   the game does not see it) and closes with the game's red X at the top right of its title band (mpesc_close_x, the same
+   action as Escape); its "Close" button then goes. Older kit / the rig's own dylib: no X, the Close button and the old
+   Escape path (uf_escape through mpmenu_escape_ours) stay. */
+static void uf_show(int on);
+static void uf_esc_close(void *ud) { (void)ud; uf_show(0); }
+static mpesc_win esc_uf = { .name = "the Steam friends picker", .close = uf_esc_close };
+static int uf_kit;                             /* 1 = the kit has Escape for the picker */
 
 static Obj uo(uintptr_t h) { Obj o = u_gc_get(h); return u_alive(o) ? o : NULL; }
 #define KEEP(hh, o) { Obj o_ = (o); u_gc_free(hh); hh = o_ ? u_gc_new(o_) : 0; }
@@ -74,12 +84,12 @@ static void uf_build(Obj v) {
     Obj root = mk_img(tpl_img, u_tr(v), -1, (Col){ 0, 0, 0, 0 }, 0, 0, UF_W, UF_H);
     if (!root) { rig_log("ui_friends: no frame"); return; }
     Obj R = u_tr(root);
-    KEEP(h_root, root); KEEP(h_view, v); KEEP(h_area, u_tr_parent(u_tr_parent(u_tr(src))));
+    KEEP(h_root, root); KEEP(h_view, v); KEEP(h_area, u_tr_parent(u_tr_parent(u_tr(src)))); uf_k = 1;
     mk_img(tpl_img, R, S_BOX, C_WHITE, 0, 0, UF_W, UF_H);
     mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 1 }, 0, PY((64 + UF_H - 64) / 2), UF_W - 4, UF_H - 128);   /* body #222025 */
     mk_img(tpl_img, R, -1, C_BAND, 0, PY(32), UF_W - 4, 62);
     mk_img(tpl_img, R, -1, C_COPPER, 0, PY(63), UF_W - 4, 1);
-    KEEP(h_title, mk_txt(tpl_txt, R, 1, 26, 514, 0, 0, PY(32), UF_W - 40, 48, C_MAIN));
+    KEEP(h_title, mk_txt(tpl_txt, R, 1, 26, 514, 0, 0, PY(32), UF_W - 112, 48, C_MAIN));   /* clear of the red X */
     mk_img(tpl_img, R, -1, C_ROW1, 0, PY(86), UF_W - 4, 44);
     KEEP(h_hint, mk_txt(tpl_txt, R, 0, 14, 514, 1, 0, PY(86), UF_W - 40, 40, C_SUB));
     for (int i = 0; i < UF_ROWS; i++) {
@@ -99,6 +109,9 @@ static void uf_build(Obj v) {
     mk_img(tpl_img, R, -1, C_BAND, 0, PY(UF_H - 32), UF_W - 4, 60);
     mk_img(tpl_img, R, -1, C_COPPER, 0, PY(UF_H - 62), UF_W - 4, 1);
     KEEP(h_b[UFB_CLOSE], mk_button(src, R, 1, S_NBTN, C_WHITE, 0, PY(UF_H - 32), 180, 34, 16, TR("Close"), C_MAIN));
+    /* the game's red X, 34 units, 14 from the right edge, centred in the 62-unit title band (kit units: top-left, y down);
+       with it the plain Close goes (exactly the X's action) */
+    if (mpesc_close_x(&esc_uf, root, UF_W - 14 - 34, 1 + (62 - 34) / 2.0f, 34, root)) u_active(uo(h_b[UFB_CLOSE]), false);
     u_active(root, false);
     #undef PX
     #undef PY
@@ -186,7 +199,7 @@ static int uf_press(Obj btn) {
     for (int k = 0; k < UFB_N; k++) if (h_b[k] && btn == u_gc_get(h_b[k])) { uf_click = k; return 1; }
     return 0;
 }
-static int uf_escape(void) { return uf_open ? UF_ESC_CLICK : 0; }
+static int uf_escape(void) { return uf_open && !uf_kit ? UF_ESC_CLICK : 0; }   /* the kit has it: the kit's press, not this one */
 static int uf_click_hook(int c) { if (c != UF_ESC_CLICK) return 0; uf_show(0); return 1; }
 
 static void uf_wheel(void) {
@@ -199,7 +212,26 @@ static void uf_wheel(void) {
     else if (d.y > 0 && uf_page > 0) { uf_page--; uf_refresh(); }
 }
 
+/* M5 (UX review 2026-10-25, owner decision: every multiplayer window follows the game's UI Scale): the window is drawn at
+   the game's UI scale (0.75 .. 1.4), scaled down only as much as needed to fit the game window with 16 px free on each side
+   (the lobby window's rule, mpmenu.c). Its rows and buttons are the menu's Unity UI buttons: clicks follow the drawn rects. */
+float mu_ui_scale(void);
+static void uf_fit(void) {
+    Obj root = uo(h_root); float r[4];
+    float sw = (float)F(0x5092C94, int (*)(void *))(NULL), sh = (float)F(0x5092CD4, int (*)(void *))(NULL);   /* Screen.width / height */
+    if (!root || sw <= 0 || sh <= 0 || !rect_of(root, r) || r[2] <= r[0] || r[3] <= r[1]) return;
+    float fw = (r[2] - r[0]) / uf_k, fh = (r[3] - r[1]) / uf_k, k = mu_ui_scale();      /* the window's pixels at scale 1 */
+    if ((sw - 32) / fw < k) k = (sw - 32) / fw;
+    if ((sh - 32) / fh < k) k = (sh - 32) / fh;
+    if (k < 0.3f) k = 0.3f;
+    if (k - uf_k > 0.002f || uf_k - k > 0.002f) {
+        uf_k = k; F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(root), (V3){ k, k, 1 }, NULL);   /* localScale */
+        rig_log("ui_friends: window %.0fx%.0f px at scale 1 on a %.0fx%.0f screen: scale %.3f", fw, fh, sw, sh, k);
+    }
+}
 static void uf_frame(const mpm_obs *o) {
+    Obj root_ = uo(h_root);
+    uf_kit = mpesc_sync(&esc_uf, root_, uf_open && root_ && u_on(root_), 0);
     if (!uf_open) return;
     Obj v = esc_view();
     int host = o->role == 1 && mp_game_session() != NULL;
@@ -209,6 +241,7 @@ static void uf_frame(const mpm_obs *o) {
     uf_wheel();
     Obj lw = u_gc_get(h_lw_root); if (u_alive(lw) && u_on(lw)) u_active(lw, false);       /* the lobby steps aside (as Bring Units) */
     Obj a = uo(h_area); if (a && u_on(a)) { u_active(a, false); uf_hid_area = 1; }          /* Esc menu: its column too */
+    uf_fit();
     if (frames % 600 == 0) { uf_load(); uf_refresh(); }                                     /* states change: every ~10 s */
 }
 
@@ -221,13 +254,16 @@ static char *uf_exec(const char *cmd, const char *line) {
         if (!b || !u_on(b)) return strdup("{\"ok\":false,\"error\":\"row not shown\"}");
         if (mm_is(b, K_SMB)) F(0xF2DC30, void (*)(Obj, void *))(b, NULL);
     }
+    else if (!strcmp(a, "close") && uf_open && !u_on(uo(h_b[UFB_CLOSE]))) uf_esc_close(NULL);   /* the red X's action (no Close button) */
     else if (!strcmp(a, "next") || !strcmp(a, "prev") || !strcmp(a, "close")) {
         Obj b = uo(h_b[a[0] == 'n' ? UFB_NEXT : a[0] == 'p' ? UFB_PREV : UFB_CLOSE]);
         if (!b || !u_on(b)) return strdup("{\"ok\":false,\"error\":\"button not shown\"}");
         if (mm_is(b, K_SMB)) F(0xF2DC30, void (*)(Obj, void *))(b, NULL);
     }
     Buf b = {0};
-    bput(&b, "{\"ok\":true,\"open\":%d,\"overlay\":%d,\"page\":%d,\"pages\":%d,\"n\":%d,\"rows\":[", uf_open, mp_steam_overlay_enabled(), uf_page, npages(), uf_n);
+    { float r[4] = { 0, 0, 0, 0 }; Obj root = uo(h_root); int rs = root && u_on(root) && rect_of(root, r);
+      bput(&b, "{\"ok\":true,\"k\":%.3f,\"win_px\":[%.0f,%.0f,%.0f,%.0f],\"win_shown\":%d,", uf_k, r[0], r[1], r[2], r[3], rs); }
+    bput(&b, "\"open\":%d,\"overlay\":%d,\"page\":%d,\"pages\":%d,\"n\":%d,\"rows\":[", uf_open, mp_steam_overlay_enabled(), uf_page, npages(), uf_n);
     for (int i = 0; uf_open && i < UF_ROWS && uf_page * UF_ROWS + i < uf_n; i++) {
         int k = uf_page * UF_ROWS + i; Col c;
         bput(&b, "%s{\"name\":", i ? "," : ""); bstr(&b, uf_list[k].name); bput(&b, ",\"state\":");
@@ -235,7 +271,7 @@ static char *uf_exec(const char *cmd, const char *line) {
     }
     char nt[200] = ""; Obj note = uo(h_note); if (note && u_on(note)) snprintf(nt, sizeof nt, "%s", TR("Your friend must open Dungeon Settlers Modded first."));
     bput(&b, "],\"status\":"); bstr(&b, uf_status); bput(&b, ",\"lobby_note\":"); bstr(&b, nt);
-    bput(&b, ",\"lobby_hidden\":%d}", uf_open && !u_on(u_gc_get(h_lw_root)));
+    bput(&b, ",\"lobby_hidden\":%d,\"close_button\":%d,\"kit_esc\":%d}", uf_open && !u_on(u_gc_get(h_lw_root)), u_on(uo(h_b[UFB_CLOSE])), uf_kit);
     return b.p;
 }
 

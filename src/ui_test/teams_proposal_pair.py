@@ -81,10 +81,10 @@ def main():
               a['stock']['units'] == 4 and a['stock']['listed'] >= 5, json.dumps(a['stock'])[:200])
         time.sleep(1); shot(X, 'proposer_step1_host')
         tm(X, action='stock_next')
-        a, b = settle(X, Y, lambda a, b: a['stock']['state'] == 1 and a['stock']['next'] == 'Send to friends', 'X step 2', timeout=60)
+        a, b = settle(X, Y, lambda a, b: a['stock']['state'] == 1 and a['stock']['next'] == 'Send to Friends', 'X step 2', timeout=60)
         mine_ = [g for g in a['stock']['panels'] if g]
-        check('step 2 (supplies): only my own units (the ally\'s pick is kept for the proposal); the last button is "Send to friends"',
-              a['stock']['next'] == 'Send to friends' and a['stock']['units'] == 3 and set(mine_) <= {f[0], f[3], f[4]} and len(mine_) == 3, json.dumps(a['stock'])[:300])
+        check('step 2 (supplies): only my own units (the ally\'s pick is kept for the proposal); the last button is "Send to Friends"',
+              a['stock']['next'] == 'Send to Friends' and a['stock']['units'] == 3 and set(mine_) <= {f[0], f[3], f[4]} and len(mine_) == 3, json.dumps(a['stock'])[:300])
         time.sleep(1); shot(X, 'proposer_supplies_host')
         tm(X, action='tip', what='send'); ts_ = tm(X)['tip']; time.sleep(1.5); shot(X, 'tip_send_host')
         check('tooltip on "Send to friends"', ts_ == 'Send to Friends', repr(ts_))

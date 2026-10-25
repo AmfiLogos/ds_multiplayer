@@ -16,10 +16,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <math.h>
 #include <dlfcn.h>
 #include "ds_i18n.h"
 #include "ui_utf8.h"
-#include "mp_esc.h"                                     /* mpesc_took: a press the loader kit took for a window over this one */
+#include "dsl_sdk.h"
+#include "mp_esc.h"
+const DSLUi *mu_kit(void);                                   /* mu_ui.c: the loader kit (NULL: the rig's own dylib, older loader) */
 
 /* ---------------------------------------------------------------- what we need from other lanes (weak) */
 #ifndef DSNET_EXPEDITION_READY
@@ -458,6 +461,22 @@ static uintptr_t h_ready_txt, h_region_txt, h_info, h_band, h_empty[3];
    world is clickable and the game's keys and Escape work (not modal). Remembered in mp_teams_button.json "folded". */
 static uintptr_t h_tfold, h_fbar, h_fshow, h_fclose;
 static int tfold;
+/* CLOSE + ESCAPE RULES (owner 2026-10-25, UX review cross-repo decisions): the open window is on the loader kit's Escape stack
+   (mp_esc.h; one press closes it, the game does not see that press) and its close is the kit's copy of the game's red X
+   (mpesc_close_x, the same action as Escape) where the Task Planner prefab's own CloseButton sits; the prefab button stays
+   (hit-tested, Escape read here) on an older kit and the rig's own dylib. The lending menu inside it goes first (own entry).
+   Folded = not a window (owner viewui 2026-10-15: the world, the game's keys and Escape work): off the stack; the bar's
+   close is a copy of the prefab's red X (no kit X there: a kit X closes only a window on the Escape stack). MOVE RULE: the
+   window moves with a right-drag (dsl_movable, key multiplayer.teams); win_fit then only scales it. */
+static void close_screen(void);
+static void teams_esc_close(void *ud) { (void)ud; close_screen(); rig_log("teams: Escape / red X closed the Teams window (the kit)"); }
+static void lend_esc_close(void *ud);
+static mpesc_win esc_teams = { .name = "the Teams window", .close = teams_esc_close },
+                 esc_tlend = { .name = "the Teams lend menu", .close = lend_esc_close,
+                               .nox = "a small menu inside the Teams window (no close control: a click elsewhere or Escape closes it)" };
+static uintptr_t h_tx;                                      /* the kit's red X on the open window (0 = none: the prefab's stays) */
+static int tx_tried, mov_tried;                             /* once per built window (an older kit: no X, no move, no log spam) */
+static int teams_mov;                                       /* dsl_movable took this window: win_fit no longer centres it */
 #define FBAR_W 320.0f
 #define FBAR_H 56.0f
 static void fbar_build(Obj rt);
@@ -620,8 +639,9 @@ static void free_all(void) {
     Obj r = u_gc_get(h_root);
     if (u_alive(r)) u_destroy(u_go(r));                      /* children go with it */
     uintptr_t *hs[] = { &h_root, &h_win, &h_title, &h_ready, &h_close, &h_hint, &h_region, &h_ready_txt, &h_region_txt,
-                        &h_info, &h_band, &h_empty[0], &h_empty[1], &h_empty[2], &h_tfold, &h_fbar, &h_fshow, &h_fclose };
+                        &h_info, &h_band, &h_empty[0], &h_empty[1], &h_empty[2], &h_tfold, &h_fbar, &h_fshow, &h_fclose, &h_tx };
     for (size_t i = 0; i < sizeof hs / sizeof hs[0]; i++) { u_gc_free(*hs[i]); *hs[i] = 0; }
+    tx_tried = 0; teams_mov = 0; mov_tried = 0;                  /* a new window: its red X and its move again */
     for (int i = 0; i < nhdr; i++) { u_gc_free(h_hdr[i]); h_hdr[i] = 0; }
     nhdr = 0;
     for (int i = 0; i < TM_MAX_UNITS; i++) { u_gc_free(por[i].card); u_gc_free(por[i].mark); por[i].card = por[i].mark = 0; por[i].used = 0; }
@@ -875,11 +895,22 @@ static void fbar_build(Obj rt) {
         Obj fill = new_rect(fb, 0, 0, 1, 1, -16, -16, (C4){0.133f, 0.125f, 0.145f, 1});
         if (fill) (tm_is(u_tr(fill), K_TR) ? F(0x510EC94, void (*)(Obj, void *))(u_tr(fill), NULL) : (void)0);   /* SetAsFirstSibling */
         set_text(new_text(fb, 110, 30, 20, AL_LEFT), -FBAR_W / 2 + 20, 0, 110, 30, 20, AL_LEFT, 1, ui_col(C_MAIN, TR("Teams")));
-        Obj t1 = new_text(fb, 80, 26, 14, AL_RIGHT), t2 = new_text(fb, 80, 26, 14, AL_RIGHT);   /* "Anzeigen", "Schließen" */
-        set_text(t1, FBAR_W / 2 - 18 - 80 - 12 - 80, 0, 80, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Show")));
-        set_text(t2, FBAR_W / 2 - 18 - 80, 0, 80, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Close")));
+        /* CLOSE RULE: the bar's close is the game's red X (a copy of the Task Planner window's own CloseButton, 32 x 32,
+           Button off: hit-tested in click_at), right in the bar; "Show" left of it. No prefab button: the "Close" text. */
+        Obj t1 = new_text(fb, 80, 26, 14, AL_RIGHT), t2 = NULL, xt = u_gc_get(h_tpl_close);   /* "Anzeigen" */
+        Obj xb = u_alive(xt) ? u_instantiate(xt, fb) : NULL;
+        if (u_alive(xb)) {
+            button_off(xb); centre_anchor(xb); tr_scale(xb, 1.0f); rt_size(xb, 32, 32); rt_pos(xb, FBAR_W / 2 - 14 - 16, 0);
+            Obj xi = img_of(xb); if (u_alive(xi)) g_raycast(xi, true);
+            t2 = xb;
+            set_text(t1, FBAR_W / 2 - 14 - 32 - 14 - 80, 0, 80, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Show")));
+        } else {
+            t2 = new_text(fb, 80, 26, 14, AL_RIGHT);           /* "Schließen" */
+            set_text(t1, FBAR_W / 2 - 18 - 80 - 12 - 80, 0, 80, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Show")));
+            set_text(t2, FBAR_W / 2 - 18 - 80, 0, 80, 26, 14, AL_RIGHT, 0, ui_col(C_ACC, TR("Close")));
+            if (u_alive(t2)) g_raycast(t2, true);
+        }
         if (u_alive(t1)) g_raycast(t1, true);
-        if (u_alive(t2)) g_raycast(t2, true);
         h_fbar = u_gc_new(fb); h_fshow = u_gc_new(t1); h_fclose = u_gc_new(t2);
         u_go_active(u_go(fb), false);
     }
@@ -918,7 +949,7 @@ static void win_fit(void) {
             rig_log("teams: window %.0fx%.0f px at scale 1 on a %.0fx%.0f screen: scale %.3f", sr[2] / k0, sr[3] / k0, sw, sh, k);
         }
         float rs[4]; R4 rr0 = rt_rect(u_tr(r));              /* centred on the screen, even if the popups' parent is not */
-        if (rr0.w > 0 && scr_rect(w, sr) && scr_rect(r, rs) && rs[2] > 0) {
+        if (!teams_mov && rr0.w > 0 && scr_rect(w, sr) && scr_rect(r, rs) && rs[2] > 0) {   /* movable: the player's place */
             float ppu = rs[2] / rr0.w, dx = (sw / 2 - (sr[0] + sr[2] / 2)) / ppu, dy = (sh / 2 - (sr[1] + sr[3] / 2)) / ppu;
             if (dx > 0.5f || dx < -0.5f || dy > 0.5f || dy < -0.5f) { V2 p = rt_get_pos(w); rt_pos(w, p.x + dx, p.y + dy); }
         }
@@ -980,10 +1011,10 @@ static void lpop_draw(void) {                                /* the menu of the 
     char lab[8][80];
     if (owner == st.me && lt < 0) {
         for (int p = 0; p < TM_MAX_PLAYERS && nlrow < 8; p++) if ((st.present >> p & 1u) && p != st.me) {
-            char nm[40]; pname(p, nm); snprintf(lab[nlrow], 80, TR("Lend control to %s"), nm); lrow_act[nlrow] = LA_LEND; lrow_arg[nlrow++] = p; }
+            char nm[40]; pname(p, nm); snprintf(lab[nlrow], 80, TR("Lend Control to %s"), nm); lrow_act[nlrow] = LA_LEND; lrow_arg[nlrow++] = p; }
         if (!nlrow) { snprintf(lab[0], 80, "%s", TR("No other player")); lrow_act[0] = 0; nlrow = 1; }
-    } else if (owner == st.me) { snprintf(lab[0], 80, "%s", TR("Take back control")); lrow_act[0] = LA_TAKE; nlrow = 1; }
-    else { snprintf(lab[0], 80, "%s", TR("Give back")); lrow_act[0] = LA_GIVE; nlrow = 1; }
+    } else if (owner == st.me) { snprintf(lab[0], 80, "%s", TR("Take Back Control")); lrow_act[0] = LA_TAKE; nlrow = 1; }
+    else { snprintf(lab[0], 80, "%s", TR("Give Back")); lrow_act[0] = LA_GIVE; nlrow = 1; }
     size_t l = 0;
     float mx = ap.x - 23, dir = ap.y - 26 - (nlrow - 1) * 30 - 14 < -436 ? 1 : -1;   /* inside the window: right edge, else upwards */
     if (mx + 220 > 652) mx = 652 - 220;
@@ -997,6 +1028,7 @@ static void lpop_draw(void) {                                /* the menu of the 
         l += (size_t)snprintf(lpop_s + l, sizeof lpop_s - l, "%s%s", i ? "|" : "", lab[i]);
     }
 }
+static void lend_esc_close(void *ud) { (void)ud; lpop_unit = -1; shown_sig = 0; rig_log("teams: Escape closed the lend menu (the kit)"); }
 static int lend_click(V2 m, Obj cam) {                       /* 1 = taken by a chip or the menu */
     if (lpop_unit >= 0) {
         int u = lpop_unit; lpop_unit = -1; shown_sig = 0;
@@ -1060,6 +1092,30 @@ static float lower_h(const int *order, int no, float sf, float so) {
      zone 2, from y 196: "Free units" on the stock region-title band, cards on a Slot1 row;
      zone 3: one muted row per other player / reserved (cards 0.75, alpha 0.45 / 0.35, not clickable unless host admin);
      bottom bar (y -405): region button + its line, one hint, the Ready button. Rules: the info icon's tooltip. */
+/* after a layout of the shown window (scaled, placed): the kit's red X where the prefab's CloseButton is (34 units, centred
+   on it; the prefab's then hides: one X), and the right-drag move (MOVE RULE). Once per built window. */
+static void teams_kit_parts(void) {
+    Obj w = win(), pc = u_gc_get(h_close), xo = u_gc_get(h_tx);
+    if (!w || !u_go_active_self(u_go(w))) return;
+    if (!tx_tried) {
+        tx_tried = 1;
+        float sw_[4], sc_[4], px = 1320 - 22 - 33, py = 50 - 17; R4 wr = rt_rect(w);   /* fallback: where the prefab draws it */
+        if (u_alive(pc) && wr.w > 0 && scr_rect(w, sw_) && scr_rect(pc, sc_) && sw_[2] > 0) {
+            float k = sw_[2] / wr.w;                          /* screen px per window unit */
+            px = (sc_[0] + sc_[2] / 2 - sw_[0]) / k - 17; py = (sw_[1] + sw_[3] - (sc_[1] + sc_[3] / 2)) / k - 17;   /* kit: top-left, y down */
+        }
+        Obj xb = mpesc_close_x(&esc_teams, w, px, py, 34, w);
+        u_gc_free(h_tx); h_tx = xb ? u_gc_new(xb) : 0; xo = xb;
+        if (xb && u_alive(pc)) u_go_active(u_go(pc), false);  /* one close control: the kit's red X */
+        rig_log("teams: red X %s at %.0f,%.0f (window units, top-left)", xb ? "the kit's" : "the prefab's (no kit X)", px, py);
+    }
+    if (u_alive(xo)) u_last_sibling(u_tr(xo));               /* above the layout's pooled parts */
+    if (!mov_tried) {
+        mov_tried = 1;
+        teams_mov = dsl_movable(mu_kit(), w, "multiplayer.teams") == 0;
+        rig_log("teams: window %s", teams_mov ? "moves with a right-drag (key multiplayer.teams)" : "not movable (no kit)");
+    }
+}
 static void layout(void) {
     Obj w = win();
     if (!w) return;
@@ -1079,7 +1135,7 @@ static void layout(void) {
     int nh = 0;
     /* zone 1: your units */
     int mine = kme >= 0 ? cols[kme].n : 0, rdy_me = st.me >= 0 && (st.ready >> st.me & 1u);
-    section_header(nh++, st.me, LX + 10, 304, 220, 34, 24, 1, ui_col(C_MAIN, TR("Your units")));
+    section_header(nh++, st.me, LX + 10, 304, 220, 34, 24, 1, ui_col(C_MAIN, TR("Your Units")));
     /* owner rule (lan_v8): Teams only allocates units (take / free / lend); expeditions go through the game's
        own expedition window. No marks, no Ready, no Go here. */
     (void)rdy_me;
@@ -1124,7 +1180,7 @@ static void layout(void) {
                 u_gc_free(h_band); h_band = u_gc_new(band);
             }
             if (u_alive(band)) { rt_size(band, 556, 44); rt_pos(band, LX + 278, y - 22); u_go_active(u_go(band), true); }
-            section_header(nh++, TM_FREE, LX + 24, y - 22, 400, 44, 24, 1, ui_col(C_MAIN, TR("Free units")));
+            section_header(nh++, TM_FREE, LX + 24, y - 22, 400, 44, 24, 1, ui_col(C_MAIN, TR("Free Units")));
             if (c->n && !st.in_dungeon) p_text(LX + 570, y - 22, 300, 30, 14, AL_LEFT, 0, ui_col(C_SEC, TR("Left-click to take")));   /* locked in a dungeon */
             y -= 46;
             int per = per_free(sf);
@@ -1182,7 +1238,7 @@ static void layout(void) {
         if (por[i].card && !por[i].used) { u_destroy(u_go(u_gc_get(por[i].card))); u_gc_free(por[i].card); u_gc_free(por[i].mark); por[i].card = por[i].mark = 0; }
     Obj o;
     if ((o = u_gc_get(h_title))) {
-        tmp_set(o, spect() ? TR("Teams (watching)") : TR("Teams"));
+        tmp_set(o, spect() ? TR("Teams (Watching)") : TR("Teams"));
         int np_ = 0, nr_ = 0;                                 /* "Ready n / m" in the title band (approved mockup Teams A) */
         for (int p = 0; p < TM_MAX_PLAYERS; p++) if (st.present >> p & 1u) { np_++; nr_ += st.ready >> p & 1u; }
         (void)nr_; (void)np_;                                 /* no "Ready n / m": Teams has no Ready (owner lan_v8) */
@@ -1204,7 +1260,7 @@ static void layout(void) {
         else if (st.me == 0 && hsel.target != TM_NO_TARGET) {
             char nm[40], lb[40]; ui_players pls; memset(&pls, 0, sizeof pls);
             if (hsel.target >= 0) { player_name(hsel.target, nm); snprintf(pls.name[hsel.target], 32, "%s", nm); }
-            snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
+            snprintf(stl, sizeof stl, TR("Host: units you click go to %s."), hsel.target == TM_FREE ? TR("Free Units") : hsel.target >= 0 ? ui_player_label(&pls, hsel.target, lb) : "?");
         }
         else if (st.me >= 0 && !mine) snprintf(stl, sizeof stl, "<color=" C_MAIN ">%s</color>", TR("Pick your units."));   /* how: zone 1; also when opened by hand (review 32) */
         else if (st.me >= 0) snprintf(stl, sizeof stl, "%s", TR("To start an expedition, use the game's Enter Dungeon."));
@@ -1213,7 +1269,8 @@ static void layout(void) {
     }
     if ((o = u_gc_get(h_tfold))) {                            /* viewui: Hide, left of the close button (120 wide: "Ausblenden", "Скрыть") */
         float sw_[4], sc_[4], cx = 660 - 58 - 120, cy = 444 - 54; R4 wr = rt_rect(w);
-        if (wr.w > 0 && scr_rect(w, sw_) && scr_rect(u_gc_get(h_close), sc_) && sw_[2] > 0) {
+        Obj xo = u_gc_get(h_tx), cref = u_alive(xo) && u_go_active_self(u_go(xo)) ? xo : u_gc_get(h_close);
+        if (wr.w > 0 && scr_rect(w, sw_) && scr_rect(cref, sc_) && sw_[2] > 0) {
             float k = sw_[2] / wr.w;
             cx = (sc_[0] - (sw_[0] + sw_[2] / 2)) / k - 10 - 120; cy = (sc_[1] + sc_[3] / 2 - (sw_[1] + sw_[3] / 2)) / k;
         }
@@ -1222,6 +1279,7 @@ static void layout(void) {
     }
     lpop_draw();
     pool_end();
+    teams_kit_parts();
 }
 
 /* ---------------------------------------------------------------- the proposal side panel (every player while a proposal is open)
@@ -1541,22 +1599,27 @@ static int hit(Obj comp, V2 m, Obj cam) {
     if (!u_alive(comp) || !u_go_active_self(u_go(comp))) return 0;
     return (tm_is(u_tr(comp), K_RT) ? F(0x5473D40, bool (*)(Obj, V2, Obj, void *))(u_tr(comp), m, cam, NULL) : false);
 }
+int mu_bring_is_open(void); int mu_bring_hit(float x, float y);   /* mu_bring.c: the Bring Units card window (M7) */
+float mu_ui_scale(void);                                      /* mu_ui.c: the game's UI scale (M5) */
+/* M7 (UX review 2026-10-25): the Teams button, unless the point is on the open Bring Units window: that window sits above
+   the button (as the game's windows sit above its HUD) and the click, drag or hover there is the window's */
+static int hud_hit(Obj hud, V2 m) { return hit(hud, m, cam_for(hud)) && !mu_bring_hit(m.x, m.y); }
 /* button 0/1 at screen point m: 1 = handled */
 static int click_at(V2 m, int button) {
     if (prop_click(m, button)) return 1;                     /* the proposal side panel (only clicks on it) */
     Obj hud = u_gc_get(h_hud);
     if (!opened) {
-        if (hit(hud, m, cam_for(hud))) { if (button == 0 && open_screen()) notice("%s", TR("The Teams screen is not available here")); return 1; }
+        if (hud_hit(hud, m)) { if (button == 0 && open_screen()) notice("%s", TR("The Teams screen is not available here")); return 1; }
         return 0;
     }
     Obj cam = cam_for(root());
     if (folded()) {                                          /* viewui: only the bar; elsewhere the world's click */
-        if (hit(hud, m, cam_for(hud))) { if (button == 0) fold_set(0); return 1; }
+        if (hud_hit(hud, m)) { if (button == 0) fold_set(0); return 1; }
         if (button == 0 && hit(u_gc_get(h_fshow), m, cam)) { fold_set(0); return 1; }
         if (button == 0 && hit(u_gc_get(h_fclose), m, cam)) { close_screen(); return 1; }
         return hit(u_gc_get(h_fbar), m, cam);
     }
-    if (hit(hud, m, cam_for(hud))) { if (button == 0) close_screen(); return 1; }   /* right = drag (hud_input) */
+    if (hud_hit(hud, m)) { if (button == 0) close_screen(); return 1; }   /* right = drag (hud_input) */
     if (panel_hit(m)) return 1;                              /* viewui: the Players panel is on top there */
     if (hit(u_gc_get(h_close), m, cam)) { close_screen(); return 1; }
     if (button == 0 && hit(u_gc_get(h_tfold), m, cam)) { fold_set(1); return 1; }
@@ -1656,8 +1719,10 @@ static void hud_place(void) {
                && !busy();                                   /* and on the loading screen (map change, load): gamelane 2026-10-14 */
     if (u_go_active_self(u_go(hr)) != want) u_go_active(u_go(hr), want);
     if (!want) return;
-    {   /* viewui: above the open window (32000), like the player panel; else above the stock popups */
-        int o = opened && !folded() ? 32020 : 31000;
+    {   /* viewui: above the open window (32000), like the player panel; else above the stock popups.
+           M7 (UX review 2026-10-25): under an open Bring Units window (the loader kit's layer, 30900), as the game's own HUD
+           sits under its windows; its clicks there go to the window (hud_hit) */
+        int o = opened && !folded() ? 32020 : mu_bring_is_open() ? 30800 : 31000;
         static uintptr_t h_cv, h_cv_of; Obj cv = u_gc_get(h_cv);
         if (u_gc_get(h_cv_of) != hr || !u_alive(cv)) { Obj cty = type_object("UnityEngine", "Canvas"); cv = cty ? go_component(u_go(hr), cty) : NULL;
             u_gc_free(h_cv); h_cv = u_gc_new(cv); u_gc_free(h_cv_of); h_cv_of = u_gc_new(hr); }
@@ -1665,23 +1730,30 @@ static void hud_place(void) {
     }
     hud_load();
     Obj ct = u_tr_parent(hr); R4 cr = ct ? rt_rect(ct) : (R4){0, 0, 1920, 1080};
+    /* M5 (UX review 2026-10-25): the button follows the game's UI scale like the Players panel next to it (ui_game.c scales
+       its whole layer by it); its top-left corner stays, it grows right and down */
+    float us = mu_ui_scale();
     if (!hud_dragged) {                                      /* never dragged: snapped right of the player panel, any panel size */
-        static int (*anchor)(float *, float *, float *, float *);
+        static int (*anchor)(float *, float *, float *, float *); static float (*lsc)(void);
         if (!anchor) anchor = (int (*)(float *, float *, float *, float *))dl("ui_panel_anchor");
-        float x, y, w, h;
-        if (anchor && anchor(&x, &y, &w, &h)) { hud_px = cr.w / 2 + x + w + 8; hud_py = y; hud_pos_set = 1; }
+        if (!lsc) lsc = (float (*)(void))dl("ui_layer_scale");
+        float x, y, w, h, ls = lsc ? lsc() : 1;              /* the panel's layer units -> canvas units (the layer is at the top centre) */
+        if (anchor && anchor(&x, &y, &w, &h)) { hud_px = cr.w / 2 + (x + w + 8) * ls; hud_py = y * ls; hud_pos_set = 1; }
         else if (!hud_pos_set) { hud_px = HUD_X; hud_py = HUD_Y; }
     }
     int c = hud_is_compact();
     float W = HUD_WID(c), H = HUD_SIZE(c);
     static float lab_w[2];                                   /* final review (ru 5): the label's width at its size, measured on a layout */
     if (H + 6 + lab_w[c] + 4 > W) W = H + 6 + lab_w[c] + 4;  /* a longer label ("Команды") widens the button (it shrank to the box edge) */
-    if (hud_px < 0) hud_px = 0; if (hud_px > cr.w - W) hud_px = cr.w - W;          /* stay on screen */
-    if (hud_py > 0) hud_py = 0; if (hud_py < -(cr.h - H)) hud_py = -(cr.h - H);
-    static float last[4] = {-1}; float now[4] = { hud_px, hud_py, W, (float)c };
+    if (hud_px < 0) hud_px = 0; if (hud_px > cr.w - W * us) hud_px = cr.w - W * us;          /* stay on screen (as drawn) */
+    if (hud_py > 0) hud_py = 0; if (hud_py < -(cr.h - H * us)) hud_py = -(cr.h - H * us);
+    static float last[5] = {-1}; float now[5] = { hud_px, hud_py, W, (float)c, us };
     if (!hud_dirty && !memcmp(now, last, sizeof now) && c == hud_compact) return;
     memcpy(last, now, sizeof now); hud_compact = c; hud_dirty = 0;
     rt_anchor(hr, 0, 1, 0, 1); rt_pivot(hr, 0, 1); rt_size(hr, W, H); rt_pos(hr, hud_px, hud_py);
+    if (tm_is(hr, K_TR) && fabsf(F(0x510AEFC, V3 (*)(Obj, void *))(hr, NULL).x - us) > 0.001f) {
+        tr_scale(hr, us); rig_log("teams: HUD button at UI scale %.2f", us);
+    }
     int n = (tm_is(hr, K_TR) ? F(0x510EAE4, int (*)(Obj, void *))(hr, NULL) : 0);
     for (int i = 0; i < n; i++) {
         Obj ch = (tm_is(hr, K_TR) ? F(0x510FC60, Obj (*)(Obj, int, void *))(hr, i, NULL) : NULL);
@@ -1707,7 +1779,7 @@ static void hud_input(void) {                                   /* right-drag (t
     Obj hud = u_gc_get(h_hud);
     if (!u_alive(hud) || !u_go_active_self(u_go(u_gc_get(h_hud_root)))) { hud_drag = 0; return; }
     V3 mp = F(0x51AD4DC, V3 (*)(void *))(NULL);
-    int over = hit(hud, (V2){mp.x, mp.y}, cam_for(hud));
+    int over = hud_hit(hud, (V2){mp.x, mp.y});
     static void (*tip)(const char *); static unsigned tries;
     if (!tip && tries++ % 60 == 0) tip = (void (*)(const char *))dl("ui_tooltip");
     if (!hud_drag && over && F(0x51ACDD0, bool (*)(int, void *))(1, NULL)) { hud_drag = 1; hud_last = mp; }   /* right button down */
@@ -2021,7 +2093,7 @@ static void stock_gear_frame(void) {
     /* owner lan_v7: the last button says what it does in multiplayer */
     Obj pr = u_gc_get(h_pres);
     if (pr && AT(pr, 0x38, int32_t) == 1) {
-        Obj nl = next_label(v); const char *want = stock_mode == 2 ? next_text() : TR("Send to friends");
+        Obj nl = next_label(v); const char *want = stock_mode == 2 ? next_text() : TR("Send to Friends");
         char cur[160] = ""; if (nl) str_utf8(tmp_get(nl), cur, sizeof cur);
         if (nl && strcmp(cur, want)) tmp_set(nl, want);
     }
@@ -2154,20 +2226,27 @@ static void install_hooks(void) {
 /* Test build only (-DTEAMS_MOUSE_TEST): a fake mouse fed into the game's real input path. UnityEngine.Input
    GetMouseButton / Down / Up and mousePosition return scripted values while a fake click runs, so the stock
    MouseInputDispatcher -> RightClickState -> UnityUtil.IsPointerOverUI -> InteractGrid / InteractUI chain is
-   what decides. ui_teams {action:"mouse", x, y, button}. */
+   what decides. ui_teams {action:"mouse", x, y, button}. A drag: + x1, y1, frames (or dx, dy: 20 frames) (the button stays down while the
+   pointer moves to x1, y1 over that many frames, then it is let go): the kit's right-drag move (dsl_movable) reads the
+   same Input calls. */
 static bool (*o_mb)(int, void *), (*o_mbd)(int, void *), (*o_mbu)(int, void *);
 static V3 (*o_mpos)(void *);
-static int fk_on, fk_btn; static float fk_x, fk_y; static int64_t fk_start;
+static int fk_on, fk_btn, fk_drag; static float fk_x, fk_y, fk_x1, fk_y1; static int64_t fk_start;
 /* a real pointer rests on the spot before it presses: FK_HOVER frames of position only, then the press. A press in the
    first frame at a new spot made the stock right-click throw (NRE in InteractionOptionControl.GetQuickAction: the hover
    option is computed a frame later; gamelane 2026-10-14), which no real mouse can do. */
 #define FK_HOVER 10
-static int fk_phase(void) { return fk_on ? (int)(rig_frames - fk_start) : -1000; }   /* <0 hover, 0 = down frame, 1 = up frame */
-static bool hk_mb(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mb(b, mi); return ph == 0 && b == fk_btn; }
+static int fk_phase(void) { return fk_on ? (int)(rig_frames - fk_start) : -1000; }   /* <0 hover, 0 = down frame, fk_up() = up frame */
+static int fk_up(void) { return fk_drag > 0 ? fk_drag + 3 : 1; }                       /* a click: up the next frame; a drag: after the move */
+static bool hk_mb(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mb(b, mi); return ph >= 0 && ph < fk_up() && b == fk_btn; }
 static bool hk_mbd(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbd(b, mi); return ph == 0 && b == fk_btn; }
-static bool hk_mbu(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbu(b, mi); return ph == 1 && b == fk_btn; }
-static V3 hk_mpos(void *mi) { if (fk_on) return (V3){fk_x, fk_y, 0}; return o_mpos(mi); }
-static void fake_frame(void) { if (fk_on && fk_phase() > 100) fk_on = 0; }   /* hold the position ~100 frames, then real mouse */
+static bool hk_mbu(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbu(b, mi); return ph == fk_up() && b == fk_btn; }
+static V3 hk_mpos(void *mi) {
+    if (!fk_on) return o_mpos(mi);
+    int ph = fk_phase(); float t = fk_drag <= 0 || ph <= 1 ? 0 : ph >= fk_drag + 1 ? 1 : (float)(ph - 1) / (float)fk_drag;   /* a drag moves after the press */
+    return (V3){ fk_x + (fk_x1 - fk_x) * t, fk_y + (fk_y1 - fk_y) * t, 0 };
+}
+static void fake_frame(void) { if (fk_on && fk_phase() > fk_up() + 100) fk_on = 0; }   /* hold the position ~100 frames, then real mouse */
 #endif
 void ui_teams_install(void) {
     install_hooks();
@@ -2287,7 +2366,7 @@ static void tips_frame(void) {
     }
     V3 mp3 = F(0x51AD4DC, V3 (*)(void *))(NULL); V2 m = { mp3.x, mp3.y };
     Obj hud = u_gc_get(h_hud);
-    if (!hud_drag && u_alive(hud) && u_go_active_self(u_go(u_gc_get(h_hud_root))) && hit(hud, m, cam_for(hud))) { tip_hud(); return; }
+    if (!hud_drag && u_alive(hud) && u_go_active_self(u_go(u_gc_get(h_hud_root))) && hud_hit(hud, m)) { tip_hud(); return; }
     if (prop_shown && proot() && prop_over(m)) {            /* the side panel; elsewhere the screen's other tips */
         Obj cam = cam_for(proot());
         if (hit(u_gc_get(h_pfold), m, cam)) { tip_prop(4); return; }
@@ -2372,7 +2451,14 @@ void ui_teams_frame(void) {
             V3 mp = F(0x51AD4DC, V3 (*)(void *))(NULL);
             click_at((V2){mp.x, mp.y}, b);
         }
-    if (opened && root() && !folded()) {                     /* owner lan_v8: Escape closes Teams (the menu / tip first); folded: the game's */
+    /* ESCAPE RULE (owner 2026-10-25): the open window and, over it, its lend menu are on the kit's Escape stack; one press
+       closes the top one and the game does not see it. Folded: off the stack (the game's Escape). 0 = no kit (older loader,
+       the rig's own dylib): the old check below */
+    Obj w_ = win(), lr = lpop_unit >= 0 && nlrow > 0 ? u_gc_get(lrow_h[0]) : NULL;
+    int shown_w = opened && root() && w_ && !folded() && u_go_active_self(u_go(w_));
+    int kit_esc = mpesc_sync(&esc_teams, w_, shown_w, 0);
+    mpesc_sync(&esc_tlend, lr, shown_w && kit_esc && u_alive(lr) && u_go_active_self(u_go(lr)), 0);
+    if (!kit_esc && opened && root() && !folded()) {         /* owner lan_v8: Escape closes Teams (the menu / tip first); folded: the game's */
         static bool (*kd)(int); static int looked;
         if (!looked) { looked = 1; kd = (bool (*)(int))F(0x6F8B90, void *(*)(const char *))("UnityEngine.Input::GetKeyDownInt(UnityEngine.KeyCode)"); }
         /* one press, one close (owner rule 2026-10-25): a press the kit took for a window of ours over this one (the chat
@@ -2680,7 +2766,10 @@ static char *state_json(int rc) {
         bput(&b, ",\"panel\":[%d,%.0f,%.0f,%.0f,%.0f],\"hud_canvas_w\":%.0f", av, ax, ay, aw, ah, cw.w);
         int (*tr_)(void) = (int (*)(void))dlsym(RTLD_DEFAULT, "game_tip_ready"); bput(&b, ",\"tip_ready\":%d", tr_ ? tr_() : -1); 
         V3 hc = u_alive(hr) && tm_is(hr, K_TR) ? F(0x510E0AC, V3 (*)(Obj, V3, void *))(hr, (V3){ hz.x + hz.w / 2, hz.y + hz.h / 2, 0 }, NULL) : (V3){0, 0, 0};
-        bput(&b, ",\"hud_screen\":[%.0f,%.0f]", hc.x, hc.y); }   /* the button's centre (overlay canvas: world = screen px) */
+        bput(&b, ",\"hud_screen\":[%.0f,%.0f]", hc.x, hc.y);   /* the button's centre (overlay canvas: world = screen px) */
+        { Obj cty = type_object("UnityEngine", "Canvas"), cv = u_alive(hr) && cty ? go_component(u_go(hr), cty) : NULL;   /* M7 test: drawn above or under */
+          V3 hs = u_alive(hr) && tm_is(hr, K_TR) ? F(0x510AEFC, V3 (*)(Obj, void *))(hr, NULL) : (V3){ 0, 0, 0 };
+          bput(&b, ",\"hud_order\":%d,\"hud_scale\":%.3f", u_alive(cv) && tm_is(cv, K_CV) ? F(0x5476320, int (*)(Obj, void *))(cv, NULL) : -1, hs.x); } }
       bput(&b, ",\"hud_pos\":[%.0f,%.0f],\"hud_shown\":%d,\"lobby_open\":%d,\"hud_text\":", hp.x, hp.y,
            u_alive(hr) && (tm_is(u_go(hr), K_GO) ? F(0x50F3724, bool (*)(Obj, void *))(u_go(hr), NULL) : false), lobby_open()); bstr(&b, ht); }
     char t1[200] = "", t2[700] = "", t3[400] = "", t5[200] = "";
@@ -2703,7 +2792,11 @@ static char *state_json(int rc) {
     { Obj inf = u_gc_get(h_info); bput(&b, ",\"info_icon\":%d", u_alive(inf) && u_go_active_self(u_go(inf))); }
     { float fr[4] = {0}, wr2[4] = {0}, hr2[4] = {0}; int fo = scr_rect(u_gc_get(h_fbar), fr), wo = scr_rect(win(), wr2), ho = scr_rect(u_gc_get(h_tfold), hr2);
       bput(&b, ",\"tfold\":%d,\"modal\":%d,\"bar_rect\":[%.0f,%.0f,%.0f,%.0f],\"win_rect\":[%.0f,%.0f,%.0f,%.0f],\"hide_rect\":[%.0f,%.0f,%.0f,%.0f]",
-           tfold, ui_teams_modal_open(), fo ? fr[0] : -1, fr[1], fr[2], fr[3], wo ? wr2[0] : -1, wr2[1], wr2[2], wr2[3], ho ? hr2[0] : -1, hr2[1], hr2[2], hr2[3]); }
+           tfold, ui_teams_modal_open(), fo ? fr[0] : -1, fr[1], fr[2], fr[3], wo ? wr2[0] : -1, wr2[1], wr2[2], wr2[3], ho ? hr2[0] : -1, hr2[1], hr2[2], hr2[3]);
+      float cr[4] = {0}, pr[4] = {0}; int co = scr_rect(u_gc_get(h_fclose), cr), po = scr_rect(u_gc_get(h_close), pr);   /* x, y (bottom-left), w, h */
+      Obj fc = u_gc_get(h_fclose);
+      bput(&b, ",\"bar_close_rect\":[%.0f,%.0f,%.0f,%.0f],\"bar_close_text\":%d,\"prefab_x_rect\":[%.0f,%.0f,%.0f,%.0f],\"kit_x\":%d,\"movable\":%d",
+           co ? cr[0] : -1, cr[1], cr[2], cr[3], u_alive(fc) && tmp_of(fc) != NULL, po ? pr[0] : -1, pr[1], pr[2], pr[3], h_tx != 0, teams_mov); }
     bput(&b, ",\"lpop\":"); bstr(&b, lpop_unit >= 0 ? lpop_s : "");
     bput(&b, ",\"tip\":"); bstr(&b, tip_last); bput(&b, ",\"tip_body\":"); bstr(&b, tip_body_last);
     bput(&b, ",\"ready_text\":"); bstr(&b, t1); bput(&b, ",\"hint\":"); bstr(&b, t2); bput(&b, "}");
@@ -2735,8 +2828,12 @@ char *ui_teams_exec(const char *cmd, const char *line) {
         double x = -1, y = -1; jnum(line, "x", &x); jnum(line, "y", &y);
         if (x < 0) x = F(0x5092C94, int (*)(void *))(NULL) / 2.0;   /* Screen.width / height: centre by default */
         if (y < 0) y = F(0x5092CD4, int (*)(void *))(NULL) / 2.0;
-        fk_x = (float)x; fk_y = (float)y; fk_btn = (int)bt; fk_start = rig_frames + 1 + FK_HOVER; fk_on = 1;
-        rig_log("teams: fake mouse %d at %.0f,%.0f from frame %lld", fk_btn, x, y, (long long)fk_start);
+        double x1 = x, y1 = y, nf = 0, dx = 0, dy = 0; jnum(line, "x1", &x1); jnum(line, "y1", &y1); jnum(line, "frames", &nf);   /* a drag (optional): to x1, y1 */
+        if (jnum(line, "dx", &dx) | jnum(line, "dy", &dy)) { x1 = x + dx; y1 = y + dy; if (nf < 1) nf = 20; }   /* or by dx, dy screen px (y up) */
+        fk_x = (float)x; fk_y = (float)y; fk_x1 = (float)x1; fk_y1 = (float)y1; fk_drag = nf >= 1 && nf <= 600 ? (int)nf : 0;
+        fk_btn = (int)bt; fk_start = rig_frames + 1 + FK_HOVER; fk_on = 1;
+        rig_log("teams: fake mouse %d at %.0f,%.0f from frame %lld%s", fk_btn, x, y, (long long)fk_start, fk_drag ? " (drag)" : "");
+        if (fk_drag) rig_log("teams: fake mouse drag to %.0f,%.0f over %d frames", x1, y1, fk_drag);
 #endif
     } else if (!strcmp(act, "debug")) {                     /* raycast facts for the open screen and its parents */
         Buf d = {0}; Obj r = root();

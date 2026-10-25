@@ -2,7 +2,11 @@
 #include "mp_esc.h"
 #include "mu_ui.h"
 #include "rig.h"
+#include "mpmenu_kit.h"                /* u_gc_*, u_alive, u_on, rect_of (the red X) */
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 int mpmenu_box_over(void);                     /* mpmenu.c: one of our boxes on the stock CommonNoticeView is up */
 int ui_modal_open(void);                       /* ui_game.c: the ui lane's prompt (player disconnected: Keep playing / Wait) */
@@ -69,4 +73,25 @@ int mpesc_took(void) {
     if (kit_took && kit_took()) return 1;
     for (int i = 0; i < nws; i++) if (ws[i]->id) return 1;
     return rig_frames - took_at <= 1;
+}
+void *mpesc_close_x(mpesc_win *w, void *parent, float x, float y, float size, void *win) {
+    if (!w) return NULL;
+    void *x0 = w->xh ? u_gc_get(w->xh) : NULL;
+    if (x0 && u_alive(x0) && parent && u_tr_parent(u_tr(x0)) == u_tr(parent)) return x0;    /* already on this window */
+    u_gc_free(w->xh); w->xh = 0;
+    void *xb = (parent && win) ? dsl_close_x(mu_kit(), parent, x, y, size, win) : NULL;
+    if (xb) w->xh = u_gc_new(xb);
+    rig_log("esc: red X on %s: %s", w->name ? w->name : "a window", xb ? "the game's" : "none (older kit: its text close stays)");
+    return xb;
+}
+char *mpesc_dump(void) {
+    size_t cap = 4096, n = 0; char *b = malloc(cap); if (!b) return NULL;
+    n += (size_t)snprintf(b + n, cap - n, "{\"ok\":true,\"kit\":%d,\"windows\":[", DSL_UI_HAS(mu_kit(), close_x) ? 1 : 0);
+    for (int i = 0; i < nws && n + 400 < cap; i++) {
+        mpesc_win *w = ws[i]; void *xb = w->xh ? u_gc_get(w->xh) : NULL; float r[4] = { 0 }; int xon = xb && u_on(xb) && rect_of(xb, r);
+        n += (size_t)snprintf(b + n, cap - n, "%s{\"name\":\"%s\",\"pushed\":%d,\"held\":%d,\"nox\":%d,\"x\":%d,\"x_rect\":[%.0f,%.0f,%.0f,%.0f]}",
+                              i ? "," : "", w->name ? w->name : "", w->id != NULL, w->held != NULL, w->nox != NULL, xon, r[0], r[1], r[2], r[3]);
+    }
+    snprintf(b + n, cap - n, "]}");
+    return b;
 }

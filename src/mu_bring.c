@@ -63,7 +63,7 @@ static const DSLUi *U;
 static struct {
     int open;
     mu_bring_req req; char title[128], sub[300];
-    DSLObj win, t_sub, hdr, status, t_picked, left, right, b_prev, b_next, t_page, b_cancel, b_bring;
+    DSLObj win, t_sub, hdr, status, t_picked, left, right, b_prev, b_next, t_page, b_cancel, b_bring, x;   /* x: the red X (NULL: Cancel) */
     DSLObj left_btn[SMAX]; int nleft;
     DSLObj tick[16], card[16], row[16]; int card_item[16], ncard;
     float w, h, rx, ry, rw, rh;
@@ -182,7 +182,7 @@ static void close_win(void) {
     B.open = 0;
     mpesc_drop(&esc_bring);
     if (U && B.win) U->destroy(B.win);
-    B.win = B.left = B.right = NULL; B.ncard = B.nleft = 0;
+    B.win = B.left = B.right = B.x = NULL; B.ncard = B.nleft = 0;
     mu_save_cache_clear();
     mu_drawn_reset();
 }
@@ -303,8 +303,8 @@ static void draw_left(void) {
     if (!B.left) return;
     float y = 0;
     if (B.src == 1) {                                                 /* E3: My Units: the Unit Builder door */
-        DSLObj b = mu_button(B.left, 0, 0, 192, 40, TR("Build a unit"), on_build, NULL);
-        if (b) { U->tooltip(b, TR("Build a unit"), TR("Opens the Unit Builder. The unit you save goes to My Units and is ticked here.")); if (B.nleft < SMAX) B.left_btn[B.nleft++] = b; }
+        DSLObj b = mu_button(B.left, 0, 0, 192, 40, TR("Build a Unit"), on_build, NULL);
+        if (b) { U->tooltip(b, TR("Build a Unit"), TR("Opens the Unit Builder. The unit you save goes to My Units and is ticked here.")); if (B.nleft < SMAX) B.left_btn[B.nleft++] = b; }
         U->scroll_height(B.left, 44);
         return;
     }
@@ -421,6 +421,10 @@ static int build_ui(void) {
     B.lw = B.lh = 0; cm_rect_size(cm_parent(B.win), &B.lw, &B.lh);
     B.left = B.right = NULL; B.nleft = B.ncard = 0;
     B.t_sub = mu_text(B.win, 20, 46, w - 40, 24, B.sub, 15, DSL_TXT_CENTER, MU_C_SUB);
+    /* CLOSE RULE (owner 2026-10-25): the game's red X, top right of the title band (the title's line, 10..50), as Units
+       Laboratory's windows (38, 16 from the right edge). A click = Escape = Cancel (finish(0): nothing brought). NULL (an
+       older kit): the Cancel button stays. */
+    B.x = mpesc_close_x(&esc_bring, B.win, w - 16 - 38, 30 - 38 / 2.f, 38, B.win);
     float x = 20, y = 76;                                             /* top row: the source's name, then the message */
     B.b_src[0] = B.b_src[1] = NULL; B.hdr = NULL;
     if (ul_api()) {                                                   /* E3: source switch where the title was (same row, same width) */
@@ -444,11 +448,12 @@ static int build_ui(void) {
     if (bot) {
         float bw = w - 40;
         B.t_picked = mu_text(bot, 12, 0, 188, 44, "", 16, DSL_TXT_LEFT, MU_C_GOLD);
-        float px = 212 + (bw - 212 - 290 - 200) / 2; if (px < 212) px = 212;
+        float right = B.x ? 140 : 290;                                 /* Bring (and Cancel without the red X) */
+        float px = 212 + (bw - 212 - right - 200) / 2; if (px < 212) px = 212;
         B.b_prev = mu_button(bot, px, 2, 44, 40, "<", on_page, (void *)(intptr_t)-1);
         B.t_page = mu_text(bot, px + 48, 0, 104, 44, "", 14, DSL_TXT_CENTER, MU_C_SUB);
         B.b_next = mu_button(bot, px + 156, 2, 44, 40, ">", on_page, (void *)(intptr_t)1);
-        B.b_cancel = mu_button(bot, bw - 290, 2, 140, 40, TR("Cancel"), on_cancel, NULL);
+        B.b_cancel = B.x ? NULL : mu_button(bot, bw - 290, 2, 140, 40, TR("Cancel"), on_cancel, NULL);   /* the red X = Cancel */
         B.b_bring = mu_button(bot, bw - 140, 2, 140, 40, TR("Bring"), on_bring, NULL);
     }
     if (B.msg[0]) set_msg(B.msg, B.msg_col);
@@ -456,19 +461,28 @@ static int build_ui(void) {
 }
 void mu_bring_close(void) { finish(0); }
 int  mu_bring_is_open(void) { return B.open; }
+/* M7 (UX review 2026-10-25): the game's windows sit above its HUD, and so does this one: a screen point (pixels, y up) on
+   the open window is the window's, never a click, drag or hover of our HUD under it (Teams button, Players panel, viewer
+   box, mini overview). ui_teams.c / ui_game.c ask before their own hit tests. */
+int  mu_bring_hit(float x, float y) { return B.open && B.win && mu_ui_screen_hit(B.win, x, y); }
 
 /* ------------------------------------------------------------------ tests (driver "bring:<name>", rig bring_state) */
 void *mu_bring_test_find(const char *n) {
     if (!B.open || !n) return NULL;
     static const struct { const char *n; DSLObj *o; } map[] = {
-        { "bring", &B.b_bring }, { "cancel", &B.b_cancel }, { "next", &B.b_next }, { "prev", &B.b_prev }, { "win", &B.win },
+        { "bring", &B.b_bring }, { "cancel", &B.b_cancel }, { "x", &B.x }, { "next", &B.b_next }, { "prev", &B.b_prev }, { "win", &B.win },
         { "right", &B.right }, { "status", &B.status }, { "picked", &B.t_picked }, { "src_saves", &B.b_src[0] }, { "src_lib", &B.b_src[1] } };
+    if (!strcmp(n, "cancel") && !B.b_cancel) return B.x;              /* the red X took Cancel's place (older drivers click "cancel") */
     for (size_t i = 0; i < sizeof map / sizeof *map; i++) if (!strcmp(n, map[i].n)) return *map[i].o;
     int k;
     if (sscanf(n, "left%d", &k) == 1 && k >= 0 && k < B.nleft) return B.left_btn[k];
     if (sscanf(n, "tick%d", &k) == 1 && k >= 0 && k < B.ncard) return B.tick[k];
     if (sscanf(n, "card%d", &k) == 1 && k >= 0 && k < B.ncard) return B.card[k];
     if (sscanf(n, "row%d", &k) == 1 && k >= 0 && k < B.ncard) return B.row[k];
+    if (!strcmp(n, "icon0")) {                                         /* card 0's first icon after its face (a worn item) */
+        const mu_drawn *d; int nd = mu_drawn_list(&d), seen = 0;
+        for (int i = 0; i < nd; i++) if (!d[i].is_text && d[i].card == 0 && seen++ == 1) return d[i].o;
+    }
     return NULL;
 }
 static void jesc(char *o, size_t cap, const char *s) { size_t n = 0; for (; *s && n + 3 < cap; s++) { if (*s == '"' || *s == '\\') o[n++] = '\\'; if ((unsigned char)*s < 0x20) continue; o[n++] = *s; } o[n] = 0; }
@@ -482,8 +496,16 @@ size_t mu_bring_test_state(char *out, size_t cap) {
         { const char *b = strrchr(f, '\\'); if (b) f = b + 1; }
         char e[260]; jesc(e, sizeof e, f); fo += (size_t)snprintf(files + fo, sizeof files - fo, "%s\"%.120s\"", i ? "," : "", e);
     }
-    return (size_t)snprintf(out, cap, "{\"ul\":%d,\"src\":%d,\"lib_units\":%d,\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
+    float wr[4] = { 0, 0, 0, 0 }; int won = B.open && B.win && mu_ui_screen_rect(B.win, wr);   /* M7 test: where it is drawn, and above what */
+    char tp[700] = ""; size_t to = 0;                                  /* tests: where the main parts are drawn (a fake mouse clicks there) */
+    { static const char *const tn[] = { "row0", "row1", "tick0", "tick1", "card0", "icon0", "bring", "cancel", "x", "left0" };
+      for (size_t i = 0; i < sizeof tn / sizeof *tn && to + 80 < sizeof tp; i++) {
+          float r[4]; DSLObj o = B.open ? mu_bring_test_find(tn[i]) : NULL;
+          if (o && mu_ui_screen_rect(o, r)) to += (size_t)snprintf(tp + to, sizeof tp - to, "%s\"%s\":[%.0f,%.0f,%.0f,%.0f]", to ? "," : "", tn[i], r[0], r[1], r[2], r[3]);
+      } }
+    char tip[600] = ""; mu_tip_test_state(tip, sizeof tip);           /* tests: the game's hover card on a card icon (shown key) */
+    return (size_t)snprintf(out, cap, "{%s%s\"tgt_px\":{%s},\"win_px\":[%.0f,%.0f,%.0f,%.0f],\"win_shown\":%d,\"win_order\":%d,\"ul\":%d,\"src\":%d,\"lib_units\":%d,\"save_files\":[%s],\"open\":%d,\"kit\":%d,\"picked\":%d,\"max\":%d,\"left_rows\":%d,\"cards\":%d,\"card_icons\":%d,\"card_sprites\":%d,"
                             "\"page\":%d,\"pages\":%d,\"msg\":\"%s\",\"saves\":%d,\"sel_save\":%d,\"units\":%d,\"w\":%.0f,\"h\":%.0f}",
-                            ul_api() != NULL, B.src, B.nlu, files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
+                            tip, tip[0] ? "," : "", tp, wr[0], wr[1], wr[2], wr[3], won, B.open && B.win ? mu_ui_canvas_order(B.win) : -1, ul_api() != NULL, B.src, B.nlu, files, B.open, mu_kit() != NULL, B.npicks, B.max, B.open ? B.nleft : 0, B.open ? B.ncard : 0, B.open ? icons : 0, B.open ? sprites : 0,
                             B.page, B.pages, m, B.nsaves, B.sel_save, B.nsu, B.w, B.h);
 }

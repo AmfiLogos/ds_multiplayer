@@ -238,7 +238,10 @@ static void place_card(Obj t) {
     if (x + w <= sw) snprintf(tgt_side, sizeof tgt_side, "right");
     else if (tgt_panel[0] - gap - w >= 0) { x = tgt_panel[0] - gap - w; snprintf(tgt_side, sizeof tgt_side, "left"); }
     else { snprintf(tgt_side, sizeof tgt_side, "inside");                           /* no room either side: the wider side, on screen */
-           x = sw - tgt_panel[2] >= tgt_panel[0] ? sw - w : 0; if (x < 0) x = 0; }
+           x = sw - tgt_panel[2] >= tgt_panel[0] ? sw - w : 0; if (x < 0) x = 0;
+           /* never over the element it explains: a click there went to the card (the lobby cog in de / ru at 960x540,
+              UI Scale 1.4: the scaled lobby left no room beside it). Below the element, else above it. */
+           if (x < tgt_elem[2] + gap && x + w > tgt_elem[0] - gap) y = tgt_elem[1] - gap - h >= 0 ? tgt_elem[1] - gap : tgt_elem[3] + gap + h; }
     if (y - h < 0) y = h; if (y > sh) y = sh;
     V2 pv = F(0x5107200, V2 (*)(Obj, void *))(r, NULL);                            /* RectTransform.pivot */
     if (pv.x != 0 || pv.y != 1) F(0x51072F4, void (*)(Obj, V2, void *))(r, (V2){ 0, 1 }, NULL);
