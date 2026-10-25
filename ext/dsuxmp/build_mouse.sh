@@ -2,9 +2,9 @@
 # Test build of src/ as the LOADER'S multiplayer module (like ds_modloader loader/build.sh: modules/multiplayer/mp_module.c +
 # the src/build.sh file list minus rig_main.c + rig_hook.c, the loader's sdk/), with the fake mouse (-DTEAMS_MOUSE_TEST:
 # ui_teams {action:"mouse", x, y, button}) -> $1. The rig's own dylib has no loader host: no kit, no UI scale, no card window.
-# LOADER = the loader tree that gives mp_module.c and sdk/ (default the dsuxmp shared loader worktree; only read).
+# LOADER = the loader tree that gives mp_module.c and sdk/ (default the dsuxmp2 shared loader worktree, ds_modloader 83636d0: the kit red X, UI Scale, right-drag move; only read).
 set -e; out=${1:?usage: build_mouse.sh <out.dylib>}; out=${out:A}; cd ${SRC:-"${0:A:h}/../../src"}; mkdir -p ${out:h}   # SRC = another src/ tree (a before-build)
-L=${LOADER:-$HOME/ds_launcher_wt_dsuxmp/loader}
+L=${LOADER:-$HOME/ds_launcher_wt_dsuxmp2/loader}
 python3 ../tools/rv_gate.py > /dev/null || { python3 ../tools/rv_gate.py >&2; exit 1; }
 srcs=(${(f)"$(python3 - build.sh <<'PY'
 import sys

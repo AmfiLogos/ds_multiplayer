@@ -17,12 +17,14 @@
 #include "fe_save.h"
 #include "mp_worldsave.h"
 #include "mp_esc.h"
+#include "dsl_sdk.h"                   /* the loader kit: red X, right-drag move (dsl_movable) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <dlfcn.h>
 const pvp_state *pvp_ui_state(void) __attribute__((weak_import));
+const DSLUi *mu_kit(void);                                               /* mu_ui.c: the loader's widget kit, NULL = none */
 char *pvp_units_exec(const char *cmd, const char *line) __attribute__((weak_import));
 int pvp_units_received(void) __attribute__((weak_import));
 int pvp_units_roster(int i, char uid[33], char name[64], char port[64]) __attribute__((weak_import));
@@ -98,6 +100,8 @@ static char pv_col_names[16][64]; static int pv_ncol;                 /* names s
 #define PV_TEAM_ROWS 2                                                   /* 4 units in total: at most 2 players per team bring units */
 #define PV_RULES_TOP (PV_TEAM_TOP + PV_TEAM_ROWS * PV_BLOCK + 40)
 #define PV_W 1180                                                        /* two columns: the teams, then the rules */
+#define BR_W 760.0f                                                      /* the Bring Units text list */
+#define PR_W 560.0f                                                      /* the result window */
 #define PV_COLX(c) (24 + 576 * (c))                                      /* a column's left edge; 556 wide, 20 apart */
 #define PV_COLW 556
 #define PV_RULE_ROWS 7                                                   /* rows per rules column (right: 6 + Preset) */
@@ -132,6 +136,18 @@ static int vote_view(const pvp_state *s) {
 /* review_ja #2: CJK (ko, zh-Hans, zh-Hant, ja) is never designed below 14 (smaller kanji turn to blobs at 960x540) */
 static float pv_fs(float s) { int l = dsi_lang(); return (l == 1 || (l >= 5 && l <= 7)) && s < 14 ? 14 : s; }
 static int pv_open, pr_open, pv_click = -1;
+static void pv_esc_close(void *ud) { pv_click = (int)(intptr_t)ud; }   /* the kit's Escape and the red X: the window's own button, as a click */
+static mpesc_win esc_pv = { .name = "the PvP Match window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_CLOSE },
+                 esc_br = { .name = "the PvP Bring Units window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_BR_BACK },
+                 esc_pr = { .name = "the PvP result window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_RESULT_OK };
+/* CLOSE RULE (owner 2026-10-25): the game's red X (the loader kit's, mp_esc.h mpesc_close_x) at the top-right of a window's
+   title band (the band is 60 high from the top), a child of the window: it scales and moves with it. A click = the window's
+   Escape close above (PvP Match: Close; Bring list: Back; result: Back to the World). Made when the window opens (a rebuilt
+   window gets a new one; mpesc_close_x keeps one that is there). NULL = no kit red X (the rig's own dylib, an older loader). */
+#define PV_XS 36.0f                                                      /* its size; x, y = its top-left in the window (kit coordinates) */
+#define PV_XX(wd) ((wd) - PV_XS - 14)
+#define PV_XY (32 - PV_XS / 2)
+static int pv_kit_x(void) { const DSLUi *U = mu_kit(); return DSL_UI_HAS(U, close_x); }   /* else no call (no "none" line per open) */
 static int br_open;
 int pvp_ui_window_open(void) { return pv_open || pr_open || br_open; }   /* fe_menu.c: its window steps aside meanwhile */
 static uint32_t pr_shown_match;
@@ -307,6 +323,9 @@ static void pv_build(Obj v) {
     KEEP(h_pvb[PVB_START], mk_button(src, R, 1, S_RECRUIT, C_WHITE, PX(W - 24 - 110), PY(H - 32), 220, 42, 18, TR("Start Match"), C_START));
     KEEP(h_pvb[PVB_BRING], mk_button(src, R, 1, S_NBTN, C_WHITE, 0, PY(H - 32), 220, 34, 16, TR("Bring Units..."), C_MAIN));
     u_active(root, false);
+    /* MOVE RULE (owner 2026-10-25): a right-drag moves the window, its place is kept (the loader's ui_places.tsv) and put
+       back when it is built again. Never placed after this (pv_fit only scales it). */
+    dsl_movable(mu_kit(), root, "multiplayer.pvp_match");
     #undef PX
     #undef PY
     #undef KEEP
@@ -461,6 +480,9 @@ static void pv_show(int on) {
         if (host && pvp_mods_ask) pvp_mods_ask(pv.vanilla);                 /* every player sends its mods (and sees the rule) */
         if (!host) pvp_rules_view_ask();                                   /* P1: the host mails its window (pv_host_sync) */
         pv_refresh();
+        /* CLOSE RULE: the red X; the bottom Close (same action: closes the window, nothing is sent) goes when it is there */
+        Obj x = pv_kit_x() ? mpesc_close_x(&esc_pv, root, PV_XX(PV_W), PV_XY, PV_XS, root) : NULL;
+        u_active(pvb(PVB_CLOSE), x == NULL);
     }
 }
 /* M2 (UX review 2026-10-25): the players and units each team would start with, counted as the match start counts them
@@ -549,6 +571,7 @@ static void pv_click_do(int k) {
 #include <sys/stat.h>
 int mu_save_files(const char *dir, char (*out)[1024], int max);   /* mu_save.c */
 static uintptr_t h_br_root, h_br_title, h_br_hint, h_br_status, h_br_por[12], h_br_lv[12];
+static uintptr_t h_br_tile[12];                                          /* CARD RULE: a unit's whole tile (portrait, name, level), invisible */
 static int br_nsaves, br_save = -1, br_nunits, br_pick[12];
 static char br_files[8][300], br_stems[8][96], br_unit_guid[12][40], br_unit_name[12][48], br_unit_port[12][64], br_sent[600];
 static int br_unit_lvl[12];
@@ -626,7 +649,7 @@ static void br_read_units(int k) {
 static void br_build(Obj v) {
     Obj src = AT(v, 0x70, Obj); if (!u_alive(src)) return;
     Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x28, Obj);
-    const float W = 760, H = 700;
+    const float W = BR_W, H = 700;
     #define BX(x) ((x) - W / 2)
     #define BY(y) (H / 2 - (y))
     #define KEEP(hh, o) { Obj o_ = (o); u_gc_free(hh); hh = o_ ? u_gc_new(o_) : 0; }
@@ -642,6 +665,9 @@ static void br_build(Obj v) {
     for (int i = 0; i < 8; i++) KEEP(h_pvb[PVB_BR_SAVE0 + i], mk_button(src, R, 1, S_NBTN, C_WHITE, BX(24 + 120), BY(160 + 44 * i), 240, 38, 13, "", C_MAIN));
     for (int i = 0; i < 12; i++) {
         float x = BX(290 + 74 + 150 * (i % 3)), top = 150 + 112 * (i / 3);       /* portrait, name button, level under it */
+        Obj tile = mk_img(tpl_img, R, -1, (Col){ 0, 0, 0, 0 }, x, BY(top + 52), 146, 108);   /* the tile's area (br_tile_click) */
+        if (tile && mm_is(tile, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(tile, false, NULL);   /* raycastTarget off: it only measures */
+        KEEP(h_br_tile[i], tile);
         Obj fr = mk_img(tpl_img, R, -1, C_LINE, x, BY(top + 24), 44, 44); if (fr) mk_img(tpl_img, u_tr(fr), -1, C_ROW2, 0, 0, 42, 42);
         KEEP(h_br_por[i], fr);
         Obj b = mk_button(src, R, 1, S_NBTN, C_WHITE, x, BY(top + 66), 140, 30, 13, "", C_MAIN); KEEP(h_pvb[PVB_BR_UNIT0 + i], b);
@@ -652,6 +678,7 @@ static void br_build(Obj v) {
     KEEP(h_pvb[PVB_BR_BACK], mk_button(src, R, 1, S_NBTN, C_WHITE, BX(24 + 90), BY(H - 32), 180, 34, 16, cmt_game("TEXTKEY_Shared_Back", "Back"), C_MAIN));
     KEEP(h_pvb[PVB_BR_SEND], mk_button(src, R, 1, S_RECRUIT, C_WHITE, BX(W - 24 - 110), BY(H - 32), 220, 42, 18, TR("Bring"), C_START));
     u_active(root, false);
+    dsl_movable(mu_kit(), root, "multiplayer.pvp_bring");                  /* MOVE RULE: as the PvP window */
     #undef BX
     #undef BY
     #undef KEEP
@@ -671,7 +698,7 @@ static void br_refresh(void) {
     }
     for (int i = 0; i < 12; i++) {
         Obj b = pvb(PVB_BR_UNIT0 + i), fr = pvt(h_br_por[i]), lv = pvt(h_br_lv[i]);
-        int on = i < br_nunits; u_active(b, on); u_active(fr, on); u_active(lv, on);
+        int on = i < br_nunits; u_active(b, on); u_active(fr, on); u_active(lv, on); u_active(pvt(h_br_tile[i]), on);
         if (!on) continue;
         char l[80]; snprintf(l, sizeof l, "%s%s", br_pick[i] ? "\xE2\x80\xA2 " : "", br_unit_name[i]);   /* picked: gold with a dot (the font has no tick) */
         cmt_set(btn_label(b, 1), l); txt_color(btn_label(b, 1), br_pick[i] ? C_GOLD : C_MAIN);
@@ -692,7 +719,9 @@ static int br_lobby;                                                    /* opene
 static void br_show(int on) {
     Obj root = pvt(h_br_root), pw = pvt(h_pv_root); if (!root) return;
     u_active(root, on); if (pw && !br_lobby) u_active(pw, !on);
-    br_open = on; if (on) { br_list_saves(); br_refresh(); } else if (br_lobby) br_lobby = 0; else pv_refresh();
+    br_open = on;
+    if (on) { br_list_saves(); br_refresh(); if (pv_kit_x()) mpesc_close_x(&esc_br, root, PV_XX(BR_W), PV_XY, PV_XS, root); }   /* CLOSE RULE: the red X = Back */
+    else if (br_lobby) br_lobby = 0; else pv_refresh();
 }
 static void br_send(void) {
     if (br_save < 0 || !pvp_units_exec) return;
@@ -723,6 +752,20 @@ static int br_click(int k) {                                            /* 1 = a
         br_sent[0] = 0; br_refresh(); return 1;
     }
     return 0;
+}
+/* CARD RULE (owner 2026-10-25: a click anywhere on a card or picker row toggles it): a left click anywhere on a unit's tile
+   in the text Bring list (its portrait, its level, the space between) picks / unpicks it, as its name button does. Read
+   like the HUD's Ready (Input.GetMouseButtonDown(0) on the tile's screen rect); a click on the name button is that
+   button's own click (not counted twice); nothing while one of our boxes is over the window. */
+static void br_tile_click(void) {
+    if (!br_open || !u_on(pvt(h_br_root)) || mpesc_box_over() || !F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) return;   /* Input.GetMouseButtonDown(0) */
+    V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL); float r[4];                                                                   /* Input.mousePosition */
+    for (int i = 0; i < br_nunits && i < 12; i++) {
+        Obj tile = pvt(h_br_tile[i]), b = pvb(PVB_BR_UNIT0 + i);
+        if (!u_on(tile) || !rect_of(tile, r) || m.x < r[0] || m.x > r[2] || m.y < r[1] || m.y > r[3]) continue;
+        if (u_on(b) && rect_of(b, r) && m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]) return;
+        pv_click = PVB_BR_UNIT0 + i; rig_log("pvp ui: Bring list: click on unit %d's tile", i); return;
+    }
 }
 static int pvp_ui_press(Obj btn) {                                      /* from the Esc-menu click hook */
     for (int k = 0; k < PVB_N; k++) if (btn && h_pvb[k] && btn == u_gc_get(h_pvb[k])) { pv_click = k; return 1; }
@@ -957,19 +1000,20 @@ static void hud_click(const pvp_state *s) {                             /* every
 static void pr_build(Obj v) {
     Obj src = AT(v, 0x70, Obj); if (!u_alive(src)) return;
     Obj tpl_img = first_image(u_tr(src), 0), tpl_txt = AT(src, 0x28, Obj);
-    const float W = 560, H = 360;
+    const float W = PR_W, H = 360;
     Obj root = mk_img(tpl_img, u_tr(v), -1, (Col){ 0, 0, 0, 0 }, 0, 0, W, H); if (!root) return;
     Obj R = u_tr(root);
     u_gc_free(h_pr_root); h_pr_root = u_gc_new(root); pr_k = 1;
     mk_img(tpl_img, R, S_BOX, C_WHITE, 0, 0, W, H);
     mk_img(tpl_img, R, -1, C_BAND, 0, H / 2 - 32, W - 4, 60);
     mk_img(tpl_img, R, -1, C_COPPER, 0, H / 2 - 62, W - 4, 1);
-    Obj t = mk_txt(tpl_txt, R, 1, 30, 514, 0, 0, H / 2 - 32, 520, 50, C_MAIN); u_gc_free(h_pr_title); h_pr_title = t ? u_gc_new(t) : 0;
+    Obj t = mk_txt(tpl_txt, R, 1, 30, 514, 0, 0, H / 2 - 32, 440, 50, C_MAIN); u_gc_free(h_pr_title); h_pr_title = t ? u_gc_new(t) : 0;   /* 440: clear of the red X */
     t = mk_txt(tpl_txt, R, 1, 40, 514, 0, 0, H / 2 - 110, 520, 60, C_GOLD); u_gc_free(h_pr_score); h_pr_score = t ? u_gc_new(t) : 0;
     t = mk_txt(tpl_txt, R, 0, 16, 514, 1, 0, H / 2 - 190, 500, 80, C_SUB); u_gc_free(h_pr_rounds); h_pr_rounds = t ? u_gc_new(t) : 0;
     Obj b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, 0, -H / 2 + 40, 260, 42, 18, TR("Back to the World"), C_START);
     u_gc_free(h_pvb[PVB_RESULT_OK]); h_pvb[PVB_RESULT_OK] = b ? u_gc_new(b) : 0;
     u_active(root, false);
+    dsl_movable(mu_kit(), root, "multiplayer.pvp_result");                 /* MOVE RULE: as the PvP window */
 }
 static int pr_show(const pvp_state *s);
 static void pr_frame(const pvp_state *s) {
@@ -1003,6 +1047,7 @@ static int pr_show(const pvp_state *s) {
     cmt_set(u_gc_get(h_pr_rounds), r);
     Obj area = u_gc_get(h_pv_area); if (u_alive(area)) u_active(area, false);
     u_active(root, true); pr_open = 1; win_fit(root, &pr_k, "result window");   /* M5 */
+    if (pv_kit_x()) mpesc_close_x(&esc_pr, root, PV_XX(PR_W), PV_XY, PV_XS, root);   /* CLOSE RULE: the red X = Back to the World */
     rig_log("pvp ui: result window: %s", b);
     return 1;
 }
@@ -1036,10 +1081,6 @@ static void pvp_ui_tips(void) {
     if (pr_open && pv_here()) tip_try(pvb(PVB_RESULT_OK), TR("Back to the Hub"), TR("Closes the result. The hub is the same as before the match: go on an expedition or start another match."));
     else if (pr_open) tip_try(pvb(PVB_RESULT_OK), TR("Back to the World"), TR("Closes the result. The world is the same as before the match."));
 }
-static void pv_esc_close(void *ud) { pv_click = (int)(intptr_t)ud; }   /* the kit's Escape: the window's own button, as a click */
-static mpesc_win esc_pv = { .name = "the PvP Match window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_CLOSE },
-                 esc_br = { .name = "the PvP Bring Units window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_BR_BACK },
-                 esc_pr = { .name = "the PvP result window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_RESULT_OK };
 static void pvp_ui_frame(const mpm_obs *o) {
     const pvp_state *s = pvp_ui_state ? pvp_ui_state() : NULL;
     if (!s) return;
@@ -1063,6 +1104,7 @@ static void pvp_ui_frame(const mpm_obs *o) {
         if (pv_open && frames % 15 == 0) pv_refresh();
         if (frames % 15 == 0) { if (br_open) win_fit(pvt(h_br_root), &br_k, "Bring Units window"); if (pr_open) win_fit(pvt(h_pr_root), &pr_k, "result window"); }   /* M5 */
     } else { pv_open = 0; pr_open = 0; br_open = 0; br_lobby = 0; }
+    br_tile_click();                                                     /* CARD RULE: the text Bring list's unit tiles */
     if (pv_click >= 0) { int k = pv_click; pv_click = -1; pv_click_do(k); }
     /* Escape (owner 2026-10-25): these windows are on the loader kit's Escape stack while they show (mp_esc.h): one press
        = the top window's own Close / Back / "Back to the World" (as a click), and the game does not see it (the Esc menu
@@ -1099,6 +1141,7 @@ static char *pv_probe(const char *line) {
     probe_rect(&b, "window", pvt(h_pv_root)); probe_rect(&b, "close", pvb(PVB_CLOSE)); probe_rect(&b, "start", pvb(PVB_START));
     probe_rect(&b, "win_right", pvb(PVB_ARROW0 + 2 * PVR_WIN + 1));
     probe_rect(&b, "bring", pvt(h_br_root)); probe_rect(&b, "bring_back", pvb(PVB_BR_BACK));
+    probe_rect(&b, "br_tile0", pvt(h_br_tile[0])); probe_rect(&b, "br_por0", pvt(h_br_por[0])); probe_rect(&b, "br_btn0", pvb(PVB_BR_UNIT0));   /* CARD RULE tests */
     probe_rect(&b, "result", pvt(h_pr_root)); probe_rect(&b, "result_ok", pvb(PVB_RESULT_OK));
     probe_rect(&b, "ready", pvb(PVB_READY));
     probe_rect(&b, "msg", u_gc_get(h_msg)); bput(&b, ",\"msg_text\":"); bstr(&b, u_on(u_gc_get(h_msg)) ? msg_now : "");   /* P2 */
@@ -1142,6 +1185,8 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     char a[32] = ""; jstr(line, "action", a, sizeof a); double v = 0, d = 1;
     if (!strcmp(a, "probe")) return pv_probe(line);
     if (!strcmp(a, "uiscale")) { jnum(line, "v", &v); int rc = v > 0 ? pv_set_ui_scale((float)v) : -9; char o[64]; snprintf(o, sizeof o, "{\"ok\":%s,\"rc\":%d}", rc ? "false" : "true", rc); return strdup(o); }
+    if (!strcmp(a, "esc_menu")) { popup_activate(1); goto out; }          /* test: open the Esc menu (as the Esc key) */
+    if (!strcmp(a, "bring_text")) { if (pv_open) { br_sent[0] = 0; br_show(1); } goto out; }   /* test: the text Bring list (the card window's fallback without the kit) */
     if (!strcmp(a, "esc")) pv_click = PVB_ESC;
     else if (!strcmp(a, "close")) pv_click = PVB_CLOSE;
     else if (!strcmp(a, "start")) pv_click = PVB_START;
@@ -1180,6 +1225,7 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     for (int i = 0; i < br_nunits; i++) { bput(&b, "%s[", i ? "," : ""); bstr(&b, br_unit_name[i]); bput(&b, ",\"%s\",%d,%d]", br_unit_guid[i], br_unit_lvl[i], br_pick[i]); }
     bput(&b, "],\"status\":"); bstr(&b, br_sent); bput(&b, "},");
     bput(&b, "\"roots\":{\"window\":%d,\"bring\":%d,\"result\":%d},", u_on(pvt(h_pv_root)), u_on(pvt(h_br_root)), u_on(pvt(h_pr_root)));   /* shown objects (Escape tests) */
+    { Obj ev = esc_view(); bput(&b, "\"esc_menu\":%d,", ev && u_on(ev) ? 1 : 0); }                    /* the game's Esc menu shows */
     bput(&b, "\"window\":%d,\"result\":%d,\"esc_entry\":%d,\"hud\":%d,\"ready\":%d,\"fight_btn\":%d,\"proposal_box\":%d,\"round_screen\":%d,\"hud_text\":\"%s\",\"mode\":%d,\"bo\":%d,\"secs\":%d,\"pause\":%d,\"vanilla\":%d,\"vanilla_shown\":%d,\"note\":",
          pv_open, pr_open, u_on(pvb(PVB_ESC)), u_go_active_self(u_gc_get(h_hud)), u_on(pvb(PVB_READY)), u_on(pvb(PVB_FIGHT)), u_alive(u_gc_get(h_prop_root)) && u_on(u_gc_get(h_prop_root)), u_alive(u_gc_get(h_rs_root)) && u_on(u_gc_get(h_rs_root)), hud_last, pv.mode, pv_bo[pv.bo], pv_secs[pv.secs], pv.pause,
          pv.vanilla, pv_vanilla_shown(pvp_ui_state ? pvp_ui_state() : NULL, pvp_ui_is_host && pvp_ui_is_host()));

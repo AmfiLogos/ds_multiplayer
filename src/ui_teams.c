@@ -2226,25 +2226,27 @@ static void install_hooks(void) {
 /* Test build only (-DTEAMS_MOUSE_TEST): a fake mouse fed into the game's real input path. UnityEngine.Input
    GetMouseButton / Down / Up and mousePosition return scripted values while a fake click runs, so the stock
    MouseInputDispatcher -> RightClickState -> UnityUtil.IsPointerOverUI -> InteractGrid / InteractUI chain is
-   what decides. ui_teams {action:"mouse", x, y, button}. */
+   what decides. ui_teams {action:"mouse", x, y, button}. A drag: + x1, y1, frames (or dx, dy: 20 frames) (the button stays down while the
+   pointer moves to x1, y1 over that many frames, then it is let go): the kit's right-drag move (dsl_movable) reads the
+   same Input calls. */
 static bool (*o_mb)(int, void *), (*o_mbd)(int, void *), (*o_mbu)(int, void *);
 static V3 (*o_mpos)(void *);
-static int fk_on, fk_btn, fk_up = 1; static float fk_x, fk_y, fk_x1, fk_y1; static int64_t fk_start;   /* fk_up > 1: a drag */
+static int fk_on, fk_btn, fk_drag; static float fk_x, fk_y, fk_x1, fk_y1; static int64_t fk_start;
 /* a real pointer rests on the spot before it presses: FK_HOVER frames of position only, then the press. A press in the
    first frame at a new spot made the stock right-click throw (NRE in InteractionOptionControl.GetQuickAction: the hover
    option is computed a frame later; gamelane 2026-10-14), which no real mouse can do. */
 #define FK_HOVER 10
-static int fk_phase(void) { return fk_on ? (int)(rig_frames - fk_start) : -1000; }   /* <0 hover, 0 = down frame, fk_up = up frame */
-/* a drag (MOVE RULE test): held from the down frame to fk_up; the pointer goes from x, y to x1, y1 over frames 2..22 */
-static bool hk_mb(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mb(b, mi); return ph >= 0 && ph < fk_up && b == fk_btn; }
+static int fk_phase(void) { return fk_on ? (int)(rig_frames - fk_start) : -1000; }   /* <0 hover, 0 = down frame, fk_up() = up frame */
+static int fk_up(void) { return fk_drag > 0 ? fk_drag + 3 : 1; }                       /* a click: up the next frame; a drag: after the move */
+static bool hk_mb(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mb(b, mi); return ph >= 0 && ph < fk_up() && b == fk_btn; }
 static bool hk_mbd(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbd(b, mi); return ph == 0 && b == fk_btn; }
-static bool hk_mbu(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbu(b, mi); return ph == fk_up && b == fk_btn; }
+static bool hk_mbu(int b, void *mi) { int ph = fk_phase(); if (ph == -1000) return o_mbu(b, mi); return ph == fk_up() && b == fk_btn; }
 static V3 hk_mpos(void *mi) {
     if (!fk_on) return o_mpos(mi);
-    int ph = fk_phase(); float t = fk_up <= 1 || ph <= 2 ? 0 : ph >= 22 ? 1 : (ph - 2) / 20.0f;
+    int ph = fk_phase(); float t = fk_drag <= 0 || ph <= 1 ? 0 : ph >= fk_drag + 1 ? 1 : (float)(ph - 1) / (float)fk_drag;   /* a drag moves after the press */
     return (V3){ fk_x + (fk_x1 - fk_x) * t, fk_y + (fk_y1 - fk_y) * t, 0 };
 }
-static void fake_frame(void) { if (fk_on && fk_phase() > fk_up + 100) fk_on = 0; }   /* hold the position ~100 frames, then real mouse */
+static void fake_frame(void) { if (fk_on && fk_phase() > fk_up() + 100) fk_on = 0; }   /* hold the position ~100 frames, then real mouse */
 #endif
 void ui_teams_install(void) {
     install_hooks();
@@ -2824,10 +2826,12 @@ char *ui_teams_exec(const char *cmd, const char *line) {
         double x = -1, y = -1; jnum(line, "x", &x); jnum(line, "y", &y);
         if (x < 0) x = F(0x5092C94, int (*)(void *))(NULL) / 2.0;   /* Screen.width / height: centre by default */
         if (y < 0) y = F(0x5092CD4, int (*)(void *))(NULL) / 2.0;
-        double dx = 0, dy = 0; jnum(line, "dx", &dx); jnum(line, "dy", &dy);    /* a drag by dx, dy screen px (y up) */
-        fk_x = (float)x; fk_y = (float)y; fk_x1 = (float)(x + dx); fk_y1 = (float)(y + dy); fk_up = dx || dy ? 25 : 1;
+        double x1 = x, y1 = y, nf = 0, dx = 0, dy = 0; jnum(line, "x1", &x1); jnum(line, "y1", &y1); jnum(line, "frames", &nf);   /* a drag (optional): to x1, y1 */
+        if (jnum(line, "dx", &dx) | jnum(line, "dy", &dy)) { x1 = x + dx; y1 = y + dy; if (nf < 1) nf = 20; }   /* or by dx, dy screen px (y up) */
+        fk_x = (float)x; fk_y = (float)y; fk_x1 = (float)x1; fk_y1 = (float)y1; fk_drag = nf >= 1 && nf <= 600 ? (int)nf : 0;
         fk_btn = (int)bt; fk_start = rig_frames + 1 + FK_HOVER; fk_on = 1;
-        rig_log("teams: fake mouse %d at %.0f,%.0f%s from frame %lld", fk_btn, x, y, fk_up > 1 ? " (drag)" : "", (long long)fk_start);
+        rig_log("teams: fake mouse %d at %.0f,%.0f from frame %lld%s", fk_btn, x, y, (long long)fk_start, fk_drag ? " (drag)" : "");
+        if (fk_drag) rig_log("teams: fake mouse drag to %.0f,%.0f over %d frames", x1, y1, fk_drag);
 #endif
     } else if (!strcmp(act, "debug")) {                     /* raycast facts for the open screen and its parents */
         Buf d = {0}; Obj r = root();
