@@ -472,6 +472,7 @@ void *mu_bring_test_find(const char *n) {
     static const struct { const char *n; DSLObj *o; } map[] = {
         { "bring", &B.b_bring }, { "cancel", &B.b_cancel }, { "x", &B.x }, { "next", &B.b_next }, { "prev", &B.b_prev }, { "win", &B.win },
         { "right", &B.right }, { "status", &B.status }, { "picked", &B.t_picked }, { "src_saves", &B.b_src[0] }, { "src_lib", &B.b_src[1] } };
+    if (!strcmp(n, "cancel") && !B.b_cancel) return B.x;              /* the red X took Cancel's place (older drivers click "cancel") */
     for (size_t i = 0; i < sizeof map / sizeof *map; i++) if (!strcmp(n, map[i].n)) return *map[i].o;
     int k;
     if (sscanf(n, "left%d", &k) == 1 && k >= 0 && k < B.nleft) return B.left_btn[k];
