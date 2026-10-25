@@ -5452,7 +5452,13 @@ static char *testchoice_exec(const char *line) {
 }
 char *mpmenu_exec(const char *cmd, const char *line) {
     for (int k = 0; k < nhooks; k++) { char *r = hooks[k].exec ? hooks[k].exec(cmd, line) : NULL; if (r) return r; }   /* Custom Modes: mpm_fewin, mpm_pvp */
-    if (!strcmp(cmd, "mpm_esc")) { char *r = mpesc_dump(); return r ? r : strdup("{\"ok\":false}"); }   /* test: our windows that show, their red X (CLOSE RULE) */
+    if (!strcmp(cmd, "mpm_esc")) {                                          /* test: plain = open the Esc menu (what the drivers always sent) and the
+                                                                               list of our windows that show with their red X (CLOSE RULE, taken before
+                                                                               the menu opens); {list:1} = the list only, nothing opens */
+        double v; int list = jnum(line, "list", &v) && v != 0; char *r = mpesc_dump();
+        if (!list) popup_activate(1);
+        return r ? r : strdup("{\"ok\":true}");
+    }
     if (!strcmp(cmd, "mpm_shot")) {
         char p[1024], how[32] = "camera"; if (!jstr(line, "path", p, sizeof p)) return strdup("{\"ok\":false}");
         jstr(line, "how", how, sizeof how);
@@ -5721,7 +5727,6 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         if (!cs || !jstr(line, "guid", gs, sizeof gs) || !guid_parse(gs, &g)) return strdup("{\"ok\":false}");
         Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", mp_claim(cs, (const uint8_t *)&g)); return b.p;
     }
-    if (!strcmp(cmd, "mpm_esc")) { popup_activate(1); return strdup("{\"ok\":true}"); }   /* open the Esc menu (test) */
     if (!strcmp(cmd, "mpm_return_game")) { Obj ev = esc_view(); if (ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL); return strdup("{\"ok\":true}"); }   /* test: Esc menu > Return to Game */
     if (!strcmp(cmd, "mpm_hostmods")) {                                     /* test: {test:1} = DSMP_HOSTMODS_TEST (auto click); state of the hostmods box */
         double v = -1; jnum(line, "test", &v); if (v >= 0) { hostmods_loader(); hm_test = v != 0; }
