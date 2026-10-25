@@ -949,6 +949,7 @@ static int rules_close_frames;                          /* frames after the lobb
 static int teams_close_frames;                          /* same after the teams lane's window closed */
 static int teams_modal(void);
 static int chat_typing, chat_close_frames, chat_scroll, chat_fade_s = 12, chat_show_join = 1, chat_on = 1;
+static int chat_read;                                    /* the open box in its read state (owner 2026-10-25): no text field, the game keeps its keys */
 #define CH_W0 470                                        /* the open chat box: default = smallest size (canvas units) */
 #define CH_H0 270
 static float chat_x = 0, chat_y = 0;                     /* offset of the box's bottom-left from the default place (canvas units), remembered */
@@ -3527,7 +3528,13 @@ static void hist_del(int k) {
  * Enter sends, Escape closes. While typing, the game's own key handling sees a focused text field
  * (KeyInputDispatcher.IsTextInputFocused hooked to true), so no hotkey fires. Right-click + drag moves it; the open box
  * also moves with a left drag on its title band or frame, and resizes with a left drag on its bottom-right corner (grip:
- * width + height) or its bottom edge (height) (owner 2026-10-25); place and size are remembered in mp_menu.json. */
+ * width + height) or its bottom edge (height) (owner 2026-10-25); place and size are remembered in mp_menu.json.
+ * Read state (owner 2026-10-25: "can't pause to read the chat"): the same box with no text field focused, so the game
+ * keeps its keys (Space pauses). It opens with the wheel over the chat lines, a left click on a chat line (not a local
+ * one: those let clicks through), or Enter where the player cannot send (single player: no entry field at all); it stays
+ * until Escape or its X. There the wheel scrolls, the box moves and resizes, and the scrollbar, the Top / Bottom buttons
+ * and the bin work; Enter (in a session) or a click in the field types, a click on the history goes back to reading.
+ * "/clear" and the bin empty this screen's history only (never sent); mp_api v4 chat_clears counts them. */
 #define CH_HIST 3000                                                         /* mp_api v3: a DPS check writes a line per hit */
 #define CH_DROP 300                                                          /* history full: the oldest 300 go in one move */
 #define CH_IDLE 5
@@ -3538,13 +3545,17 @@ static struct { char text[CH_TEXT]; double t; int link, id, font, missing, local
    chosen yet, gen = the fonts' generation); missing: characters no game font has, shown as '?'. hi / hb: measured text
    height in the idle lines (box width - 60: 410) / the open box (box width - 24: 446), 0 = not measured (ch_hi_w / ch_hb_w). local: 1 = a mp_api v3 chat_local line
    (never sent; MP_CHATL_CLEAR removes it; in single player the chat shows while one is in the history) */
-static int ch_nlocal; static unsigned ch_local_total;                       /* local lines in chist now / ever added (test read-back) */
+static int ch_nlocal, ch_top_stale; static unsigned ch_local_total;   /* ch_top_stale: lines left the middle of the history (ch_top_count) */                       /* local lines in chist now / ever added (test read-back) */
 static char chat_buf[DSNET_CHAT_MAX + 1];
 static uintptr_t h_ch_view, h_ch_root, h_ch_box, h_ch_idle[CH_IDLE], h_ch_idlebg[CH_IDLE], h_ch_lines[CH_BOX_LINES], h_ch_input, h_ch_hint, h_ch_field, h_ch_typing, h_ch_typingbg;
 /* the open box's parts placed by ch_layout for its size: history / footer / title bands, lines, "Chat", "Say:", the field's
    plates, the corner grip, and two clear strips (UI clicks) under the bottom edge and right of the corner: a wider grab */
-enum { CL_BAND, CL_FOOT, CL_TBAND, CL_TLINE, CL_TITLE, CL_ILINE, CL_SAY, CL_FLINE, CL_FBG, CL_GRIP, CL_STRIPB, CL_STRIPR, CL_N };
-static uintptr_t h_ch_lay[CL_N]; static float ch_say_w = 40, ch_lay_w, ch_lay_h;
+enum { CL_BAND, CL_FOOT, CL_TBAND, CL_TLINE, CL_TITLE, CL_ILINE, CL_SAY, CL_FLINE, CL_FBG, CL_GRIP, CL_STRIPB, CL_STRIPR,
+       CL_TRACK, CL_THUMB, CL_TOP, CL_BOT, CL_BIN, CL_CLOSE, CL_N };   /* scrollbar track + thumb, Top / Bottom, the bin, the X */
+static uintptr_t h_ch_lay[CL_N]; static float ch_say_w = 40, ch_lay_w, ch_lay_h; static int ch_lay_ro = -1;
+/* the icons' pixels (children of CL_TOP / CL_BOT / CL_BIN / CL_CLOSE when the X is drawn from pixels): their colour shows the hover */
+#define CH_ICON_PX 24
+static uintptr_t h_ch_icon[4][CH_ICON_PX]; static int n_ch_icon[4], ch_icon_hot = -1;
 static char typing_shown[200];                           /* test status: the "is typing" line now shown */
 void utf16_to_utf8(Obj s, char *out, size_t cap) {             /* typed text: keep accents etc. (str_utf8 is ASCII-only) */
     size_t n = 0; if (cap) out[0] = 0;
@@ -3563,6 +3574,7 @@ void utf16_to_utf8(Obj s, char *out, size_t cap) {             /* typed text: ke
 }
 static char test_chat_in[1024]; static int test_chat_enter, test_chat_escape, test_chat_open;
 static bool (*o_textfocus)(void *);
+static void chat_box_close(const char *why);
 /* hotkeys off while typing, and while the lobby Rules panel is open (its Escape must not open the game's Esc menu) */
 static int teams_modal(void) {                                             /* teams lane: Teams window / proposal summary / stock step open */
     static int (*f)(void); static int looked; if (!looked) { looked = 1; f = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_modal_open"); }
@@ -3586,6 +3598,7 @@ __attribute__((visibility("default"))) int mpmenu_escape_ours(void) {
     if (teams_modal() || teams_close_frames > 0) return 1;                  /* Teams closes itself on Escape (teams lane) */
     { static int (*tesc)(void); static int looked; if (!looked) { looked = 1; tesc = (int (*)(void))dlsym(RTLD_DEFAULT, "ui_teams_escape_ours"); }
       if (tesc && tesc()) return 1; }                                       /* folds the expedition proposal panel (ux_flow F15) */
+    if (chat_read) { chat_box_close("Escape"); return 1; }                   /* the chat in its read state (no kit Escape stack: older loader) */
     /* lobby (ux_flow F14): Escape would close the stock Esc view that carries the lobby, which comes back 0.5 s later
        (a blink). The lobby closes with Start or Leave, so Escape does nothing there. */
     if (M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY) { rig_log("mpmenu: Escape in the lobby: kept"); return 1; }
@@ -3594,7 +3607,7 @@ __attribute__((visibility("default"))) int mpmenu_escape_ours(void) {
 /* panel cog (ui lane, dlsym): fade seconds, join / leave lines, chat on / off; saved in mp_menu.json */
 __attribute__((visibility("default"))) void mpmenu_chat_config(int fade_s, int show_join, int enabled) {
     if (fade_s >= 3 && fade_s <= 120) chat_fade_s = fade_s; chat_show_join = show_join != 0; chat_on = enabled != 0;
-    if (!chat_on) chat_typing = 0;
+    if (!chat_on) chat_typing = chat_read = 0;
     prefs_save();
 }
 __attribute__((visibility("default"))) void mpmenu_chat_config_get(int *fade_s, int *show_join, int *enabled) {
@@ -3611,10 +3624,27 @@ static void chat_add_as(const char *rich, int local) {
     snprintf(chist[nch].text, sizeof chist[nch].text, "%s", rich); dsi_utf8_fix_end(chist[nch].text);
     chist[nch].t = mono_s(); chist[nch].link = 0; chist[nch].id = ++ch_serial; chist[nch].font = -1; chist[nch].gen = 0; chist[nch].hi = chist[nch].hb = 0; chist[nch].missing = 0;
     chist[nch].local = local != 0; ch_nlocal += local != 0; nch++;
-    /* a local line while the open box is scrolled up keeps the same lines in view (a DPS check adds many a second); any
-       other line jumps to the newest, as before. A drop above moves the shown line and nch by the same count. */
-    if (local && chat_typing && chat_scroll > 0) { chat_scroll++; if (chat_scroll > nch - 1) chat_scroll = nch - 1; }
+    /* a local line while the open box is scrolled up keeps the same lines in view (a DPS check adds many a second); so does
+       any line while the player reads (read state, scrolled up); other lines jump to the newest, as before. A drop above
+       moves the shown line and nch by the same count. */
+    if ((local || (chat_read && !chat_typing)) && (chat_typing || chat_read) && chat_scroll > 0) { chat_scroll++; if (chat_scroll > nch - 1) chat_scroll = nch - 1; }
     else chat_scroll = 0;
+}
+/* "/clear" or the bin (owner 2026-10-25): this screen's whole history goes (every kind of line); nothing is sent, the other
+   players' chat is untouched. chat_clears (mp_api v4) counts it, so a mod that re-sends its own lines (the DPS log after a
+   filter change) can leave out what the player cleared. */
+static unsigned ch_clears;
+static void chat_clear_view(const char *how) {
+    int n = nch;
+    nch = 0; ch_nlocal = 0; nchat_shown = 0; chat_scroll = 0; ch_clears++; ch_top_stale = 1;
+    rig_log("mpmenu: chat cleared by the player (%s): %d line(s) removed on this screen only, clears %u", how, n, ch_clears);
+}
+unsigned mpmenu_chat_clears(void) { return ch_clears; }               /* mp_api v4 chat_clears */
+static int chat_is_clear_cmd(const char *t) {                           /* "/clear" (any case, spaces around) */
+    while (*t == ' ') t++;
+    for (const char *w = "/clear"; *w; w++, t++) if ((*t >= 'A' && *t <= 'Z' ? *t + 32 : *t) != *w) return 0;
+    while (*t == ' ') t++;
+    return *t == 0;
 }
 static void chat_add(const char *rich) { chat_add_as(rich, 0); }
 /* MP_CHATL_CLEAR (and the title with no session): the local lines go, the others keep their order. The open box keeps
@@ -3629,7 +3659,7 @@ static void chat_clear_local(void) {
         j++;
     }
     rig_log("mpmenu: chat: %d local line(s) removed, %d kept", nch - j, j);
-    nch = j; ch_nlocal = 0; nchat_shown = 0;
+    nch = j; ch_nlocal = 0; nchat_shown = 0; ch_top_stale = 1;
     chat_scroll = newer < nch ? newer : nch > 0 ? nch - 1 : 0;
 }
 /* ui lane (pings, lan_v10, dlsym): a system line in the chat, faded like any line. link != 0: a left click on the shown
@@ -3886,16 +3916,41 @@ static int ch_idle_id[CH_IDLE], ch_idle_font[CH_IDLE], ch_box_id[CH_BOX_LINES], 
 static int ch_box_oldest;                                                     /* the open box shows the oldest line: no more scrolling up */
 static int ch_over_now, ch_wheel_blocked;                                     /* the pointer is over the chat (this frame); wheel reads blocked */
 static float ch_line_w[2] = { CH_W0 - 60, CH_W0 - 24 };                      /* text width now: idle lines, open-box lines (test read-back) */
-enum { CHD_NONE, CHD_MOVE, CHD_SIZE, CHD_HEIGHT };
-static int ch_drag, ch_drag_btn, ch_held[2]; static V3 ch_d0; static float ch_dsc;   /* a move / resize in progress: kind, button, start */
-static unsigned ch_drags[4];                                                  /* test read-back: drags ended, per kind */
+enum { CHD_NONE, CHD_MOVE, CHD_SIZE, CHD_HEIGHT, CHD_THUMB };
+static int ch_drag, ch_drag_btn, ch_held[2]; static V3 ch_d0; static float ch_dsc;   /* a move / resize / thumb drag in progress: kind, button, start */
+static unsigned ch_drags[5];                                                  /* test read-back: drags ended, per kind */
 /* test only: a scripted pointer for the drag code above (set by the rig control channel's mpm_chat {drag}, which opens only in
    DSRIG_CTL=1 test copies; a player's game never sets it): 2 frames resting at (x0, y0), the press, n frames moving to (x1, y1),
-   the release; screen pixels, y up, as Input.mousePosition */
-static struct { int on, button, i, n; float x0, y0, x1, y1; } ch_fk;
+   the release; screen pixels, y up, as Input.mousePosition. button -1: no press (a hover / the wheel only); roll: the wheel's
+   y on each moving frame */
+static struct { int on, button, i, n; float x0, y0, x1, y1, wheel; } ch_fk;
 #ifdef TEAMS_MOUSE_TEST
 static V2 ch_fake_wheel; static int ch_fake_wheel_n;                         /* test: a fake mouse wheel for n frames */
 #endif
+#define CH_C_TRACK   ((Col){ 0.141f, 0.118f, 0.122f, 1 })                   /* the game's ScrollBar_Base #241e1f */
+#define CH_C_THUMB   ((Col){ 0.263f, 0.247f, 0.267f, 1 })                   /* ScrollBar_bar #433f44 */
+#define CH_C_THUMBHI ((Col){ 0.341f, 0.333f, 0.349f, 1 })                   /* its top edge #575559 */
+static uintptr_t h_ch_thumbhi;
+/* a small icon of square pixels (the game's pixel look, like the grip): rows of '#' in a w x h grid, px units each, centred
+   in its parent; kept in h_ch_icon[slot] so the hover can recolour it */
+static void ch_icon(Obj tpl_img, Obj parent, int slot, const char *const *rows, int w, int h, float px) {
+    for (int i = 0; i < n_ch_icon[slot]; i++) { u_gc_free(h_ch_icon[slot][i]); h_ch_icon[slot][i] = 0; }
+    n_ch_icon[slot] = 0;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; ) {
+            if (rows[y][x] != '#') { x++; continue; }
+            int x1 = x; while (x1 < w && rows[y][x1] == '#') x1++;
+            Obj d = mk_img(tpl_img, u_tr(parent), -1, C_SUB, ((x + x1) / 2.0f - w / 2.0f) * px, (h / 2.0f - y - 0.5f) * px, (x1 - x) * px, px);
+            if (d && n_ch_icon[slot] < CH_ICON_PX) h_ch_icon[slot][n_ch_icon[slot]++] = u_gc_new(d);
+            x = x1;
+        }
+}
+static void ch_icon_hover(int slot) {                                          /* the hovered icon in the main text colour */
+    if (slot == ch_icon_hot) return;
+    for (int s = 0; s < 4; s++) if (s == slot || s == ch_icon_hot)
+        for (int i = 0; i < n_ch_icon[s]; i++) { Obj d = u_gc_get(h_ch_icon[s][i]); if (mm_is(d, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(d, s == slot ? C_MAIN : C_SUB, NULL); }
+    ch_icon_hot = slot;
+}
 static void chat_build(Obj parent) {
     static uintptr_t hc; static void *kc;
     Obj cn = find_view_x(&hc, &kc, "Refactor.UI", "CommonNoticeView", true);
@@ -3980,38 +4035,89 @@ static void chat_build(Obj parent) {
         if (o && mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL);
         CH_KEEP(CL_STRIPR, mk_img(tpl_img, B, -1, (Col){ 0, 0, 0, 0 }, 0, 0, 6, 20));
         if (o && mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL);
+        /* read state (owner 2026-10-25): the scrollbar in the game's colours (its ScrollBar_Base #241e1f track, ScrollBar_bar
+           #433f44 handle with a #575559 top edge), Top / Bottom buttons at its ends, the bin left of the grip, the X in the
+           title band. Plain images, never Selectables (a selected Button would take Space as Submit); clicks are read by
+           chat_frame like the drags, and each is a raycast target (a UI click, never a world click). */
+        CH_KEEP(CL_TRACK, mk_img(tpl_img, B, -1, CH_C_TRACK, 0, 0, 10, 10));
+        if (o && mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL);
+        CH_KEEP(CL_THUMB, mk_img(tpl_img, B, -1, CH_C_THUMB, 0, 0, 6, 16));
+        if (o && mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL);
+        { Obj hi2 = o ? mk_img(tpl_img, u_tr(o), -1, CH_C_THUMBHI, 0, 0, 4, 2) : NULL; u_gc_free(h_ch_thumbhi); h_ch_thumbhi = hi2 ? u_gc_new(hi2) : 0; }
+        static const char *const ic_top[] = { "#####", ".....", "..#..", ".###.", "#####" }, *const ic_bot[] = { "#####", ".###.", "..#..", ".....", "#####" },
+                                 *const ic_bin[] = { "..###..", "#######", ".#####.", ".#.#.#.", ".#.#.#.", ".#.#.#.", ".#.#.#.", ".#####." },
+                                 *const ic_x[] = { "#...#", ".#.#.", "..#..", ".#.#.", "#...#" };
+        CH_KEEP(CL_TOP, mk_img(tpl_img, B, -1, CH_C_TRACK, 0, 0, 14, 14));
+        if (o) { if (mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL); ch_icon(tpl_img, o, 0, ic_top, 5, 5, 2); }
+        CH_KEEP(CL_BOT, mk_img(tpl_img, B, -1, CH_C_TRACK, 0, 0, 14, 14));
+        if (o) { if (mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL); ch_icon(tpl_img, o, 1, ic_bot, 5, 5, 2); }
+        CH_KEEP(CL_BIN, mk_img(tpl_img, B, -1, (Col){ 0, 0, 0, 0 }, 0, 0, 16, 18));
+        if (o) { if (mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL); ch_icon(tpl_img, o, 2, ic_bin, 7, 8, 2); }
+        /* the X: a copy of the game's own close button (the Task Planner window's CloseButton with its X, as the Teams
+           window), 32 x 32 shown at 0.75; its Button off (never a Selectable: Space would Submit it), clicks read by
+           chat_frame. Not found: a pixel X */
+        { Obj pf = popup_prefab(13), cb = pf ? tr_find(u_tr(pf), "Img_BackPanel/CloseButton") : NULL, cl = cb ? u_instantiate(cb, B) : NULL;
+          if (u_alive(cl)) {
+              static void *men; if (!men) men = mth("UnityEngine", "Behaviour", "set_enabled", 1);
+              Obj btn = comp_of(cl, "UnityEngine.UI", "Button"); if (u_alive(btn) && men) MCALL(men, void, Obj, bool, const void *)(btn, false, men);
+              u_active(cl, true); place(cl, 0, 0, 32, 32);
+              F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(cl), (V3){ 0.75f, 0.75f, 1 }, NULL);   /* localScale */
+              Obj cim = image_of(cl); if (cim && mm_is(cim, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(cim, true, NULL);
+              o = cl; h_ch_lay[CL_CLOSE] = u_gc_new(cl);
+              for (int i = 0; i < n_ch_icon[3]; i++) { u_gc_free(h_ch_icon[3][i]); h_ch_icon[3][i] = 0; } n_ch_icon[3] = 0;
+          } else {
+              CH_KEEP(CL_CLOSE, mk_img(tpl_img, B, -1, (Col){ 0, 0, 0, 0 }, 0, 0, 22, 22));
+              if (o) { ch_icon(tpl_img, o, 3, ic_x, 5, 5, 3); if (mm_is(o, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(o, true, NULL); }
+          }
+          rig_log("mpmenu: chat X = %s", u_alive(cl) ? "a copy of the game's CloseButton" : "pixel X (CloseButton not found)"); }
+        ch_icon_hot = -1;
 #undef CH_KEEP
-        ch_lay_w = ch_lay_h = 0;                                            /* ch_layout places them at the first frame */
+        ch_lay_w = ch_lay_h = 0; ch_lay_ro = -1;                            /* ch_layout places them at the first frame */
         u_active(box, false);
     }
     u_gc_free(h_ch_box); h_ch_box = box ? u_gc_new(box) : 0;
     rig_log("mpmenu: chat built");
 }
 /* the open box's parts for its size W x H (canvas units, centre origin): the same places as the old fixed 470 x 270 box,
-   measured from its edges (title band at the top, "Say:" + field at the bottom, the history between) */
-static void ch_layout(float W, float H) {
-    float hw = W / 2, hh = H / 2, sw = ch_say_w;
+   measured from its edges (title band at the top, "Say:" + field at the bottom, the history between). ro (read only: the
+   player cannot send, single player): no "Say:", no field, the history goes down to the bin and the grip. Right of the
+   history: the scrollbar column (Top button, track, Bottom button); the X right in the title band. */
+#define CH_HIST_TOP(hh)     ((hh) - 31)                                         /* the history band: under the title line */
+#define CH_HIST_BOT(hh, ro) ((ro) ? -(hh) + 24 : -(hh) + 46)                    /* over the input line / over the bin and grip */
+#define CH_LINE_X  (-6.0f)                                                     /* box lines: 12 in from the left, 24 from the right (the column) */
+#define CH_LINE_DW 36.0f
+static void ch_layout(float W, float H, int ro) {
+    float hw = W / 2, hh = H / 2, sw = ch_say_w, ht = CH_HIST_TOP(hh), hb = CH_HIST_BOT(hh, ro);
     Obj o;
 #define CH_P(id, x, y, w, h) do { o = u_gc_get(h_ch_lay[id]); if (o) place(o, x, y, w, h); } while (0)
-    CH_P(CL_BAND, 0, ((hh - 31) + (-hh + 46)) / 2, W - 4, (hh - 31) - (-hh + 46));
+#define CH_ON(id, on) do { o = u_gc_get(h_ch_lay[id]); if (o) u_active(o, on); } while (0)
+    float bb = ro ? -hh + 3 : -hh + 46;                                       /* the history colour reaches the bottom when read only */
+    CH_P(CL_BAND, 0, (ht + bb) / 2, W - 4, ht - bb);
     CH_P(CL_FOOT, 0, ((-hh + 46) + (-hh + 3)) / 2, W - 4, 43);
     CH_P(CL_TBAND, 0, hh - 16, W - 4, 30);
     CH_P(CL_TLINE, 0, hh - 31, W - 4, 1);
     CH_P(CL_TITLE, -hw + 12 + 60, hh - 16, 120, 26);
-    { Obj hi = u_gc_get(h_ch_hint); if (hi) place(hi, hw - 12 - 120, hh - 16, 240, 22); }
+    { Obj hi = u_gc_get(h_ch_hint); if (hi) place(hi, hw - 32 - 120, hh - 16, 240, 22); }   /* right-aligned, left of the X */
+    { Obj cx = u_gc_get(h_ch_lay[CL_CLOSE]); if (cx) place(cx, hw - 17, hh - 16, n_ch_icon[3] ? 22 : 32, n_ch_icon[3] ? 22 : 32); }   /* the game's X: 32 at scale 0.75 */
     CH_P(CL_ILINE, 0, -hh + 46, W - 4, 1);
     CH_P(CL_SAY, -hw + 12 + sw / 2, -hh + 23, sw, 24);
-    float fl = -hw + 12 + sw + 7, fr = hw - 15, fw = fr - fl, fx = (fl + fr) / 2;   /* English, 470 wide: 396 wide at x 22, as before */
+    float fl = -hw + 12 + sw + 7, fr = hw - 40, fw = fr - fl, fx = (fl + fr) / 2;   /* the field ends left of the bin */
     CH_P(CL_FLINE, fx, -hh + 23, fw, 30);
     CH_P(CL_FBG, fx, -hh + 23, fw - 2, 28);
     { Obj in = u_gc_get(h_ch_input), f = u_gc_get(h_ch_field);
       if (in) place(in, fx, -hh + 23, fw - 16, 26);
-      if (u_alive(f)) place(f, fx, -hh + 23, fw - 2, 28); }
+      if (u_alive(f)) { place(f, fx, -hh + 23, fw - 2, 28); u_active(f, !ro); } }
+    CH_ON(CL_FOOT, !ro); CH_ON(CL_ILINE, !ro); CH_ON(CL_SAY, !ro); CH_ON(CL_FLINE, !ro); CH_ON(CL_FBG, !ro);
+    CH_P(CL_BIN, hw - 29, ro ? -hh + 12 : -hh + 23, 16, 18);                  /* left of the grip */
     CH_P(CL_GRIP, hw - 10, -hh + 10, 14, 14);                              /* 3 from the corner; clear of the field (ends 15 in) */
     CH_P(CL_STRIPB, 0, -hh - 3, W, 6);
     CH_P(CL_STRIPR, hw + 3, -hh + 4, 6, 20);
+    CH_P(CL_TOP, hw - 12, ht - 10, 14, 14);
+    CH_P(CL_BOT, hw - 12, hb + 10, 14, 14);
+    { float t0 = ht - 20, t1 = hb + 20; CH_P(CL_TRACK, hw - 12, (t0 + t1) / 2, 10, t0 - t1 > 4 ? t0 - t1 : 4); }   /* the thumb: chat_frame */
 #undef CH_P
-    ch_lay_w = W; ch_lay_h = H;
+#undef CH_ON
+    ch_lay_w = W; ch_lay_h = H; ch_lay_ro = ro;
 }
 /* where the open box is (canvas units: left, bottom, width, height; the canvas is 1080 high, 2 * hw wide): the remembered
    place and size, inside the screen. Size: 470 x 270 at least, 80 % of the canvas width and 90 % of its height at most.
@@ -4066,6 +4172,67 @@ static V2 h_scroll_delta(void *mi) {
     if ((d.x != 0 || d.y != 0) && ch_over_now && chat_on) { ch_wheel_blocked++; return (V2){ 0, 0 }; }
     return d;
 }
+/* the field gives the keyboard back, and leaves the EventSystem's selection: a selected TMP_InputField takes Space / Enter
+   as Submit and focuses itself again (the game's Space must pause in the read state) */
+static void chat_field_release(void) {
+    Obj f = u_gc_get(h_ch_field); if (!u_alive(f)) return;
+    static void *md1, *md0, *mcur, *msel, *mset;
+    if (!mcur) { md1 = mth("TMPro", "TMP_InputField", "DeactivateInputField", 1); if (!md1) md0 = mth("TMPro", "TMP_InputField", "DeactivateInputField", 0);
+                 mcur = mth("UnityEngine.EventSystems", "EventSystem", "get_current", 0); msel = mth("UnityEngine.EventSystems", "EventSystem", "get_currentSelectedGameObject", 0);
+                 mset = mth("UnityEngine.EventSystems", "EventSystem", "SetSelectedGameObject", 1); }
+    if (md1) MCALL(md1, void, Obj, bool, const void *)(f, false, md1); else if (md0) MCALL(md0, void, Obj, const void *)(f, md0);
+    Obj es = mcur ? MCALL(mcur, Obj, const void *)(mcur) : NULL, sel = u_alive(es) && msel ? MCALL(msel, Obj, Obj, const void *)(es, msel) : NULL;
+    if (u_alive(sel) && sel == u_go(f) && mset) MCALL(mset, void, Obj, Obj, const void *)(es, NULL, mset);
+}
+/* typing ends (sent, Escape, the X, a click on the history): the others drop "is typing"; clear = the draft goes too */
+static void chat_end_typing(dsnet_client *c, int clear) {
+    chat_typing = 0; chat_close_frames = 2;
+    if (c) dsnet_chat_typing(c, 0);
+    Obj f = u_gc_get(h_ch_field);
+    if (clear && u_alive(f)) F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL);
+    chat_field_release();
+}
+static void chat_box_close(const char *why) {
+    mp_session *ss = mp_game_session(); dsnet_client *c = ss ? mp_client(ss) : NULL;
+    int was = chat_typing || chat_read;
+    if (chat_typing) chat_end_typing(c, 1);
+    chat_read = 0;
+    if (was) rig_log("mpmenu: chat box closed (%s)", why);
+}
+static void chat_esc_close(void *ud) { (void)ud; chat_box_close("Escape"); }
+static mpesc_win esc_chat = { .name = "the chat", .close = chat_esc_close };   /* the read state on the kit's Escape stack */
+/* how many of the oldest lines fit the history from its top: the Top button's place, and the scrollbar's range (nch minus
+   it). A line never measured at this width is measured in a box line slot. Cached until the oldest line, the width, the
+   height, the fonts or (when all lines fitted) the count change. */
+static int ch_top_c, ch_top_id = -1, ch_top_n; static unsigned ch_top_gen; static float ch_top_bw, ch_top_av;
+static int ch_top_count(float bw, float avail) {
+    int id0 = nch ? chist[0].id : 0;
+    if ((ch_drag == CHD_SIZE || ch_drag == CHD_HEIGHT) && ch_top_id >= 0) return ch_top_c > nch ? nch : ch_top_c;   /* resizing: measured again at the release */
+    if (!ch_top_stale && id0 == ch_top_id && bw == ch_top_bw && avail == ch_top_av && chf_gen == ch_top_gen && (ch_top_c < ch_top_n || nch == ch_top_n))
+        return ch_top_c > nch ? nch : ch_top_c;
+    float used = 0; int n = 0;
+    for (int k = 0; k < nch && n < CH_BOX_LINES; k++) {
+        ch_prepare(k);
+        if (chist[k].hb <= 0) { Obj l = u_gc_get(h_ch_lines[n]); if (!l) break;
+                                ch_slot_show(l, &ch_box_id[n], &ch_box_font[n], k); place(l, CH_LINE_X, 0, bw, 20); chist[k].hb = ch_measure(l, bw); }
+        if (used + chist[k].hb > avail && n > 0) break;
+        used += chist[k].hb + 2; n++;
+    }
+    ch_top_c = n; ch_top_id = id0; ch_top_n = nch; ch_top_bw = bw; ch_top_av = avail; ch_top_gen = chf_gen; ch_top_stale = 0;
+    return n;
+}
+static int ch_want_top, ch_s0;                                                /* Top pressed (placed at the next layout); scroll when the thumb drag started */
+static struct { float t1, L, T; int S, vis; } ch_sb;                          /* the scrollbar now: track bottom + length, thumb length, range, lines shown */
+enum { CHB_NONE, CHB_CLOSE, CHB_TOP, CHB_BOT, CHB_BIN, CHB_THUMB, CHB_TRACK };
+static int ch_hit(V3 m) {                                                      /* the box's button / scrollbar part under m */
+    if (pt_in(u_gc_get(h_ch_lay[CL_CLOSE]), m)) return CHB_CLOSE;
+    if (pt_in(u_gc_get(h_ch_lay[CL_TOP]), m)) return CHB_TOP;
+    if (pt_in(u_gc_get(h_ch_lay[CL_BOT]), m)) return CHB_BOT;
+    if (pt_in(u_gc_get(h_ch_lay[CL_BIN]), m)) return CHB_BIN;
+    if (pt_in(u_gc_get(h_ch_lay[CL_THUMB]), m)) return CHB_THUMB;
+    if (pt_in(u_gc_get(h_ch_lay[CL_TRACK]), m)) return CHB_TRACK;
+    return CHB_NONE;
+}
 static void chat_frame(const mpm_obs *o) {
     mp_session *ss = mp_game_session(); dsnet_client *c = ss ? mp_client(ss) : NULL;
 #ifdef TEAMS_MOUSE_TEST
@@ -4073,10 +4240,15 @@ static void chat_frame(const mpm_obs *o) {
 #endif
     ch_over_now = 0;
     if (chat_close_frames > 0) chat_close_frames--;
-    /* no session (mp_api v3 chat_local): the chat shows in a world while a local line is in the history; on the title
-       the local lines go (a caller that never cleared them). Without local lines: hidden, no keys taken, as before. */
+    /* no session (mp_api v3 chat_local): the chat shows in a world while a local line is in the history or the player reads
+       the box (the bin may have emptied it); on the title the local lines go (a caller that never cleared them). Otherwise:
+       hidden, no keys taken, as before. */
     if (!c && ch_nlocal && o->scene == 1) chat_clear_local();
-    if (!c && (!ch_nlocal || o->scene != 2)) { chat_typing = 0; Obj r = u_gc_get(h_ch_root); if (u_alive(r)) u_active(r, false); return; }
+    if (!c && ((!ch_nlocal && !chat_read) || o->scene != 2)) {
+        chat_typing = chat_read = 0; mpesc_drop(&esc_chat);
+        Obj r = u_gc_get(h_ch_root), bx = u_gc_get(h_ch_box); if (u_alive(r)) u_active(r, false); if (u_alive(bx)) u_active(bx, false); return;
+    }
+    if (!c && chat_typing) { chat_end_typing(NULL, 1); rig_log("mpmenu: chat: the session ended while typing: read only now"); }
     if (c) chat_pull(c);
     /* A6: every scene of a session (title: connecting / waiting for the host; lobby; loading; the world; PvP prep), on our
        own canvas. The templates (CommonNoticeView, the Rename popup) exist from the title on. */
@@ -4084,6 +4256,7 @@ static void chat_frame(const mpm_obs *o) {
     if (u_gc_get(h_ch_view) != parent || !u_alive(u_gc_get(h_ch_root))) {
         static int64_t tried = -1000; if (frames - tried < 60) return;     /* templates not loaded yet: again in 2 s */
         tried = frames;
+        mpesc_drop(&esc_chat);
         chat_build(parent);
         if (!u_alive(u_gc_get(h_ch_root))) return;
         Obj f = u_gc_get(h_ch_field), bx = u_gc_get(h_ch_box);              /* rebuilt while typing: keep the draft open */
@@ -4091,7 +4264,7 @@ static void chat_frame(const mpm_obs *o) {
     }
     Obj root = u_gc_get(h_ch_root); if (!u_alive(root)) return;
     u_active(root, chat_on != 0);
-    if (!chat_on) { chat_typing = 0; return; }
+    if (!chat_on) { chat_typing = chat_read = 0; mpesc_drop(&esc_chat); return; }
     { Obj cv = u_gc_get(h_ch_cv); if (u_alive(cv) && ch_cv_order != CH_SORT) { static void *mo; if (!mo) mo = mth("UnityEngine", "Canvas", "set_sortingOrder", 1);
                                                                           if (mo) { MCALL(mo, void, Obj, int, const void *)(cv, CH_SORT, mo); ch_cv_order = CH_SORT; } } }
     /* keys (icalls: Input.GetKeyDownInt / get_inputString; tests feed the same paths) */
@@ -4102,6 +4275,8 @@ static void chat_frame(const mpm_obs *o) {
         wheel = (void (*)(V2 *))ri("UnityEngine.Input::get_mouseScrollDelta_Injected(UnityEngine.Vector2&)");
         rig_log("mpmenu: chat keys %s, text %s, mouse %s", kd ? "ok" : "MISSING", istr ? "ok" : "MISSING", mb && mpos ? "ok" : "MISSING"); }
     { char d[64] = ""; if (istr) str_utf8(istr(), d, sizeof d); dbg_istr_n += (int)strlen(d); if (kd && kd(13)) dbg_enter_n++; if (kd && kd(97)) dbg_a_n++; }   /* test status: what Unity's input saw */
+    /* read only (owner 2026-10-25): with no session the player cannot send, so the box has no entry field and never takes the keys */
+    int ro = !c;
     int enter = (kd && (kd(13) || kd(271))) || test_chat_enter, esc = (kd && kd(27)) || test_chat_escape;
     test_chat_enter = test_chat_escape = 0;
     if (!chat_typing) {
@@ -4113,14 +4288,25 @@ static void chat_frame(const mpm_obs *o) {
             Obj tin = type_obj("TMPro", "TMP_InputField");
             Obj fi = u_alive(sel) && tin && mm_is(sel, K_GO) ? F(0x50EDAA8, Obj (*)(Obj, Obj, void *))(sel, tin, NULL) : NULL;   /* GameObject.GetComponent(Type) */
             static void *mfoc; if (!mfoc) mfoc = mth("TMPro", "TMP_InputField", "get_isFocused", 0);
-            if (u_alive(fi) && fi != u_gc_get(h_ch_field) && mfoc && MCALL(mfoc, bool, Obj, const void *)(fi, mfoc)) other_text = 1; }
-        if ((enter || test_chat_open) && !other_text) {
-            chat_typing = 1; chat_buf[0] = 0; chat_scroll = 0; enter = 0;
-            Obj f = u_gc_get(h_ch_field);
-            if (u_alive(f)) { F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL); chat_focus(); }
+            if (u_alive(fi) && mfoc && MCALL(mfoc, bool, Obj, const void *)(fi, mfoc)) {
+                if (fi != u_gc_get(h_ch_field)) other_text = 1;
+                else if (chat_read && !ro) { chat_typing = 1; rig_log("mpmenu: chat: a click in the field: typing"); }   /* TMP's own click focused it */
+                else chat_field_release();                                  /* focused with no box to type in: let go */
+            } }
+        if ((enter || test_chat_open) && !other_text && !chat_typing) {
+            if (!ro) {
+                int from_read = chat_read; chat_typing = 1; enter = 0;
+                Obj f = u_gc_get(h_ch_field);
+                if (!from_read) { chat_buf[0] = 0; chat_scroll = 0; if (u_alive(f)) F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL); }   /* reading: the draft and the place stay */
+                if (u_alive(f)) chat_focus();
+            } else {                                                        /* read only: Enter shows / hides the box (no field) */
+                chat_read = test_chat_open ? 1 : !chat_read; if (chat_read) chat_scroll = 0; enter = 0;
+                rig_log("mpmenu: chat: Enter %s the read-only box", chat_read ? "opens" : "closes");
+            }
         }
         test_chat_open = 0;
-    } else {
+    }
+    if (chat_typing) {
         Obj f = u_gc_get(h_ch_field);
         if (!enter && !esc) chat_focus();                                   /* keeps the keyboard while typing (a click on the world took it) */
         if (u_alive(f)) {                                                  /* the field holds the text; tests write into it */
@@ -4151,19 +4337,16 @@ static void chat_frame(const mpm_obs *o) {
             else if ((unsigned char)*q >= 0x20 && n < DSNET_CHAT_MAX) { chat_buf[n] = *q; chat_buf[n + 1] = 0; }
         }
         if (enter || esc) {
-            if (enter && chat_buf[0]) { int rc = c ? dsnet_chat_send(c, chat_buf) : -1;          /* no session: nothing sent */
+            if (enter && chat_buf[0] && chat_is_clear_cmd(chat_buf)) chat_clear_view("/clear");   /* this screen only, never sent */
+            else if (enter && chat_buf[0]) { int rc = c ? dsnet_chat_send(c, chat_buf) : -1;
                 rig_log("mpmenu: chat %s (%zu bytes, rc %d)", c ? "sent" : "not sent (no session)", strlen(chat_buf), rc);
                 if (rc) { char ln[300]; snprintf(ln, sizeof ln, "<i><color=#F16071>%s</color></i>", TR("Message not sent: no connection to the other players.")); chat_add(ln); } }   /* F18 */
-            chat_typing = 0; chat_close_frames = 2;
-            if (c) dsnet_chat_typing(c, 0);                                 /* sent or cancelled: the others drop the line */
-            if (u_alive(f)) { F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL);
-                              static void *md; if (!md) { md = mth("TMPro", "TMP_InputField", "DeactivateInputField", 1); if (!md) md = mth("TMPro", "TMP_InputField", "DeactivateInputField", 0); }
-                              if (md) MCALL(md, void, Obj, bool, const void *)(f, false, md); }
+            chat_end_typing(c, 1);                                          /* Escape leaves the field: a box opened for reading stays */
         }
-        { float wy = ch_wheel_y(wheel); if (wy > 0 && !ch_box_oldest) chat_scroll++; else if (wy < 0 && chat_scroll > 0) chat_scroll--; }
-        if (kd && kd(280) && !ch_box_oldest) chat_scroll += 3; if (kd && kd(281)) chat_scroll = chat_scroll > 3 ? chat_scroll - 3 : 0;   /* PageUp / PageDown */
+        if (kd && kd(280) && !ch_box_oldest) chat_scroll += 3; if (kd && kd(281)) chat_scroll = chat_scroll > 3 ? chat_scroll - 3 : 0;   /* PageUp / PageDown (typing: the keys are ours) */
         int maxs = nch > 1 ? nch - 1 : 0; if (chat_scroll > maxs) chat_scroll = maxs;
     }
+    int box_open = chat_typing || chat_read;
     /* place: bottom-left above the build bar, right of the resource list (canvas x 0..~105), plus the dragged offset.
      * The canvas is 1080 high; its width follows the screen (1663 at 1512x982, 1920 at 16:9). */
     static void *msw, *msh; if (!msw) { msw = mth("UnityEngine", "Screen", "get_width", 0); msh = mth("UnityEngine", "Screen", "get_height", 0); }
@@ -4171,39 +4354,51 @@ static void chat_frame(const mpm_obs *o) {
     float hw = sw > 0 && shh > 0 ? 540.0f * sw / shh : 831;
     /* inside the screen (a place dragged on a wider window, or off the edge): ch_geo. bx / by = the box's centre */
     ch_rect g = ch_geo(hw);
-    float bx = g.l + g.w / 2, by = g.b + g.h / 2, bw = g.w - 24, iw = g.w - 60, pw = g.w - 40;   /* box lines / idle text / idle plates */
+    float bx = g.l + g.w / 2, by = g.b + g.h / 2, bw = g.w - CH_LINE_DW, iw = g.w - 60, pw = g.w - 40;   /* box lines / idle text / idle plates */
     /* heights measured at another width (the box was resized): measured again when shown */
-    static float ch_hb_w = CH_W0 - 24, ch_hi_w = CH_W0 - 60;
+    static float ch_hb_w = CH_W0 - CH_LINE_DW, ch_hi_w = CH_W0 - 60;
     if (bw != ch_hb_w) { for (int i = 0; i < nch; i++) chist[i].hb = 0; ch_hb_w = bw; }
     if (iw != ch_hi_w) { for (int i = 0; i < nch; i++) chist[i].hi = 0; ch_hi_w = iw; }
     ch_line_w[0] = iw; ch_line_w[1] = bw;
     Obj box = u_gc_get(h_ch_box);
     nchat_shown = 0;
     if (box) {
-        u_active(box, chat_typing);
+        u_active(box, box_open);
         place(box, bx, by, g.w, g.h);
-        if (g.w != ch_lay_w || g.h != ch_lay_h) ch_layout(g.w, g.h);
-        if (chat_typing) {
-            /* A1 / A2: the newest lines that fit whole between the title band (top 95) and the input line (bottom -85), each
-               as high as its wrapped text, newest at the bottom; placed from the top down (owner 2026-10-21: no empty band
-               above the rows; what is left over stays under the newest line). One line taller than the space: from the bottom. */
-            float top = g.h / 2 - 40, bot = -g.h / 2 + 50;                    /* 95 / -85 in the 270 high box */
-            float used = 0, avail = top - bot, hs[CH_BOX_LINES]; int j = 0, k = nch - 1 - chat_scroll; ch_box_oldest = 0;
+        if (g.w != ch_lay_w || g.h != ch_lay_h || ro != ch_lay_ro) ch_layout(g.w, g.h, ro);
+        if (box_open) {
+            /* A1 / A2: the newest lines that fit whole between the title band (top 95) and the input line (bottom -85; read
+               only: -107), each as high as its wrapped text, newest at the bottom; placed from the top down (owner 2026-10-21:
+               no empty band above the rows; what is left over stays under the newest line). One line taller than the space:
+               from the bottom. */
+            float top = g.h / 2 - 40, bot = ro ? -g.h / 2 + 28 : -g.h / 2 + 50;
+            float used = 0, avail = top - bot, hs[CH_BOX_LINES];
+            int S = nch - ch_top_count(bw, avail); if (S < 0) S = 0;               /* the scroll that shows the oldest line at the top */
+            if (ch_want_top) { chat_scroll = S; ch_want_top = 0; rig_log("mpmenu: chat: Top (scroll %d of %d lines)", S, nch); }
+            if (chat_scroll > S) chat_scroll = S;
+            int j = 0, k = nch - 1 - chat_scroll; ch_box_oldest = 0;
             for (; j < CH_BOX_LINES && k >= 0; j++, k--) {
                 Obj l = u_gc_get(h_ch_lines[j]); if (!l) break;
                 ch_prepare(k);
                 ch_slot_show(l, &ch_box_id[j], &ch_box_font[j], k);
-                if (chist[k].hb <= 0) { place(l, 0, 0, bw, 20); chist[k].hb = ch_measure(l, bw); }
+                if (chist[k].hb <= 0) { place(l, CH_LINE_X, 0, bw, 20); chist[k].hb = ch_measure(l, bw); }
                 float h = chist[k].hb;
                 if (used + h > avail && j > 0) break;                         /* the next older line does not fit whole */
                 u_active(l, true); hs[j] = h; used += h + 2;
                 if (nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_lines[j]; }
             }
             { float y = used - 2 > avail ? bot + used - 2 : top;              /* top of the oldest shown line */
-              for (int i = j - 1; i >= 0; i--) { place(u_gc_get(h_ch_lines[i]), 0, y - hs[i] / 2, bw, hs[i]); y -= hs[i] + 2; } }
+              for (int i = j - 1; i >= 0; i--) { place(u_gc_get(h_ch_lines[i]), CH_LINE_X, y - hs[i] / 2, bw, hs[i]); y -= hs[i] + 2; } }
             if (k < 0) ch_box_oldest = 1;
-            for (; j < CH_BOX_LINES; j++) { Obj l = u_gc_get(h_ch_lines[j]); if (l) u_active(l, false); }
-            if (!u_alive(u_gc_get(h_ch_field))) {                           /* no field: draw the text + a caret ourselves */
+            for (int i = j; i < CH_BOX_LINES; i++) { Obj l = u_gc_get(h_ch_lines[i]); if (l) u_active(l, false); }
+            /* the scrollbar: the thumb is as long as the shown part of the history, at its place (the newest at the bottom) */
+            { float hh = g.h / 2, t1 = CH_HIST_BOT(hh, ro) + 20, L = (CH_HIST_TOP(hh) - 20) - t1; if (L < 4) L = 4;
+              float T = S > 0 && j > 0 ? L * j / (float)(j + S) : L; if (T < 16) T = 16; if (T > L) T = L;
+              float off = S > 0 ? (L - T) * (float)chat_scroll / (float)S : 0;
+              Obj th = u_gc_get(h_ch_lay[CL_THUMB]); if (th) place(th, g.w / 2 - 12, t1 + off + T / 2, 6, T);
+              Obj hi = u_gc_get(h_ch_thumbhi); if (hi) place(hi, 0, T / 2 - 1, 4, 2);
+              ch_sb.t1 = t1; ch_sb.L = L; ch_sb.T = T; ch_sb.S = S; ch_sb.vis = j; }
+            if (chat_typing && !u_alive(u_gc_get(h_ch_field))) {            /* no field: draw the text + a caret ourselves */
                 char t[DSNET_CHAT_MAX + 64], e[DSNET_CHAT_MAX * 2 + 8]; chat_esc(chat_buf, e, sizeof e);
                 snprintf(t, sizeof t, "%s%s", e, (frames / 15) % 2 ? "|" : " ");
                 tmp_set(u_gc_get(h_ch_input), t);
@@ -4233,9 +4428,9 @@ static void chat_frame(const mpm_obs *o) {
               int fi = ch_pick(tmp, 1, NULL); if (fi >= 0 && fi != ch_typing_font) { ch_font_set(t, fi, 0); ch_typing_font = fi; }
               tmp_set(t, tmp); place(t, bx, 0, iw, 22); th = ch_measure(t, iw); tw = iw; }
           float ph = th + 6 > 22 ? th + 6 : 22;
-          float y = chat_typing ? g.b + g.h + 4 + ph / 2 : g.b + ph / 2;
+          float y = box_open ? g.b + g.h + 4 + ph / 2 : g.b + ph / 2;
           place(t, bx, y, iw, th); place(bg, bx, y, pw, ph);
-          if (!chat_typing) lift = ph + 4;
+          if (!box_open) lift = ph + 4;
       }
     }
     /* idle lines: the newest at the bottom, each plate as high as its wrapped text (A1 / A2), fading after chat_fade_s */
@@ -4244,7 +4439,7 @@ static void chat_frame(const mpm_obs *o) {
       for (int i = CH_IDLE - 1; i >= 0; i--) {
         int k = nch - CH_IDLE + i; Obj t = u_gc_get(h_ch_idle[i]), bg = u_gc_get(h_ch_idlebg[i]);
         float a = 0;
-        if (!chat_typing && k >= 0 && k < nch) { double age = now - chist[k].t; a = age < chat_fade_s ? 1 : age < chat_fade_s + 1 ? (float)(chat_fade_s + 1 - age) : 0; }
+        if (!box_open && k >= 0 && k < nch) { double age = now - chist[k].t; a = age < chat_fade_s ? 1 : age < chat_fade_s + 1 ? (float)(chat_fade_s + 1 - age) : 0; }
         u_active(t, a > 0); u_active(bg, a > 0);
         if (a > 0) {
             /* a local line (mp_api v3, e.g. a DPS log line every hit) never takes a click: the game's buttons under the idle
@@ -4262,57 +4457,108 @@ static void chat_frame(const mpm_obs *o) {
         }
       } }
     ch_over_now = mpmenu_chat_over();                                       /* A4: Input.mouseScrollDelta reads 0 for the game while set */
-    /* linked lines (pings): hover = tooltip, left click = ui_chat_link_click */
-    { V3 m = F(0x51AD4DC, V3 (*)(void *))(NULL);                            /* Input.mousePosition */
-      int down = F(0x51ACDD0, bool (*)(int, void *))(0, NULL);              /* Input.GetMouseButtonDown(0) */
-      for (int i = 0; i < nchat_shown; i++) {
-          int k = chat_shown_k[i]; float r[4]; Obj t = u_gc_get(*chat_shown_h[i]);
-          if (!chist[k].link || !u_on(t) || !rect_of(t, r) || m.x < r[0] || m.x > r[2] || m.y < r[1] || m.y > r[3]) continue;
-          if (tip_ready()) game_tip_show(TR("Ping"), TR("Click to move your camera there."));
-          if (down) {
-              static int (*fn)(int); static int looked; if (!looked) { looked = 1; fn = (int (*)(int))dlsym(RTLD_DEFAULT, "ui_chat_link_click"); }
-              int acted = fn ? fn(chist[k].link) : 0; chat_link_clicks++;
-              rig_log("mpmenu: chat link %d clicked: %s", chist[k].link, acted ? "camera moved" : "ping gone (plain line now)");
-              if (!acted) chist[k].link = 0;
-          }
-          break;
-      } }
+    /* the pointer this frame: the real mouse (Input icalls), or the test's scripted one (ch_fk: rig control channel only):
+       2 frames resting at (x0, y0), the press, n frames moving to (x1, y1) with the wheel at `wheel`, the release */
+    V3 mp = { 0, 0, 0 }; int held[2] = { 0, 0 }; float wy = 0, br[4] = { 0 };
+    int have_ptr = ch_fk.on || (mb && mpos), scripted = ch_fk.on;
+    if (ch_fk.on) {
+        int i = ch_fk.i++, n = ch_fk.n;
+        float t = i <= 2 ? 0 : i >= 3 + n ? 1 : (float)(i - 2) / n;
+        mp.x = ch_fk.x0 + (ch_fk.x1 - ch_fk.x0) * t; mp.y = ch_fk.y0 + (ch_fk.y1 - ch_fk.y0) * t;
+        if (ch_fk.button >= 0) held[ch_fk.button] = i >= 2 && i < 3 + n;
+        if (i >= 3 && i < 3 + n) wy = ch_fk.wheel;
+        if (i >= 3 + n) ch_fk.on = 0;
+    } else if (have_ptr) { mpos(&mp); held[0] = mb(0); held[1] = mb(1); wy = ch_wheel_y(wheel); }
+    int down0 = held[0] && !ch_held[0], down1 = held[1] && !ch_held[1], consumed = 0;
+    ch_held[0] = held[0]; ch_held[1] = held[1];
+    if (box) rect_of(box, br);                                              /* placed every frame, shown or not */
+    float sc = br[2] > br[0] ? (br[2] - br[0]) / g.w : 0;                   /* screen px per canvas unit */
+    int over_box = box_open && u_on(box) && mp.x >= br[0] && mp.x <= br[2] && mp.y >= br[1] && mp.y <= br[3], over_idle = 0;
+    if (!box_open) for (int i = 0; i < CH_IDLE; i++) over_idle |= pt_in(u_gc_get(h_ch_idlebg[i]), mp);
+    /* linked lines (pings): hover = tooltip, left click = ui_chat_link_click. The managed Input getters as before (the
+       mouse test build feeds its fake mouse there), the scripted pointer when a test plays one */
+    V3 lm = scripted ? mp : F(0x51AD4DC, V3 (*)(void *))(NULL);                /* Input.mousePosition */
+    int ldown = scripted ? down0 : F(0x51ACDD0, bool (*)(int, void *))(0, NULL);   /* Input.GetMouseButtonDown(0) */
+    for (int i = 0; i < nchat_shown; i++) {
+        int k = chat_shown_k[i]; float r[4]; Obj t = u_gc_get(*chat_shown_h[i]);
+        if (!chist[k].link || !u_on(t) || !rect_of(t, r) || lm.x < r[0] || lm.x > r[2] || lm.y < r[1] || lm.y > r[3]) continue;
+        if (tip_ready()) game_tip_show(TR("Ping"), TR("Click to move your camera there."));
+        if (ldown) {
+            static int (*fn)(int); static int looked2; if (!looked2) { looked2 = 1; fn = (int (*)(int))dlsym(RTLD_DEFAULT, "ui_chat_link_click"); }
+            int acted = fn ? fn(chist[k].link) : 0; chat_link_clicks++; consumed = 1;
+            rig_log("mpmenu: chat link %d clicked: %s", chist[k].link, acted ? "camera moved" : "ping gone (plain line now)");
+            if (!acted) chist[k].link = 0;
+        }
+        break;
+    }
+    /* the box's buttons: hover = the icon in the main colour + the game's tooltip; a left press acts */
+    int hit = box_open && have_ptr && !ch_drag ? ch_hit(mp) : CHB_NONE;
+    ch_icon_hover(hit == CHB_TOP ? 0 : hit == CHB_BOT ? 1 : hit == CHB_BIN ? 2 : hit == CHB_CLOSE ? 3 : -1);
+    if (tip_ready()) {
+        if (hit == CHB_TOP) game_tip_show(TR("Oldest Messages"), TR("Jump to the top of the chat history."));
+        else if (hit == CHB_BOT) game_tip_show(TR("Newest Messages"), TR("Jump to the newest message."));
+        else if (hit == CHB_BIN) game_tip_show(TR("Clear Chat"), ro ? TR("Removes the messages on this screen only.")
+                                                                    : TR("Removes the messages on this screen only. The other players keep theirs. You can also type /clear."));
+    }
+    if (!consumed && down0 && hit) {
+        consumed = 1;
+        switch (hit) {
+        case CHB_CLOSE: chat_box_close("its X"); break;
+        case CHB_TOP: ch_want_top = 1; break;
+        case CHB_BOT: chat_scroll = 0; rig_log("mpmenu: chat: Bottom"); break;
+        case CHB_BIN: chat_clear_view("the bin"); break;
+        case CHB_THUMB: ch_drag = CHD_THUMB; ch_drag_btn = 0; ch_d0 = mp; ch_s0 = chat_scroll; ch_dsc = sc; break;
+        case CHB_TRACK: {                                                   /* a page toward the press */
+            Obj th = u_gc_get(h_ch_lay[CL_THUMB]); float q[4] = { 0 }; rect_of(th, q);
+            int page = ch_sb.vis > 1 ? ch_sb.vis - 1 : 1;
+            if (mp.y > q[3]) chat_scroll = chat_scroll + page > ch_sb.S ? ch_sb.S : chat_scroll + page;
+            else if (mp.y < q[1]) chat_scroll = chat_scroll > page ? chat_scroll - page : 0;
+            break; }
+        }
+    }
+    /* the wheel: scrolls the open box (typing: anywhere, as before; reading: over the box); over the chat lines it opens the
+       box for reading (owner 2026-10-25: "scroll with the wheel" without typing) */
+    if (wy != 0 && !ch_drag) {
+        if (box_open && (chat_typing || over_box)) { if (wy > 0 && !ch_box_oldest) chat_scroll++; else if (wy < 0 && chat_scroll > 0) chat_scroll--; }
+        else if (!box_open && over_idle && nch) { chat_read = 1; chat_scroll = wy > 0 && nch > 1 ? 1 : 0; rig_log("mpmenu: chat: the wheel over the chat lines opens it for reading"); }
+    }
     /* move / resize (owner 2026-10-25), remembered in mp_menu.json at the release:
        - right-click + drag on the open box or the newest idle line: move (as before);
        - left drag on the open box's title band or frame: move; on its bottom-right corner (the grip): width + height; on its
          bottom edge: height. The top-left corner stays where it is while resizing.
        A drag starts only with a press ON the box or its two clear strips: they are UI graphics (raycast targets), so the
-       game's IsPointerOverUI sees the press and never turns it into a world click. */
-    if (mb && mpos && box) {
-        V3 mp = { 0, 0, 0 }; int held[2] = { 0, 0 };
-        if (ch_fk.on) {                                                     /* test (rig control channel only): a scripted pointer */
-            int i = ch_fk.i++, n = ch_fk.n;
-            float t = i <= 2 ? 0 : i >= 3 + n ? 1 : (float)(i - 2) / n;
-            mp.x = ch_fk.x0 + (ch_fk.x1 - ch_fk.x0) * t; mp.y = ch_fk.y0 + (ch_fk.y1 - ch_fk.y0) * t;
-            held[ch_fk.button] = i >= 2 && i < 3 + n;                       /* 2 frames resting, press, n frames moving, release */
-            if (i >= 3 + n) ch_fk.on = 0;
-        } else { mpos(&mp); held[0] = mb(0); held[1] = mb(1); }
-        int down0 = held[0] && !ch_held[0], down1 = held[1] && !ch_held[1];
-        ch_held[0] = held[0]; ch_held[1] = held[1];
-        float r[4] = { 0 }; rect_of(box, r);                                /* placed every frame, shown or not */
-        float sc = r[2] > r[0] ? (r[2] - r[0]) / g.w : 0;                   /* screen px per canvas unit */
-        if (!ch_drag && sc > 0) {
+       game's IsPointerOverUI sees the press and never turns it into a world click. The same in the read state. */
+    if (have_ptr && box) {
+        if (!ch_drag && sc > 0 && !consumed) {
             int kind = 0, btn = 0;
-            if (down0 && chat_typing && u_on(box)) {
-                float ux = (mp.x - r[0]) / sc, uy = (mp.y - r[1]) / sc;     /* canvas units from the box's bottom-left */
+            float ux = (mp.x - br[0]) / sc, uy = (mp.y - br[1]) / sc;         /* canvas units from the box's bottom-left */
+            if (down0 && box_open && u_on(box)) {
                 int in = ux >= 0 && ux <= g.w && uy >= 0 && uy <= g.h;
                 if (in || pt_in(u_gc_get(h_ch_lay[CL_STRIPB]), mp) || pt_in(u_gc_get(h_ch_lay[CL_STRIPR]), mp)) {
                     if (ux >= g.w - 15 && uy <= 16) kind = CHD_SIZE;        /* the grip corner (right of / under the field) */
                     else if (uy <= 8) kind = CHD_HEIGHT;                    /* the bottom edge: under the field */
                     else if (uy >= g.h - 31 || ux <= 3 || ux >= g.w - 3) kind = CHD_MOVE;   /* the title band, the frame */
+                    else if (chat_typing && uy > (ro ? 24 : 46) && ux < g.w - 19) {   /* a click on the history: back to reading */
+                        chat_read = 1; chat_end_typing(c, 0); consumed = 1;
+                        rig_log("mpmenu: chat: a click on the history: reading (the game has its keys, the draft stays)");
+                    }
                 }
             } else if (down1) {
                 float q[4] = { 0 }; int ok = 0;
-                if (chat_typing) ok = u_on(box) && rect_of(box, q); else { Obj t0 = u_gc_get(h_ch_idlebg[CH_IDLE - 1]); ok = u_on(t0) && rect_of(t0, q); }
+                if (box_open) ok = u_on(box) && rect_of(box, q); else { Obj t0 = u_gc_get(h_ch_idlebg[CH_IDLE - 1]); ok = u_on(t0) && rect_of(t0, q); }
                 if (ok && mp.x >= q[0] && mp.x <= q[2] && mp.y >= q[1] && mp.y <= q[3]) { kind = CHD_MOVE; btn = 1; }
+            } else if (down0 && !box_open) {                                /* a left click on a chat line (not a local one: those let clicks through) */
+                for (int i = 0; i < CH_IDLE; i++) { int k = nch - CH_IDLE + i;
+                    if (k >= 0 && k < nch && !chist[k].local && !chist[k].link && pt_in(u_gc_get(h_ch_idlebg[i]), mp)) {
+                        chat_read = 1; chat_scroll = 0; rig_log("mpmenu: chat: a click on a chat line opens it for reading"); break; } }
             }
             if (kind) { ch_drag = kind; ch_drag_btn = btn; ch_d0 = mp; ch_g0 = g; ch_dsc = sc;
                         rig_log("mpmenu: chat %s started (%s button)", kind == CHD_MOVE ? "move" : kind == CHD_SIZE ? "resize" : "height", btn ? "right" : "left"); }
+        } else if (ch_drag == CHD_THUMB) {
+            if (held[0] && ch_sb.S > 0 && ch_sb.L > ch_sb.T) {               /* the thumb follows the pointer: up = older lines */
+                float q = (mp.y - ch_d0.y) / ch_dsc / (ch_sb.L - ch_sb.T) * ch_sb.S; int s = ch_s0 + (int)(q >= 0 ? q + 0.5f : q - 0.5f);   /* no libm here */
+                chat_scroll = s < 0 ? 0 : s > ch_sb.S ? ch_sb.S : s;
+            } else if (!held[0]) { ch_drags[CHD_THUMB]++; ch_drag = 0; rig_log("mpmenu: chat: thumb released at scroll %d of %d", chat_scroll, ch_sb.S); }
         } else if (ch_drag && held[ch_drag_btn]) {
             float dx = (mp.x - ch_d0.x) / ch_dsc, dy = (mp.y - ch_d0.y) / ch_dsc, top = ch_g0.b + ch_g0.h;
             ch_rect n = ch_g0;
@@ -4331,6 +4577,9 @@ static void chat_frame(const mpm_obs *o) {
             ch_drag = 0;
         }
     }
+    /* Escape (owner rule 2026-10-25): the read state is a window on the kit's stack (Escape = its X); while typing the field
+       has the key (Escape leaves the field first) */
+    { Obj bx2 = u_gc_get(h_ch_box); mpesc_sync(&esc_chat, bx2, chat_read && !chat_typing && !chat_close_frames && u_on(bx2), 0); }
 }
 
 /* a register_host_choice2 choice with draw_page: called each frame while its host page shows (panel = the empty RectTransform
@@ -5405,7 +5654,7 @@ static int key_inject(const char *chars, int code, const char *via) {
     for (int i = 0; i < len; ) {
         char one[8]; int kc, cl = 1;
         if (chars) { ch_utf8((const unsigned char *)chars + i, &cl); memcpy(one, chars + i, (size_t)cl); one[cl] = 0; kc = cl == 1 ? mac_keycode(chars[i]) : 49; i += cl; }
-        else { kc = code; if (kc < 0) return 0; one[0] = kc == 36 ? '\r' : kc == 53 ? 0x1b : kc == 51 ? 0x7f : 0; one[1] = 0; i++; }
+        else { kc = code; if (kc < 0) return 0; one[0] = kc == 36 ? '\r' : kc == 53 ? 0x1b : kc == 51 ? 0x7f : kc == 49 ? ' ' : 0; one[1] = 0; i++; }
         for (int up = 0; up < 2; up++) {
             id ev = ((id (*)(Class, SEL, unsigned long, CGPoint, unsigned long, double, long, id, id, id, BOOL, unsigned short))objc_msgSend)(
                 objc_getClass("NSEvent"), sel_registerName("keyEventWithType:location:modifierFlags:timestamp:windowNumber:context:characters:charactersIgnoringModifiers:isARepeat:keyCode:"),
@@ -5778,11 +6027,15 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         if (jnum(line, "wheel", &v)) { double n = 30; jnum(line, "frames", &n); ch_fake_wheel = (V2){ 0, (float)v }; ch_fake_wheel_n = (int)n; }   /* fake wheel (test build) */
 #endif
         if (jstr(line, "local", t, sizeof t)) { Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", mpmenu_chat_local("Test", t, MP_CHATL_LINE)); return b.p; }   /* mp_api v3 chat_local */
+        if (jnum(line, "clears", &v)) {                                     /* mp_api v4 chat_clears, read through the table a mod gets */
+            const mp_api_table *a = mp_api_get(4); Buf b = {0};
+            bput(&b, "{\"ok\":true,\"api\":%d,\"version\":%u,\"clears\":%d}", a != NULL, a ? a->version : 0,
+                 a && a->size >= offsetof(mp_api_table, chat_clears) + sizeof a->chat_clears && a->chat_clears ? (int)a->chat_clears() : -1); return b.p; }
         if (jnum(line, "drag", &v)) {                                       /* scripted pointer for the move / resize code (ch_fk) */
-            double x0 = 0, y0 = 0, x1 = 0, y1 = 0, bt = 0, n = 8;
-            jnum(line, "x0", &x0); jnum(line, "y0", &y0); jnum(line, "x1", &x1); jnum(line, "y1", &y1); jnum(line, "button", &bt); jnum(line, "frames", &n);
+            double x0 = 0, y0 = 0, x1 = 0, y1 = 0, bt = 0, n = 8, wh = 0;
+            jnum(line, "x0", &x0); jnum(line, "y0", &y0); jnum(line, "x1", &x1); jnum(line, "y1", &y1); jnum(line, "button", &bt); jnum(line, "frames", &n); jnum(line, "roll", &wh);
             if (ch_fk.on || ch_drag) return strdup("{\"ok\":false,\"error\":\"a drag is running\"}");
-            ch_fk.button = bt != 0; ch_fk.i = 0; ch_fk.n = n < 1 ? 1 : n > 600 ? 600 : (int)n;
+            ch_fk.button = bt < 0 ? -1 : bt != 0; ch_fk.wheel = (float)wh; ch_fk.i = 0; ch_fk.n = n < 1 ? 1 : n > 600 ? 600 : (int)n;
             ch_fk.x0 = (float)x0; ch_fk.y0 = (float)y0; ch_fk.x1 = (float)x1; ch_fk.y1 = (float)y1; ch_fk.on = 1;
             return strdup("{\"ok\":true}");
         }
@@ -5797,7 +6050,7 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         jstr(line, "via", via, sizeof via);
         int n = 0;
         if (jstr(line, "chars", t, sizeof t)) n += key_inject(t, 0, via) + tmp_keys(t, NULL);   /* key codes to Unity + the text to the field */
-        if (jstr(line, "key", k, sizeof k)) n += key_inject(NULL, !strcmp(k, "return") ? 36 : !strcmp(k, "escape") ? 53 : !strcmp(k, "backspace") ? 51 : -1, via)
+        if (jstr(line, "key", k, sizeof k)) n += key_inject(NULL, !strcmp(k, "return") ? 36 : !strcmp(k, "escape") ? 53 : !strcmp(k, "backspace") ? 51 : !strcmp(k, "space") ? 49 : -1, via)
                                                   + (!strcmp(k, "backspace") ? tmp_keys(NULL, "backspace") : 0);
         if (jnum(line, "click_field", &v)) n += click_field(via);
         char o[96]; snprintf(o, sizeof o, "{\"ok\":%s,\"events\":%d}", n > 0 ? "true" : "false", n); return strdup(o);
@@ -6075,6 +6328,14 @@ char *mpmenu_exec(const char *cmd, const char *line) {
             bput(&b, ",\"cam_ortho\":%.3f", u_alive(cam) ? F(0x50804FC, float (*)(Obj, void *))(cam, NULL) : -1.0f); }
           bput(&b, ",\"size\":[%.0f,%.0f],\"drag\":%d,\"fake\":%d,\"drags\":[%u,%u,%u],\"line_w\":[%.0f,%.0f]", chat_w, chat_h, ch_drag, ch_fk.on,
                ch_drags[CHD_MOVE], ch_drags[CHD_SIZE], ch_drags[CHD_HEIGHT], ch_line_w[0], ch_line_w[1]);
+          { mp_session *rs = mp_game_session();                             /* read state (owner 2026-10-25): screen rects of its parts, px, y up */
+            bput(&b, ",\"read\":%d,\"ro\":%d,\"clears\":%u,\"thumb_drags\":%u,\"esc_reg\":%d,\"sb\":{\"S\":%d,\"vis\":%d", chat_read, rs ? 0 : 1, ch_clears,
+                 ch_drags[CHD_THUMB], esc_chat.id != NULL, ch_sb.S, ch_sb.vis);
+            static const char *const pn[] = { "track", "thumb", "top", "bot", "bin", "close", "field" };
+            for (int i = 0; i < 7; i++) { Obj po = i == 6 ? u_gc_get(h_ch_field) : u_gc_get(h_ch_lay[CL_TRACK + i]); float q[4] = { 0 };
+                int on = u_on(po) && u_on(u_gc_get(h_ch_box)) && rect_of(po, q);
+                bput(&b, ",\"%s\":%s", pn[i], on ? "" : "null"); if (on) bput(&b, "[%.1f,%.1f,%.1f,%.1f]", q[0], q[1], q[2], q[3]); }
+            bput(&b, "}"); }
           bput(&b, ",\"fade\":%d,\"pos\":[%.0f,%.0f],\"rect\":[%.0f,%.0f,%.0f,%.0f],\"screen\":[%d,%d]}", chat_fade_s, chat_x, chat_y, cr[0], cr[1], cr[2], cr[3],
                msw ? MCALL(msw, int, const void *)(msw) : 0, msh ? MCALL(msh, int, const void *)(msh) : 0); }
         { rpanel *rp = u_on(u_gc_get(rp_lobby.root)) ? &rp_lobby : &rp_title;
