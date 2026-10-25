@@ -14,7 +14,8 @@ copies quit. Checks, per copy:
   3. data/mp_owners has no file starting with fe5e
   4. mp_worlds.txt has no line starting with fe5e
   5. host only: mp_history.json has no row with "how":"host" whose key starts with fe5e
-plus one setup check (the whole flow ran), so a run that never reached the dungeon can never pass.
+plus one setup check (the whole flow ran), so a run that never reached the dungeon can never pass, and two player checks
+(rigports.players_guard: no player but these two copies in the session, after the join and before the quits).
 Before the run, old hub entries (fe5e) of earlier runs are taken out of those files and folders (originals in
 <out>/aside/<copy>/), so the checks see this session only.
 Usage: hub_nosave_test.py [--dylib PATH] [--src DIR]
@@ -29,6 +30,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); W = os.path.abspath(os.path.j
 sys.path.insert(0, os.path.join(W, 'ext', 'foreign_expedition')); sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig'))
 import fe_save as fe
 import rig
+import rigports
 
 ARG = lambda k, d: sys.argv[sys.argv.index(k) + 1] if k in sys.argv else d
 rig.DYLIB = os.path.abspath(os.path.expanduser(ARG('--dylib', os.path.join(W, 'build', 'dsrig.dylib'))))
@@ -208,6 +210,8 @@ def run(H, G, S0, flow):
     c(G, cmd='mpm_type', text=f'127.0.0.1:{port}'); press(G, 'CONNECT')
     wait('guest loaded + locked', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('loads', 0) >= 1)(st(G)), timeout=900)
     wait('guest knows the hub mode', lambda: c(G, cmd='mpm_fewin').get('fe_mode') == 1, timeout=60, every=1)
+    pok, pls = rigports.players_guard(rig.send, [H, G], 2, 'start')   # another run's copy in this session = EXTRA PLAYER
+    check('players: no extra player at the start', pok, '; '.join(pls))
 
     def bring_ui(x, path, guids):                             # the lobby's Bring Units window, driven like a player
         wait(f'{x} lobby state', lambda: c(x, cmd='mpm_status').get('state') in ('lobby', 'guest_lobby'), timeout=90, every=1)
@@ -270,6 +274,8 @@ def run(H, G, S0, flow):
     # a normal host save (the manual-save path), then both back to the title (stock system menu Quit; host last)
     log('host mp_save', c(H, cmd='mp_save', name='hub_nosave_test'))
     time.sleep(10)
+    pok, pls = rigports.players_guard(rig.send, [H, G], 2, 'end')     # the session ends with the quits below
+    check('players: no extra player at the end', pok, '; '.join(pls))
     for x, who in ((G, 'guest'), (H, 'host')):
         c(x, cmd='mpm_esc'); time.sleep(2)                    # the system menu must exist for its own Quit (the save-on-exit path)
         r = c(x, cmd='mp_quit', mode='stock'); how = 'stock'

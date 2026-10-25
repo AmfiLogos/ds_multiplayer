@@ -9,7 +9,7 @@ Lease the pair first (rig.py lease windows)."""
 import json, os, re, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.expanduser("~/ds_multiplayer/rig")); sys.path.insert(0, HERE)
-import rig, wrig
+import rig, rigports, wrig
 
 PAIR = sys.argv[1]; MAC = PAIR[0]
 def arg(n, d): return type(d)(sys.argv[sys.argv.index(n) + 1]) if n in sys.argv else d
@@ -18,6 +18,7 @@ RECIPE = arg("--recipe", "RECIPE_WoodPlank")
 STATION = arg("--station", "0086f7d9-4735-4821-85b9-49d2455d3b86")     # BUILDING_CarpenterWorkstation in this save
 TICKS = arg("--ticks", 20000)
 PORT = rig.pair_port(MAC)
+rigports.expect_peers(1)   # the Windows copy W is in the Mac copy's session: rig.stop's player check allows it
 results = {}
 def log(*a): print(time.strftime("%H:%M:%S"), *a, flush=True)
 def check(n, ok, info=""): results[n] = bool(ok); log(("PASS " if ok else "FAIL ") + n, info)

@@ -150,7 +150,7 @@ def run(X, Y, port_web):
 
     # 3 in game: the Players panel (a session from mp.json: no lobby, like the in-game tests)
     for x in (X, Y): rig.stop(x)
-    import socket; so = socket.socket(); so.bind(('127.0.0.1', 0)); P = so.getsockname()[1]; so.close()
+    P = rig.pair_port(X)                                       # the run's own leased port (rigports.py); rig.start writes it too
     json.dump({'role': 'host', 'port': P, 'name': 'Hosta', 'allow_speedup': True, 'allow_pause': True}, open(os.path.join(rig.idir(X), 'mp.json'), 'w'))
     json.dump({'role': 'client', 'host': '127.0.0.1', 'port': P, 'name': 'Guesto'}, open(os.path.join(rig.idir(Y), 'mp.json'), 'w'))
     for x in (X, Y):

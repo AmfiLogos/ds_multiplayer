@@ -61,6 +61,7 @@ instances/
 __pycache__/
 *.lock
 leases.json
+port_leases.json
 .DS_Store
 backups/
 saves/

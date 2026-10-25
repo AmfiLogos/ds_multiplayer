@@ -9,10 +9,11 @@ Lease the pair first (rig.py lease windows) and release it after.
 import os, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.expanduser("~/ds_multiplayer/rig")); sys.path.insert(0, HERE)
-import rig, wrig
+import rig, rigports, wrig
 
 PAIR = sys.argv[1]; sys.argv = [sys.argv[0]] + sys.argv[2:]
 HOST, WIN = PAIR[0], PAIR[1]           # WIN: the pair's second letter, played by the Windows copy
+rigports.expect_peers(1)               # W is in the Mac host's session: rig.stop's player check allows it
 MATH = "--math" in sys.argv
 if MATH: sys.argv.remove("--math")
 

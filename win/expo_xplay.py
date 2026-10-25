@@ -6,8 +6,9 @@ confirmation. Mac host (first letter of the pair) loads the MoonlightBrigade bas
 import json, os, re, sys, time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.expanduser("~/ds_multiplayer/rig")); sys.path.insert(0, HERE)
-import rig, wrig
+import rig, rigports, wrig
 PAIR = sys.argv[1]; MAC = PAIR[0]; PORT = rig.pair_port(MAC)
+rigports.expect_peers(1)   # the Windows copy W is in the Mac copy's session: rig.stop's player check allows it
 SAVE = os.path.join(rig.SEED_DATA, "Saves", "MoonlightBrigade__AutoSave_41e9c1bb8790492cbdc10f4dcad22179_0.json")
 results = {}
 def log(*a): print(time.strftime("%H:%M:%S"), *a, flush=True)

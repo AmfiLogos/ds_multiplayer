@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))                       # this ds_mu
 LD = os.path.abspath(sys.argv[1]); args = sys.argv[2:]
 sys.path.insert(0, f"{ROOT}/rig"); sys.path.insert(0, f"{ROOT}/win"); sys.path.insert(0, f"{LD}/test")
 os.environ["DSMP_WIN_LOADER"] = "1"
-import rig, wrig, lrig
+import rig, rigports, wrig, lrig
 import wloader as w
 X, WIN = "Z", "W"
 MODS = ["multiplayer", "custom-modes", "gcd-cdr"]
@@ -42,6 +42,7 @@ while not PAIR and time.time() - t_l < 1800:                       # the Mac cop
     PAIR = r.stdout.strip() if r.returncode == 0 else None
     if not PAIR: time.sleep(20)
 log("lease", PAIR)
+rigports.expect_peers(1)   # the Windows guest W is in the Mac copy Z's session: lrig.stop's player check allows it
 HAVE_LOCK = bool(PAIR) and subprocess.run([sys.executable, WL, "take", "crossmods", "--pid", str(os.getpid()), "--wait", "1800"]).returncode == 0
 try:
     if not PAIR or not HAVE_LOCK: raise SystemExit("no lease / wine lock")

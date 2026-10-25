@@ -10,6 +10,7 @@ FOC_DYLIB = the build (default ../../build_fixfoc/dsrig.dylib). Results: out/pro
 import glob, json, os, sys, time, subprocess
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig
+import rigports
 rig.DYLIB = os.path.abspath(os.environ.get('FOC_DYLIB') or os.path.join(HERE, '..', '..', 'build_fixfoc', 'dsrig.dylib'))
 os.environ.setdefault('DSRIG_BG', '1')
 PAIR = rig.lease(f'fixfoc-{os.getpid()}'); assert PAIR, 'no free pair'
@@ -85,6 +86,8 @@ if 'B' in CASES:
     wait('lobby', lambda: mst()['state'] == 'lobby', 600); press(10)
     wait('playing', lambda: mst()['state'] == 'playing', 60); time.sleep(5)
     check('B0 hosting alone, det locked, role host', c(cmd='trn_status')['cfg']['role'] == 1 and st()['det']['locked'])
+    ok, ls = rigports.players_guard(rig.send, [X], 1, 'before Leave')   # the whole session (seconds): one check, start = end
+    check('B0b players: no extra player in the hosted session', ok, '; '.join(ls))
     press(12); c(cmd='mpm_box', action='confirm'); time.sleep(4)
     m = mst(); check('B1 Leave: no session', m['state'] == 'idle' and not mp_started(), m['state'])
     s0, n0 = save_state(), save_calls(); t1 = st()['tick']; keys_for(30); t2 = st()['tick']; s1, n1 = save_state(), save_calls()

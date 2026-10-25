@@ -4,7 +4,8 @@ into the underlying chat feature, so it works for multiplayer chat too; /clear a
 the other players' chat").
 
 ONE pair of hidden loader test copies (background-only, small window, muted, notch fix off; never the owner's game, saves or
-screen), a pair lease from ~/ds_multiplayer/rig/rig.py, the host on an OS-chosen port. Host H loads the Moonlight test save
+screen), a pair lease from ~/ds_multiplayer/rig/rig.py, the host on the pair lease's own port (rig/rigports.py; never a
+fixed or OS-chosen one), no player beyond the two copies in the session (players_guard). Host H loads the Moonlight test save
 and hosts; guest G joins by mp.json. Both type chat lines (the real send path). The chat reads the mouse through Unity icalls,
 so the rig control channel's `mpm_chat {drag ... button -1, roll}` plays the wheel / clicks through the chat's own pointer
 code. Fails when (the breaks this catches):
@@ -18,7 +19,7 @@ code. Fails when (the breaks this catches):
   - one Escape closes the chat box AND the Teams window under it (owner rule: one press, one close), or does not close it.
 Usage: HM_BUILD=<kit: dsload.dylib (dev key, silent) + mods/multiplayer> LD_ROOT=<ds_modloader checkout> python3 chat_read_pair.py
        CP_OUT = output folder; CP_LOCK = a mkdir lock held while the pair runs."""
-import json, os, shutil, socket, sys, threading, time, traceback
+import json, os, shutil, sys, threading, time, traceback
 
 LD = os.path.expanduser(os.environ.get('LD_ROOT', '~/ds_launcher'))
 sys.path.insert(0, os.path.join(LD, 'loader', 'test'))
@@ -82,10 +83,6 @@ def clears(x):
     return c(x, cmd='mpm_chat', clears=1)
 
 
-def free_port():                                                # OS-chosen, not listened on by anyone right now
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
-
-
 def run(port, extra):
     for x in (H, G):
         HP.make_copy(x)
@@ -108,7 +105,8 @@ def run(port, extra):
     lrig.wait_for(G, lambda s: s.get('scene') == 1 and not s.get('busy'), 'title guest', timeout=1500)
     sg = HP.wait('guest joined and loaded', lambda: (lambda s: s if s.get('det', {}).get('locked') and s.get('mp', {}).get('loads', 0) >= 1
                                                       and not s.get('mp', {}).get('needs_state') else None)(HP.st(G)), timeout=900, every=2)
-    check('setup: the guest joined the host on the OS-chosen port and loaded its world', bool(sg), {'port': port, 'mp': (sg or {}).get('mp')})
+    check('setup: the guest joined the host on the run\'s leased port and loaded its world', bool(sg), {'port': port, 'mp': (sg or {}).get('mp')})
+    players('start')
     for x in (H, G):
         dl = HP.flog(x, 'dsload.log')
         check(f'{x}: the copy is silent (AudioListener held at 0)', 'AudioListener held at 0' in dl, [l for l in dl.splitlines() if 'AudioListener' in l][:1])
@@ -180,6 +178,13 @@ def run(port, extra):
     check('session: the next Escape closes the Teams window', c(G, cmd='ui_teams').get('modal') == 0, c(G, cmd='ui_teams').get('modal'))
     c(H, cmd='mpm_key', key='escape', via='app'); time.sleep(2)
     check('session: Escape closes the host\'s read box', not chat(H).get('box') and chat(H).get('read') == 0, (chat(H).get('box'), chat(H).get('read')))
+    players('end')
+
+
+def players(phase):
+    """another run's copy in this session = EXTRA PLAYER (rig/rigports.py), a FAIL"""
+    ok, lines = HP.realrig.rigports.players_guard(lrig.send, [H, G], 2, phase)
+    check(f'players: no extra player at the {phase}', ok, '; '.join(lines))
 
 
 def main():
@@ -203,8 +208,8 @@ def main():
             time.sleep(15); pair = HP.realrig.lease(LANE, os.getpid())
         if not pair:
             raise SystemExit('no free pair lease for 30 min')
-        port = free_port()
-        log('lease', pair, 'OS-chosen port', port, 'build', HP.BUILD, 'out', OUT)
+        port = HP.realrig.PAIR_PORTS[pair]                       # the pair lease's own port (rigports.py): unique on the Mac
+        log('lease', pair, 'port', port, '(leased)', 'build', HP.BUILD, 'out', OUT)
         crash = os.path.join(OUT, 'crash'); os.makedirs(crash, exist_ok=True); open(os.path.join(crash, 'answer'), 'w').write('no')
         wd = lrig.ctl_env()['DSRIG_WRITE_DIRS'] + ':' + OUT
         run(port, {'DSL_CRASHREP_TEST': crash, 'DSRIG_WRITE_DIRS': wd})

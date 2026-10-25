@@ -23,6 +23,7 @@ import json, os, shutil, signal, subprocess, sys, time, traceback
 HERE = os.path.dirname(os.path.abspath(__file__)); W = os.path.abspath(os.path.join(HERE, '..', '..'))
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig
+import rigports
 
 ARG = lambda k, d: sys.argv[sys.argv.index(k) + 1] if k in sys.argv else d
 rig.DYLIB = os.path.abspath(os.path.expanduser(ARG('--dylib', os.path.join(W, 'build', 'dsrig.dylib'))))
@@ -121,6 +122,10 @@ def run(H, ctx):
         c(cmd='mp_quit', mode='title'); rig.wait_for(H, on_title, 'title', timeout=300)
         wait('menu idle', lambda: ms().get('state') in ('idle', 'title_menu'), timeout=120); time.sleep(3)
 
+    def no_extra(phase):                                # H hosts alone: another run's copy in its session = EXTRA PLAYER
+        ok, ls = rigports.players_guard(rig.send, [H], 1, phase)
+        check(f'players: no extra player at the {phase}', ok, '; '.join(ls))
+
     rig.start(H, fps=30, window=True)
     rig.wait_for(H, on_title, 'title', timeout=1500); time.sleep(3)
     files0 = set(os.listdir(saves)); new_bytes = open(os.path.join(saves, NEW_STEM + '.json'), 'rb').read()
@@ -142,6 +147,7 @@ def run(H, ctx):
     if ANSWER_NO:
         log('answer No', c(cmd='mpm_box', action='cancel'))
         wait('host session after the answer', lambda: st().get('mp', {}).get('started'), timeout=300)
+        no_extra('start')
         time.sleep(3)
         made = sorted(f for f in set(os.listdir(saves)) - files0 if f.endswith('.json') and not f.startswith('mp_'))
         sl = open(os.path.join(rig.idir(H), 'mp_solo.txt')).read() if os.path.exists(os.path.join(rig.idir(H), 'mp_solo.txt')) else ''
@@ -150,10 +156,12 @@ def run(H, ctx):
         n0 = ms().get('solo', {}).get('asked'); off = host(NEW_STEM)
         wait('host session (NEW again)', lambda: st().get('mp', {}).get('started'), timeout=600); time.sleep(3)
         check('after No, NEW again: no box', ms().get('solo', {}).get('asked') == n0 and f'not asked for world {NEW_G} (asked before)' in rig_log_since(off), json.dumps(ms().get('solo')))
+        no_extra('end')                                  # the copy stops next (main's finally)
         ctx['done'] = True
         return
     log('answer Yes', c(cmd='mpm_box', action='confirm'))
     wait('host session after the answer', lambda: st().get('mp', {}).get('started'), timeout=300)
+    no_extra('start')
     check('after Yes: the session starts with the original world', ms().get('solo', {}).get('made') == 1, json.dumps(ms().get('solo')))
     copies = sorted(f for f in set(os.listdir(saves)) - files0 if f.endswith('.json') and not f.startswith('mp_'))
     log('new files in data/Saves:', copies)
@@ -188,6 +196,7 @@ def run(H, ctx):
     time.sleep(3)
     check('TAGGED (has the Multiplayer tag): no box', ms().get('solo', {}).get('asked') == n0 and f'not asked for world {TAG_G} (it has the Multiplayer tag)' in rig_log_since(off),
           json.dumps(ms().get('solo')))
+    no_extra('end')                                      # the last session of the run (step 4 is single player)
     to_title()
 
     # 4. the copy alone: the game loads it, and it is the copy (its id, the same units)

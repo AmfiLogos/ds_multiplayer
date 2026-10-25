@@ -241,6 +241,12 @@ def cmd_start():
         q = os.path.join(lrig.idir(X), f)
         if os.path.exists(q):
             os.replace(q, q + '.prev')
+    if not hasattr(lrig, 'rigports'):                              # an lrig.py older than the port helper leaves host_port unset
+        raise SystemExit(f'refused: {LOADER}/test/lrig.py has no port helper (rigports.py): its menu host would listen on 47777, '
+                         'the owner\'s game port; update that loader checkout')
+    port = realrig.rigports.port_for([lrig.idir(X)], 'winbot ' + LANE, pid=s['holder'], share=True)   # W joins the pair's port lease
+    lrig.pair_port = lambda x, _p=port: _p                         # lrig.start: mp.json + host_port = the pair's port (rigports), never 47777
+    s['pair_port'] = port
     pid = lrig.start(X, window=os.environ.get('MAC_WINDOW') == '1', fps=30)
     s.update(pid=pid, started=time.time()); save_state(s)
     out({'started': pid, 'pair': s['pair'], 'pair_port': s['pair_port'], 'mode': 'hidden window' if os.environ.get('MAC_WINDOW') == '1' else 'batchmode', **p,

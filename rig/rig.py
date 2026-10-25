@@ -11,7 +11,7 @@
   rig.py release <pair> [lane]        stop the pair's copies, give it back (only its lane, or without lane its holder process)
   rig.py leases                       list leases
 Instances A..J; "both" = A+B, a pair name (AB..IJ) = its two copies. Max 5 pairs at once.
-  rig.py port <pair>                  host TCP port of the pair (AB 7791, CD 7811, EF 7831, GH 7851, IJ 7871)
+  rig.py port <pair>                  host TCP port of the pair's run (rigports.py: leased with the pair, never fixed)
   rig.py smoke [PAIR]                 no PAIR: A alone then AB; with PAIR: both copies of that pair at once
 
 Copies live in ~/ds_multiplayer/instances/<X>/ (built by make_instance.sh). Nothing of the real
@@ -22,6 +22,7 @@ A guard process per copy kills it (by PID) if it ever shows a visible window or 
 import json, os, signal, socket, subprocess, sys, time, shutil, hashlib, glob, plistlib
 if os.path.dirname(os.path.abspath(__file__)) not in sys.path: sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ctl_token                                         # noqa: E402  test control channel token (first line)
+import rigports                                          # noqa: E402  each run's own TCP port + the EXTRA PLAYER guard
 
 ROOT = os.path.expanduser('~/ds_multiplayer')
 INST = os.environ.get('DSRIG_INSTANCES') or os.path.join(ROOT, 'instances')   # kit_dryrun: a copy whose ../../build holds frozen det_ranges
@@ -32,17 +33,40 @@ REAL_PLIST = os.path.expanduser('~/Library/Preferences/com.CanOpener.Dungeon-Set
 REAL_DATA = os.path.expanduser('~/Library/Application Support/CanOpener/Dungeon Settlers')
 SEED_DATA = os.path.expanduser('~/DungeonSettlers_SaveBackups/2026-10-11-1827')
 EXE_REL = 'DungeonSettlers.app/Contents/MacOS/Dungeon Settlers'
+HERE = os.path.dirname(os.path.abspath(__file__))
+SHIM_SRC = os.path.join(HERE, 'hostport_shim.c')
+SHIM = os.path.join(TOOLS, 'hostport_shim.dylib')
 
 
 def idir(x): return os.path.join(INST, x)
 
 
 def pair_port(x):
-    """each pair gets its own TCP port, so one pair's client can never join another pair's host"""
-    for pair, port in PAIR_PORTS.items():          # PAIR_PORTS: defined with the pair leases below
-        if x in pair:
-            return port
-    return 7891
+    """the TCP port of copy x's run (rigports.py, 2026-10-25): leased with x's pair lease (holder = the lease's holder),
+    else by this process for the pair. Unique on the Mac, never 47777, never an old fixed pair port (stale copies of
+    other lanes point at those: 2026-10-25 runs joined each other on 7891 / 7831)."""
+    pair = next((p for p in PAIRS if x in p), x)
+    def f(d):
+        l = d.get(pair)
+        p = rigports.port_for([idir(c) for c in pair], f'rig {pair} ' + (l['lane'] if l else os.path.basename(sys.argv[0])),
+                              l.get('pid') if l else None)
+        if l:
+            l['port'] = p
+        return p
+    return _with_leases(f)
+
+
+def hostport_shim():
+    """test-only dylib (hostport_shim.c, built into rig/tools): a copy without the loader hosts from the menu on
+    DSRIG_HOST_PORT instead of 47777 (the owner's game port). Refused if it cannot be built."""
+    try:
+        if not os.path.exists(SHIM) or os.path.getmtime(SHIM) < os.path.getmtime(SHIM_SRC):
+            os.makedirs(TOOLS, exist_ok=True); tmp = f'{SHIM}.{os.getpid()}'
+            subprocess.run(['cc', '-dynamiclib', '-O2', '-o', tmp, SHIM_SRC], check=True, capture_output=True)
+            os.replace(tmp, SHIM)
+        return SHIM
+    except Exception as e:
+        raise SystemExit(f'refused: the host-port shim does not build ({e}): a menu host would listen on 47777')
 def pidfile(x): return os.path.join(idir(x), 'game.pid')
 def sockpath(x): return os.path.join(idir(x), 'ctl.sock')
 
@@ -324,7 +348,9 @@ def owner_game_ran_since(t):
 
 # ------------------------------------------------------------------ instance data
 def fix_mp_port(x):
-    """mp.json (if any) always uses the pair's port, whatever the lane wrote"""
+    """an mp.json from before this run is set aside (another lane's: 2026-10-25 copy T joined a pair on 7831); this
+    run's mp.json always uses the run's port (pair_port), whatever the lane wrote"""
+    rigports.clear_stale_mp(idir(x))
     p = os.path.join(idir(x), 'mp.json')
     if not os.path.exists(p):
         return
@@ -448,6 +474,10 @@ def start(x, window=False, fps=30, show=None):
         subprocess.run([os.path.join(ROOT, 'rig', 'make_instance.sh'), x], check=True)
     prepare_data(x)
     fix_mp_port(x)
+    port = pair_port(x)
+    rigports.check_start(idir(x))                              # GUARD: mp.json at a port this run does not own = refused
+    shim = hostport_shim()
+    rigports.note_started(idir(x), x)
     for p in (sockpath(x),):
         if os.path.exists(p):
             os.unlink(p)
@@ -455,7 +485,7 @@ def start(x, window=False, fps=30, show=None):
     env = {'HOME': os.path.join(idir(x), 'home'), 'CFFIXED_USER_HOME': os.path.join(idir(x), 'home'),
            'USER': os.environ.get('USER', ''), 'LOGNAME': os.environ.get('LOGNAME', ''), 'PATH': '/usr/bin:/bin:/usr/sbin:/sbin',
            'TMPDIR': os.environ.get('TMPDIR', '/tmp'), 'DSRIG_DIR': idir(x), 'DSRIG_FPS': str(fps),
-           'DYLD_INSERT_LIBRARIES': DYLIB}
+           'DYLD_INSERT_LIBRARIES': DYLIB + ':' + shim, 'DSRIG_HOST_PORT': str(port)}   # menu host: the run's port, never 47777
     env.update(ctl_env())                                      # test copy: control socket on (test tools)
     env.update({k: v for k, v in os.environ.items() if k.startswith('DSRIG_') and k not in env})   # DSRIG_DIAG, DSRIG_DETAIL_SYNC...
     env.update(EXTRA_ENV.get(x, {}))                           # a test's own variables for this copy (e.g. DSML_GAME_SAVES = a test folder)
@@ -532,6 +562,10 @@ def stop(x):
     pid = read_pid(x)
     if not alive(pid):
         print(f'{x}: not running'); return
+    try:
+        rigports.end_check(send, x, idir(x))                   # EXTRA PLAYER: more players in its session than this run's copies
+    except Exception as e:
+        print(f'{x}: stop check failed ({e})')
     try:
         send(x, {'cmd': 'quit'}, timeout=5)
     except Exception as e:
@@ -678,7 +712,20 @@ def smoke(pair=None):
 
 # ------------------------------------------------------------------ pair leases
 PAIRS = ['AB', 'CD', 'EF', 'GH', 'IJ']
-PAIR_PORTS = {'AB': 7791, 'CD': 7811, 'EF': 7831, 'GH': 7851, 'IJ': 7871}   # host TCP port per pair (net tests)
+class _PairPorts(dict):
+    """PAIR_PORTS[pair] / .get(pair): the pair's run port (pair_port). Until 2026-10-25 fixed numbers (AB 7791 .. IJ 7871)
+    that stale copies of other lanes kept pointing at."""
+    def __getitem__(self, pair):
+        return pair_port(pair[0])
+
+    def get(self, pair, default=None):
+        return pair_port(pair[0]) if pair else default
+
+    def __contains__(self, pair):
+        return pair in PAIRS
+
+
+PAIR_PORTS = _PairPorts()                                    # host TCP port per pair (net tests)
 LDIR = os.environ.get('DSRIG_LEASE_DIR') or os.path.join(ROOT, 'rig')    # tests: a temp folder (never the real leases)
 LEASES = os.path.join(LDIR, 'leases.json')
 LEASE_LOCK = os.path.join(LDIR, 'leases.lock')
@@ -717,7 +764,7 @@ def _free_stale(d):
             if _kill_copies(pair, f'holder {l["lane"]} pid {l["pid"]} dead'):
                 _free_log(f'{pair} {l["lane"]} pid={l["pid"]}: holder dead; copies stopped; freed')
                 print(f'freed lease {pair} of {l["lane"]} (holder pid {l["pid"]} dead, its copies stopped)', file=sys.stderr)
-                del d[pair]
+                _drop_port(d.pop(pair))
             else:
                 _free_log(f'{pair} {l["lane"]} pid={l["pid"]}: holder dead; KEPT, processes survived SIGKILL')
             continue
@@ -730,7 +777,13 @@ def _free_stale(d):
             if procs:
                 continue
             print(f'freed stale lease {pair} ({l["lane"]})', file=sys.stderr)
-            del d[pair]
+            _drop_port(d.pop(pair))
+
+
+def _drop_port(l):
+    """the run port of a pair lease that ends goes back (rigports; it then rests 6 h)"""
+    if l and l.get('port'):
+        rigports.release(l['port'])
 
 
 def _ancestors():
@@ -871,7 +924,8 @@ def release(pair, lane=None):
         if not _kill_copies(pair, f'release by {lane or l["lane"]}'):
             print(f'release refused: processes in {pair} survived SIGKILL', file=sys.stderr)
             return False
-        del d[pair]
+        _drop_port(d.pop(pair))
+        rigports.note_released([idir(x) for x in pair])
         return True
     return _with_leases(r)
 
@@ -919,7 +973,9 @@ def main():
     elif a[0] == 'smoke':
         smoke_pair(a[1]) if len(a) > 1 else smoke()
     elif a[0] == 'port':
-        print(PAIR_PORTS[a[1]])
+        if not _with_leases(lambda d: a[1] in d):
+            print(f'{a[1]} is not leased: its port would end with this command (lease it first)', file=sys.stderr); sys.exit(1)
+        print(pair_port(a[1][0]))
     elif a[0] == 'lease':
         pid = int(a[a.index('--pid') + 1]) if '--pid' in a else os.getppid()   # the caller holds it
         p = lease(a[1], pid)

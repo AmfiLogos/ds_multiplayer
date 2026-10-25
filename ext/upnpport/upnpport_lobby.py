@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """upnpport lane (owner 2026-10-20): hosting by address opens a port on the router by UPnP and the lobby shows it.
 Runs against the REAL home router (owner approved router changes for this test). One leased pair, only the host copy
-runs (hidden, windowed, muted, notch fix off). The plain rig dylib = no loader settings: host port 47777.
+runs (hidden, windowed, muted, notch fix off). The plain rig dylib has no loader settings: rig.start's host-port shim
+makes the menu host listen on the run's own leased port HP (rig/rigports.py), never 47777 (the owner's game port).
   open    (en): DSRIG_UPNP=1 DSRIG_UPNP_SKIP_EXISTING=1 DSRIG_UPNP_LEASE=40 -> mapping added, listed, renewed, deleted on Leave
-  already (fr): DSRIG_UPNP=1                                -> a listed mapping to this computer:47777 is shown, untouched
+  already (fr): DSRIG_UPNP=1                                -> a listed mapping to this computer:HP is shown, untouched
   off     (de): DSRIG_UPNP=0                                -> "Your router did not open a port" line, router untouched
 At the end the router's mapping list must equal the one before the run (this lane never leaves a mapping).
   upnpport_lobby.py --dylib PATH --out DIR [--cases open,already,off]
@@ -147,16 +148,11 @@ def one(X, case, base):
            'already': {'DSRIG_UPNP': '1'}, 'off': {'DSRIG_UPNP': '0', 'DSRIG_EXTADDR_UPNP': '0'}}[case]
     mp = os.path.join(rig.idir(X), 'mp.json')
     if os.path.exists(mp): os.replace(mp, mp + '.last')
-    def free47777():                                       # another lane's host on 47777 moves ours to a random port
-        k = socket.socket(); k.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try: k.bind(('0.0.0.0', 47777)); return True
-        except OSError: return False
-        finally: k.close()
-    wait('port 47777 free', free47777, timeout=1800, every=10)
-    if case == 'already' and not any(m['proto'] == 'TCP' and m['client'] == router()['lan'] and m['port'] == 47777 for m in mappings()):
-        ok = add_mapping(47777, 47777, 'upnpport test (already case)', 900)   # no forward to this computer on the router: the test makes one
-        if ok: MADE.append(47777)
-        log(case, 'made a forward TCP 47777 -> this computer:47777 for this case', 'ok' if ok else 'REFUSED by the router')
+    hp = rig.pair_port(X)                                  # the menu host's port: the run's own lease (rigports.py), never 47777
+    if case == 'already' and not any(m['proto'] == 'TCP' and m['client'] == router()['lan'] and m['port'] == hp for m in mappings()):
+        ok = add_mapping(hp, hp, 'upnpport test (already case)', 900)   # no forward to this computer on the router: the test makes one
+        if ok: MADE.append(hp)
+        log(case, f'made a forward TCP {hp} -> this computer:{hp} for this case', 'ok' if ok else 'REFUSED by the router')
     start(X, env)
     rig.wait_for(X, lambda s: s.get('scene') == 1 and not s.get('busy'), 'host title', timeout=1500)
     time.sleep(3)
