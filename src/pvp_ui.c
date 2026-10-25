@@ -82,6 +82,8 @@ static void pv_pick_map(int here_world, pvp_map_pick *m) {
     if (m->here && !here_world) { m->here = 0; m->region = PV_REGION; m->floor = PV_FLOOR; m->seed = PV_SEED; }   /* not a settlement world: the tested arena */
 }
 static char pv_err[700], pv_note_txt[700];                            /* Start Match refused: why (until the next change) */
+static int pv_note_err;                                                  /* the note shown is a refusal (red) */
+static const Col C_WARN = { 0.945f, 0.376f, 0.443f, 1 };                 /* #F16071, the lobby's refusal colour (mpmenu.c C_WARN_HEX) */
 /* tested arena (rig run arena2: same map on every peer, 14 rooms, Blue arrival vs exit portal 28 cells apart): PV_REGION etc. above */
 /* rule rows: left column Mode .. Vanilla check, right column the six visibility rules (pvp_rules.c), then the Preset row */
 enum { PVR_MODE, PVR_WIN, PVR_TIME, PVR_PAUSE, PVR_ARENA, PVR_FLOOR, PVR_VANILLA, PVR_VIS0, PVR_N = PVR_VIS0 + 6 };
@@ -107,12 +109,15 @@ static int pre_naming; static char pre_msg[200];                      /* the nam
 static float pv_k = 1;                                                   /* the window's fit scale (pv_fit) */
 static uintptr_t h_pv_vsub, h_pv_root, h_pv_view, h_pv_area, h_pv_title, h_pv_hint, h_pv_teamh[3], h_pv_units[3], h_pv_rlab[PVR_N], h_pv_rval[PVR_N], h_pv_rrow[PVR_N], h_pv_note;
 static uintptr_t h_pr_root, h_pr_title, h_pr_score, h_pr_rounds;          /* result window */
-static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab;                        /* boss bar copy */
+static uintptr_t h_hud, h_hud_name, h_hud_bar[2], h_hud_lab[2], h_hud_rlab, h_hud_line;            /* boss bar copy (+ its bottom line) */
 static uintptr_t h_lab_yes, h_lab_no, h_lab_bring, h_hud_flab, h_prop_root, h_prop_txt, h_rs_root, h_rs_title, h_rs_score, h_rs_sub;    /* E4 fight button + proposal box, E9 round screen */
 static double rs_t0; static uint32_t rs_key; static char hud_last[400];
 #define HUD_INSET 84.0f                                                  /* the bars start this far right of the copy's own bar start (its end-cap stays there) */
 #define PROP_W 520.0f                                                    /* the fight vote box */
 static float hud_k = 1, prop_x, prop_y, bl_x, bl_w, bl_y; static Obj bl_par;                                                        /* E9: when this round screen showed (local clock) */
+/* P2 (UX review 2026-10-25): the match messages (planning pause, fight, flags) under the score panel. The game's centred
+   notice (HelpNoticeView) sat over the Teams button, the Players panel icons and the panel's top edge (de 960x540). */
+static uintptr_t h_msg, h_msg_txt; static float msg_x, msg_y0, msg_w; static double msg_until; static int msg_hold; static char msg_now[400];
 int  mu_bring_is_open(void);                                         /* mu_bring.c */
 int  pvp_ui_vote(int op) __attribute__((weak_import));
 int  pvp_ui_my_slot(void) __attribute__((weak_import));
@@ -155,6 +160,46 @@ static void pv_default_teams(void) {
         pv.team[ids[i]] = t; pv.team_set[ids[i]] = 1; cnt[t]++;
     }
 }
+/* P1 (UX review 2026-10-25): a guest's window shows the host's window (pvp_rules.c mails it: rules + teams), not its own
+   default choices. NULL = this is the host, or nothing came yet (then the defaults). */
+static int pv_is_host(void) { return pvp_ui_is_host && pvp_ui_is_host(); }
+static const pvpr_vals *pv_guest_view(uint8_t teams[PVPR_VIEW_TEAMS]) {
+    static pvpr_vals dflt;
+    if (pv_is_host()) return NULL;
+    const pvpr_vals *v = pvp_rules_view(teams);
+    if (v) return v;
+    pvpr_defaults(&dflt); if (teams) memset(teams, 0, PVPR_VIEW_TEAMS);
+    return &dflt;
+}
+static int pv_team_of(int id) {                                          /* Blue / Red as the host's window shows it */
+    uint8_t t[PVPR_VIEW_TEAMS];
+    if (id >= 0 && id < PVPR_VIEW_TEAMS && pv_guest_view(t) && (t[id] == PVP_TEAM_BLUE || t[id] == PVP_TEAM_RED)) return t[id];
+    return id >= 0 && id < PVP_MAX_PLAYERS && pv.team[id] ? pv.team[id] : PVP_TEAM_BLUE;
+}
+static void pv_host_view(pvpr_vals *v) {                                 /* the host's rules as its window shows them */
+    *v = *pvp_rules_local();
+    pvpr_vals_set(v, "mode", pv.mode == PVP_MODE_CTF); pvpr_vals_set(v, "win", pv.bo); pvpr_vals_set(v, "round_time", pv.secs); pvpr_vals_set(v, "pause", pv.pause != 0);
+}
+static void pv_sync_once(void);
+/* host, every 10 frames outside a match: what its window shows (rules, teams, who is here) changed, or a guest asked = mail
+   it to every other player (at most 4 times a second). The guests' open windows redraw within 15 frames. */
+static void pv_host_sync(const pvp_state *s) {
+    static uint64_t last_sig; static double last_t; static void *last_sess;
+    mp_session *ss = mp_game_session(); dsnet_client *c = ss ? mp_client(ss) : NULL;
+    if (!c || !pv_is_host() || (s && s->phase != PVP_OFF)) { if (!c) last_sess = NULL; return; }
+    if ((void *)ss != last_sess) { last_sess = ss; last_sig = 0; }
+    if (frames % 10) return;
+    pv_sync_once(); pv_default_teams();
+    pvpr_vals v; pv_host_view(&v);
+    uint8_t teams[PVPR_VIEW_TEAMS] = { 0 }; uint32_t pm = dsnet_present_mask(c);
+    for (int p = 0; p < PVPR_VIEW_TEAMS && p < PVP_MAX_PLAYERS; p++) if (pm >> p & 1) teams[p] = (uint8_t)pv_team_of(p);   /* the host's own: pv.team */
+    uint64_t sig = pvpr_hash(&v) ^ ((uint64_t)pm << 1) * 1099511628211ULL;
+    for (int p = 0; p < PVPR_VIEW_TEAMS; p++) sig = (sig ^ teams[p]) * 1099511628211ULL;
+    static int asked; asked |= pvp_rules_view_asked();
+    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); double now = ts.tv_sec + ts.tv_nsec / 1e9;
+    if ((sig == last_sig && !asked) || now - last_t < 0.25) return;
+    if (pvp_rules_view_send(&v, teams) != -2) { last_sig = sig; last_t = now; asked = 0; }   /* a failed mail: the next change or ask sends again */
+}
 /* the rule shown: in a match the one sent with SETUP; else the host's choice (a guest: as the host last told it) */
 static int pv_vanilla_shown(const pvp_state *s, int host) {
     if (s && s->phase != PVP_OFF) return s->rules.vanilla;
@@ -163,15 +208,19 @@ static int pv_vanilla_shown(const pvp_state *s, int host) {
     return t >= 0 ? t : 1;
 }
 static void pv_value(int r, char *out, size_t cap) {
-    if (pvpr_row(r) >= 0) { pvpr_ui_value(pvpr_row(r), pvp_rules_local(), pv_here(), out, cap); return; }   /* map, floor, visibility (pvp_rules.c) */
+    const pvpr_vals *gv = pv_guest_view(NULL);                         /* P1: a guest shows the host's window */
+    if (pvpr_row(r) >= 0) { pvpr_ui_value(pvpr_row(r), gv ? gv : pvp_rules_local(), pv_here(), out, cap); return; }   /* map, floor, visibility (pvp_rules.c) */
+    int mode = gv ? (pvpr_vals_get(gv, "mode") ? PVP_MODE_CTF : PVP_MODE_FIGHT) : pv.mode, bo = gv ? pvpr_vals_get(gv, "win") : pv.bo,
+        secs = gv ? pvpr_vals_get(gv, "round_time") : pv.secs, pause = gv ? pvpr_vals_get(gv, "pause") : pv.pause;
+    if (bo < 0 || bo > 2) bo = 1; if (secs < 0 || secs > 4) secs = 2;
     switch (r) {
     case PVR_VANILLA: { const pvp_state *s = pvp_ui_state ? pvp_ui_state() : NULL;
                         snprintf(out, cap, "%s", pv_vanilla_shown(s, pvp_ui_is_host && pvp_ui_is_host()) ? TR("On: vanilla only") : TR("Off: mods allowed")); break; }
-    case PVR_MODE: snprintf(out, cap, "%s", pv.mode == PVP_MODE_CTF ? TR("Capture the Flag") : TR("Fight")); break;
-    case PVR_WIN: if (pv.mode == PVP_MODE_CTF) snprintf(out, cap, TRN("%d capture to win", "%d captures to win", pv_bo[pv.bo]), pv_bo[pv.bo]);
-                  else snprintf(out, cap, TRN("Best of %d", "Best of %d", pv_bo[pv.bo]), pv_bo[pv.bo]); break;   /* TRN: "1 Runde" / "3 Runden" */
-    case PVR_TIME: snprintf(out, cap, TR("%d:%02d per round"), pv_secs[pv.secs] / 60, pv_secs[pv.secs] % 60); break;
-    case PVR_PAUSE: snprintf(out, cap, "%s", pv.pause ? TR("Planning pause every 7 s") : TR("No pause")); break;
+    case PVR_MODE: snprintf(out, cap, "%s", mode == PVP_MODE_CTF ? TR("Capture the Flag") : TR("Fight")); break;
+    case PVR_WIN: if (mode == PVP_MODE_CTF) snprintf(out, cap, TRN("%d capture to win", "%d captures to win", pv_bo[bo]), pv_bo[bo]);
+                  else snprintf(out, cap, TRN("Best of %d", "Best of %d", pv_bo[bo]), pv_bo[bo]); break;   /* TRN: "1 Runde" / "3 Runden" */
+    case PVR_TIME: snprintf(out, cap, TR("%d:%02d per round"), pv_secs[secs] / 60, pv_secs[secs] % 60); break;
+    case PVR_PAUSE: snprintf(out, cap, "%s", pause ? TR("Planning pause every 7 s") : TR("No pause")); break;
     }
     dsi_utf8_fix_end(out);
 }
@@ -263,21 +312,27 @@ static void pv_build(Obj v) {
     #undef KEEP
     rig_log("pvp ui: PvP window built");
 }
-/* the window fits the game window: the Esc view carries the user's UI scale (up to 1.75 on the 1080-high canvas). Measured
-   in pixels, scaled down about its centre with 16 px free on each side, never up (as the lobby, mpmenu.c lw). Its buttons
-   are Unity UI buttons: clicks follow the scale. */
-static void pv_fit(void) {
-    Obj root = pvt(h_pv_root); float r[4];
+/* M5 (UX review 2026-10-25, owner: one rule for every multiplayer window): a window follows the game's UI scale (Settings >
+   UI scale, 0.75..1.4) like Bring Units: its root's scale = that scale, then smaller only as much as the screen needs (16 px
+   free on each side). Measured in pixels about its centre (the Esc menu under it does not carry the UI scale: the window was
+   the same size at 1.0 and 1.4). Its buttons are Unity UI buttons: clicks follow the scale. Run at each refresh, so a new
+   scale or screen size applies at once. */
+static float pv_ui_scale(void);
+static void win_fit(Obj root, float *kc, const char *what) {
+    float r[4];
     float sw = (float)F(0x5092C94, int (*)(void *))(NULL), sh = (float)F(0x5092CD4, int (*)(void *))(NULL);   /* Screen.width / height */
-    if (!root || sw <= 0 || sh <= 0 || !rect_of(root, r) || r[2] <= r[0] || r[3] <= r[1]) return;
-    float fw = (r[2] - r[0]) / pv_k, fh = (r[3] - r[1]) / pv_k, k = (sw - 32) / fw;
+    if (!root || *kc <= 0 || sw <= 0 || sh <= 0 || !rect_of(root, r) || r[2] <= r[0] || r[3] <= r[1]) return;
+    float fw = (r[2] - r[0]) / *kc, fh = (r[3] - r[1]) / *kc, ui = pv_ui_scale(), k = ui;
+    if ((sw - 32) / fw < k) k = (sw - 32) / fw;
     if ((sh - 32) / fh < k) k = (sh - 32) / fh;
-    if (k > 1) k = 1; if (k < 0.3f) k = 0.3f;
-    if (k - pv_k > 0.002f || pv_k - k > 0.002f) {
-        pv_k = k; F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(root), (V3){ k, k, 1 }, NULL);   /* localScale */
-        rig_log("pvp ui: PvP window %.0fx%.0f px at scale 1 on a %.0fx%.0f screen: scale %.3f", fw, fh, sw, sh, k);
+    if (k < 0.3f) k = 0.3f;
+    if (k - *kc > 0.002f || *kc - k > 0.002f) {
+        *kc = k; F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(root), (V3){ k, k, 1 }, NULL);   /* localScale */
+        rig_log("pvp ui: %s %.0fx%.0f px at scale 1 on a %.0fx%.0f screen, UI scale %.2f: scale %.3f", what, fw, fh, sw, sh, ui, k);
     }
 }
+static float br_k = 1, pr_k = 1;                                         /* the Bring (text list) and result windows' scales */
+static void pv_fit(void) { win_fit(pvt(h_pv_root), &pv_k, "PvP window"); }
 static void pv_refresh(void) {
     const pvp_state *s = pvp_ui_state ? pvp_ui_state() : NULL;
     int host = pvp_ui_is_host && pvp_ui_is_host();
@@ -294,9 +349,9 @@ static void pv_refresh(void) {
     float H2 = PV_H / 2.0f;
     for (int i = 0; i < 8; i++) {
         Obj b = pvb(PVB_P0 + i);
-        int shown = i < n && row[pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE] < PV_TEAM_ROWS;
+        int shown = i < n && row[pv_team_of(ids[i])] < PV_TEAM_ROWS;
         if (!shown) { u_active(b, false); for (int k = 0; k < 4; k++) { u_active(pvt(h_pv_por[i][k]), false); u_active(pvt(h_pv_pname[i][k]), false); } continue; }
-        int t = pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE;
+        int t = pv_team_of(ids[i]);                                      /* P1: a guest shows the host's teams */
         float x0 = PV_COLX(t - 1), top = PV_TEAM_TOP + PV_BLOCK * row[t]; row[t]++;
         place(b, x0 + PV_COLW / 2 - PV_W / 2.0f, H2 - (top + 16), 330, 32);
         char l[96]; if (ids[i] == (c ? dsnet_player_id(c) : -1)) snprintf(l, sizeof l, TR("%s (you)"), nm[i]); else snprintf(l, sizeof l, "%s", nm[i]);
@@ -352,10 +407,10 @@ static void pv_refresh(void) {
     }
     cmt_set(pvt(h_pv_teamh[1]), TRC("team", "Blue")); cmt_set(pvt(h_pv_teamh[2]), TRC("team", "Red"));
     for (int t = 1; t <= 2; t++) { char u[96]; snprintf(u, sizeof u, TRN("%d unit", "%d units", units[t]), units[t]); cmt_set(pvt(h_pv_units[t]), u); }
-    const pvpr_vals *lv = pvp_rules_local();
+    const pvpr_vals *lv = pvp_rules_local(), *gv = pv_guest_view(NULL);
     for (int r = 0; r < PVR_N; r++) {
         char v[96]; pv_value(r, v, sizeof v); cmt_set(pvt(h_pv_rval[r]), v); cmt_set(pvt(h_pv_rlab[r]), pv_lab(r));
-        int on = pvpr_row(r) < 0 || pvpr_ui_steppable(pvpr_row(r), lv);   /* Floor: only for Dungeon 1 / 2 */
+        int on = pvpr_row(r) < 0 || pvpr_ui_steppable(pvpr_row(r), gv ? gv : lv);   /* Floor: only for Dungeon 1 / 2 */
         for (int a = 0; a < 2; a++) u_active(pvb(PVB_ARROW0 + 2 * r + a), host && !busy_match && on);
         txt_color(pvt(h_pv_rval[r]), on ? C_MAIN : C_SUB);
     }
@@ -389,6 +444,8 @@ static void pv_refresh(void) {
         note = nb;
     }
     cmt_set(pvt(h_pv_note), note); snprintf(pv_note_txt, sizeof pv_note_txt, "%s", note);
+    pv_note_err = note[0] && (note == pv_err || note == refused);                     /* M2: a refusal in red (the lobby's #F16071) */
+    txt_color(pvt(h_pv_note), pv_note_err ? C_WARN : C_ORANGE);
     pv_fit();
 }
 static void pv_show(int on) {
@@ -402,13 +459,38 @@ static void pv_show(int on) {
         if (pv.vanilla < 0) pv.vanilla = pvp_mods_default_vanilla ? pvp_mods_default_vanilla() : 1;
         pv_err[0] = 0;
         if (host && pvp_mods_ask) pvp_mods_ask(pv.vanilla);                 /* every player sends its mods (and sees the rule) */
+        if (!host) pvp_rules_view_ask();                                   /* P1: the host mails its window (pv_host_sync) */
         pv_refresh();
+    }
+}
+/* M2 (UX review 2026-10-25): the players and units each team would start with, counted as the match start counts them
+   (pvp_core.c start: the units each player of the team owns; brought units: the host's roster) */
+static void pv_team_count(int players[3], int units[3]) {
+    for (int t = 0; t < 3; t++) players[t] = units[t] = 0;
+    int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8);
+    mp_session *ss = mp_game_session(); dsnet_client *c = ss ? mp_client(ss) : NULL;
+    int nr = pvp_units_roster ? pvp_units_roster(-1, NULL, NULL, NULL) : 0;
+    for (int i = 0; i < n && c; i++) {
+        int t = pv_team_of(ids[i]); players[t]++;
+        if (nr > 0) {
+            uint8_t pu[16]; char ph[33] = ""; if (!dsnet_player_uid(c, ids[i], pu)) for (int q = 0; q < 16; q++) snprintf(ph + 2 * q, 3, "%02x", pu[q]);
+            for (int r = 0; r < nr; r++) { char ru[33], rn[64], rp[64]; pvp_units_roster(r, ru, rn, rp); if (!strcmp(ru, ph)) units[t]++; }
+        } else { static uint8_t g[64][16]; int k = dsnet_owned_list(c, ids[i], g, 64); if (k > 0) units[t] += k; }
     }
 }
 static void pv_start(void) {
     uint8_t teams[PVP_MAX_PLAYERS] = { 0 };
     int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8);
-    for (int i = 0; i < n; i++) teams[ids[i]] = (uint8_t)(pv.team[ids[i]] ? pv.team[ids[i]] : PVP_TEAM_BLUE);
+    for (int i = 0; i < n; i++) teams[ids[i]] = (uint8_t)pv_team_of(ids[i]);
+    /* M2: a team with no unit: the match start would refuse it after the window closed (nothing happened, no message).
+       Nothing is sent; the window stays, the reason in red */
+    { int pl[3], un[3]; pv_team_count(pl, un);
+      if (!un[PVP_TEAM_BLUE] || !un[PVP_TEAM_RED]) {
+          snprintf(pv_err, sizeof pv_err, "%s", !pl[PVP_TEAM_BLUE] || !pl[PVP_TEAM_RED] ? TR("Each team needs at least one player. Click a player's name to move them to the other team.")
+                                                                                        : TR("Each team needs at least one unit. Right-click a unit's portrait to take it."));
+          rig_log("pvp ui: Start Match refused before sending: Blue %d player(s) %d unit(s), Red %d player(s) %d unit(s)", pl[1], un[1], pl[2], un[2]);
+          pv_refresh(); return;
+      } }
     pvp_rules r = { (uint8_t)pv_bo[pv.bo], (uint16_t)pv_secs[pv.secs], (uint8_t)(pv.pause ? PVP_PAUSE_PLANNING : PVP_PAUSE_NONE), 7, 5, (uint8_t)(pv.vanilla != 0) };
     pv_sync_once(); pv_to_store();
     pvp_map_pick mp_; pv_pick_map(pv_here(), &mp_);
@@ -442,7 +524,7 @@ static void pv_click_do(int k) {
     if (!host) return;
     if (k >= PVB_P0 && k < PVB_P0 + 8) {
         int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8), i = k - PVB_P0;
-        if (i < n) { pv.team[ids[i]] = pv.team[ids[i]] == PVP_TEAM_RED ? PVP_TEAM_BLUE : PVP_TEAM_RED; pv.team_set[ids[i]] = 1; }
+        if (i < n) { pv.team[ids[i]] = pv.team[ids[i]] == PVP_TEAM_RED ? PVP_TEAM_BLUE : PVP_TEAM_RED; pv.team_set[ids[i]] = 1; pv_err[0] = 0; }
     } else if (k >= PVB_ARROW0 && k < PVB_ARROW0 + 2 * PVR_N) {
         int r = (k - PVB_ARROW0) / 2, d = (k - PVB_ARROW0) % 2 ? 1 : -1;
         if (r == PVR_MODE) pv.mode = pv.mode == PVP_MODE_FIGHT ? PVP_MODE_CTF : PVP_MODE_FIGHT;
@@ -549,7 +631,7 @@ static void br_build(Obj v) {
     #define BY(y) (H / 2 - (y))
     #define KEEP(hh, o) { Obj o_ = (o); u_gc_free(hh); hh = o_ ? u_gc_new(o_) : 0; }
     Obj root = mk_img(tpl_img, u_tr(v), -1, (Col){ 0, 0, 0, 0 }, 0, 0, W, H); if (!root) return;
-    Obj R = u_tr(root); KEEP(h_br_root, root);
+    Obj R = u_tr(root); KEEP(h_br_root, root); br_k = 1;
     mk_img(tpl_img, R, S_BOX, C_WHITE, 0, 0, W, H);
     mk_img(tpl_img, R, -1, C_BAND, 0, BY(32), W - 4, 60); mk_img(tpl_img, R, -1, C_COPPER, 0, BY(62), W - 4, 1);
     KEEP(h_br_title, mk_txt(tpl_txt, R, 1, 30, 514, 0, 0, BY(32), 600, 50, C_MAIN));
@@ -604,6 +686,7 @@ static void br_refresh(void) {
     else snprintf(st, sizeof st, TR("%d of %d picked."), npick, share);
     cmt_set(pvt(h_br_status), st);
     u_active(pvb(PVB_BR_SEND), npick > 0);
+    win_fit(pvt(h_br_root), &br_k, "Bring Units window");                 /* M5 */
 }
 static int br_lobby;                                                    /* opened from the HUD (preparation): no PvP window behind it */
 static void br_show(int on) {
@@ -690,7 +773,8 @@ static void hud_build(void) {
     { Obj rt = tr; if (mm_is(rt, K_RT)) { V2 p = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); p.y -= 215; p.x += 140; F(0x5106F2C, void (*)(Obj, V2, void *))(rt, p, NULL); } }
     /* the panel's sprite fades out at the bottom: a copper line closes it (the copy's root is a 100 x 100 holder, so it is
        placed from the bars: the dark panel reaches ~27 past each bar end and ~38 under the lower bar, measured on shots) */
-    if (bl_par && bl_w > 100 && u_alive(head)) mk_img(head, bl_par, -1, C_COPPER, bl_x + bl_w / 2, bl_y - 38, bl_w + 54, 2);
+    { Obj ln = bl_par && bl_w > 100 && u_alive(head) ? mk_img(head, bl_par, -1, C_COPPER, bl_x + bl_w / 2, bl_y - 38, bl_w + 54, 2) : NULL;
+      u_gc_free(h_hud_line); h_hud_line = ln ? u_gc_new(ln) : 0; }
     Obj tpl_t = u_alive(name) ? name : NULL, labs[2] = { NULL, NULL }; float lab_pw = 0;
     for (int k = 0; k < 2 && tpl_t; k++) {                               /* "Blue" left of the top bar, "Red" left of the bottom one */
         Obj bar = k ? body : head; if (!u_alive(bar)) continue;
@@ -749,9 +833,48 @@ static void hud_build(void) {
             for (int k = 0; k < 3; k++) if (tt[k]) { das_key_clear(tt[k]); u_gc_free(*hh[k]); *hh[k] = u_gc_new(tt[k]); }
         }
         u_gc_free(h_rs_root); h_rs_root = rs ? u_gc_new(rs) : 0; u_active(rs, false);
+        /* P2: the message line: a dark plate as wide as the panel, the body font; placed under whatever shows (hud_msg_place) */
+        msg_x = prop_x; msg_y0 = hp.y; msg_w = bl_w > 100 ? bl_w + 54 : 520;
+        Obj mb = mk_img(head, u_tr_parent(hrt), -1, (Col){ 0.102f, 0.094f, 0.114f, 0.9f }, msg_x, hp.y - 90, msg_w, 40);
+        if (mb) {
+            F(0x5260348, void (*)(Obj, bool, void *))(mb, false, NULL);  /* raycastTarget off: clicks go to the world */
+            Obj t = mk_txt(name, u_tr(mb), 0, 17, 514, 1, 0, 0, msg_w - 24, 36, C_MAIN);
+            if (t) { das_key_clear(t); u_gc_free(h_msg_txt); h_msg_txt = u_gc_new(t); }
+        }
+        u_gc_free(h_msg); h_msg = mb ? u_gc_new(mb) : 0; u_active(mb, false); msg_until = 0; msg_now[0] = 0;
     }
     u_go_active(cl, false);
     rig_log("pvp ui: boss bar copy built (name %p, bars %p %p)", name, head, body);
+}
+static double mono_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
+/* P2: the line shows for 4 s (the planning one while the pause lasts), 6 units under the lowest thing shown under the bars
+   (the panel's bottom line, Ready / Propose fight, Bring Units, the fight vote box, the round result screen) */
+static void hud_msg_place(const pvp_state *s) {
+    Obj mb = u_gc_get(h_msg), mt = u_gc_get(h_msg_txt);
+    if (!u_alive(mb) || !u_alive(mt)) return;
+    int on = msg_now[0] && (mono_now() < msg_until || (msg_hold && s && s->planning));
+    if (!on) { if (u_on(mb)) u_active(mb, false); return; }
+    float low = msg_y0 - 38;                                              /* the panel's bottom line (hud_build) */
+    if (u_on(pvb(PVB_READY)) || u_on(pvb(PVB_FIGHT))) low = msg_y0 - 63;
+    if (u_on(pvb(PVB_HUD_BRING))) low = msg_y0 - 105;
+    Obj pr = u_gc_get(h_prop_root); if (u_alive(pr) && u_on(pr)) { int vv = vote_view(s); float b = vv == 2 ? prop_y - 52 : prop_y; if (b < low) low = b; }
+    Obj rs = u_gc_get(h_rs_root); if (u_alive(rs) && u_on(rs) && msg_y0 - 265 < low) low = msg_y0 - 265;
+    cmt_set(mt, msg_now);
+    float pw = mm_is(mt, K_TMP) ? F(0x4F0D81C, float (*)(Obj, void *))(mt, NULL) : 0;   /* TMP_Text.preferredWidth: lines needed */
+    int lines = pw > msg_w - 24 ? (int)(pw / (msg_w - 24)) + 1 : 1; if (lines > 3) lines = 3;
+    float h = 14 + 22 * lines;
+    place(mb, msg_x, low - 6 - h / 2, msg_w, h); place(mt, 0, 0, msg_w - 24, h - 8);
+    if (!u_on(mb)) u_active(mb, true);
+}
+/* pvp_game.c center(): 1 = shown under the score panel (the match HUD is up), 0 = the caller uses the game's notice.
+   hold: stays while the planning pause lasts. */
+int pvp_ui_hud_say(const char *text, int hold) {
+    Obj cl = u_gc_get(h_hud);
+    if (!text || !u_alive(cl) || !u_go_active_self(cl) || !u_alive(u_gc_get(h_msg))) return 0;
+    snprintf(msg_now, sizeof msg_now, "%s", text); dsi_utf8_fix_end(msg_now);
+    msg_until = mono_now() + 4; msg_hold = hold;
+    hud_msg_place(pvp_ui_state ? pvp_ui_state() : NULL);
+    return 1;
 }
 static void hud_frame(const pvp_state *s) {
     int on = s && pvp_active(s) && scene() == 2;
@@ -816,6 +939,7 @@ static void hud_frame(const pvp_state *s) {
         dsi_utf8_fix_end(a); dsi_utf8_fix_end(c2);
         Obj t; if (u_alive(t = u_gc_get(h_rs_title))) cmt_set(t, a); if (u_alive(t = u_gc_get(h_rs_score))) cmt_set(t, b2); if (u_alive(t = u_gc_get(h_rs_sub))) cmt_set(t, c2);
     }
+    hud_msg_place(s);                                                    /* P2: under what shows now */
 }
 static void hud_click(const pvp_state *s) {                             /* every frame: a left click on Ready */
     if (s && F(0x51ACDD0, bool (*)(int, void *))(0, NULL)) {              /* E4: Start / Propose fight, the proposal box's buttons */
@@ -836,7 +960,7 @@ static void pr_build(Obj v) {
     const float W = 560, H = 360;
     Obj root = mk_img(tpl_img, u_tr(v), -1, (Col){ 0, 0, 0, 0 }, 0, 0, W, H); if (!root) return;
     Obj R = u_tr(root);
-    u_gc_free(h_pr_root); h_pr_root = u_gc_new(root);
+    u_gc_free(h_pr_root); h_pr_root = u_gc_new(root); pr_k = 1;
     mk_img(tpl_img, R, S_BOX, C_WHITE, 0, 0, W, H);
     mk_img(tpl_img, R, -1, C_BAND, 0, H / 2 - 32, W - 4, 60);
     mk_img(tpl_img, R, -1, C_COPPER, 0, H / 2 - 62, W - 4, 1);
@@ -878,7 +1002,7 @@ static int pr_show(const pvp_state *s) {
     { Obj ok = pvb(PVB_RESULT_OK); if (ok) cmt_set(btn_label(ok, 1), pv_here() ? TR("Back to the Hub") : TR("Back to the World")); }
     cmt_set(u_gc_get(h_pr_rounds), r);
     Obj area = u_gc_get(h_pv_area); if (u_alive(area)) u_active(area, false);
-    u_active(root, true); pr_open = 1;
+    u_active(root, true); pr_open = 1; win_fit(root, &pr_k, "result window");   /* M5 */
     rig_log("pvp ui: result window: %s", b);
     return 1;
 }
@@ -922,6 +1046,7 @@ static void pvp_ui_frame(const mpm_obs *o) {
     hud_frame(s);
     hud_click(s);
     pr_frame(s);
+    pv_host_sync(s);                                                     /* P1: the guests see the host's window */
     Obj v = o->scene == 2 ? esc_view() : NULL;
     int ingame = v && u_on(v) && mp_game_session() && M.state == MPM_PLAYING;
     if (v && u_on(v)) {
@@ -936,6 +1061,7 @@ static void pvp_ui_frame(const mpm_obs *o) {
         }
         if (eb0) { int show = ingame && s->phase == PVP_OFF && !pv_open && !pr_open; u_active(eb0, show); if (show) cmt_set(AT(eb0, 0x28, Obj), TR("PvP Match")); }
         if (pv_open && frames % 15 == 0) pv_refresh();
+        if (frames % 15 == 0) { if (br_open) win_fit(pvt(h_br_root), &br_k, "Bring Units window"); if (pr_open) win_fit(pvt(h_pr_root), &pr_k, "result window"); }   /* M5 */
     } else { pv_open = 0; pr_open = 0; br_open = 0; br_lobby = 0; }
     if (pv_click >= 0) { int k = pv_click; pv_click = -1; pv_click_do(k); }
     /* Escape (owner 2026-10-25): these windows are on the loader kit's Escape stack while they show (mp_esc.h): one press
@@ -950,9 +1076,72 @@ static void pvp_ui_frame(const mpm_obs *o) {
     Obj lw = u_gc_get(h_lw_root);                                       /* the lobby steps aside while Bring Units is open over it */
     if (br_open && br_lobby && u_alive(lw)) u_active(lw, false);
 }
+/* ---- layout probe (tests, UX review 2026-10-25): screen rects in pixels (x0, y0, x1, y1; y up) of our windows and HUD
+   parts, the game's UI scale, the Teams button, and how much of a given rect lies on the Players panel. */
+int ui_teams_button_rect(float *x, float *y, float *w, float *h) __attribute__((weak_import));   /* ui_teams.c */
+int ui_panel_hit(float x, float y) __attribute__((weak_import));                                  /* ui_game.c */
+#include "cm_il.h"
+const DSLUi *mu_kit(void);
+float mu_ui_scale(void);
+static float pv_ui_scale(void) { return mu_kit() ? mu_ui_scale() : 1.0f; }   /* the game's UI scale (1 without the loader's kit) */
+static void probe_rect(Buf *b, const char *k, Obj o) {
+    float r[4]; bput(b, ",\"%s\":", k);
+    if (u_alive(o) && u_on(o) && rect_of(o, r)) bput(b, "[%.1f,%.1f,%.1f,%.1f]", r[0], r[1], r[2], r[3]); else bput(b, "null");
+}
+static void rect_union(float u[4], Obj o, int *any) {
+    float r[4]; if (!u_alive(o) || !u_on(o) || !rect_of(o, r)) return;
+    if (!*any) { memcpy(u, r, sizeof r); *any = 1; return; }
+    if (r[0] < u[0]) u[0] = r[0]; if (r[1] < u[1]) u[1] = r[1]; if (r[2] > u[2]) u[2] = r[2]; if (r[3] > u[3]) u[3] = r[3];
+}
+static char *pv_probe(const char *line) {
+    Buf b = { 0 };
+    bput(&b, "{\"ok\":true,\"screen\":[%d,%d],\"ui_scale\":%.3f,\"pv_k\":%.3f", F(0x5092C94, int (*)(void *))(NULL), F(0x5092CD4, int (*)(void *))(NULL), pv_ui_scale(), pv_k);
+    probe_rect(&b, "window", pvt(h_pv_root)); probe_rect(&b, "close", pvb(PVB_CLOSE)); probe_rect(&b, "start", pvb(PVB_START));
+    probe_rect(&b, "win_right", pvb(PVB_ARROW0 + 2 * PVR_WIN + 1));
+    probe_rect(&b, "bring", pvt(h_br_root)); probe_rect(&b, "bring_back", pvb(PVB_BR_BACK));
+    probe_rect(&b, "result", pvt(h_pr_root)); probe_rect(&b, "result_ok", pvb(PVB_RESULT_OK));
+    probe_rect(&b, "ready", pvb(PVB_READY));
+    probe_rect(&b, "msg", u_gc_get(h_msg)); bput(&b, ",\"msg_text\":"); bstr(&b, u_on(u_gc_get(h_msg)) ? msg_now : "");   /* P2 */
+    { float u[4] = { 0 }; int any = 0; Obj cl = u_gc_get(h_hud);           /* the score panel: its title line, the bars, its bottom line */
+      if (u_alive(cl) && u_go_active_self(cl)) { rect_union(u, u_gc_get(h_hud_name), &any); rect_union(u, u_gc_get(h_hud_bar[0]), &any); rect_union(u, u_gc_get(h_hud_bar[1]), &any); rect_union(u, u_gc_get(h_hud_line), &any); }
+      if (any) bput(&b, ",\"score_panel\":[%.1f,%.1f,%.1f,%.1f]", u[0], u[1], u[2], u[3]); else bput(&b, ",\"score_panel\":null"); }
+    { float x, y, w, h; if (ui_teams_button_rect && ui_teams_button_rect(&x, &y, &w, &h)) bput(&b, ",\"teams_btn\":[%.1f,%.1f,%.1f,%.1f]", x, y, x + w, y + h); else bput(&b, ",\"teams_btn\":null"); }
+    { static uintptr_t h_hn; static void *k_hn; Obj hv = find_view_x(&h_hn, &k_hn, "Refactor", "HelpNoticeView", true);   /* the game's centred notice */
+      static void *kt; if (!kt) kt = class_by_name("TMPro", "TMP_Text");
+      Obj ty = kt ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(kt)) : NULL;
+      Obj arr = hv && ty && u_on(hv) ? F(0x50EDFD0, Obj (*)(Obj, Obj, void *))(hv, ty, NULL) : NULL;   /* GetComponentsInChildren(Type): active ones */
+      int n = arr ? (int)AT(arr, 0x18, uintptr_t) : 0; bput(&b, ",\"stock_notice\":[");
+      for (int i = 0, k = 0; i < n && k < 4; i++) {
+          Obj t = AT((char *)arr + 0x20, i * 8, Obj); float r[4]; if (!u_alive(t) || !mm_is(t, K_TMP) || !rect_of(t, r)) continue;
+          void *vk = *(void **)t; Obj so = (*(Obj (**)(Obj, void *))((char *)vk + 0x548))(t, *(void **)((char *)vk + 0x550));   /* TMP_Text.text (slot 65) */
+          char tx[400] = ""; str_utf8(so, tx, sizeof tx);
+          bput(&b, "%s{\"text\":", k++ ? "," : ""); bstr(&b, tx); bput(&b, ",\"rect\":[%.1f,%.1f,%.1f,%.1f]}", r[0], r[1], r[2], r[3]);
+      }
+      bput(&b, "]"); }
+    double q[4] = { -1, -1, -1, -1 }; jnum(line, "x0", &q[0]); jnum(line, "y0", &q[1]); jnum(line, "x1", &q[2]); jnum(line, "y1", &q[3]);
+    if (q[2] > q[0] && q[3] > q[1]) {                                   /* points of that rect on the Players panel (16 x 6 grid) */
+        int hits = 0, n = 0;
+        for (int i = 0; i < 16; i++) for (int j = 0; j < 6; j++, n++) if (ui_panel_hit && ui_panel_hit((float)(q[0] + (q[2] - q[0]) * (i + 0.5) / 16), (float)(q[1] + (q[3] - q[1]) * (j + 0.5) / 6))) hits++;
+        bput(&b, ",\"panel_hits\":%d,\"panel_points\":%d", hits, n);
+    }
+    bput(&b, "}");
+    return b.p;
+}
+static int pv_set_ui_scale(float v) {                                   /* tests: Settings > UI scale, as the game sets it */
+    if (!mu_kit()) return -1;
+    static cm_m inst, set;
+    if (!set.fn) { inst = cm_il_method("Refactor", "UIScaleManager", "get_Instance", 0, NULL); set = cm_il_method("Refactor", "UIScaleManager", "SetScale", 2, NULL); }
+    Obj m = inst.fn ? CM_CALL(inst, Obj, const void *)(inst.mi) : NULL;
+    if (!cm_alive(m) || !set.fn) return -2;
+    CM_CALL(set, void, Obj, float, bool, const void *)(m, v, true, set.mi);
+    rig_log("pvp ui: test: UI scale set to %.2f (now %.3f)", v, pv_ui_scale());
+    return 0;
+}
 static char *pvp_ui_exec(const char *cmd, const char *line) {            /* tests: mpm_pvp {"action":"esc|close|start|ready|ok|player0..|arrow r d"} */
     if (strcmp(cmd, "mpm_pvp")) return NULL;
     char a[32] = ""; jstr(line, "action", a, sizeof a); double v = 0, d = 1;
+    if (!strcmp(a, "probe")) return pv_probe(line);
+    if (!strcmp(a, "uiscale")) { jnum(line, "v", &v); int rc = v > 0 ? pv_set_ui_scale((float)v) : -9; char o[64]; snprintf(o, sizeof o, "{\"ok\":%s,\"rc\":%d}", rc ? "false" : "true", rc); return strdup(o); }
     if (!strcmp(a, "esc")) pv_click = PVB_ESC;
     else if (!strcmp(a, "close")) pv_click = PVB_CLOSE;
     else if (!strcmp(a, "start")) pv_click = PVB_START;
@@ -994,10 +1183,13 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     bput(&b, "\"window\":%d,\"result\":%d,\"esc_entry\":%d,\"hud\":%d,\"ready\":%d,\"fight_btn\":%d,\"proposal_box\":%d,\"round_screen\":%d,\"hud_text\":\"%s\",\"mode\":%d,\"bo\":%d,\"secs\":%d,\"pause\":%d,\"vanilla\":%d,\"vanilla_shown\":%d,\"note\":",
          pv_open, pr_open, u_on(pvb(PVB_ESC)), u_go_active_self(u_gc_get(h_hud)), u_on(pvb(PVB_READY)), u_on(pvb(PVB_FIGHT)), u_alive(u_gc_get(h_prop_root)) && u_on(u_gc_get(h_prop_root)), u_alive(u_gc_get(h_rs_root)) && u_on(u_gc_get(h_rs_root)), hud_last, pv.mode, pv_bo[pv.bo], pv_secs[pv.secs], pv.pause,
          pv.vanilla, pv_vanilla_shown(pvp_ui_state ? pvp_ui_state() : NULL, pvp_ui_is_host && pvp_ui_is_host()));
-    bstr(&b, pv_note_txt); bput(&b, ",\"tip\":");
+    bstr(&b, pv_note_txt); bput(&b, ",\"note_err\":%d,\"tip\":", pv_open && pv_note_err);
     bstr(&b, tip_now);
     bput(&b, ",\"columns\":[");                          /* unit names shown in the team columns */
     for (int i = 0; i < pv_ncol; i++) { bput(&b, "%s", i ? "," : ""); bstr(&b, pv_col_names[i]); }
+    bput(&b, "],\"shown_teams\":[");                    /* the team each present player is shown in (id, 1 Blue / 2 Red) */
+    { int ids[8]; char nm[8][32]; int n = pvp_ui_present(ids, nm, 8);
+      for (int i = 0; i < n; i++) bput(&b, "%s[%d,%d]", i ? "," : "", ids[i], pv_team_of(ids[i])); }
     bput(&b, "],");
     pre_status(&b);
     bput(&b, "}");

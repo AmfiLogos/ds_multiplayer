@@ -214,10 +214,12 @@ int pvp_units_gen(void) { return roster_gen; }               /* E2: changes with
 /* pvp_game.c: the world snapshot was reloaded after the match (host): put the owner tables back */
 void pvp_units_after_match(void) { if (owners_kept) owners_restore_due = 1; }
 
-/* one mail of ours (kinds 11-16; FE uses 1-5). 1 = taken. In the merged build fe/fe_game.c fe_poll reads the mailbox and
+/* one mail of ours (kinds 11-18; FE uses 1-5). 1 = taken. In the merged build fe/fe_game.c fe_poll reads the mailbox and
    hands other kinds here; the lane build (no FE glue) polls itself in pvp_units_frame. */
+int pvp_rules_view_mail(dsnet_client *c, const uint8_t from[16], uint8_t kind, const uint8_t *data, size_t len);   /* pvp_rules.c: 17-18 */
 int pvp_mail_take(dsnet_client *c, const uint8_t from[16], uint8_t kind, const uint8_t *data, size_t len) {
     if (pvp_mods_mail(c, from, kind, data, len)) return 1;
+    if (pvp_rules_view_mail(c, from, kind, data, len)) return 1;
     if (kind < PVP_M_UNITS || kind > PVP_M_ROSTER) return 0;
     char uh[33]; hex_of(from, uh);
     if (kind == PVP_M_UNITS && dsnet_is_host(c)) {
