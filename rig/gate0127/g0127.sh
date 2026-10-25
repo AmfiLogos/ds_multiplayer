@@ -86,6 +86,7 @@ modrepos() {   # every module the build ships is an official mod (MOD_REPOS: aut
   (( bad )) || echo "MOD REPOS PASS"; return $bad; }
 chk g027_mod_repos 'MOD REPOS PASS' $WT modrepos
 chk g027_check_keys 'ok +Dungeon-Settlers-Modded-Setup.exe' $LD python3 tools/release_sign/check_keys.py $REL/Dungeon-Settlers-Modded-Mac.dmg $REL/Dungeon-Settlers-Modded-Windows.zip $REL/Dungeon-Settlers-Modded-Setup.exe   # every kit loader holds both release keys, no dev key
+chk g027_changelog 'CHANGELOG OK kit' $LD python3 tools/changelog/changelog.py check --tag v$(head -1 $LD/RELEASE) --binary $REL/Dungeon-Settlers-Modded-Mac.dmg --binary $REL/Dungeon-Settlers-Modded-Windows.zip --binary $REL/Dungeon-Settlers-Modded-Setup.exe   # the kit's CHANGELOG.md entry: dated, and inside every loader of the kit (the What's new window); sign_release.sh checks it again
 chk g027_signed '== ([0-9]+) passed, 0 failed' $LD zsh loader/test/update/signed_test.sh   # updates refused without a valid release signature
 chk g027_moddata_unit 'moddata: all cases pass' $LD zsh loader/test/moddata/run.sh
 chk g027_sock 'RESULT PASS \(0 failed\)' $WT zsh src/sock_test/run.sh   # test control channel: HTTP lines closed, token first
