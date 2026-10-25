@@ -1,0 +1,3 @@
+# v0.1.27 first (run_gate.sh ld order): the new tests (player mods, Hell switch / join, Locked Slots, weapon-slot 0.1.2,
+# Units Laboratory World units), the Load list checks dshell2 changed, the kit look + hm_build, Bring Units cards, mod zip
+g027_player_mods g027_hell_toggle g027_hell_join g027_locked_slots g027_locked_slots_pair g027_weapon_slot g027_weapon_slot_pair g027_worlds g027_filters g027_savewarn g027_saves g027_look g027_hostmods g027_bringcards g027_mod_zip g027_dmg_start
