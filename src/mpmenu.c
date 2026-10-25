@@ -3343,14 +3343,17 @@ static void hist_del(int k) {
  * the fade time. Enter: a framed box with the history (wheel / PageUp-PageDown scroll) and "Say:" + the typed text;
  * Enter sends, Escape closes. While typing, the game's own key handling sees a focused text field
  * (KeyInputDispatcher.IsTextInputFocused hooked to true), so no hotkey fires. Right-click + drag moves it. */
-#define CH_HIST 100
+#define CH_HIST 3000                                                         /* mp_api v3: a DPS check writes a line per hit */
+#define CH_DROP 300                                                          /* history full: the oldest 300 go in one move */
 #define CH_IDLE 5
 #define CH_BOX_LINES 9
 #define CH_TEXT 640
-static struct { char text[CH_TEXT]; double t; int link, id, font, missing; unsigned gen; float hi, hb; } chist[CH_HIST]; static int nch, ch_serial;
+static struct { char text[CH_TEXT]; double t; int link, id, font, missing, local; unsigned gen; float hi, hb; } chist[CH_HIST]; static int nch, ch_serial;
 /* link: ui_game's id (pings), 0 = plain. id: serial (slots keep what they show). font: index in the chat fonts (-1 not
    chosen yet, gen = the fonts' generation); missing: characters no game font has, shown as '?'. hi / hb: measured text
-   height in the idle lines (410 wide) / the open box (446 wide), 0 = not measured */
+   height in the idle lines (410 wide) / the open box (446 wide), 0 = not measured. local: 1 = a mp_api v3 chat_local line
+   (never sent; MP_CHATL_CLEAR removes it; in single player the chat shows while one is in the history) */
+static int ch_nlocal; static unsigned ch_local_total;                       /* local lines in chist now / ever added (test read-back) */
 static char chat_buf[DSNET_CHAT_MAX + 1];
 static uintptr_t h_ch_view, h_ch_root, h_ch_box, h_ch_idle[CH_IDLE], h_ch_idlebg[CH_IDLE], h_ch_lines[CH_BOX_LINES], h_ch_input, h_ch_hint, h_ch_field, h_ch_typing, h_ch_typingbg;
 static char typing_shown[200];                           /* test status: the "is typing" line now shown */
@@ -3409,11 +3412,36 @@ __attribute__((visibility("default"))) void mpmenu_chat_config_get(int *fade_s, 
     if (fade_s) *fade_s = chat_fade_s; if (show_join) *show_join = chat_show_join; if (enabled) *enabled = chat_on;
 }
 static double mono_s(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec / 1e9; }
-static void chat_add(const char *rich) {
-    if (nch == CH_HIST) { memmove(&chist[0], &chist[1], sizeof chist[0] * (CH_HIST - 1)); nch--; }
+static int chat_shown_k[CH_IDLE + CH_BOX_LINES]; static uintptr_t *chat_shown_h[CH_IDLE + CH_BOX_LINES]; static int nchat_shown;   /* lines on screen this frame */
+static void chat_add_as(const char *rich, int local) {
+    if (nch == CH_HIST) {                                                   /* one move per CH_DROP lines, not one per line */
+        for (int i = 0; i < CH_DROP; i++) ch_nlocal -= chist[i].local;
+        memmove(&chist[0], &chist[CH_DROP], sizeof chist[0] * (CH_HIST - CH_DROP)); nch -= CH_DROP;
+        nchat_shown = 0;                                                    /* the indices shown this frame moved */
+    }
     snprintf(chist[nch].text, sizeof chist[nch].text, "%s", rich); dsi_utf8_fix_end(chist[nch].text);
-    chist[nch].t = mono_s(); chist[nch].link = 0; chist[nch].id = ++ch_serial; chist[nch].font = -1; chist[nch].gen = 0; chist[nch].hi = chist[nch].hb = 0; chist[nch].missing = 0; nch++;
-    chat_scroll = 0;
+    chist[nch].t = mono_s(); chist[nch].link = 0; chist[nch].id = ++ch_serial; chist[nch].font = -1; chist[nch].gen = 0; chist[nch].hi = chist[nch].hb = 0; chist[nch].missing = 0;
+    chist[nch].local = local != 0; ch_nlocal += local != 0; nch++;
+    /* a local line while the open box is scrolled up keeps the same lines in view (a DPS check adds many a second); any
+       other line jumps to the newest, as before. A drop above moves the shown line and nch by the same count. */
+    if (local && chat_typing && chat_scroll > 0) { chat_scroll++; if (chat_scroll > nch - 1) chat_scroll = nch - 1; }
+    else chat_scroll = 0;
+}
+static void chat_add(const char *rich) { chat_add_as(rich, 0); }
+/* MP_CHATL_CLEAR (and the title with no session): the local lines go, the others keep their order. The open box keeps
+   the newest kept line at or above the one it showed at its bottom. */
+static void chat_clear_local(void) {
+    if (!ch_nlocal) return;
+    int k0 = nch - 1 - chat_scroll, j = 0, newer = 0;
+    for (int i = 0; i < nch; i++) {
+        if (chist[i].local) continue;
+        if (i > k0) newer++;
+        if (j != i) chist[j] = chist[i];
+        j++;
+    }
+    rig_log("mpmenu: chat: %d local line(s) removed, %d kept", nch - j, j);
+    nch = j; ch_nlocal = 0; nchat_shown = 0;
+    chat_scroll = newer < nch ? newer : nch > 0 ? nch - 1 : 0;
 }
 /* ui lane (pings, lan_v10, dlsym): a system line in the chat, faded like any line. link != 0: a left click on the shown
    line (idle lines or the open box) calls ui_chat_link_click(link) (ui_game.c); it returns 0 when the ping is gone, and
@@ -3422,7 +3450,6 @@ __attribute__((visibility("default"))) void mpmenu_chat_system_line(const char *
     if (!rich) return;
     chat_add(rich); chist[nch - 1].link = link;
 }
-static int chat_shown_k[CH_IDLE + CH_BOX_LINES]; static uintptr_t *chat_shown_h[CH_IDLE + CH_BOX_LINES]; static int nchat_shown;   /* lines on screen this frame */
 static int chat_link_clicks;                                                /* test read-back */
 static int pt_in(Obj o, V3 m) { float r[4]; return u_on(o) && rect_of(o, r) && m.x >= r[0] && m.x <= r[2] && m.y >= r[1] && m.y <= r[3]; }
 /* ui lane (dlsym, pings lan_v10): 1 = the mouse is over a shown chat line, the "is typing" line or the open chat box */
@@ -3494,6 +3521,34 @@ int mpmenu_mod_chat(const char *mod_name, const char *text, int flags) {
     char w[MP_CHAT_MOD_MAX + MP_CHAT_TEXT_BROADCAST + 4];
     if (mpc_encode(m, x, w, sizeof w) < 0) return MP_CHAT_BAD_ARGS;
     return dsnet_chat_send(c, w) ? MP_CHAT_NOT_SENT : MP_CHAT_SHOWN;      /* shown here when the server's copy comes back */
+}
+/* mp_api v3 chat_local (MP_API.md 2b; Units Laboratory's DPS check: a line per hit): this screen only, never sent, no rate
+   limit, with or without a session. The text alone in the normal colour, escaped like the other lines. */
+int mpmenu_chat_local(const char *mod_name, const char *text, int flags) {
+    char m[MP_CHAT_MOD_MAX + 1], x[MP_CHAT_TEXT_LOCAL + 1], t[MP_CHAT_TEXT_LOCAL * 4 + 8];
+    if ((flags != MP_CHATL_LINE && flags != MP_CHATL_CLEAR) || !mpc_clean(mod_name, m, sizeof m)) return MP_CHAT_BAD_ARGS;
+    if (flags == MP_CHATL_CLEAR) { chat_clear_local(); return MP_CHAT_SHOWN; }
+    if (!mpc_clean(text, x, sizeof x)) return MP_CHAT_BAD_ARGS;
+    if (!chat_on) return MP_CHAT_OFF;                                       /* "Chat: Off": nothing stored */
+    chat_esc(x, t, sizeof t);
+    chat_add_as(t, 1); ch_local_total++;
+    return MP_CHAT_SHOWN;
+}
+/* test read-back: "<local lines ever added>\n<local lines in the history now>\n", then each local line's stored text,
+   oldest first, one per line; whole lines only (stops at the first that does not fit). Returns the bytes written. */
+__attribute__((visibility("default"))) size_t mpmenu_chat_local_dump(char *out, size_t cap) {
+    if (!out || !cap) return 0;
+    int w = snprintf(out, cap, "%u\n%d\n", ch_local_total, ch_nlocal);
+    if (w < 0 || (size_t)w >= cap) { out[0] = 0; return 0; }
+    size_t n = (size_t)w;
+    for (int i = 0; i < nch; i++) {
+        if (!chist[i].local) continue;
+        size_t l = strlen(chist[i].text);
+        if (n + l + 2 > cap) break;
+        memcpy(out + n, chist[i].text, l); n += l; out[n++] = '\n';
+    }
+    out[n] = 0;
+    return n;
 }
 /* chatfix (owner 2026-10-20, v0.1.21 A6 + A7): the chat lives on its OWN screen canvas, kept across scenes
  * (DontDestroyOnLoad), so it works everywhere a session runs (lobby, connecting, guest waiting, preparation, PvP prep,
@@ -3759,8 +3814,11 @@ static void chat_frame(const mpm_obs *o) {
 #endif
     ch_over_now = 0;
     if (chat_close_frames > 0) chat_close_frames--;
-    if (!c) { chat_typing = 0; Obj r = u_gc_get(h_ch_root); if (u_alive(r)) u_active(r, false); return; }
-    chat_pull(c);
+    /* no session (mp_api v3 chat_local): the chat shows in a world while a local line is in the history; on the title
+       the local lines go (a caller that never cleared them). Without local lines: hidden, no keys taken, as before. */
+    if (!c && ch_nlocal && o->scene == 1) chat_clear_local();
+    if (!c && (!ch_nlocal || o->scene != 2)) { chat_typing = 0; Obj r = u_gc_get(h_ch_root); if (u_alive(r)) u_active(r, false); return; }
+    if (c) chat_pull(c);
     /* A6: every scene of a session (title: connecting / waiting for the host; lobby; loading; the world; PvP prep), on our
        own canvas. The templates (CommonNoticeView, the Rename popup) exist from the title on. */
     Obj parent = chat_parent(); if (!parent) return;
@@ -3819,7 +3877,7 @@ static void chat_frame(const mpm_obs *o) {
                 if (mcp) MCALL(mcp, void, Obj, bool, const void *)(f, false, mcp);
             }
         }
-        { static char last[DSNET_CHAT_MAX + 1]; if (strcmp(last, chat_buf)) { snprintf(last, sizeof last, "%s", chat_buf); if (chat_buf[0]) dsnet_chat_typing(c, 1);
+        { static char last[DSNET_CHAT_MAX + 1]; if (strcmp(last, chat_buf)) { snprintf(last, sizeof last, "%s", chat_buf); if (chat_buf[0] && c) dsnet_chat_typing(c, 1);
               /* the typed text in a font that has its characters (Japanese typed into a Latin font showed boxes) */
               char tmp[CH_TEXT]; snprintf(tmp, sizeof tmp, "%s", chat_buf); int fi = ch_pick(tmp, 0, NULL);
               static void *mtc; if (!mtc) mtc = mth("TMPro", "TMP_InputField", "get_textComponent", 0);
@@ -3834,10 +3892,11 @@ static void chat_frame(const mpm_obs *o) {
             else if ((unsigned char)*q >= 0x20 && n < DSNET_CHAT_MAX) { chat_buf[n] = *q; chat_buf[n + 1] = 0; }
         }
         if (enter || esc) {
-            if (enter && chat_buf[0]) { int rc = dsnet_chat_send(c, chat_buf); rig_log("mpmenu: chat sent (%zu bytes, rc %d)", strlen(chat_buf), rc);
+            if (enter && chat_buf[0]) { int rc = c ? dsnet_chat_send(c, chat_buf) : -1;          /* no session: nothing sent */
+                rig_log("mpmenu: chat %s (%zu bytes, rc %d)", c ? "sent" : "not sent (no session)", strlen(chat_buf), rc);
                 if (rc) { char ln[300]; snprintf(ln, sizeof ln, "<i><color=#F16071>%s</color></i>", TR("Message not sent: no connection to the other players.")); chat_add(ln); } }   /* F18 */
             chat_typing = 0; chat_close_frames = 2;
-            dsnet_chat_typing(c, 0);                                        /* sent or cancelled: the others drop the line */
+            if (c) dsnet_chat_typing(c, 0);                                 /* sent or cancelled: the others drop the line */
             if (u_alive(f)) { F(0x4EFB000, void (*)(Obj, Obj, void *))(f, u_str(""), NULL);
                               static void *md; if (!md) { md = mth("TMPro", "TMP_InputField", "DeactivateInputField", 1); if (!md) md = mth("TMPro", "TMP_InputField", "DeactivateInputField", 0); }
                               if (md) MCALL(md, void, Obj, bool, const void *)(f, false, md); }
@@ -3889,9 +3948,9 @@ static void chat_frame(const mpm_obs *o) {
     }
     /* "<Name> is typing..." for the others (owner 2026-10-14): one line in their colours; it takes the lowest idle slot
      * (the idle lines move up one) or sits above the open box */
-    int me = dsnet_player_id(c); float lift = 0;
+    int me = c ? dsnet_player_id(c) : -1; float lift = 0;
     { char line[200] = ""; int k = 0, more = 0; size_t o = 0;
-      for (int p = 0; p < DSNET_MAX_PLAYERS; p++) {
+      for (int p = 0; c && p < DSNET_MAX_PLAYERS; p++) {                   /* no session: nobody else types */
           if (p == me || !dsnet_chat_typing_of(c, p)) continue;
           const char *nm = dsnet_player_name(c, p);
           static char snm[32]; if (!nm && dsnet_spectator_info(c, p, snm, NULL, NULL) == 0) nm = snm;   /* a spectator types too */
