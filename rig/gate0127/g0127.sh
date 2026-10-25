@@ -47,7 +47,7 @@ trap "verdict ${0:A}" EXIT
 # owner rule (2026-10-20): never bind TCP 47777 while the owner's game runs (menu-hosted test copies listen there):
 # every check waits while his launcher / game runs (launcher by name, his app's path, the launcher's own game copy under
 # DSModLauncher/games/ (binary "Dungeon Settlers" with a space: missed until 2026-10-20 22:35), any game outside the test instances folders)
-owner_wait() { local n=0; while owner_plays; do
+owner_wait() { local n=0; (( ${CUR_NOHOST:-0} )) && return 0; while owner_plays; do
   (( n++ == 0 )) && print "$(date '+%T') owner's game runs: next check waits (no TCP 47777 bind)" | tee -a $SUM; sleep 30; done; }
 owner_plays() {   # v0.1.21: match the GAME BINARY (launcher copy "Dungeon Settlers" with a space, or his app), never shells / test copies
   pgrep -x DSModLauncher >/dev/null && return 0
@@ -63,7 +63,7 @@ play_lock() { local n=0; while owner_plays; do
     (( n++ == 0 )) && print "$(date '+%T') owner's game runs: $1 waits for the one-copy lock" | tee -a $SUM; sleep 15; done; return 1; }
 play_unlock() { [[ "$(cat $PLOCK/pid 2>/dev/null)" == $$ ]] && mv $PLOCK $OUT/old_play_lock.$$.$(date +%H%M%S) 2>/dev/null; true; }
 chk() { if [[ -n ${GATE_ONLY:-} && " $GATE_ONLY " != *" $1 "* ]]; then chk_lib "$@"; return; fi   # not in this run: no wait
-  if [[ $NOHOST == *" $1 "* ]]; then local held=0 rc; play_lock $1 && held=1; chk_lib "$@"; rc=$?; (( held )) && play_unlock; return $rc; fi
+  if [[ $NOHOST == *" $1 "* ]]; then local held=0 rc; play_lock $1 && held=1; CUR_NOHOST=1 chk_lib "$@"; rc=$?; (( held )) && play_unlock; return $rc; fi
   owner_wait; chk_lib "$@"; }
 # held wine lock (Windows section): python tests via held_lock_run.py, wine_lease.py users (shell tests) on a private lock
 WH=($H/held_lock_run.py); WE=(WINE_LEASE_LOCK=$HOME/ds_multiplayer/rig/wine.lock.gate13-inner)
