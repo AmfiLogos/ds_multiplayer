@@ -32,11 +32,17 @@ def declarators(t):
             i += 1
 
 
+# windows that draw the game's red X another way (name: why); keep this short, prefer mpesc_close_x or .nox
+OWN_X = {
+    'esc_chat': "the chat read box draws its own copy of the game's CloseButton (mpmenu.c chat, lane dsdps)",
+}
 bad, seen = [], 0
 for f, t in text.items():
     for name, init, off in declarators(t):
         seen += 1
         if re.search(r'\.nox\s*=\s*"[^"]+"', init):
+            continue
+        if name in OWN_X:
             continue
         if re.search(r'\bmpesc_close_x\s*\(\s*&\s*' + re.escape(name) + r'\b', everything):
             continue
