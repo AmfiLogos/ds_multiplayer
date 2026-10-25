@@ -3547,12 +3547,13 @@ int mpmenu_mod_chat(const char *mod_name, const char *text, int flags) {
 /* mp_api v3 chat_local (MP_API.md 2b; Units Laboratory's DPS check: a line per hit): this screen only, never sent, no rate
    limit, with or without a session. The text alone in the normal colour, escaped like the other lines. */
 int mpmenu_chat_local(const char *mod_name, const char *text, int flags) {
-    char m[MP_CHAT_MOD_MAX + 1], x[MP_CHAT_TEXT_LOCAL + 1], t[MP_CHAT_TEXT_LOCAL * 4 + 8];
+    char m[MP_CHAT_MOD_MAX + 1], x[MP_CHAT_TEXT_CHATL + 1], t[MP_CHAT_TEXT_CHATL * 4 + 8];   /* the history slot is CH_TEXT (640) */
+    int rich = (flags & MP_CHATL_RICH) != 0; flags &= ~MP_CHATL_RICH;      /* rich: a mod's own tags (this screen only, never sent) */
     if ((flags != MP_CHATL_LINE && flags != MP_CHATL_CLEAR) || !mpc_clean(mod_name, m, sizeof m)) return MP_CHAT_BAD_ARGS;
     if (flags == MP_CHATL_CLEAR) { chat_clear_local(); return MP_CHAT_SHOWN; }
     if (!mpc_clean(text, x, sizeof x)) return MP_CHAT_BAD_ARGS;
     if (!chat_on) return MP_CHAT_OFF;                                       /* "Chat: Off": nothing stored */
-    chat_esc(x, t, sizeof t);
+    if (rich) snprintf(t, sizeof t, "%s", x); else chat_esc(x, t, sizeof t);
     chat_add_as(t, 1); ch_local_total++;
     return MP_CHAT_SHOWN;
 }

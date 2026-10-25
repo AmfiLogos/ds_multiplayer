@@ -67,10 +67,14 @@ With no multiplayer mod installed, every call below still works: random draws ar
 |---|---|---|---|
 | `chat_local(mod_name, text, MP_CHATL_LINE)` | - | - | a line on this screen only, never sent |
 | `chat_local(mod_name, NULL, MP_CHATL_CLEAR)` | - | - | remove every local line from the chat history |
+| `chat_local(mod_name, text, MP_CHATL_LINE \| MP_CHATL_RICH)` | - | - | the same, the text's own rich-text tags kept |
 
 - For lines a mod writes often on this screen (for example Units Laboratory's DPS check: one line per hit). Check
   `version >= 3` (or ask `mp_api_get(3)`).
-- Shown as the text only (no `<Mod> mod:`), in the normal text colour. Rich-text tags are shown as typed (escaped).
+- Shown as the text only (no `<Mod> mod:`), in the normal text colour. Rich-text tags are shown as typed (escaped),
+  unless the flags add `MP_CHATL_RICH` (`MP_CHATL_LINE | MP_CHATL_RICH`): then the text's own TMP tags work (`<b>`,
+  `<color=#RRGGBB>`, `<indent=5%>`, `<pos=60%>`, `<mspace=0.55em>`...). Escape what a player typed (names) yourself:
+  put a zero-width space (U+200B) after each `<`, as the chat does.
   Newlines and other control bytes become spaces. `mod_name` is still needed (it is not shown).
 - Never sent to the other players, also during a session (there the local lines show among the others).
 - No rate limit: no line is refused. Keep it to what a player can read. Call it on the game's main thread.
@@ -79,9 +83,10 @@ With no multiplayer mod installed, every call below still works: random draws ar
   player types there is not sent: the chat says so. `MP_CHATL_CLEAR` (or the title screen with no session) removes the local lines;
   with none left and no session, the chat is hidden again.
 - An open box that is scrolled up stays on the same lines while new local lines come in.
-- Limits: text 200 bytes, cut on a character boundary. The history keeps 3000 lines (all kinds); when it is full, the
+- Limits: text 400 bytes (tags count), cut on a character boundary. The history keeps 3000 lines (all kinds); when it is full, the
   oldest 300 are dropped.
-- Results: 0 shown (`MP_CHATL_CLEAR`: 0 done); -1 bad arguments (unknown flag, empty mod name, empty text for a line);
+- Results: 0 shown (`MP_CHATL_CLEAR`: 0 done); -1 bad arguments (unknown flag, empty mod name, empty text for a line;
+  a multiplayer from before `MP_CHATL_RICH` answers -1 to it: send the line again without tags);
   -7 `MP_CHAT_OFF`: the player's "Chat: Off" setting is on, nothing is shown or kept (show it your own way).
 - C# bridge: not added (C only for now).
 
