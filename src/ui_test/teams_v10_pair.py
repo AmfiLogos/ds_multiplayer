@@ -200,12 +200,12 @@ def main():
         check('fingerprints equal every tick', n >= 300 and first is None, f'common ticks {n}, first diff {first}')
 
         # 7: rule changes in play are told to the guest (F12)
-        c(X, cmd='mpm_rules', units=2); wait('guest message (units)', lambda: 'Units per player is now 2' in ms(Y).get('message', ''), timeout=30, every=1)
+        c(X, cmd='mpm_rules', units=2); wait('guest message (units)', lambda: 'Units per Player is now 2' in ms(Y).get('message', ''), timeout=30, every=1)
         m1 = ms(Y).get('message', ''); shot(Y, 'rule_units_guest')
-        tm(X, action='admin', on=1); wait('guest message (admin)', lambda: 'Admin mode on' in ms(Y).get('message', ''), timeout=30, every=1)
+        tm(X, action='admin', on=1); wait('guest message (admin)', lambda: 'Admin Mode on' in ms(Y).get('message', ''), timeout=30, every=1)
         m2 = ms(Y).get('message', ''); time.sleep(0.5); shot(Y, 'rule_admin_guest')
         check('F12: the guest is told when the host changes Units per player and Admin mode in play (host: no message)',
-              'Units per player is now 2 (host rule)' in m1 and 'The owner</color> turned Admin mode on: the host can control every unit.' in m2 and ms(X).get('message', '') == '',
+              'Units per Player is now 2 (host rule)' in m1 and 'The owner</color> turned Admin Mode on: the host can control every unit.' in m2 and ms(X).get('message', '') == '',
               f'{m1!r} / {m2!r} / host {ms(X).get("message")!r}')
         tm(X, action='admin', on=0); c(X, cmd='mpm_rules', units=3); time.sleep(3)
 
@@ -213,8 +213,8 @@ def main():
         c(X, cmd='mpm_esc'); time.sleep(2)
         c(X, cmd='mpm_press', button=MPB['LEAVE']); time.sleep(2)
         m = ms(X)
-        check('F7 host Leave: the box "End the game for everyone?" names the guest; buttons End for everyone / Cancel; still in session',
-              m['box']['on'] and 'End the game for everyone?' in m['box']['text'] and 'Friend' in m['box']['text'] and m['box']['confirm'] == 'End for everyone'
+        check('F7 host Leave: the box "End the game for everyone?" names the guest; buttons End for Everyone / Cancel; still in session',
+              m['box']['on'] and 'End the game for everyone?' in m['box']['text'] and 'Friend' in m['box']['text'] and m['box']['confirm'] == 'End for Everyone'
               and m['box']['cancel'] == 'Cancel' and m['confirm_leave'] == 1 and m['obs']['role'] == 1, json.dumps(m['box']))
         shot(X, 'leave_box_host')
         c(X, cmd='mpm_box', action='cancel'); time.sleep(2); m = ms(X)
@@ -232,7 +232,7 @@ def main():
         shot(X, 'wait_hint_host')
         c(X, cmd='mpm_esc'); time.sleep(2)
         c(X, cmd='mpm_press', button=MPB['LEAVE']); time.sleep(2); m = ms(X)
-        check('Leave with nobody else here: "Leave multiplayer?" box', m['box']['on'] and 'Nobody else is in this world now' in m['box']['text'], json.dumps(m['box']))
+        check('Leave with nobody else here: "Turn off multiplayer?" box', m['box']['on'] and 'Nobody else is in this world now' in m['box']['text'], json.dumps(m['box']))
         c(X, cmd='mpm_box', action='confirm'); time.sleep(4); m = ms(X)
         check('End: the session ends, the host stays in the world, "You are playing alone now" message',
               m['state'] == 'idle' and m['obs']['role'] == 0 and st(X).get('scene') == 2 and 'playing alone now' in m.get('message', ''), f"{m['state']} role {m['obs']['role']} {m.get('message')!r}")

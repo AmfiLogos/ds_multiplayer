@@ -112,12 +112,12 @@ void pvp_why_text(const pvp_why *w, char *why, size_t n) {
     const char *who = w->who[0] ? w->who : TR("A player");
     switch (w->code) {
     case PVP_WHY_VANILLA_SELF:
-        snprintf(why, n, TRN("Vanilla check is on: turn off your gameplay mod %s, or set Vanilla check to Off.",
-                             "Vanilla check is on: turn off your gameplay mods %s, or set Vanilla check to Off.", w->n), w->a);
+        snprintf(why, n, TRN("Vanilla Check is on: turn off your gameplay mod %s, or set Vanilla Check to Off.",
+                             "Vanilla Check is on: turn off your gameplay mods %s, or set Vanilla Check to Off.", w->n), w->a);
         break;
     case PVP_WHY_VANILLA:
-        snprintf(why, n, TRN("Vanilla check is on: %s has the gameplay mod %s. %s must turn it off in the Mods window.",
-                             "Vanilla check is on: %s has the gameplay mods %s. %s must turn them off in the Mods window.", w->n), who, w->a, who);
+        snprintf(why, n, TRN("Vanilla Check is on: %s has the gameplay mod %s. %s must turn it off in the Mods window.",
+                             "Vanilla Check is on: %s has the gameplay mods %s. %s must turn them off in the Mods window.", w->n), who, w->a, who);
         break;
     case PVP_WHY_FILES:
         snprintf(why, n, TR("%s's copy of %s is not the same as the host's (other files). %s must start the game from the launcher again."), who, w->a, who);

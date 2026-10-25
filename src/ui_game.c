@@ -564,7 +564,7 @@ static void hk_sc_click(Obj parts, Obj ev, void *mi) {
         break;
     case UI_ACT_DENY_OWNED:
         if (a.target == UI_RESERVED) { char rn[64]; reserved_name(g, rn, sizeof rn); notice(TR("%s is reserved for %s"), un, rn); }
-        else if (me() == 0) notice(TR("%s belongs to %s (Admin mode lets the host take it)"), un, ui_player_label(&p, a.target, pn));
+        else if (me() == 0) notice(TR("%s belongs to %s (Admin Mode lets the host take it)"), un, ui_player_label(&p, a.target, pn));
         else notice(TR("%s belongs to %s"), un, ui_player_label(&p, a.target, pn));
         break;
     case UI_ACT_DENY_FULL: notice(TR("You can control at most %d units (host rule)"), ui_max_owned); break;
@@ -1075,7 +1075,7 @@ static char left_name[32]; static double left_t0;
 static void left_body(char *m, size_t cap) {
     int s = (int)(now_s() - left_t0); if (s < 0) s = 0;
     snprintf(m, cap, TR("<size=150%%>%s disconnected</size>  <color=#f16071>X</color>\nThe game is paused for everyone.\n"
-             "<size=88%%><color=#a69085>Waiting %d:%02d\nKeep playing: you control %s's units until %s comes back.</color></size>"),
+             "<size=88%%><color=#a69085>Waiting %d:%02d\nKeep Playing: you control %s's units until %s comes back.</color></size>"),
              left_name, s / 60, s % 60, left_name, left_name);
 }
 static void left_frame(void) {
@@ -1110,7 +1110,7 @@ static void left_frame(void) {
     snprintf(wait, sizeof wait, TR("Wait for %s"), names[0]);
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str(txt), NULL, NULL, false, NULL);   /* Show_Select */
     tmp_set(AT(v, 0x40, Obj), wait);                          /* _txtConfirm: primary, right */
-    tmp_set(AT(v, 0x50, Obj), TR("Keep playing"));                /* _txtCancle: secondary, left */
+    tmp_set(AT(v, 0x50, Obj), TR("Keep Playing"));                /* _txtCancle: secondary, left */
     left_body(body, sizeof body);
     box_style(v, body);
     u_go_active(u_go(v), true);
@@ -2798,53 +2798,53 @@ static void plist_frame(void) {
     plist_set(PL_HDR, h2);
     plist_set(PL_BODY, bl); plist_set(PL_BODYR, br);
     int host = me() == 0;
-    plist_set(PL_SEE, ui_col("#a69085", TR("Fade other units")));
-    plist_set(PL_NAMES, ui_col("#a69085", TR("Names above units")));
-    plist_set(PL_UNITS, ui_col("#a69085", TR("Units per player")));
-    plist_set(PL_ADMIN, ui_col("#a69085", TR("Admin mode (host)")));
+    plist_set(PL_SEE, ui_col("#a69085", TR("Fade Other Units")));
+    plist_set(PL_NAMES, ui_col("#a69085", TR("Names Above Units")));
+    plist_set(PL_UNITS, ui_col("#a69085", TR("Units per Player")));
+    plist_set(PL_ADMIN, ui_col("#a69085", TR("Admin Mode (Host)")));
     if (uiset.see_through) snprintf(row, sizeof row, "<color=#ccbeb8>%d%%</color>", uiset.see_through); else snprintf(row, sizeof row, "%s", ui_col("#ccbeb8", TR("Off")));
     plist_set(PL_SEER, row);
     snprintf(row, sizeof row, "<color=#ccbeb8>%s</color>", ui_names_text(uiset.names)); plist_set(PL_NAMESR, row);
     snprintf(row, sizeof row, "<color=#ccbeb8>%d</color>", ui_max_owned); plist_set(PL_UNITSR, row);
     {   int nw = 0; for (int i = 0; i < UI_MAX_PLAYERS; i++) nw += ui_spectators >> i & 1u;
-        plist_set(PL_SPECT, ui_col("#a69085", TR("Spectators (host)")));
+        plist_set(PL_SPECT, ui_col("#a69085", TR("Spectators (Host)")));
         if (!dsnet_spectators_allowed(c)) snprintf(row, sizeof row, "%s", ui_col("#ccbeb8", TR("Off")));
         else if (nw) snprintf(row, sizeof row, TR("<color=#ccbeb8>On (%d)</color>"), nw);
         else snprintf(row, sizeof row, "%s", ui_col("#ccbeb8", TR("On")));
         plist_set(PL_SPECTR, row); }
-    plist_set(PL_TIPS, ui_col("#a69085", TR("Hover tooltips")));
-    plist_set(PL_SIZE, ui_col("#a69085", TR("Panel size")));
+    plist_set(PL_TIPS, ui_col("#a69085", TR("Hover Tooltips")));
+    plist_set(PL_SIZE, ui_col("#a69085", TR("Panel Size")));
     plist_set(PL_SIZER, uiset.compact ? ui_col("#ccbeb8", TR("Compact")) : ui_col("#ccbeb8", TR("Normal")));
-    plist_set(PL_TEAMS, ui_col("#a69085", TR("Teams button")));
+    plist_set(PL_TEAMS, ui_col("#a69085", TR("Teams Button")));
     plist_set(PL_TEAMSR, uiset.teams_button ? ui_col("#ccbeb8", TR("Show")) : ui_col("#ccbeb8", TR("Hide")));
     plist_set(PL_TIPSR, uiset.tooltips ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
     plist_set(PL_HINT, TR("<size=86%><color=#a69085>Right-click and drag to move these windows</color></size>"));
     { int fade = 12, join = 1, en = 1; chat_get(&fade, &join, &en);
-      plist_set(PL_CFADE, ui_col("#a69085", TR("Chat fade time")));
+      plist_set(PL_CFADE, ui_col("#a69085", TR("Chat Fade Time")));
       snprintf(row, sizeof row, TR("<color=#ccbeb8>%d s</color>"), fade); plist_set(PL_CFADER, row);
-      plist_set(PL_CJOIN, ui_col("#a69085", TR("Join / leave lines")));
+      plist_set(PL_CJOIN, ui_col("#a69085", TR("Join / Leave Lines")));
       plist_set(PL_CJOINR, join ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
       plist_set(PL_CHAT, ui_col("#a69085", TR("Chat")));
       plist_set(PL_CHATR, en ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off"))); }
     plist_set(PL_ADMINR, admin_on() ? ui_col("#f16071", TR("On")) : ui_col("#ccbeb8", TR("Off")));
     /* lan_v10 rows */
-    { static const struct { int lab, val; const char *txt; } onoff[] = { { PL_PINGS, PL_PINGSR, TR_NOOP("Show pings") }, { PL_PSOUND, PL_PSOUNDR, TR_NOOP("Ping sound") },
-          { PL_PCHAT, PL_PCHATR, TR_NOOP("Ping lines in chat") }, { PL_VIEWS, PL_VIEWSR, TR_NOOP("Show friends' views") }, { PL_OFFS, PL_OFFSR, TR_NOOP("Off-screen friends") } };
+    { static const struct { int lab, val; const char *txt; } onoff[] = { { PL_PINGS, PL_PINGSR, TR_NOOP("Show Pings") }, { PL_PSOUND, PL_PSOUNDR, TR_NOOP("Ping Sound") },
+          { PL_PCHAT, PL_PCHATR, TR_NOOP("Ping Lines in Chat") }, { PL_VIEWS, PL_VIEWSR, TR_NOOP("Show Friends' Views") }, { PL_OFFS, PL_OFFSR, TR_NOOP("Off-screen Friends") } };
       int vals[5] = { uiset.pings, uiset.ping_sound, uiset.ping_chat, uiset.views, uiset.offscreen };
       for (int k = 0; k < 5; k++) { snprintf(row, sizeof row, "<color=#a69085>%s</color>", TR(onoff[k].txt)); plist_set(onoff[k].lab, row);
                                     plist_set(onoff[k].val, vals[k] ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off"))); }
-      plist_set(PL_OUTL, ui_col("#a69085", TR("Unit outline")));
-      plist_set(PL_FJOIN, ui_col("#a69085", TR("Fast join")));
+      plist_set(PL_OUTL, ui_col("#a69085", TR("Unit Outline")));
+      plist_set(PL_FJOIN, ui_col("#a69085", TR("Fast Join")));
       plist_set(PL_FJOINR, uiset.fast_join ? ui_col("#ccbeb8", TR("On")) : ui_col("#ccbeb8", TR("Off")));
-      plist_set(PL_MINI, ui_col("#a69085", TR("Mini overview (O)")));
+      plist_set(PL_MINI, ui_col("#a69085", TR("Mini Overview (O)")));
       plist_set(PL_MINIR, uiset.mini ? ui_col("#ccbeb8", TR("Show")) : ui_col("#ccbeb8", TR("Hide")));
-      plist_set(PL_MSIZE, ui_col("#a69085", TR("Overview size")));
+      plist_set(PL_MSIZE, ui_col("#a69085", TR("Overview Size")));
       snprintf(row, sizeof row, "<color=#ccbeb8>%s</color>", ui_mini_size_text(uiset.mini_size)); plist_set(PL_MSIZER, row);
       snprintf(row, sizeof row, "<color=#ccbeb8>%s</color>", ui_outline_text(uiset.outline)); plist_set(PL_OUTLR, row);
       int lab2[PL_SETMAX], val2[PL_SETMAX], arg2[PL_SETMAX], n2 = set_rows(lab2, val2, arg2);
       for (int k = 0; k < n2; k++) if (arg2[k] >= 0) {
           char nm[40]; ui_player_label(&p, arg2[k], nm);
-          snprintf(row, sizeof row, TR("<color=#a69085>%s's colour</color>"), nm); plist_set(lab2[k], row);
+          snprintf(row, sizeof row, TR("<color=#a69085>%s's Colour</color>"), nm); plist_set(lab2[k], row);
           int ov = color_override_of(arg2[k]);
           snprintf(row, sizeof row, "<color=%s>%s</color>", ui_player_color(arg2[k]), ov >= 0 ? ui_palette_name(ov) : TR("Auto")); plist_set(val2[k], row);
       } }
@@ -3797,9 +3797,9 @@ static void lmenu_draw(void) {
         else if (lrow_act[i] == LA_UNFOLLOW) snprintf(txt, sizeof txt, TR("<color=%s>Stop following</color>"), col);
         else if (lrow_act[i] == LA_MUTE) snprintf(txt, sizeof txt, TR("<color=%s>Mute %s's pings</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
         else if (lrow_act[i] == LA_UNMUTE) snprintf(txt, sizeof txt, TR("<color=%s>Show %s's pings</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
-        else if (lrow_act[i] == LA_LEND) snprintf(txt, sizeof txt, TR("<color=%s>Lend control to %s</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
-        else if (lrow_act[i] == LA_TAKE) snprintf(txt, sizeof txt, TR("<color=%s>Take back control</color>"), col);
-        else if (lrow_act[i] == LA_GIVE) snprintf(txt, sizeof txt, TR("<color=%s>Give back %s</color>"), col, un);
+        else if (lrow_act[i] == LA_LEND) snprintf(txt, sizeof txt, TR("<color=%s>Lend Control to %s</color>"), col, ui_player_label(&p, lrow_arg[i], nm));
+        else if (lrow_act[i] == LA_TAKE) snprintf(txt, sizeof txt, TR("<color=%s>Take Back Control</color>"), col);
+        else if (lrow_act[i] == LA_GIVE) snprintf(txt, sizeof txt, TR("<color=%s>Give Back %s</color>"), col, un);
         else snprintf(txt, sizeof txt, TR("<color=%s>Release (free unit)</color>"), col);
         line_text(t, txt);
     }
@@ -3927,7 +3927,7 @@ static void lend_frame(void) {
             float lh = txt_fit_h(lb, 76, 18);
             if (u_alive(bg)) u_rt_set_size(u_tr(bg), 76, lh);
             if (u_alive(lb)) { u_rt_set_size(u_tr(lb), 76, lh); u_rt_set_pos(u_tr(lb), 0, -lh / 2); }
-            line_text(btx, act == LA_TAKE ? ui_col("#ccbeb8", TR("Take back")) : ui_col("#ccbeb8", TR("Give back")));
+            line_text(btx, act == LA_TAKE ? ui_col("#ccbeb8", TR("Take Back")) : ui_col("#ccbeb8", TR("Give Back")));
         }
     }
     if (lmenu_n && lmenu_player < 0) {                       /* the menu's unit still lendable by me? */
@@ -4204,7 +4204,7 @@ static void viewer_frame(void) {
     else snprintf(t, sizeof t, TR("<color=#a69085>You have no units on this run. You can watch and chat; %s gives the orders.</color>"), nm);
     place(u_gc_get(h_vtext), X0 + 18, Y0 - 38, 620, 22); line_text(u_gc_get(h_vtext), t);
     /* HUD A (owner 2026-10-14 ~19:55): "Follow the owner" / "Following the owner" */
-    const char *lab[3] = { coop_follow == leader ? TR("Following %s") : TR("Follow %s"), TR("Free camera"), sv ? TR("Next player ›") : TR("Ask %s to lend a unit") };
+    const char *lab[3] = { coop_follow == leader ? TR("Following %s") : TR("Follow %s"), TR("Free Camera"), sv ? TR("Next Player ›") : TR("Ask %s to Lend a Unit") };
     int nb = 3;
     if (sv) { int np = 0; for (int i = 0; i < UI_MAX_PLAYERS; i++) np += p.present >> i & 1u; if (np < 2) nb = 2; }   /* one player: nobody else to pick */
     for (int k = nb; k < 3; k++) { show(u_gc_get(h_vbtn_b[k]), 0); show(u_gc_get(h_vbtn_bg[k]), 0); show(u_gc_get(h_vbtn_t[k]), 0); }
@@ -5662,7 +5662,7 @@ static void hk_recruit_click(Obj v, int idx, void *mi) {
         rig_log("ui: recruit click: check %d (clan %d/%d, own %d, cap %d, pool %d)", why, count, base, own, cap, pool);
         if (why != DSNET_RECRUIT_OK) {
             dsnet_rules r; dsnet_rules_get(c, &r);
-            if (why == DSNET_RECRUIT_UNITS_FULL) notice(TR("You already have %d units: host rule Units per player"), own);
+            if (why == DSNET_RECRUIT_UNITS_FULL) notice(TR("You already have %d units: host rule Units per Player"), own);
             else if (pool) notice(TR("Population full (%d/%d): host rule %s"), count, cap, pop_mode_text(r.population));
             else notice(TR("Population full for you (%d/%d): host rule %s"), own, cap, pop_mode_text(r.population));
             return;
@@ -5896,7 +5896,7 @@ static void tips_frame(void) {
     tip_at(u_gc_get(h_tog), TR("Show / Hide"), TR("Shows or hides the player list. The header stays."));
     tip_at(u_gc_get(h_pl[PL_HDR]), TR("Players"), TR("Everyone in this world and their connection. Right-click and drag to move this panel."));
     tip_at(u_gc_get(h_hdrbg), TR("Players"), TR("Everyone in this world and their connection. Right-click and drag to move this panel."));
-    tip_at(u_gc_get(h_pl[PL_NOTE]), TR("Temporary Control"), TR("A player disconnected and you chose Keep playing. You order their units until they come back; they stay theirs."));
+    tip_at(u_gc_get(h_pl[PL_NOTE]), TR("Temporary Control"), TR("A player disconnected and you chose Keep Playing. You order their units until they come back; they stay theirs."));
     /* 3.9 skill bar of a unit that is not mine */
     if (qs_foreign) { char who[256] = ""; Obj v = u_gc_get(h_quick); qs_selected_foreign(v, who, sizeof who);
         if (spect()) tip_at(u_gc_get(h_qs_line), TR("Spectator"), TR("You are watching. You can look at every unit's details, but spectators give no orders."));

@@ -1041,7 +1041,7 @@ static void fields_find(Obj parent) {
         rig_log("mpmenu: address field cloned from %s%s", from, is_addr ? " (prefilled from the clipboard)" : "");
     }
     if (!u_alive(u_gc_get(h_namefield))) {
-        Obj f = field_make(src, parent, TR("Your name"), my_name);
+        Obj f = field_make(src, parent, TR("Your Name"), my_name);
         u_gc_free(h_namefield); h_namefield = f ? u_gc_new(f) : 0;
     }
     if (primed && primed < 40) { Obj p = popups(); if (p && popup_open(5)) F(0xF62A88, void (*)(Obj, int, void *))(p, 5, NULL); }   /* DeactivateView(5) */
@@ -1921,13 +1921,13 @@ static void lw_build(Obj v, int host) {
     /* invite (host): Steam invite (full width), address box + Copy, note */
     Obj b;
     if (host) {
-        b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 198), 0, 396, 40, 16, TR("Steam invite"), C_MAIN); KEEP(h_lwb[LW_INVITE], b);
+        b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 198), 0, 396, 40, 16, TR("Steam Invite"), C_MAIN); KEEP(h_lwb[LW_INVITE], b);
         KEEP(h_lw_addrbox[0], mk_img(tpl_img, R, -1, C_LINE, 0, 0, 292, 40));
         KEEP(h_lw_addrbox[1], mk_img(tpl_img, R, -1, (Col){ 0.106f, 0.098f, 0.122f, 1 }, 0, 0, 290, 38));
         T(T_INV_ADDR, 0, 16, 513, 0, 0, 0, 268, 30, C_MAIN);
         b = mk_button(src, R, 1, S_NBTN, C_WHITE, 0, 0, 96, 40, 16, TR("Copy"), C_MAIN); KEEP(h_lwb[LW_COPY], b);
         T(T_INV_NOTE, 0, 12, 513, 1, 0, 0, 396, 34, C_SUB);
-        b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 198), 0, 396, 30, 14, TR("Show address for friends without Steam"), C_SUB); KEEP(h_lwb[LW_SHOWADDR], b);
+        b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(32 + 198), 0, 396, 30, 14, TR("Show Address for Friends without Steam"), C_SUB); KEEP(h_lwb[LW_SHOWADDR], b);
     } else { u_gc_free(h_lwb[LW_SHOWADDR]); h_lwb[LW_SHOWADDR] = 0; }
     /* rules (read-only rows; the host's cog opens the Rules panel) */
     for (int i = 0; i < MPM_RULE_ROWS; i++) {
@@ -1946,11 +1946,11 @@ static void lw_build(Obj v, int host) {
     KEEP(h_lw_bbar, mk_img(tpl_img, R, -1, C_BAND, 0, LY(lw_h - 38), 876, 74));
     KEEP(h_lw_bline, mk_img(tpl_img, R, -1, C_COPPER, 0, LY(lw_h - 76), 876, 1));
     /* owner 2026-10-20: Quit (end the session, back to the title) left; host: Turn off multiplayer (keep playing alone) beside it */
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(lw_h - 38), LW_QUIT_W, 34, 16, host ? TR("Quit to title") : TR("Leave"), C_MAIN); KEEP(h_lwb[LW_QUIT], b);   /* guest: leaves the host's game (to the title) */
-    if (host) { b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_OFF_X + LW_OFF_W / 2), LY(lw_h - 38), LW_OFF_W, 34, 16, TR("Turn off multiplayer"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b); }
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_QUIT_X + LW_QUIT_W / 2), LY(lw_h - 38), LW_QUIT_W, 34, 16, host ? TR("Quit to Title") : TR("Leave"), C_MAIN); KEEP(h_lwb[LW_QUIT], b);   /* guest: leaves the host's game (to the title) */
+    if (host) { b = mk_button(src, R, 1, S_NBTN, C_WHITE, LX(LW_OFF_X + LW_OFF_W / 2), LY(lw_h - 38), LW_OFF_W, 34, 16, TR("Turn Off Multiplayer"), C_MAIN); KEEP(h_lwb[LW_LEAVE], b); }
     else { u_gc_free(h_lwb[LW_LEAVE]); h_lwb[LW_LEAVE] = 0; }
     if (host) { b = mk_button(src, R, 1, S_RECRUIT, C_WHITE, LX(848 - 116), LY(lw_h - 38), 232, 44, 18, mpm_word("TEXTKEY_Common_Start", TR_NOOP("Start")), C_START); KEEP(h_lwb[LW_START], b); }
-    b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? LX(LW_MID_X) : LX(848 - 116), LY(lw_h - 38), host ? LW_MID_W : 206, 34, 16, TR("Bring units"), C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
+    b = mk_button(src, R, 1, S_NBTN, C_WHITE, host ? LX(LW_MID_X) : LX(848 - 116), LY(lw_h - 38), host ? LW_MID_W : 206, 34, 16, TR("Bring Units"), C_MAIN); KEEP(h_lwb[LW_BRING], b);   /* Foreign Expedition */
     if (b) u_active(b, false);
     T(T_NOTE, 0, 14, 514, 0, host ? LX(LW_MID_X) : 0, LY(lw_h - 38), host ? LW_MID_W : 300, 24, C_ORANGE);
     #undef T
@@ -1981,7 +1981,7 @@ static void lw_texts(void) {
     if (host && lobby_err[0] && mono_s() < lobby_err_until) {                 /* a refused Start: 10 s in the hint line, red */
         char e[600]; snprintf(e, sizeof e, "<color=" C_WARN_HEX ">%s</color>", lobby_err); tmp_set(lwt(T_HINT), e);
     } else { fe_mode_info fm;                                              /* the hub (owner 2026-10-21): what it is for */
-        tmp_set(lwt(T_HINT), fe_mode_get(&fm) ? TR("Bring units, then press Start. In the hub: co-op expeditions or PvP matches.") : TR("Share your address, then press Start when everyone is in.")); }
+        tmp_set(lwt(T_HINT), fe_mode_get(&fm) ? TR("Bring Units, then press Start. In the hub: co-op expeditions or PvP matches.") : TR("Share your address, then press Start when everyone is in.")); }
     snprintf(b, sizeof b, TR("Waiting for %s to start"), hn); tmp_set(lwt(T_GUEST), b);
     if (!host && lwt(T_CONN)) {                                            /* conninfo: "Connected to <host> through Steam" / "... to <ip:port>" */
         char a[96]; int v = mp_game_conn(0, a, sizeof a);
@@ -2073,14 +2073,14 @@ static void lw_texts(void) {
           snprintf(lobby_addr, sizeof lobby_addr, "%s", inet ? M.internet : M.direct);
           tmp_set(lwt(T_INV_ADDR), lobby_addr[0] ? lobby_addr : "...");
           char l1[640];
-          if (inet_state == EXTADDR_PRIVATE) snprintf(l1, sizeof l1, "%s", in.steam ? TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes. Use Steam invite.")
+          if (inet_state == EXTADDR_PRIVATE) snprintf(l1, sizeof l1, "%s", in.steam ? TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes. Use Steam Invite.")
                                                                               : TR("Friends outside your home cannot join by address: your internet provider shares one internet address between many homes."));
           else if (inet_state == EXTADDR_PENDING || inet_state == EXTADDR_IDLE || up_state == UPNPP_PENDING) snprintf(l1, sizeof l1, "%s", TR("Looking for your internet address..."));
           else if (inet && up_state == UPNPP_OPENED) snprintf(l1, sizeof l1, TR("Friends outside your home: %s (opened automatically on your router)."), M.internet);
           else if (inet && up_state == UPNPP_ALREADY) snprintf(l1, sizeof l1, TR("Friends outside your home: %s (your router already forwards this port)."), M.internet);
-          else if (up_ok) snprintf(l1, sizeof l1, in.steam ? TR("Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam invite.")
+          else if (up_ok) snprintf(l1, sizeof l1, in.steam ? TR("Your router opened port %s, but your internet address is unknown. Friends outside your home: use Steam Invite.")
                                                            : TR("Your router opened port %s, but your internet address is unknown."), M.internet[0] ? strrchr(M.internet, ':') + 1 : pn);
-          else snprintf(l1, sizeof l1, in.steam ? TR("Your router did not open a port. For friends outside your home, use Steam invite, or forward port %s on your router to this computer (port forwarding).")
+          else snprintf(l1, sizeof l1, in.steam ? TR("Your router did not open a port. For friends outside your home, use Steam Invite, or forward port %s on your router to this computer (port forwarding).")
                                                 : TR("Your router did not open a port. For friends outside your home, forward port %s on your router to this computer (port forwarding)."), pn);
           size_t bl = (size_t)snprintf(b, sizeof b, "%s\n", l1);
           if (bl < sizeof b) bl += (size_t)snprintf(b + bl, sizeof b - bl, TR("Same home: %s"), M.direct[0] ? M.direct : "...");
@@ -2095,8 +2095,8 @@ static void lw_texts(void) {
           place(lwt(T_INV_NOTE), LX(32 + 198), LY(y2 + 20 + 10 + nh / 2), 396, nh); }
         if (cb) tmp_set(AT(cb, 0x28, Obj), frames < copied_until ? TR("Copied") : TR("Copy"));
         Obj ib2 = u_gc_get(h_lwb[LW_INVITE]);                               /* both ways in one app: Steam invite + the address */
-        if (ib2) { char iv[200]; if (in.steam) snprintf(iv, sizeof iv, "%s", TR("Steam invite"));
-                  else snprintf(iv, sizeof iv, "<color=#A69085>%s <size=80%%>\xC2\xB7 %s</size></color>", TR("Steam invite"), TR("Needs the Steam version"));
+        if (ib2) { char iv[200]; if (in.steam) snprintf(iv, sizeof iv, "%s", TR("Steam Invite"));
+                  else snprintf(iv, sizeof iv, "<color=#A69085>%s <size=80%%>\xC2\xB7 %s</size></color>", TR("Steam Invite"), TR("Needs the Steam version"));
                   tmp_set(AT(ib2, 0x28, Obj), iv); }
     }
     /* rules: host = what he set (sent as DSNET_RULES), guest = dsnet's */
@@ -2759,9 +2759,9 @@ static int leave_box_text(char *out, size_t cap) {             /* returns how ma
     }
     char who[400];
     if (n) snprintf(who, sizeof who, TRN("%s goes back to the title.", "%s go back to the title.", n), names);
-    int quit = M.confirm_leave == 2, lobby = M.state == MPM_LOBBY;           /* lobby: Quit (then the title) or Turn off multiplayer */
+    int quit = M.confirm_leave == 2;                                         /* lobby: Quit (then the title); lobby and Esc menu: Turn Off Multiplayer (UX M8) */
     snprintf(out, cap, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>",
-             n ? TR("End the game for everyone?") : quit ? TR("Quit to the title?") : lobby ? TR("Turn off multiplayer?") : TR("Leave multiplayer?"),
+             n ? TR("End the game for everyone?") : quit ? TR("Quit to the title?") : TR("Turn off multiplayer?"),
              n ? who : TR("Nobody else is in this world now. Friends can no longer join."),
              quit ? TR("The world stays on your computer. You go back to the title.") : TR("The world stays on your computer. You keep playing it alone."));
     return n;
@@ -2776,7 +2776,7 @@ static void leave_box_show(void) {
     F(0xF652A8, void (*)(Obj, Obj, Obj, Obj, bool, void *))(v, u_str_ok(lbox_text), NULL, NULL, false, NULL);   /* Show_Select */
     tmp_set(AT(v, 0x30, Obj), lbox_text);
     txt_fit_stock(AT(v, 0x30, Obj));
-    tmp_set(AT(v, 0x40, Obj), others ? TR("End for everyone") : M.confirm_leave == 2 ? TR("Quit") : M.state == MPM_LOBBY ? TR("Turn off") : TR("Leave"));   /* from the box's own case, not its text */
+    tmp_set(AT(v, 0x40, Obj), others ? TR("End for Everyone") : M.confirm_leave == 2 ? TR("Quit") : TR("Turn Off"));   /* from the box's own case, not its text */
     tmp_set(AT(v, 0x50, Obj), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     { Obj nt = AT(v, 0x30, Obj); if (u_alive(nt) && mm_is(nt, K_TMP)) F(0x4F0B7BC, void (*)(Obj, int, void *))(nt, 514, NULL); }   /* centred, as the ui lane's boxes */
     u_go_active(u_go(v), true);
@@ -2939,7 +2939,7 @@ static void invite_frame(const mpm_obs *o) {
             char t[400];
             char q[200]; snprintf(q, sizeof q, TR("Join %s's game anyway?"), inv_host);
             snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", TR("Your game could not be saved"), q, TR("Unsaved progress in this world will be lost."));
-            box_show(BX_NOSAVE, t, TR("Join anyway"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
+            box_show(BX_NOSAVE, t, TR("Join Anyway"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
         }
     }
     if (nosave_ask) return;
@@ -2947,7 +2947,7 @@ static void invite_frame(const mpm_obs *o) {
         char t[400];
         char hd[160], bd[200]; snprintf(hd, sizeof hd, TR("Join %s?"), inv_host); snprintf(bd, sizeof bd, TR("%s invited you to their world."), inv_host);
         snprintf(t, sizeof t, "<size=150%%>%s</size>\n%s\n<size=88%%><color=#a69085>%s</color></size>", hd, bd, TR("Your progress here is saved first, then this world closes."));
-        box_show(BX_INVITE, t, TR("Save and join"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
+        box_show(BX_INVITE, t, TR("Save and Join"), mpm_word("TEXTKEY_CommonPopUp_Cancel", TR_NOOP("Cancel")));
     }
     /* "Connection lost, rejoining..." (mp_game.c auto rejoin): one Cancel button, instead of the Joining box */
     static int (*ar_state)(void); static int ar_looked, ar_shown;
@@ -3007,15 +3007,15 @@ static void rules_watch(const mpm_obs *o) {
     /* the first 4 s of a session (welcome, save, rules at host start) and the lobby (its window shows the rules): no message */
     if (seen < 8 || M.state == MPM_LOBBY || M.state == MPM_GUEST_LOBBY || dsnet_player_id(c) == 0) { r0 = r; adm0 = adm; seen++; return; }
     const char *hn = dsnet_player_name(c, 0); char host[48]; snprintf(host, sizeof host, "<color=%s>%s</color>", ui_player_color(0), hn && hn[0] ? hn : TR("The host"));
-    if (adm != adm0) say(adm ? TR("%s turned Admin mode on: the host can control every unit.") : TR("%s turned Admin mode off: the host controls only their own units."), host);
+    if (adm != adm0) say(adm ? TR("%s turned Admin Mode on: the host can control every unit.") : TR("%s turned Admin Mode off: the host controls only their own units."), host);
     if (r.units_per_player != r0.units_per_player)
-        say(TR("Units per player is now %d (host rule)."), r.units_per_player);
+        say(TR("Units per Player is now %d (host rule)."), r.units_per_player);
     if (r.pause_mode != r0.pause_mode) say(TR("Pause is now: %s (host rule)."), r.pause_mode == MPM_PAUSE_NONE ? TR("no pause") : r.pause_mode == MPM_PAUSE_ALL_VOTE ? TR("pause by vote") : TR("anyone can pause"));
     if ((r.allow_speedup != 0) != (r0.allow_speedup != 0)) say(TR("Speed-up is now %s (host rule)."), r.allow_speedup ? TR("on") : TR("off"));
     if (r.gear_mode != r0.gear_mode) say(TR("Gear is now: %s (host rule)."), r.gear_mode == MPM_GEAR_SHARED_ANY ? TR("shared, anyone equips any unit") : r.gear_mode == MPM_GEAR_OWN_STORAGE ? TR("own storage per player") : TR("shared, equip your own units"));
-    if (r.event_choice != r0.event_choice) { mpm_settings t = { 0 }; t.events = r.event_choice; char v[64]; mpm_rule_value(&t, 5, v, sizeof v); say(TR("Event choices: %s (host rule)."), v); }
+    if (r.event_choice != r0.event_choice) { mpm_settings t = { 0 }; t.events = r.event_choice; char v[64]; mpm_rule_value(&t, 5, v, sizeof v); say(TR("Event Choices: %s (host rule)."), v); }
     if (r.population != r0.population) { mpm_settings t = { 0 }; t.population = r.population; char v[64]; mpm_rule_value(&t, 4, v, sizeof v); say(TR("Population: %s (host rule)."), v); }
-    if (r.shared_fog != r0.shared_fog) say(TR("Shared fog of war: %s (host rule)."), r.shared_fog ? TR("On") : TR("Off"));
+    if (r.shared_fog != r0.shared_fog) say(TR("Shared Fog of War: %s (host rule)."), r.shared_fog ? TR("On") : TR("Off"));
     r0 = r; adm0 = adm;
 }
 
@@ -3045,7 +3045,7 @@ static void pick_frame(const mpm_obs *o) {
             u_gc_free(h_pick_title); h_pick_title = u_gc_new(t); u_gc_free(h_pick_btn); h_pick_btn = bt ? u_gc_new(bt) : 0;
             pick_on = 1; rig_log("mpmenu: load list retitled (was \"%s\" / \"%s\")", pick_title0, pick_btn0);
         }
-        char cur[128] = ""; str_utf8(tmp_get(t), cur, sizeof cur); if (strcmp(cur, TR("Host a world"))) tmp_set(t, TR("Host a world"));   /* our own text read back */
+        char cur[128] = ""; str_utf8(tmp_get(t), cur, sizeof cur); if (strcmp(cur, TR("Host a World"))) tmp_set(t, TR("Host a World"));   /* our own text read back */
         if (bt) { str_utf8(tmp_get(bt), cur, sizeof cur); if (strcmp(cur, TRC("verb", "Host"))) tmp_set(bt, TRC("verb", "Host")); }
     } else if (!want && pick_on) {
         Obj t = u_gc_get(h_pick_title), bt = u_gc_get(h_pick_btn);
@@ -3245,8 +3245,8 @@ static void hostmods_poll(void) {
     else if (st == 3) snprintf(line, sizeof line, "%s", TR("Loading the host's mods..."));
     else snprintf(line, sizeof line, TR("Downloading the host's mods... %d%%"), pct);
     snprintf(M.msg, sizeof M.msg, "%s", line);                              /* the Multiplayer line too (the box can be closed) */
-    if (!HM.wait_box_shown && lbox_up == BX_NONE) { HM.wait_box_shown = 1; hm_info_box(TR("Get the host's mods"), line); }
-    else hm_info_update(TR("Get the host's mods"), line);
+    if (!HM.wait_box_shown && lbox_up == BX_NONE) { HM.wait_box_shown = 1; hm_info_box(TR("Get the Host's Mods"), line); }
+    else hm_info_update(TR("Get the Host's Mods"), line);
 }
 static void hostmods_frame(void) {
     Obj v = lbox_view();
@@ -3256,7 +3256,7 @@ static void hostmods_frame(void) {
         else if (hostmods_replan() <= 0) HM.pending = 0;                    /* cannot happen with the same lines; no box then */
     }
     if (HM.pending && !HM.names_pending && title_calm >= 90 && !M.confirm_leave && lbox_up == BX_NONE) {
-        box_show(BX_HOSTMODS, HM.text, HM.can_fix ? TR("Get the host's mods") : TR("Close"), HM.can_fix ? TR("Close") : NULL);
+        box_show(BX_HOSTMODS, HM.text, HM.can_fix ? TR("Get the Host's Mods") : TR("Close"), HM.can_fix ? TR("Close") : NULL);
         if (lbox_up == BX_HOSTMODS) { HM.pending = 0; HM.shown_ms = now_ms_(); hm_log_box(HM.text); }
         else if (++HM.tries > 120) {                                        /* no notice box at all: the button line says it */
             HM.pending = 0; snprintf(M.msg, sizeof M.msg, "%s", TR("Could not join: your gameplay mods are not the same as the host's"));
@@ -4149,7 +4149,7 @@ static void run_actions(int a, const mpm_obs *o) {
     if (a & MPA_COPY_ADDR) { copied_until = frames + 60; const char *ca = lobby_addr[0] ? lobby_addr : M.direct; F(0x518AFE0, void (*)(Obj, void *))(u_str(ca), NULL); rig_log("mpmenu: copied the lobby address"); }
     if (a & MPA_INVITE) {                                                   /* F18: a failed overlay is said, not only logged */
         int rc = ui_friends_invite_click() ? 0 : mp_steam_invite(); rig_log("mpmenu: invite rc %d", rc);   /* steaminv: overlay off = friends picker (ui_friends.c) */
-        if (rc) say("%s", TR("The Steam invite window did not open (Steam overlay off?). Use Copy direct address instead."));
+        if (rc) say("%s", TR("The Steam invite window did not open (Steam overlay off?). Use Copy Direct Address instead."));
     }
     if (a & MPA_CONFIRM_LEAVE) leave_box_show();
     if (a & MPA_LEAVE_BOX_CLOSE) leave_box_close();
@@ -4170,7 +4170,7 @@ static void run_actions(int a, const mpm_obs *o) {
         expect_world("");
         int k = M.friend_pick, rc = k >= 0 && k < M.nfriends ? mp_steam_join(friend_lobby[k]) : -1;
         if (!rc) { snprintf(joined_how, sizeof joined_how, "steam"); joined_steamid = friend_id[k]; }
-        if (rc) snprintf(M.msg, sizeof M.msg, TR("Could not join %s's world (Steam). Try again, or use Join by address."), k >= 0 && k < 6 ? M.friends[k] : TR("a friend"));
+        if (rc) snprintf(M.msg, sizeof M.msg, TR("Could not join %s's world (Steam). Try again, or use Join by Address."), k >= 0 && k < 6 ? M.friends[k] : TR("a friend"));
         rig_log("mpmenu: join friend %d (lobby %llu): rc %d", k, (unsigned long long)(k >= 0 && k < 6 ? friend_lobby[k] : 0), rc);
     }
     if (a & MPA_LOBBY_SHOW) { popup_activate(1); rig_log("mpmenu: lobby panel opened"); }
@@ -4212,8 +4212,8 @@ static void tips_frame(const mpm_obs *o) {
             TIP(u_gc_get(h_lwb[LW_GEAR]), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));
             TIP(lwt(T_RULES), TR("Rules"), TR("Shows how this world plays. Only the host can change them."));
             TIP(u_gc_get(h_lwb[LW_INVITE]), TR("Steam Invite"), TR("Opens Steam's invite window so you can invite friends without sharing your address. Needs the Steam version."));
-            TIP(u_gc_get(h_lwb[LW_COPY]), TR("Copy Address"), TR("Copies your address so you can send it to a friend. They paste it in Join by address."));
-            TIP(u_gc_get(h_lw_addrbox[0]), TR("Copy Address"), TR("Copies your address so you can send it to a friend. They paste it in Join by address."));
+            TIP(u_gc_get(h_lwb[LW_COPY]), TR("Copy Address"), TR("Copies your address so you can send it to a friend. They paste it in Join by Address."));
+            TIP(u_gc_get(h_lw_addrbox[0]), TR("Copy Address"), TR("Copies your address so you can send it to a friend. They paste it in Join by Address."));
             TIP(lwt(T_PLAYERS), TR("Players"), TR("Everyone in this world. The bars show each player's connection."));
             for (int i = 0; i < LW_ROWS; i++) {
                 static const char *lv[4] = { TR_NOOP("Disconnected. The game waits, or the host keeps playing their units."), TR_NOOP("Slow connection, or the game is loading or catching up."),
@@ -4228,7 +4228,9 @@ static void tips_frame(const mpm_obs *o) {
     Obj ev = o->scene == 2 ? esc_view() : NULL;
     if (ev && u_on(ev) && M.state != MPM_LOBBY && M.state != MPM_GUEST_LOBBY) {
         TIP(eb(MPB_ESC_INVITE), TR("Steam Invite"), TR("Opens Steam's invite window so you can invite friends into this world."));
-        TIP(eb(MPB_LEAVE), TR("Leave Multiplayer"), TR("Host: asks first, then ends the game for everyone; the world stays on your computer and you keep playing alone. Guest: you return to the title; your units stay reserved for you."));
+        { char ll[96]; mpm_label(&M, MPB_LEAVE, ll, sizeof ll);                /* UX M8: host Turn Off Multiplayer, guest Leave Multiplayer */
+          TIP(eb(MPB_LEAVE), ll, M.role == 1 ? TR("Asks first, then ends the game for everyone. The world stays on your computer and you keep playing alone.")
+                                             : TR("You return to the title. Your units stay reserved for you.")); }
         if (in_session()) { char lc[128]; snprintf(lc, sizeof lc, "%s", load_label[0] ? load_label : mpm_word("TEXTKEY_SystemMenu_LoadCampaign", TR_NOOP("Load Campaign")));   /* the stock button's own label */
                             TIP(AT(ev, 0x60, Obj), lc, TR("Leave multiplayer to load another world.")); }
     }
@@ -4472,7 +4474,7 @@ static void tag_case_show(tag_row *r) {
     if (!u_alive(rm)) {
         rm = mk_txt(nt, u_tr(nt), 0, 14, 513, 0, 0, 0, 120, 24, C_SUB);
         if (!rm) return;
-        { char rt[96]; snprintf(rt, sizeof rt, "<u>%s</u>", TR("Remove tag")); tmp_set(rm, rt); }
+        { char rt[96]; snprintf(rt, sizeof rt, "<u>%s</u>", TR("Remove Tag")); tmp_set(rm, rt); }
         F(0x5260348, void (*)(Obj, bool, void *))(rm, true, NULL);          /* raycastTarget on: the click stops on it (see below) */
         u_gc_free(r->rm); r->rm = u_gc_new(rm);
     }
@@ -4561,7 +4563,13 @@ static void lf_apply(Obj slv, const char *why) {
     if (!u_alive(slv)) return;
     Obj list = AT(slv, 0xE0, Obj), arr = list ? AT(list, 0x10, Obj) : NULL;   /* SaveLoadView._campaignCases (List: _items, _size) */
     int n = list ? AT(list, 0x18, int) : 0, hid = 0, shown = 0;
-    char hidden_guid[64][40]; int nh = 0;
+    char hidden_guid[64][40]; int nh = 0, nmp = 0;
+    for (int i = 0; i < n && arr; i++) {                                    /* UX M4: Your save with no multiplayer world shows all */
+        Obj cs = AT(arr, 0x20 + 8 * i, Obj); if (!u_alive(cs)) continue;
+        tag_row *r = tag_row_find(tcase, cs); char nm[MPM_TAG_NAMES][32];
+        if (r && r->guid[0] && tag_get(r->guid, nm) >= 0) nmp++;
+    }
+    M.mp_worlds = nmp; lf_mode = mpm_list_mode(&M);
     for (int i = 0; i < n && arr; i++) {
         Obj cs = AT(arr, 0x20 + 8 * i, Obj); if (!u_alive(cs)) continue;
         tag_row *r = tag_row_find(tcase, cs); if (!r || !r->guid[0]) continue;
@@ -4580,7 +4588,7 @@ static void lf_apply(Obj slv, const char *why) {
     lf_hidden = hid; lf_shown = shown; lf_applied++;
     u_gc_free(h_lf_slv); h_lf_slv = u_gc_new(slv);
     lf_toggle_sync(slv);
-    rig_log("mpmenu: load list filter (%s): mode %d, other %d: %d shown, %d hidden", why, lf_mode, lf_other, shown, hid);
+    rig_log("mpmenu: load list filter (%s): mode %d (%d multiplayer world(s)), other %d: %d shown, %d hidden", why, lf_mode, nmp, lf_other, shown, hid);
 }
 static void (*o_refresh_load)(Obj, Obj, void *);
 static void h_refresh_load(Obj self, Obj set, void *mi) {

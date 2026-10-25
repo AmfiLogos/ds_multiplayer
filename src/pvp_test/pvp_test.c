@@ -344,7 +344,7 @@ int main(void) {
         char dir[] = "/tmp/pvp_i18n_XXXXXX", fp[200];
         if (mkdtemp(dir)) {
           snprintf(fp, sizeof fp, "%s/fr.json", dir); FILE *f = fopen(fp, "wb");
-          if (f) { fputs("{\"Vanilla check is on: %s has the gameplay mod %s. %s must turn it off in the Mods window.||Vanilla check is on: %s has the gameplay mods %s. %s must turn them off in the Mods window.\": "
+          if (f) { fputs("{\"Vanilla Check is on: %s has the gameplay mod %s. %s must turn it off in the Mods window.||Vanilla Check is on: %s has the gameplay mods %s. %s must turn them off in the Mods window.\": "
                          "[\"FR1 %s %s %s\", \"FR2 %s %s %s\"], \"A player\": \"Un joueur\", \"Missing: %s.\": \"Manque %d.\"}", f); fclose(f); }
           dsi_set_dir(dir); CHECK(dsi_set_lang(2) == 1 && dsi_loaded() == 2 && dsi_dropped() == 1);
           CHECK(pvp_modset_check_why(1, &none, &hell, "", 0, &w) == 1 && w.code == PVP_WHY_VANILLA && w.n == 2);

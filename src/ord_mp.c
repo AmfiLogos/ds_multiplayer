@@ -50,7 +50,7 @@ static int handler(mp_session *s, int player, const uint8_t guid[16], const uint
         if (player == dsnet_player_id(c) && ui_notice) {
             char t[160];
             char t2[240];
-            if (why == DSNET_RECRUIT_UNITS_FULL) snprintf(t2, sizeof t2, TRN("You already have %d unit: host rule Units per player", "You already have %d units: host rule Units per player", own), own);
+            if (why == DSNET_RECRUIT_UNITS_FULL) snprintf(t2, sizeof t2, TRN("You already have %d unit: host rule Units per Player", "You already have %d units: host rule Units per Player", own), own);
             else if (pool) snprintf(t2, sizeof t2, TR("Population full (%d/%d): host rule %s"), count, cap, TR(pop_mode_name(r.population)));
             else snprintf(t2, sizeof t2, TR("Population full for you (%d/%d): host rule %s"), own, cap, TR(pop_mode_name(r.population)));
             snprintf(t, sizeof t, "%s", t2); dsi_utf8_fix_end(t);

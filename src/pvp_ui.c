@@ -175,7 +175,7 @@ static void pv_value(int r, char *out, size_t cap) {
     }
     dsi_utf8_fix_end(out);
 }
-static const char *pv_label[PVR_N] = { TR_NOOP("Mode"), TR_NOOP("To win"), TR_NOOP("Round time"), TR_NOOP("Pause"), TR_NOOP("Arena"), NULL, TR_NOOP("Vanilla check") };   /* TR() when drawn; NULL: pvp_rules.c */
+static const char *pv_label[PVR_N] = { TR_NOOP("Mode"), TR_NOOP("To Win"), TR_NOOP("Round Time"), TR_NOOP("Pause"), TR_NOOP("Arena"), NULL, TR_NOOP("Vanilla Check") };   /* TR() when drawn; NULL: pvp_rules.c */
 static const char *pv_tip[PVR_N] = {
     TR_NOOP("Fight: a team wins the round when the other team has no unit left standing. Capture the Flag: take the other team's banner flag and bring it to your own banner while your flag is home."),
     TR_NOOP("Fight: how many rounds are played at most; the first team to win most of them wins the match. Capture the Flag: how many captures win the match."),
@@ -243,7 +243,7 @@ static void pv_build(Obj v) {
     /* presets (host, this computer only): Save as preset... / Delete preset; naming: the name field, Save, Cancel */
     { float x0 = PV_COLX(1), yc = PY(PV_PBTN_Y);
       const float bx[4] = { 139, PV_COLW - 139, 370, 496 }, bw[4] = { 270, 270, 120, 120 };
-      static const char *bl[4] = { TR_NOOP("Save as preset..."), TR_NOOP("Delete preset"), TR_NOOP("Save"), TR_NOOP("Cancel") };
+      static const char *bl[4] = { TR_NOOP("Save as Preset..."), TR_NOOP("Delete Preset"), TR_NOOP("Save"), TR_NOOP("Cancel") };
       for (int k = 0; k < 4; k++) {
           Obj b = mk_button(src, R, 1, S_NBTN, C_WHITE, PX(x0 + bx[k]), yc, bw[k], 34, 15, k == 3 ? cmt_game("TEXTKEY_Common_Cancel", "Cancel") : TR(bl[k]), C_MAIN);
           KEEP(h_pvb[PVB_PRE_SAVEAS + k], b); if (k >= 2) u_active(b, false);
@@ -735,7 +735,7 @@ static void hud_build(void) {
             for (int k = 0; k < 2; k++) {
                 Obj bb = mk_img(head, u_tr(pb), k ? S_NBTN : S_RECRUIT, C_WHITE, k ? 100 : -100, -24, 170, 36);
                 Obj bl = bb ? mk_txt(name, u_tr(bb), 1, 17, 514, 0, 0, 0, 170, 36, k ? C_MAIN : C_START) : NULL;
-                if (bl) { das_key_clear(bl); cmt_set(bl, k ? TR("Not yet") : TR("Agree")); uintptr_t *hl = k ? &h_lab_no : &h_lab_yes; u_gc_free(*hl); *hl = u_gc_new(bl); }
+                if (bl) { das_key_clear(bl); cmt_set(bl, k ? TR("Not Yet") : TR("Agree")); uintptr_t *hl = k ? &h_lab_no : &h_lab_yes; u_gc_free(*hl); *hl = u_gc_new(bl); }
                 u_gc_free(h_pvb[k ? PVB_PROP_NO : PVB_PROP_YES]); h_pvb[k ? PVB_PROP_NO : PVB_PROP_YES] = bb ? u_gc_new(bb) : 0;
             }
         }
@@ -785,8 +785,8 @@ static void hud_frame(const pvp_state *s) {
     int vv = vote_view(s);
     Obj fb = pvb(PVB_FIGHT); if (fb) u_active(fb, (vv == 1 || vv == 4) && !s->planning);
     Obj hbb = pvb(PVB_HUD_BRING); if (hbb) u_active(hbb, vv == 1 && !br_open && !mu_bring_is_open());   /* E2: in the preparation of a match */
-    { Obj l = u_gc_get(h_hud_flab); if (u_alive(l)) cmt_set(l, vv == 4 ? TR("Cancel") : TR("Propose fight")); }
-    { uintptr_t lh[3] = { h_lab_yes, h_lab_no, h_lab_bring }; const char *lt[3] = { TR("Agree"), TR("Not yet"), TR("Bring Units...") };
+    { Obj l = u_gc_get(h_hud_flab); if (u_alive(l)) cmt_set(l, vv == 4 ? TR("Cancel") : TR("Propose Fight")); }
+    { uintptr_t lh[3] = { h_lab_yes, h_lab_no, h_lab_bring }; const char *lt[3] = { TR("Agree"), TR("Not Yet"), TR("Bring Units...") };
       for (int k = 0; k < 3; k++) { Obj l = u_gc_get(lh[k]); if (u_alive(l)) cmt_set(l, lt[k]); } }   /* (DASText re-reads its key on enable: set every refresh, like Ready) */
     Obj pr = u_gc_get(h_prop_root); if (u_alive(pr)) u_active(pr, vv == 2 || vv == 3);
     for (int k = 0; k < 2; k++) { Obj bb = pvb(k ? PVB_PROP_NO : PVB_PROP_YES); if (bb) u_active(bb, vv == 2); }
@@ -893,8 +893,8 @@ static void pvp_ui_tips(void) {
     if (pv_open) {
         for (int r = 0; r < PVR_N; r++) tip_try(pvt(h_pv_rrow[r]), pv_lab(r), pv_tipf(r));
         tip_try(pvt(h_pv_prow), TR("Preset"), TR("Your saved sets of rules. The arrows pick one and apply its rules. Custom: the rules shown are not a saved preset."));
-        tip_try(pvb(PVB_PRE_SAVEAS), TR("Save as preset..."), TR("Saves all the rules shown under a name you type, on this computer only. The same name replaces that preset."));
-        tip_try(pvb(PVB_PRE_DEL), TR("Delete preset"), TR("Deletes the preset shown. The rules stay as they are."));
+        tip_try(pvb(PVB_PRE_SAVEAS), TR("Save as Preset..."), TR("Saves all the rules shown under a name you type, on this computer only. The same name replaces that preset."));
+        tip_try(pvb(PVB_PRE_DEL), TR("Delete Preset"), TR("Deletes the preset shown. The rules stay as they are."));
         if (pv_here()) tip_try(pvb(PVB_START), TR("Start Match"), TR("Starts the match here with the teams and rules shown: each team walks to its end of the settlement, then the fight begins."));
         else tip_try(pvb(PVB_START), TR("Start Match"), TR("Sends everyone to the arena floor with the teams and rules shown. The match begins by itself once everyone has arrived."));
         tip_try(pvb(PVB_CLOSE), cmt_game("TEXTKEY_Common_Close", "Close"), TR("Closes this window. Nothing is sent."));

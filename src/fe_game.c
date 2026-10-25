@@ -266,9 +266,9 @@ int fe_menu_start(int death, int xp, int loot, int recruit, char *err, size_t er
     char *r = cmd_start(line);
     int ok = r && strstr(r, "\"ok\":true") != NULL;
     if (!ok) {
-        if (r && strstr(r, "nobody brought")) snprintf(err, errn, "%s", TR("Nobody brought units yet: Bring units first."));
-        else if (r && strstr(r, "host only")) snprintf(err, errn, "%s", TR("Only the host starts a Foreign Expedition."));
-        else snprintf(err, errn, "%s", TR("The Foreign Expedition could not start."));
+        if (r && strstr(r, "nobody brought")) snprintf(err, errn, "%s", TR("Nobody brought units yet: Bring Units first."));
+        else if (r && strstr(r, "host only")) snprintf(err, errn, "%s", TR("Only the host starts the Hub."));
+        else snprintf(err, errn, "%s", TR("The Hub could not start."));
     }
     free(r);
     return ok ? 0 : -1;
