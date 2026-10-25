@@ -128,7 +128,8 @@ def run(H, ctx):
     # 1. NEW: the box, the session waits, Yes
     off = host(NEW_STEM)
     m = wait('the single-player copy box', lambda: (lambda r: r if r.get('solo', {}).get('state') == 2 and r.get('box', {}).get('on') else None)(ms()), timeout=600)
-    check('NEW (never in multiplayer): the box asks before the session starts', 'Solo Test' in m['box'].get('text', '') and COPY_NAME in m['box'].get('text', ''), m['box'].get('text', '')[:160])
+    bl = rig_log_since(off); bl = bl[bl.find('mpmenu: box 11:'):][:1500]   # the whole text (mpm_status reads back 400 bytes)
+    check('NEW (never in multiplayer): the box asks before the session starts, naming the world and its copy', 'box 11:' in bl and 'Solo Test' in bl and COPY_NAME in bl, bl[:200])
     if SHOT:
         os.makedirs(SHOT, exist_ok=True); time.sleep(2)
         log('shot', c(cmd='mpm_shot', how='backbuffer', path=os.path.join(SHOT, f'solo_box_{CODE[LANG]}.png')))
