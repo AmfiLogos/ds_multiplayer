@@ -2959,7 +2959,7 @@ int mpmenu_box_over(void) { return lbox_up != BX_NONE && lbox_ours(lbox_view());
  * CommonNoticeView every box shares: dropped the frame our text leaves it, and the close checks it is still ours (else it
  * does nothing). Without that kit: as before. */
 static void lbox_esc_close(void *ud);
-static mpesc_win esc_lbox = { .name = "our notice box", .close = lbox_esc_close };
+static mpesc_win esc_lbox = { .name = "our notice box", .close = lbox_esc_close, .nox = "the game's notice box: its own buttons" };
 static void lbox_esc_close(void *ud) {
     (void)ud; Obj v = lbox_view();
     if (lbox_up != BX_NONE && lbox_ours(v)) { rig_log("mpmenu: Escape = Cancel in our box %d", lbox_up); F(0xF65638, void (*)(Obj, void *))(v, NULL); }
@@ -5452,6 +5452,7 @@ static char *testchoice_exec(const char *line) {
 }
 char *mpmenu_exec(const char *cmd, const char *line) {
     for (int k = 0; k < nhooks; k++) { char *r = hooks[k].exec ? hooks[k].exec(cmd, line) : NULL; if (r) return r; }   /* Custom Modes: mpm_fewin, mpm_pvp */
+    if (!strcmp(cmd, "mpm_esc")) { char *r = mpesc_dump(); return r ? r : strdup("{\"ok\":false}"); }   /* test: our windows that show, their red X (CLOSE RULE) */
     if (!strcmp(cmd, "mpm_shot")) {
         char p[1024], how[32] = "camera"; if (!jstr(line, "path", p, sizeof p)) return strdup("{\"ok\":false}");
         jstr(line, "how", how, sizeof how);
