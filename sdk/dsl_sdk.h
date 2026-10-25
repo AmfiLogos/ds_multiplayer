@@ -1,4 +1,4 @@
-// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_modloader feat/esc-close (ESC-MISSING guard, DSL_ESC_HUD), 2026-10-25) for builds without the loader tree:
+// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_modloader 03e1be0, 2026-10-25) for builds without the loader tree:
 // the rig host of Units Laboratory (src/rig_main.c) and the Bring Units card window (src/mu_*.c). The loader build passes its own SDK=<loader>/sdk.
 // dsl_sdk.h - module SDK for the Dungeon Settlers mod loader (dsload.dylib), API version 6.
 // API 6 = API 5 + mod_data_dir (appended to DSLHost): <game data>/ModData/<mod id>/, a folder of this mod that a mod
