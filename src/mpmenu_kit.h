@@ -68,6 +68,7 @@ void txt_color(Obj t, Col c);
 void img_set(Obj im, Obj sprite, Col c);
 void place(Obj comp, float x, float y, float w, float h);
 int rect_of(Obj comp, float r[4]);
+float mpm_ui_scale(void);                        /* the game's UI scale (UIScaleManager.Instance.Scale, 0.75..1.4; 1 = unknown): our windows follow it (uxmp M5) */
 Obj mk_img(Obj tpl_img, Obj parent_tr, int sprite, Col c, float x, float y, float w, float h);
 Obj mk_txt(Obj tpl_txt, Obj parent_tr, int cinzel, float size, int align, int wrap, float x, float y, float w, float h, Col c);
 Obj mk_button(Obj src, Obj parent, int esc, int sprite, Col tint, float x, float y, float w, float h, float fs, const char *label, Col tc);
