@@ -4,7 +4,7 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 
 ## Multiplayer (multiplayer)
 
-### Unreleased (0.1.27)
+### 0.1.27 (2026-10-25)
 
 Chat:
 - You can use the chat without typing. The mouse wheel over the chat lines, a click on a chat line, or Enter when you
