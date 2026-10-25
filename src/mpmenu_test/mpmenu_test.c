@@ -35,7 +35,7 @@ int main(void) {
     mpm_step(&m, &o, MPB_JOIN_ADDR); o.escape = 1; mpm_step(&m, &o, MPB_NONE); o.escape = 0; CHECK(m.state == MPM_TITLE_MENU);   /* join page: Escape = Back */
     o.steam = 0;
     mpm_step(&m, &o, MPB_JOIN_ADDR); CHECK(m.state == MPM_TITLE_JOIN && mpm_visible(&m, &o) == (B(MPB_HEADER) | B(MPB_LABEL_ADDR) | B(MPB_LABEL_NAME) | B(MPB_DIVIDER) | B(MPB_CONNECT) | B(MPB_BACK)));
-    mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Join a multiplayer world"));
+    mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Join a Multiplayer World"));
     CHECK(mpm_step(&m, &o, MPB_CONNECT) & MPA_JOIN_ADDR);
     /* connecting (ux #1): the game side sets `connecting`; Cancel replaces Connect, INFO says so; Cancel stops it */
     strcpy(m.connecting, "10.255.255.1:47777");
@@ -59,7 +59,7 @@ int main(void) {
     /* layout v2 §2a: header, settings row + summary; the selectors replace the summary when open */
     { uint64_t v = mpm_visible(&m, &o);
       CHECK((v & B(MPB_HEADER)) && !(v & B(MPB_SETTINGS)) && (v & B(MPB_DIVIDER)) && !(v & B(MPB_SUMMARY)) && !(v & B(MPB_SEL_PAUSE)) && !(v & B(MPB_PAUSE_MODE)));
-      mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host your save"));
+      mpm_label(&m, MPB_HEADER, l, sizeof l); CHECK(!strcmp(l, "Host Your Save"));
       mpm_label(&m, MPB_SETTINGS, l, sizeof l); CHECK(!strcmp(l, "Rules"));
       mpm_settings_summary(&m.set, l, sizeof l); CHECK(!strcmp(l, "Pause: anyone \xC2\xB7 Speed-up: on \xC2\xB7 Gear: own units \xC2\xB7 Units: 3 \xC2\xB7 Population: shared \xC2\xB7 Events: owner \xC2\xB7 Admin: off \xC2\xB7 Shared fog: off \xC2\xB7 Spectators: on"));
       { char rv[64]; mpm_rule_value(&m.set, 0, rv, sizeof rv); CHECK(!strcmp(rv, "Anyone can pause") && !strcmp(mpm_rule_label(3), "Units per Player") && !strcmp(mpm_rule_label(5), "Event Choices") && !strcmp(mpm_rule_label(MPM_RULE_POP), "Population")); }
@@ -287,11 +287,11 @@ int main(void) {
         mpm_label(&h, MPB_HOST_FE, s, sizeof s); CHECK(!strcmp(s, "Hub: Co-op or PvP"));
         mpm_model k = h; mpm_step(&k, &t, MPB_HOST_SAVE); uint64_t v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)) && !mpm_is_visible(&k, &t, MPB_HOST_SAVE));
-        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host your save"));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host Your Save"));
         CHECK(mpm_step(&k, &t, MPB_LOAD_SAVE) & MPA_OPEN_LOAD_LIST);
         k = h; mpm_step(&k, &t, MPB_HOST_NEW); v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && !k.set.fe && (v & B(MPB_NEW_CAMPAIGN)) && !(v & B(MPB_LOAD_SAVE)));
-        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a new save"));
+        mpm_label(&k, MPB_HEADER, s, sizeof s); CHECK(!strcmp(s, "Host a New Save"));
         CHECK(mpm_step(&k, &t, MPB_NEW_CAMPAIGN) & MPA_OPEN_NEW);
         k = h; mpm_step(&k, &t, MPB_HOST_FE); v = mpm_visible(&k, &t);
         CHECK(k.state == MPM_TITLE_HOST && k.set.fe == 1 && (v & B(MPB_LOAD_SAVE)) && !(v & B(MPB_NEW_CAMPAIGN)));

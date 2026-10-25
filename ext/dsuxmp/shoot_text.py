@@ -2,7 +2,7 @@
 """uxmp-text shot driver (lane dsuxmp; adapted from the dsux review driver ~/ds_launcher_wt_dsux/ux_uxmp/shoot.py).
 One hidden loader test copy UXT (ext/dsuxmp/make_instance_text.sh) with the shared loader build of lane dsuxmp
 (~/ds_launcher_wt_dsuxmp/loader: dsload + mods_all/mac multiplayer + custom-modes, read only) and THIS worktree's
-multiplayer build (build/dsrig.dylib) and lang tables. Shoots the screens the uxmp-text fixes change: M4 (Your save load
+multiplayer module (ext/dsuxmp/build_module_text.sh -> build/module/multiplayer.dylib) and lang tables. Shoots the screens the uxmp-text fixes change: M4 (Your save load
 list of a first-time host), M8 (lobby, host Esc menu, its box), M11 (Title Case labels), M12 (refusal box).
   shoot_text.py <en|de|ru> <W>x<H> <ui scale> [parts=title,game]
 Take the lane's copy slot first (ext/dsuxmp/run_text.sh does). Shots (LOCAL ONLY, never commit):
@@ -55,7 +55,7 @@ def install():
             os.makedirs(os.path.join(I, 'old'), exist_ok=True); shutil.move(d, os.path.join(I, 'old', f'{m}.{time.time():.0f}'))
         shutil.copytree(os.path.join(LB, 'build', 'mods_all', 'mac', m), d)
     mp = os.path.join(md, 'multiplayer')                             # this worktree's build and its string tables
-    shutil.copy2(os.path.join(MPW, 'build', 'dsrig.dylib'), os.path.join(mp, 'multiplayer.dylib.tmp'))
+    shutil.copy2(os.path.join(MPW, 'build', 'module', 'multiplayer.dylib'), os.path.join(mp, 'multiplayer.dylib.tmp'))   # build_module_text.sh
     os.replace(os.path.join(mp, 'multiplayer.dylib.tmp'), os.path.join(mp, 'multiplayer.dylib'))
     import hashlib                                                    # the loader loads only files that match mod.json
     mj = os.path.join(mp, 'mod.json'); m = json.load(open(mj))

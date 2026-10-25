@@ -433,15 +433,15 @@
 "Hood"	mu_ui.c:126
 "Host"	mpmenu.c:2033 pvp_game.c:1119 pvp_ui.c:143 ui_model.c:13
 "Host Address"	mpmenu.c:4388 mpmenu_model.c:498
+"Host Your Save"	mpmenu_model.c:503
 "Host a Game"	mpmenu_model.c:541
 "Host a New Campaign"	mpmenu.c:4386 mpmenu_model.c:556
+"Host a New Save"	mpmenu_model.c:503
 "Host a World"	mpmenu.c:3053 mpmenu.c:3053
-"Host a new save"	mpmenu_model.c:503
 "Host from a Save"	mpmenu.c:4385 mpmenu_model.c:555
 "Host has v%s, you have v%s: update and try again."	net/dsnet_link.c:80
 "Host only"	mpmenu_model.c:72
 "Host the Hub"	mpmenu_model.c:500 mpmenu_model.c:503
-"Host your save"	mpmenu_model.c:503
 "Host: %s"	mpmenu_model.c:501
 "Host: click a section name to move the picked unit there."	ui_teams.c:1202
 "Host: units you click go to %s."	ui_teams.c:1206
@@ -478,8 +478,8 @@
 "Join a Friend on Steam"	mpmenu.c:4379 mpmenu_model.c:502 mpmenu_model.c:505 mpmenu_model.c:508
 "Join a Friend's World"	mpmenu.c:4381 mpmenu_model.c:513
 "Join a Game"	mpmenu_model.c:542
+"Join a Multiplayer World"	mpmenu_model.c:502
 "Join a friend's world with their address. Use it without Steam, or on the same home network."	mpmenu.c:4378
-"Join a multiplayer world"	mpmenu_model.c:502
 "Join and Leave Lines"	ui_game.c:5841
 "Join by Address"	mpmenu.c:4378 mpmenu_model.c:558
 "Join from the launcher: it gets the host's mods for this game."	net/ds_modcheck.h:190

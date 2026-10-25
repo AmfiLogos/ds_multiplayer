@@ -27,8 +27,9 @@ Fixes M4, M8, M11 (+ Title Case), M12, M13 of `UX_REVIEW_2026-10-25.md`. Branch 
 
 ### Decisions (question, pick, why)
 - Title Case scope: buttons, menu rows, settings-row labels, box buttons, clickable headers (Teams "Your Units" / "Free
-  Units"), the Load window title we set ("Host a World", it replaces the game's Title Case "Load Campaign"). Not window
-  or page titles otherwise (not in the brief; most are drawn in Cinzel caps), not values ("Anyone can pause", "Own
+  Units"), the headers of the Multiplayer page column ("Host Your Save", "Host a New Save", "Join a Multiplayer World":
+  they sit in the same column as the rows), the Load window title we set ("Host a World", it replaces the game's Title
+  Case "Load Campaign"). Not window titles otherwise (not in the brief; most are drawn in Cinzel caps), not values ("Anyone can pause", "Own
   storage"), not statuses. Why: the game's own buttons, settings rows and dropdown rows are Title Case.
 - Style: the game's (Chicago) rule: articles, short conjunctions and prepositions lower case ("Host from a Save",
   "Show Address for Friends without Steam", "Ping Lines in Chat"); a phrasal-verb particle capital ("Turn Off", "Give
@@ -87,6 +88,9 @@ ext/dsuxmp/shoot_text.py (one hidden copy UXT, ext/dsuxmp/make_instance_text.sh;
 - "Host a world" -> "Host a World"
 - "Show single-player worlds" -> "Show Single-Player Worlds"
 - "Show multiplayer worlds" -> "Show Multiplayer Worlds"
+- "Host your save" -> "Host Your Save"
+- "Host a new save" -> "Host a New Save"
+- "Join a multiplayer world" -> "Join a Multiplayer World"
 - "More saves ›" -> "More Saves ›"
 - "More units ›" -> "More Units ›"
 - "Expedition version" -> "Expedition Version"

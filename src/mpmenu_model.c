@@ -499,8 +499,8 @@ void mpm_label(const mpm_model *m, int b, char *out, size_t cap) {
     case MPB_HEADER:
         if (m->state == MPM_TITLE_HOST && cur_v2(m) && m->choice == 1) { snprintf(out, cap, "%s", TR("Host the Hub")); break; }   /* choice 1 = the hub (mp_modes.c) */
         if (m->state == MPM_TITLE_HOST && cur_v2(m)) { snprintf(out, cap, TR("Host: %s"), m->choice_label[m->choice - 1]); break; }
-        snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? TR("Join a multiplayer world") : m->state == MPM_TITLE_FRIENDS ? TR("Join a Friend on Steam")
-                                          : m->set.fe ? TR("Host the Hub") : m->host_new ? TR("Host a new save") : TR("Host your save")); break;
+        snprintf(out, cap, "%s", m->state == MPM_TITLE_JOIN ? TR("Join a Multiplayer World") : m->state == MPM_TITLE_FRIENDS ? TR("Join a Friend on Steam")
+                                          : m->set.fe ? TR("Host the Hub") : m->host_new ? TR("Host a New Save") : TR("Host Your Save")); break;
     case MPB_JOIN_FRIEND:
         if (m->steam) snprintf(out, cap, "%s", TR("Join a Friend on Steam"));
         else {                                                              /* the small line in points: 65% of the auto-sized label was ~9.6 */
