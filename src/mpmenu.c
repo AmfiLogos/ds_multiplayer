@@ -4006,6 +4006,9 @@ static void chat_frame(const mpm_obs *o) {
         if (!chat_typing && k >= 0 && k < nch) { double age = now - chist[k].t; a = age < chat_fade_s ? 1 : age < chat_fade_s + 1 ? (float)(chat_fade_s + 1 - age) : 0; }
         u_active(t, a > 0); u_active(bg, a > 0);
         if (a > 0) {
+            /* a local line (mp_api v3, e.g. a DPS log line every hit) never takes a click: the game's buttons under the idle
+               lines stay usable (the unit panel's Inspect button sat under them); other lines stay UI clicks (lan_v10) */
+            if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, !chist[k].local || chist[k].link, NULL);
             ch_prepare(k);
             ch_slot_show(t, &ch_idle_id[i], &ch_idle_font[i], k);
             if (chist[k].hi <= 0) { place(t, bx, 0, 410, 26); chist[k].hi = ch_measure(t, 410); }
