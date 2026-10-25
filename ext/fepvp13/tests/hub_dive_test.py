@@ -179,13 +179,13 @@ def run(H, G):
         rl = open(os.path.join(rig.idir(H), 'rig.log'), errors='replace').read()
         check('hub map: the hub was built from the shipped hub map', f'map ' in rl and 'hub_25846389.json' in rl and 'built from the hub map' in rl,
               next((l for l in rl.splitlines()[::-1] if 'fe hub:' in l and 'built from' in l), '')[:200])
-        sv = max(glob.glob(os.path.join(rig.idir(H), 'data', 'Saves', 'MPHub_*.json')), key=os.path.getmtime)
+        sv = os.path.join(rig.idir(H), 'data', 'fe', 'hub_built.json')   # 0.1.26: the hub leaves no file in Saves; test copies keep the built hub here
         w0 = json.load(open(sv)); hub_pre = w0
         rd = w0['ResearchSaveData']['ResearchDatas']
-        check('hub map: every research done, every region open, no units in the hub file',
+        check('hub map: every research done, every region open, no player units in the hub file (the Guild Merchant stays, 0.1.20)',
               all(r['Workload'] >= r['RequiredWorkload'] and not r['IsLocked'] for r in rd.values())
               and all(not r['IsLocked'] for r in w0['ClanSaveData']['ExpeditionMapData'] if r.get('Region', -1) >= 0)
-              and not w0['EntityContainerSaveData']['UnitContainerSaveData']['Base']['UnitSaveDataDictionary'] and 'MPHubTemplate' not in w0,
+              and not w0['EntityContainerSaveData']['UnitContainerSaveData']['Base'].get('PlayerGuidList') and 'MPHubTemplate' not in w0,
               f"{len(rd)} research, {len(w0['EntityContainerSaveData']['BuildingContainerSaveData']['Base']['BuildingSaveData'])} buildings")
         lu0 = [u for u in c(H, cmd='list_units', map=0)['units'] if u['faction'] == 1]
         check('hub map: 0 player units in the hub before the start', len(lu0) == 0, str(len(lu0)))

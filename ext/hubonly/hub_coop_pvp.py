@@ -219,7 +219,7 @@ def run(H, G):
         rl = open(os.path.join(rig.idir(H), 'rig.log'), errors='replace').read()
         check('hub map: the hub was built from the shipped hub map', f'map ' in rl and 'hub_25846389.json' in rl and 'built from the hub map' in rl,
               next((l for l in rl.splitlines()[::-1] if 'fe hub:' in l and 'built from' in l), '')[:200])
-        sv = max(glob.glob(os.path.join(rig.idir(H), 'data', 'Saves', 'MPHub_*.json')), key=os.path.getmtime)
+        sv = os.path.join(rig.idir(H), 'data', 'fe', 'hub_built.json')   # 0.1.26: the hub leaves no file in Saves; test copies keep the built hub here
         w0 = json.load(open(sv)); hub_pre = w0
         rd = w0['ResearchSaveData']['ResearchDatas']
         check('hub map: every research done, every region open, no player units in the hub file (the Guild Merchant stays, 0.1.20)',

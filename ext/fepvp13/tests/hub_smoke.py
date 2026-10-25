@@ -55,7 +55,7 @@ def main():
         c(cmd='mpm_shot', how='backbuffer', path=os.path.join(OUT, 'lobby.png'))
         chk = os.path.join(rig.idir(H), 'data', 'Saves', 'fepvp_hub_check.json')
         if os.path.exists(chk): os.replace(chk, os.path.join(OUT, 'old_hub_check.json'))
-        r = c(cmd='mp_save', name='fepvp_hub_check'); log('mp_save (the game saves the running hub)', r); time.sleep(5)
+        r = c(cmd='fe_save', name='fepvp_hub_check'); log('fe_save (a test read of the running hub; the hub itself is never saved since 0.1.26)', r); time.sleep(5)
         saves = [chk] if os.path.exists(chk) else []
         if saves:
             d = json.load(open(saves[-1])); shutil.copy2(saves[-1], os.path.join(OUT, 'hub_save.json'))

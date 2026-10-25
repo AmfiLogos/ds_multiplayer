@@ -3690,9 +3690,11 @@ static void mapchange_frame(void) {
    lives on the host; mp_game already refuses a guest save). SystemMenuView._saveCampaignButton +0x50,
    SubUI_SystemMenuButton._buttonName +0x28, SetInteractable 0xF2DC14 (as mpmenu does for Load). */
 static char save_label[128]; static int save_label_ours;   /* 1 = this build wrote its own text into the stock Save label */
+int fe_world_hub_any(void);                                  /* fe_game.c: the Foreign Expedition hub, never saved (mp_game.c) */
 static void esc_save_frame(void) {
     static double next_look;
-    if (!on() && !save_label[0]) return;                     /* single player: stock, nothing to restore */
+    int hub = fe_world_hub_any();                            /* the host's Save too (owner 2026-10-25), even with multiplayer off */
+    if (!on() && !save_label[0] && !hub) return;             /* single player: stock, nothing to restore */
     if (!u_alive(u_gc_get(h_sysmenu))) {                     /* not built yet: look for it at most every 2 s */
         if (now_s() < next_look) return;
         next_look = now_s() + 2;
@@ -3707,11 +3709,11 @@ static void esc_save_frame(void) {
     if (save_label_ours && save_label[0]) { tmp_set(t, save_label); save_label_ours = 0; }   /* by state, not by text (i18n): nothing writes it now */
     Obj tf = AT(v, 0x58, Obj);
     int guest = on() && me() != 0;
-    if (guest) {
+    if (guest || hub) {
         if (!save_label[0]) snprintf(save_label, sizeof save_label, "%s", cur);
         dis_apply(&esc_dis, sb);                                 /* first: it skips buttons that are already off */
         F(0xF2DC14, void (*)(Obj, bool, void *))(sb, false, NULL);              /* SubUI_SystemMenuButton.SetInteractable */
-        if (u_alive(tf)) F(0xF7B154, void (*)(Obj, Obj, bool, void *))(tf, u_str(spect() ? TR("You are watching: only the host saves this world") : TR("Only the host saves this world")), false, NULL);
+        if (u_alive(tf)) F(0xF7B154, void (*)(Obj, Obj, bool, void *))(tf, u_str(hub ? TR("The hub is never saved: a new one is made for each session") : spect() ? TR("You are watching: only the host saves this world") : TR("Only the host saves this world")), false, NULL);
     } else if (save_label[0]) {
         F(0xF2DC14, void (*)(Obj, bool, void *))(sb, true, NULL);
         dis_restore(&esc_dis);
@@ -5930,8 +5932,10 @@ static void tips_frame(void) {
         snprintf(b, sizeof b, TR("The player whose unit used the portal chooses who returns. Everyone else watches; when %s confirms, everyone returns together."), nm);
         tip_at(u_gc_get(h_result_pill), game_text("TEXTKEY_DungeonResultUI_Portal", TR_NOOP("Portal")), b);
     }
-    /* 3.14 Esc menu Save (guest, greyed) */
-    if (me() != 0) { Obj v = u_gc_get(h_sysmenu); Obj sb = u_alive(v) ? AT(v, 0x50, Obj) : NULL;
+    /* 3.14 Esc menu Save (guest, or the hub: greyed) */
+    if (fe_world_hub_any()) { Obj v = u_gc_get(h_sysmenu); Obj sb = u_alive(v) ? AT(v, 0x50, Obj) : NULL;
+        tip_at(sb, game_text("TEXTKEY_SystemMenu_SaveCampaign", TR_NOOP("Save Campaign")), TR("The hub is never saved: a new one is made for each session. Your units' results go home to your own saves.")); }
+    else if (me() != 0) { Obj v = u_gc_get(h_sysmenu); Obj sb = u_alive(v) ? AT(v, 0x50, Obj) : NULL;
         tip_at(sb, game_text("TEXTKEY_SystemMenu_SaveCampaign", TR_NOOP("Save Campaign")), TR("Only the host saves this world. It is saved on the host's computer.")); }
     /* 3.15 portrait chips, recruitment line */
     for (int i = 0; i < MAX_SC && !tip_done; i++) {

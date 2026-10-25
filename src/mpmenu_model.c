@@ -348,6 +348,7 @@ int mpm_step(mpm_model *m, const mpm_obs *o, int c) {
         /* the tutorial is single-player: one unit, scripted steps and pop-ups per player (Foctopus 2026-10-20). The
            session does not start; the world stays a single-player game. */
         if (o->campaign_ready && o->tutorial) return fail(m, TR("Multiplayer could not start"), TR("The tutorial is single-player only: you play it alone. To play together, start a campaign without the tutorial"));
+        if (o->campaign_ready && o->solo_hold) { m->closed_frames = 0; break; }   /* the single-player copy box first (owner 2026-10-25) */
         if (o->campaign_ready) { m->closed_frames = 0; return go(m, MPM_LOBBY) | MPA_HOST_START | MPA_LOBBY_SHOW; }
         if (o->scene == 1 && o->title_visible && !o->loading && ++m->closed_frames > 300) return fail(m, TR("Multiplayer could not start"), TR("Loading the campaign failed"));
         break;
