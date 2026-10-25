@@ -205,7 +205,10 @@ static const mp_api_table api = {
     .rand_u32 = mp_rand_u32, .rand_range = mp_rand_range, .rand_value = mp_rand_value, .rand_shared = mp_rand_shared,
     .chat_line = mpmenu_mod_chat,
     .chat_local = mpmenu_chat_local,
+    .chat_clears = mpmenu_chat_clears,
 };
+/* fields are only appended: a mod built for an older version reads its fields at the same places (v4 chat_clears after v3 chat_local) */
+_Static_assert(offsetof(mp_api_table, chat_clears) == offsetof(mp_api_table, chat_local) + sizeof(void *), "mp_api_table: append only");
 const mp_api_table *mp_api_get(uint32_t version) {
     if (version > MP_API_VERSION) { rig_log("mp_api: version %u asked, this multiplayer has %d", version, MP_API_VERSION); return NULL; }
     return &api;

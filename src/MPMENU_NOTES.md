@@ -140,6 +140,19 @@ Not done here: the magnifier icon on the cloned fields (review #16 extra), bold 
   release). History lines fill the height (60 line objects), widths follow the box (box - 24, idle text - 60, plates
   - 40). Test hooks (control channel only): mpm_chat {local} adds a chat_local line; mpm_chat {drag, x0, y0, x1, y1,
   button, frames} plays press / move / release through the same drag code. Test: ext/dsdps/chat_drag_test.py.
+- Chat read state (owner 2026-10-25: "can't pause to read the chat"): the open box with no text field focused, so the game
+  keeps its keys (Space pauses; KeyInputDispatcher.IsTextInputFocused stays false). Opens with the wheel over the chat
+  lines, a left click on a chat line (local lines let clicks through, so not those), or Enter where the player cannot
+  send; stays until Escape (the kit's stack, mp_esc) or its X (a copy of the Task Planner's CloseButton, Button off).
+  There: wheel over the box, drags and resizes as above, a scrollbar in the game's ScrollBar colours (track #241e1f, thumb
+  #433f44 + #575559 edge; drag the thumb, click the track = a page), Top / Bottom pixel buttons at its ends, a pixel bin
+  left of the grip. In a session Enter or a click in the field types; a click on the history goes back to reading (the
+  draft stays); Escape while typing only leaves the field. No session (single player) = read only: no "Say:", no field,
+  the history down to the bin. "/clear" (typed, any case) and the bin empty this screen's whole history, never sent;
+  mp_api v4 chat_clears counts them. Every part is a plain Image (never a Selectable: a selected Button takes Space as
+  Submit); clicks are read by chat_frame from the same pointer as the drags. Test hooks: mpm_chat {drag ... button -1,
+  roll} (wheel / hover), {clears} (chat_clears through the API table), mpm_key {key: space}. Tests:
+  ext/dsdps/chat_drag_test.py (one copy, single player, 25 checks) and ext/dsdps/chat_read_pair.py (a session, 16).
 
 ## lan_v10 menu + teams lane (2026-10-14; research/ux_flow_v10.md)
 Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_menu.py` (menu); build `build_ux/build_v10.sh`

@@ -1,9 +1,10 @@
-# Multiplayer API for mod makers (MP_API_VERSION 3, bridge api 2)
+# Multiplayer API for mod makers (MP_API_VERSION 4, bridge api 2)
 
 Two ways in:
 - **C / native mods** (loader modules): `mp_api.h`. Find the multiplayer image with `module_loaded("multiplayer")`,
   then `dlsym(<image>, "mp_api_get")` (Windows: `GetProcAddress` on `multiplayer.dll`). Ask for the version you need:
-  `mp_api_get(2)` returns NULL on an older multiplayer (`mp_api_get(3)` for `chat_local`). Fields are only appended:
+  `mp_api_get(2)` returns NULL on an older multiplayer (`mp_api_get(3)` for `chat_local`, `mp_api_get(4)` for
+  `chat_clears`). Fields are only appended:
   check `version` / `size`.
 - **C# / BepInEx mods**: `DsmpBridge.dll` (mod id `dsmp-bridge`, plugin id `dsmp.bridge`), or the copy-in file
   `ext/bepinex_bridge/plugin/DsmpLite/DsmpLite.cs`. Both call the `dsmp_bridge_*` exports of `mp_bridge.h`.
@@ -78,10 +79,14 @@ With no multiplayer mod installed, every call below still works: random draws ar
   Newlines and other control bytes become spaces. `mod_name` is still needed (it is not shown).
 - Never sent to the other players, also during a session (there the local lines show among the others).
 - No rate limit: no line is refused. Keep it to what a player can read. Call it on the game's main thread.
-- Single player: the chat shows in a world while a local line is in its history (idle lines fade as usual, Enter opens
-  the box, the wheel and PageUp / PageDown scroll, right-click and drag moves it, Escape closes it). A message the
-  player types there is not sent: the chat says so. `MP_CHATL_CLEAR` (or the title screen with no session) removes the local lines;
-  with none left and no session, the chat is hidden again.
+- Single player: the chat shows in a world while a local line is in its history (idle lines fade as usual). It is read
+  only there: no entry field, it never takes the keyboard (Space still pauses the game). The wheel over the lines or Enter
+  opens the box for reading; the wheel, the scrollbar and its Top / Bottom buttons scroll it; a right-click drag (or a left
+  drag on its title) moves it; its bottom-right corner and bottom edge resize it; the bin empties it; Escape or its X
+  closes it. `MP_CHATL_CLEAR` (or the title screen with no session) removes the local lines; with none left, no session
+  and the box closed, the chat is hidden again.
+- In a session the same box also has the entry field: Enter or a click in the field types, a click on the history goes
+  back to reading (the game gets its keys again).
 - An open box that is scrolled up stays on the same lines while new local lines come in.
 - Limits: text 400 bytes (tags count), cut on a character boundary. The history keeps 3000 lines (all kinds); when it is full, the
   oldest 300 are dropped.
@@ -89,6 +94,20 @@ With no multiplayer mod installed, every call below still works: random draws ar
   a multiplayer from before `MP_CHATL_RICH` answers -1 to it: send the line again without tags);
   -7 `MP_CHAT_OFF`: the player's "Chat: Off" setting is on, nothing is shown or kept (show it your own way).
 - C# bridge: not added (C only for now).
+
+## 2c. The player's clears (v4)
+
+| C | Export | C# | |
+|---|---|---|---|
+| `chat_clears()` | - | - | how many times the player cleared the chat since the game started |
+
+- The player clears the chat with the bin in the box's bottom-right corner, or by typing `/clear` in a session. Both empty
+  this screen's whole history (local lines and the players' lines); nothing is sent, the other players' chat stays as it is.
+- Use it when your mod sends its own lines again (for example Units Laboratory's DPS log after a filter change: it clears
+  its local lines with `MP_CHATL_CLEAR` and writes them again): remember `chat_clears()` with your lines, and do not send
+  again the lines written before the player's last clear.
+- Check `version >= 4` (or ask `mp_api_get(4)`) and `size` before you read the field. A multiplayer before v4 has no
+  `chat_clears`: treat it as 0 (no clears). Older mods keep working: the field is appended after `chat_local`.
 
 ## 3. Actions through the lockstep (unchanged, api 1)
 `dsmp_bridge_send(channel, data)` / C# `Multiplayer.Send` / `Do`: one order that runs on every player at the same step.
