@@ -1,0 +1,4 @@
+# v0.1.28 first (run_gate.sh runs these first per stream): the lane tests merged after the v0.1.27 tree
+g028_uikit_build g028_whatsnew g028_esc g028_kitlook g028_newgame_side g028_live_hp g028_zetu_ui g028_notrun g028_notrun_ru g028_esc_kit g028_cm_esc g028_chat_drag g028_chat_read
+g028_close_x_guard g028_rigports g028_shim g028_left_prompt g028_esc_mini
+g028_mu_test g028_save_test g028_saveunits g028_wikisave g028_dps_en g028_dps_de g028_dps_ru g028_dps_heal g028_dps_nolivehp g028_title g028_saveunits_game g028_rename g028_rename_de g028_namekey g028_ux_de g028_ux_ru g028_worlds

@@ -45,7 +45,7 @@ try:
     act = os.path.join(root, 'profiles/modded/data/Mods/active.json')
     a = json.load(open(act)) if os.path.exists(act) else {}
     check('first start mod list = every shipped mod except the default-off ones (Hell, ZET-U, Multi-unit view)',
-          a.get('enabled') == ['custom-modes', 'gcd-cdr', 'multiplayer', 'sound-fix'], a)   # sound-fix ships on (kit v0.1.23)
+          a.get('enabled') == ['custom-modes', 'gcd-cdr', 'live-hp', 'multiplayer', 'sound-fix'], a)   # sound-fix ships on (kit v0.1.23), live-hp default on (kit v0.1.28)
     # start once, hidden: batchmode + DSRIG_BATCH, guard on windows / front
     e = {k: v for k, v in genv.items()}
     e.update(HOME=genv.get('CFFIXED_USER_HOME', os.path.join(OUT, 'home')), USER=os.environ.get('USER', ''), PATH='/usr/bin:/bin:/usr/sbin:/sbin',
