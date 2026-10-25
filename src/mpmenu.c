@@ -25,6 +25,7 @@
 #include "mp_solo.h"                                     /* the single-player copy of a world new to multiplayer */
 #include "mp_esc.h"                                       /* Escape for our windows through the loader kit (kit 0.1.28) */
 #include "ui_tip.h"                                      /* game_tip_show_rect: our tooltips in the game's own window */                                    /* ui_player_color, ui_conn_level / ui_conn_color (one indicator) */
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -4746,7 +4747,8 @@ static void solo_frame(void) {
    Multiplayer page's list are two views alive at once: 64 held 35 worlds in one list only (gate13 2026-10-16: 6 worlds
    of the Your save list had no entry, so the filter never hid them). A full table is logged once. */
 #define TAG_ROWS 512
-typedef struct { uintptr_t row, name0, rm; char guid[40]; int hid; } tag_row;   /* hid: a save row the list filter turned off (it was on) */
+typedef struct { uintptr_t row, name0, rm; char guid[40]; int hid; char cut[200]; uint32_t fit_h; float fit_lim, fit_x; } tag_row;   /* hid: a save row the list filter turned off (it was on);
+                                                                                                   cut: the world name as M10 cut it ("Moonlight Bri..."), "" = whole */
 static tag_row tcase[TAG_ROWS], tslot[TAG_ROWS];
 static char tag_pending[40];                                                /* the world the Remove box asks about */
 static tag_row *tag_row_of(tag_row *t, Obj row) {
@@ -4769,6 +4771,7 @@ static void tag_case_show(tag_row *r) {
     if (!u_alive(nt)) return;
     Obj name0 = u_gc_get(r->name0), rm = u_gc_get(r->rm);
     char nm[MPM_TAG_NAMES][32]; int n = tag_get(r->guid, nm);
+    r->cut[0] = 0;                                                          /* the whole name again (tag_fit_frame cuts it when needed) */
     if (n < 0) {
         if (name0) tmp_set_obj(nt, name0);
         if (u_alive(rm)) u_active(rm, false);
@@ -4800,6 +4803,122 @@ static void tag_case_show(tag_row *r) {
     place(rm, x + 14 + rw / 2, 0, rw, 24);
     F(0x510B2C4, void (*)(Obj, Obj, bool, void *))(rmt, u_tr(cs), true, NULL);
     F(0x510ED6C, void (*)(Obj, void *))(rmt, NULL);                         /* SetAsLastSibling */
+}
+/* M10 (UX review 2026-10-25): "Remove Tag" always whole, inside its row and the list's viewport, left of the next control on
+ * its line (the loader's [Change]) and never over the name. Who places it: we at the row's Init (after the name's text, above),
+ * then the loader (kit 0.1.27+, dsl_rows.c tags_apply) after each list rebuild: right after the tag on the title line, the
+ * "with <names>" part cut to make room. A long world name still pushed it out (de "Markierung entfernen" cut to "Markierung
+ * en" at the list's edge). So after both, while the Load list shows: when it does not fit, the "with" part ends in "..."
+ * (4 letters at least), then goes, then the world NAME ends in "..." until it fits (the game's own cut, as our one-line
+ * texts), and the link moves right after the text. Same size, never shrunk. The whole name is back when the tags hide
+ * (the loader's Show tags off) or the row is built again. Screen px, y up. */
+typedef struct { float R[4], C[4], N[4], V[4], s, sn, lim, end, gap; int al, vp; } tag_geo;
+static Obj tag_viewport(Obj cs) {                                           /* the list's mask: the "Viewport" above the row */
+    for (Obj t = u_alive(cs) ? u_tr_parent(u_tr(cs)) : NULL; t; t = u_tr_parent(t)) {
+        char nm[32] = ""; str_utf8(F(0x50FB198, Obj (*)(Obj, void *))(u_go(t), NULL), nm, sizeof nm);   /* Object.name */
+        if (!strcmp(nm, "Viewport")) return t;
+    }
+    return NULL;
+}
+static float tag_end(const tag_geo *g, float pref) {                       /* where the name's text ends (px) at that width */
+    return (g->al & 2) ? (g->N[0] + g->N[2]) / 2 + pref * g->sn / 2 : (g->al & 4) ? g->N[2] : g->N[0] + pref * g->sn;
+}
+/* the link's place facts; 0 = not measurable now. o_n / obst: the row's other shown parts that start right of the link on its
+   line (test read-back) */
+static int tag_geom(tag_row *r, tag_geo *g, float obst[][4], int *o_n) {
+    Obj cs = u_gc_get(r->row), nt = u_alive(cs) ? AT(cs, 0x28, Obj) : NULL, rm = u_gc_get(r->rm);
+    if (o_n) *o_n = 0;
+    if (!u_alive(nt) || !u_on_tree(rm) || !mm_is(u_tr(cs), K_RT) || !mm_is(u_tr(nt), K_RT)) return 0;
+    if (!rect_of(rm, g->R) || !rect_of(cs, g->C) || !rect_of(nt, g->N)) return 0;
+    URect cr = F(0x5106978, URect (*)(Obj, void *))(u_tr(cs), NULL), nr = F(0x5106978, URect (*)(Obj, void *))(u_tr(nt), NULL);
+    if (cr.w < 1 || nr.w < 1) return 0;
+    g->s = (g->C[2] - g->C[0]) / cr.w; g->sn = (g->N[2] - g->N[0]) / nr.w;  /* px per unit: row, name text */
+    g->al = mm_is(nt, K_TMP) ? F(0x4F0B7AC, int (*)(Obj, void *))(nt, NULL) : 513;   /* TMP_Text.alignment: 1 left, 2 centre, 4 right */
+    g->lim = g->C[2] - 4 * g->s;                                            /* the row's right edge, 4 units in (as [Change]) */
+    Obj vp = tag_viewport(cs); g->vp = vp && rect_of(vp, g->V);
+    if (g->vp && g->V[2] - 2 * g->s < g->lim) g->lim = g->V[2] - 2 * g->s;
+    Obj ct = u_tr(cs), rt = u_tr(rm); int nc = F(0x510EAE4, int (*)(Obj, void *))(ct, NULL);   /* Transform.childCount */
+    for (int i = 0; i < nc && i < 64; i++) {                                /* [Change] (or any part) further right on the line */
+        Obj ch = F(0x510FC60, Obj (*)(Obj, int, void *))(ct, i, NULL), go = ch ? u_go(ch) : NULL; float o[4];   /* GetChild */
+        if (!ch || ch == rt || !go || !F(0x50F3724, bool (*)(Obj, void *))(go, NULL) || !mm_is(ch, K_RT) || !rect_of(ch, o)) continue;
+        if (o[0] <= g->R[0] + 1 || o[2] - o[0] < 3 * g->s || o[1] >= g->R[3] || o[3] <= g->R[1]) continue;
+        if (o[0] - 8 * g->s < g->lim) g->lim = o[0] - 8 * g->s;
+        if (obst && o_n && *o_n < 4) memcpy(obst[(*o_n)++], o, sizeof o);
+    }
+    g->gap = 10 * g->s;                                                     /* the loader's RM_GAP: 10 row units after the text */
+    g->end = tag_end(g, txt_pref_w(nt));
+    return 1;
+}
+static int u8_chars(const char *s) { int n = 0; for (; *s; s++) n += ((unsigned char)*s & 0xC0) != 0x80; return n; }
+static size_t u8_bytes(const char *s, int k) { const char *p = s; for (int n = 0; *p; p++) { if (((unsigned char)*p & 0xC0) != 0x80 && n++ == k) break; } return (size_t)(p - s); }
+static int tag_fit_n;                                                       /* test: links moved / names cut */
+/* text = pre + (the first k letters of mid + "...", or mid whole when k < 0) + post; 1 = name + gap + link end by lim */
+static int tag_try(Obj nt, const tag_geo *g, const char *pre, const char *mid, int k, const char *post, char *out, size_t cap, float *end) {
+    if (k < 0) snprintf(out, cap, "%s%s%s", pre, mid, post);
+    else snprintf(out, cap, "%s%.*s\xE2\x80\xA6%s", pre, (int)u8_bytes(mid, k), mid, post);
+    tmp_set(nt, out);
+    *end = tag_end(g, txt_pref_w(nt));
+    return *end + g->gap + (g->R[2] - g->R[0]) <= g->lim + 0.5f;
+}
+/* the largest k in [lo, hi] that fits (k letters + "..."); lo - 1 = none */
+static int tag_cut_search(Obj nt, const tag_geo *g, const char *pre, const char *mid, int lo, int hi, const char *post, char *out, size_t cap) {
+    int best = lo - 1; float e;
+    while (lo <= hi) { int k = (lo + hi) / 2; if (tag_try(nt, g, pre, mid, k, post, out, cap, &e)) { best = k; lo = k + 1; } else hi = k - 1; }
+    return best;
+}
+static void tag_keep_in(tag_row *r) {
+    Obj cs = u_gc_get(r->row), nt = u_alive(cs) ? AT(cs, 0x28, Obj) : NULL, rm = u_gc_get(r->rm);
+    if (!u_alive(nt) || !u_on_tree(cs)) return;
+    char cur[1200]; utf16_to_utf8(tmp_get(nt), cur, sizeof cur);
+    if (!u_on_tree(rm)) {                                                   /* tags off: the whole name back */
+        size_t cl = strlen(r->cut);
+        if (cl && !strncmp(cur, r->cut, cl)) { char full[300] = "", t[1500]; utf16_to_utf8(u_gc_get(r->name0), full, sizeof full);
+            snprintf(t, sizeof t, "%s%s", full, cur + cl); tmp_set(nt, t); rig_log("mpmenu: Remove Tag: tags hidden, the whole name of %s back", r->guid); }
+        r->cut[0] = 0; return;
+    }
+    tag_geo g; if (!tag_geom(r, &g, NULL, NULL)) return;
+    float lw = g.R[2] - g.R[0];
+    if (g.R[2] <= g.lim + 0.5f && g.R[0] >= g.end + g.gap * 0.5f) return;    /* whole, inside, clear of the name: as placed */
+    uint32_t h = fit_hash(cur);
+    if (h == r->fit_h && fabsf(g.lim - r->fit_lim) < 0.5f && fabsf(g.R[0] - r->fit_x) < 0.5f) return;   /* done for this text and room (a 1-letter name that still
+                                                                               does not fit: once, not every pass) */
+    char out[1500], fin[1500]; float e = g.end; snprintf(fin, sizeof fin, "%s", cur);
+    if (g.end + g.gap + lw > g.lim + 0.5f) {                                /* no room: shorten the text */
+        char head[600], tail[1200]; const char *sp = strstr(cur, "  ");
+        snprintf(head, sizeof head, "%.*s", sp ? (int)(sp - cur) : (int)strlen(cur), cur); snprintf(tail, sizeof tail, "%s", sp ? sp : "");
+        const char *wm = "<color=#A69085>  "; char *w0 = strstr(tail, wm), *w1 = w0 ? strstr(w0 + strlen(wm), "</color>") : NULL;
+        char wpre[1200] = "", win[600] = "", wpost[600] = "", nowith[1200];
+        if (w0 && w1) { snprintf(wpre, sizeof wpre, "%s%.*s", head, (int)(w0 - tail) + (int)strlen(wm), tail);
+                        snprintf(win, sizeof win, "%.*s", (int)(w1 - w0 - strlen(wm)), w0 + strlen(wm)); snprintf(wpost, sizeof wpost, "%s", w1);
+                        snprintf(nowith, sizeof nowith, "%.*s%s", (int)(w0 - tail), tail, w1 + 8); }
+        else snprintf(nowith, sizeof nowith, "%s", tail);
+        int k = -1, nw = u8_chars(win);
+        if (w0 && w1 && nw > 4) k = tag_cut_search(nt, &g, wpre, win, 4, nw - 1, wpost, out, sizeof out);   /* 1. "with Ho..." */
+        if (k >= 4) { tag_try(nt, &g, wpre, win, k, wpost, fin, sizeof fin, &e); }
+        else if (tag_try(nt, &g, head, "", -1, nowith, fin, sizeof fin, &e)) { }   /* 2. no "with" part */
+        else {                                                              /* 3. the world name ends in "..." */
+            char full[300] = ""; utf16_to_utf8(u_gc_get(r->name0), full, sizeof full);
+            const char *base = r->cut[0] && !strcmp(head, r->cut) && full[0] ? full : head;   /* cut again from the whole name */
+            int nb = u8_chars(base), kn = tag_cut_search(nt, &g, "", base, 1, nb - 1, nowith, out, sizeof out);
+            if (kn < 1) kn = 1;
+            tag_try(nt, &g, "", base, kn, nowith, fin, sizeof fin, &e);
+            snprintf(r->cut, sizeof r->cut, "%.*s\xE2\x80\xA6", (int)u8_bytes(base, kn), base);
+            rig_log("mpmenu: Remove Tag: world %s: the name is cut to \"%s\" so the link fits its row", r->guid, r->cut);
+        }
+    }
+    float dx = e + g.gap - g.R[0];                                          /* right after the text */
+    Obj rt = u_tr(rm);
+    if (mm_is(rt, K_RT) && g.s > 0 && (dx > 0.5f || dx < -0.5f)) {
+        V2 ap = F(0x5106E38, V2 (*)(Obj, void *))(rt, NULL); ap.x += dx / g.s;   /* anchoredPosition (its parent is the row) */
+        F(0x5106F2C, void (*)(Obj, V2, void *))(rt, ap, NULL);
+    }
+    tag_fit_n++;
+    { char now[1500]; utf16_to_utf8(tmp_get(nt), now, sizeof now); r->fit_h = fit_hash(now); r->fit_lim = g.lim; r->fit_x = g.R[0] + dx; }
+    rig_log("mpmenu: Remove Tag: world %s: link %.0f..%.0f px moved by %.0f px (limit %.0f px, text end %.0f px)", r->guid, g.R[0], g.R[2], dx, g.lim, e);
+}
+static void tag_fit_frame(void) {
+    if (!popup_open(5) || frames % 10) return;                              /* the Load list shows */
+    for (int i = 0; i < TAG_ROWS; i++) if (tcase[i].row && u_alive(u_gc_get(tcase[i].row))) tag_keep_in(&tcase[i]);
 }
 static void (*o_case_init)(Obj, Obj, const void *, bool, int, Obj, Obj, Obj, void *);
 static void h_case_init(Obj self, Obj clan, const void *hdr, bool open, int nb, Obj slots, Obj ng, Obj oc, void *mi) {
@@ -5162,6 +5281,7 @@ void mpmenu_frame(void) {
     rejoin_frame(&o);
     tag_frame(&o);
     tag_click_frame();
+    tag_fit_frame();                                                        /* M10: "Remove Tag" whole inside its row */
     lf_frame();
     rules_watch(&o);
     pick_frame(&o);
@@ -5452,7 +5572,13 @@ static char *testchoice_exec(const char *line) {
 }
 char *mpmenu_exec(const char *cmd, const char *line) {
     for (int k = 0; k < nhooks; k++) { char *r = hooks[k].exec ? hooks[k].exec(cmd, line) : NULL; if (r) return r; }   /* Custom Modes: mpm_fewin, mpm_pvp */
-    if (!strcmp(cmd, "mpm_esc")) { char *r = mpesc_dump(); return r ? r : strdup("{\"ok\":false}"); }   /* test: our windows that show, their red X (CLOSE RULE) */
+    if (!strcmp(cmd, "mpm_esc")) {                                          /* test: plain = open the Esc menu (what the drivers always sent) and the
+                                                                               list of our windows that show with their red X (CLOSE RULE, taken before
+                                                                               the menu opens); {list:1} = the list only, nothing opens */
+        double v; int list = jnum(line, "list", &v) && v != 0; char *r = mpesc_dump();
+        if (!list) popup_activate(1);
+        return r ? r : strdup("{\"ok\":true}");
+    }
     if (!strcmp(cmd, "mpm_shot")) {
         char p[1024], how[32] = "camera"; if (!jstr(line, "path", p, sizeof p)) return strdup("{\"ok\":false}");
         jstr(line, "how", how, sizeof how);
@@ -5570,8 +5696,22 @@ char *mpmenu_exec(const char *cmd, const char *line) {
             char nm[MPM_TAG_NAMES][32]; int n = tag_get(tcase[i].guid, nm);
             bput(&b, "%s{\"i\":%d,\"guid\":", k++ ? "," : "", i); bstr(&b, tcase[i].guid); bput(&b, ",\"name\":"); bstr(&b, t);
             float cr[4] = { 0 }; rect_of(cs, cr);                              /* M10: the whole row */
-            bput(&b, ",\"names\":%d,\"remove\":%d,\"rm_rect\":[%.0f,%.0f,%.0f,%.0f],\"name_rect\":[%.0f,%.0f,%.0f,%.0f],\"row_rect\":[%.0f,%.0f,%.0f,%.0f],\"case_open\":%d}",
+            bput(&b, ",\"names\":%d,\"remove\":%d,\"rm_rect\":[%.0f,%.0f,%.0f,%.0f],\"name_rect\":[%.0f,%.0f,%.0f,%.0f],\"row_rect\":[%.0f,%.0f,%.0f,%.0f],\"case_open\":%d",
                  n, rmon, r[0], r[1], r[2], r[3], nr[0], nr[1], nr[2], nr[3], cr[0], cr[1], cr[2], cr[3], AT(cs, 0xA1, bool));
+            {   /* M10 read-back: the link's text as TMP draws it (preferred width vs its box, cut or not, size), the list's viewport, where
+                   the name's text ends, the row's parts right of the link on its line ([Change]), the name as cut */
+                tag_geo g; float ob[4][4]; int no = 0, gm = rmon && tag_geom(&tcase[i], &g, ob, &no);
+                static void *m_trunc, *m_fs; if (!m_trunc) { m_trunc = mth("TMPro", "TMP_Text", "get_isTextTruncated", 0); m_fs = mth("TMPro", "TMP_Text", "get_fontSize", 0); }
+                URect lr = gm && mm_is(u_tr(rm), K_RT) ? F(0x5106978, URect (*)(Obj, void *))(u_tr(rm), NULL) : (URect){ 0 };
+                float pref = gm && lr.w > 0 ? txt_pref_w(rm) * (r[2] - r[0]) / lr.w : 0;
+                int trunc = gm && m_trunc && mm_is(rm, K_TMP) ? MCALL(m_trunc, bool, Obj, const void *)(rm, m_trunc) : -1;
+                float fs = gm && m_fs && mm_is(rm, K_TMP) ? MCALL(m_fs, float, Obj, const void *)(rm, m_fs) : 0;
+                bput(&b, ",\"geo\":%d,\"rm_pref\":%.1f,\"rm_trunc\":%d,\"rm_fs\":%.1f,\"vp_rect\":[%.0f,%.0f,%.0f,%.0f],\"name_end\":%.1f,\"lim\":%.1f,\"cut\":",
+                     gm, pref, trunc, fs, gm && g.vp ? g.V[0] : 0, gm && g.vp ? g.V[1] : 0, gm && g.vp ? g.V[2] : 0, gm && g.vp ? g.V[3] : 0, gm ? g.end : 0, gm ? g.lim : 0);
+                bstr(&b, tcase[i].cut); bput(&b, ",\"obst\":[");
+                for (int q = 0; q < no; q++) bput(&b, "%s[%.0f,%.0f,%.0f,%.0f]", q ? "," : "", ob[q][0], ob[q][1], ob[q][2], ob[q][3]);
+                bput(&b, "],\"fits\":%d}", tag_fit_n);
+            }
             if (i == ci && rmon) { if (real) click_px((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, via); else tag_ask(&tcase[i]); }
         }
         bput(&b, "]}"); return b.p;
@@ -5721,7 +5861,6 @@ char *mpmenu_exec(const char *cmd, const char *line) {
         if (!cs || !jstr(line, "guid", gs, sizeof gs) || !guid_parse(gs, &g)) return strdup("{\"ok\":false}");
         Buf b = {0}; bput(&b, "{\"ok\":true,\"rc\":%d}", mp_claim(cs, (const uint8_t *)&g)); return b.p;
     }
-    if (!strcmp(cmd, "mpm_esc")) { popup_activate(1); return strdup("{\"ok\":true}"); }   /* open the Esc menu (test) */
     if (!strcmp(cmd, "mpm_return_game")) { Obj ev = esc_view(); if (ev && u_on(ev) && mm_is(ev, K_SMV)) F(0xF2ED1C, void (*)(Obj, void *))(ev, NULL); return strdup("{\"ok\":true}"); }   /* test: Esc menu > Return to Game */
     if (!strcmp(cmd, "mpm_hostmods")) {                                     /* test: {test:1} = DSMP_HOSTMODS_TEST (auto click); state of the hostmods box */
         double v = -1; jnum(line, "test", &v); if (v >= 0) { hostmods_loader(); hm_test = v != 0; }
