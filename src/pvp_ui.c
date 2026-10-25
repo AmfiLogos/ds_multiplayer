@@ -16,6 +16,7 @@
 #include "pvp_core.h"
 #include "fe_save.h"
 #include "mp_worldsave.h"
+#include "mp_esc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -846,6 +847,7 @@ static void pr_build(Obj v) {
     u_gc_free(h_pvb[PVB_RESULT_OK]); h_pvb[PVB_RESULT_OK] = b ? u_gc_new(b) : 0;
     u_active(root, false);
 }
+static int pr_show(const pvp_state *s);
 static void pr_frame(const pvp_state *s) {
     if (!s) return;
     /* round history (view only): one entry per round end */
@@ -855,12 +857,15 @@ static void pr_frame(const pvp_state *s) {
     int ready_now = s->phase == PVP_OFF && s->matches && s->matches != pr_shown_match && scene() == 2 && !busy() && rig_det_mp_ready();
     steady = ready_now ? steady + 1 : 0;
     if (steady < 120) return;                                           /* the world is back and running for 4 s */
+    if (pr_show(s)) pr_shown_match = s->matches;
+}
+/* the result window over the Esc menu (opened first); 1 = shown. Tests: mpm_pvp {action:"result_show"} (no match needed) */
+static int pr_show(const pvp_state *s) {
     Obj v = esc_view();
-    if (!v) { popup_activate(1); return; }
-    if (!u_on(v)) { popup_activate(1); return; }
+    if (!v) { popup_activate(1); return 0; }
+    if (!u_on(v)) { popup_activate(1); return 0; }
     if (!u_alive(u_gc_get(h_pr_root)) || u_gc_get(h_pv_view) != v) { pv_build(v); pr_build(v); }
-    Obj root = u_gc_get(h_pr_root); if (!u_alive(root)) return;
-    pr_shown_match = s->matches;
+    Obj root = u_gc_get(h_pr_root); if (!u_alive(root)) return 0;
     char b[300];
     snprintf(b, sizeof b, "%s", s->match_winner == PVP_TEAM_BLUE ? TR("Blue wins the match") : s->match_winner == PVP_TEAM_RED ? TR("Red wins the match") : TR("The match is a draw"));
     cmt_set(u_gc_get(h_pr_title), b);
@@ -875,6 +880,7 @@ static void pr_frame(const pvp_state *s) {
     Obj area = u_gc_get(h_pv_area); if (u_alive(area)) u_active(area, false);
     u_active(root, true); pr_open = 1;
     rig_log("pvp ui: result window: %s", b);
+    return 1;
 }
 
 /* ---- every frame (from mpmenu_frame) */
@@ -906,6 +912,10 @@ static void pvp_ui_tips(void) {
     if (pr_open && pv_here()) tip_try(pvb(PVB_RESULT_OK), TR("Back to the Hub"), TR("Closes the result. The hub is the same as before the match: go on an expedition or start another match."));
     else if (pr_open) tip_try(pvb(PVB_RESULT_OK), TR("Back to the World"), TR("Closes the result. The world is the same as before the match."));
 }
+static void pv_esc_close(void *ud) { pv_click = (int)(intptr_t)ud; }   /* the kit's Escape: the window's own button, as a click */
+static mpesc_win esc_pv = { .name = "the PvP Match window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_CLOSE },
+                 esc_br = { .name = "the PvP Bring Units window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_BR_BACK },
+                 esc_pr = { .name = "the PvP result window", .close = pv_esc_close, .ud = (void *)(intptr_t)PVB_RESULT_OK };
 static void pvp_ui_frame(const mpm_obs *o) {
     const pvp_state *s = pvp_ui_state ? pvp_ui_state() : NULL;
     if (!s) return;
@@ -928,9 +938,15 @@ static void pvp_ui_frame(const mpm_obs *o) {
         if (pv_open && frames % 15 == 0) pv_refresh();
     } else { pv_open = 0; pr_open = 0; br_open = 0; br_lobby = 0; }
     if (pv_click >= 0) { int k = pv_click; pv_click = -1; pv_click_do(k); }
-    /* Escape over the Bring Units card window closes only that window (its own key check, between frames: this frame or the last) */
+    /* Escape (owner 2026-10-25): these windows are on the loader kit's Escape stack while they show (mp_esc.h): one press
+       = the top window's own Close / Back / "Back to the World" (as a click), and the game does not see it (the Esc menu
+       under them stays). Without that kit: the old check (the game also closes the whole Esc menu on that press). */
+    Obj pvr = pvt(h_pv_root), brr = pvt(h_br_root), prr = pvt(h_pr_root);
+    int kpv = mpesc_sync(&esc_pv, pvr, pv_open && u_on(pvr), 0), kbr = mpesc_sync(&esc_br, brr, br_open && u_on(brr), 0);
+    mpesc_sync(&esc_pr, prr, pr_open && u_on(prr), 0);
+    /* old path: Escape over the Bring Units card window closes only that window (its own key check, between frames: this frame or the last) */
     static int mb_prev; int mb = mu_bring_is_open(), esc = o->escape && !mb && !mb_prev; mb_prev = mb;
-    if (esc && br_open) br_show(0); else if (esc && pv_open) pv_show(0);
+    if (esc && br_open && !kbr) br_show(0); else if (esc && pv_open && !kpv) pv_show(0);
     Obj lw = u_gc_get(h_lw_root);                                       /* the lobby steps aside while Bring Units is open over it */
     if (br_open && br_lobby && u_alive(lw)) u_active(lw, false);
 }
@@ -947,6 +963,7 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
         pv_click = k; goto out;
     }
     else if (!strcmp(a, "ok")) pv_click = PVB_RESULT_OK;
+    else if (!strcmp(a, "result_show")) { const pvp_state *s = pvp_ui_state ? pvp_ui_state() : NULL; if (!s || !pr_show(s)) return strdup("{\"ok\":false,\"error\":\"no Esc menu\"}"); }   /* test: the result window now (Escape tests) */
     else if (!strncmp(a, "press_", 6)) {                                  /* the real path: OnPressButton of the clone */
         if (!strcmp(a + 6, "ready")) { if (!u_on(pvb(PVB_READY))) return strdup("{\"ok\":false,\"error\":\"Ready not shown\"}"); pv_click = PVB_READY; goto out; }   /* image button: same handler as its click */
         int k = !strcmp(a + 6, "esc") ? PVB_ESC : !strcmp(a + 6, "start") ? PVB_START :
@@ -973,6 +990,7 @@ static char *pvp_ui_exec(const char *cmd, const char *line) {            /* test
     bput(&b, "],\"save\":%d,\"units\":[", br_save);
     for (int i = 0; i < br_nunits; i++) { bput(&b, "%s[", i ? "," : ""); bstr(&b, br_unit_name[i]); bput(&b, ",\"%s\",%d,%d]", br_unit_guid[i], br_unit_lvl[i], br_pick[i]); }
     bput(&b, "],\"status\":"); bstr(&b, br_sent); bput(&b, "},");
+    bput(&b, "\"roots\":{\"window\":%d,\"bring\":%d,\"result\":%d},", u_on(pvt(h_pv_root)), u_on(pvt(h_br_root)), u_on(pvt(h_pr_root)));   /* shown objects (Escape tests) */
     bput(&b, "\"window\":%d,\"result\":%d,\"esc_entry\":%d,\"hud\":%d,\"ready\":%d,\"fight_btn\":%d,\"proposal_box\":%d,\"round_screen\":%d,\"hud_text\":\"%s\",\"mode\":%d,\"bo\":%d,\"secs\":%d,\"pause\":%d,\"vanilla\":%d,\"vanilla_shown\":%d,\"note\":",
          pv_open, pr_open, u_on(pvb(PVB_ESC)), u_go_active_self(u_gc_get(h_hud)), u_on(pvb(PVB_READY)), u_on(pvb(PVB_FIGHT)), u_alive(u_gc_get(h_prop_root)) && u_on(u_gc_get(h_prop_root)), u_alive(u_gc_get(h_rs_root)) && u_on(u_gc_get(h_rs_root)), hud_last, pv.mode, pv_bo[pv.bo], pv_secs[pv.secs], pv.pause,
          pv.vanilla, pv_vanilla_shown(pvp_ui_state ? pvp_ui_state() : NULL, pvp_ui_is_host && pvp_ui_is_host()));

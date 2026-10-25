@@ -11,6 +11,7 @@
 #include "mp.h"
 #include "mp_steam.h"
 #include "fe_ui_api.h"
+#include "mp_esc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -350,6 +351,13 @@ static int few_click(int c) {
     }
     return 1;
 }
+/* Escape (owner 2026-10-25). TITLE (Expedition Results list from the Multiplayer page, a result opened from it): the window is
+   on the loader kit's Escape stack while it shows (mp_esc.h): one press = its Cancel / Back / Later, and the page under it
+   stays (before, the game's Escape event closed it through few_escape and the page's own Escape check went Back on that same
+   press). Without that kit: as before. In a session (Esc menu root) the game's Escape event asks few_escape
+   (mpmenu_escape_ours), as before. */
+static void few_esc_close(void *ud) { (void)ud; few_click(MPB_FE_CANCEL); }
+static mpesc_win esc_few = { .name = "the Foreign Expedition window (title)", .close = few_esc_close };
 /* every frame: where the window lives (session: Esc menu root; title: title view), auto-open on new results */
 static char few_seen_run[40];
 static void few_frame(const mpm_obs *o) {
@@ -380,6 +388,7 @@ static void few_frame(const mpm_obs *o) {
         fe_host_mode(M.set.fe, M.set.fe_death, M.set.fe_xp, M.set.fe_loot, M.set.units, M.set.fe_recruit, my_name);
     }
     few_sync();
+    { Obj root = u_gc_get(W.root); mpesc_sync(&esc_few, root, W.mode != FEW_NONE && !W.esc && u_on(root), 0); }   /* title: Escape = its Cancel / Back */
     Obj lw = u_gc_get(h_lw_root);                                           /* the lobby steps aside while ours is open */
     if (W.mode != FEW_NONE && W.esc && u_alive(lw)) u_active(lw, false);
     few_open_now = W.mode == FEW_NONE ? 0 : few_open_now + 1;

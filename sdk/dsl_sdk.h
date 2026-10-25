@@ -1,4 +1,4 @@
-// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_modloader mpsplit 1d6766f, 2026-10-20) for builds without the loader tree:
+// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_modloader feat/esc-close e5d6583, 2026-10-25) for builds without the loader tree:
 // the rig host of Units Laboratory (src/rig_main.c) and the Bring Units card window (src/mu_*.c). The loader build passes its own SDK=<loader>/sdk.
 // dsl_sdk.h - module SDK for the Dungeon Settlers mod loader (dsload.dylib), API version 6.
 // API 6 = API 5 + mod_data_dir (appended to DSLHost): <game data>/ModData/<mod id>/, a folder of this mod that a mod
@@ -35,11 +35,22 @@
 // Hooks may be installed in any phase; after il2cpp_init they go to a separate stub page.
 //
 // mod.json "scope": "gameplay" (default: every multiplayer player needs it) or "client" (only this player).
+// mod.json "category": absent / "game" = a game mod (per world), "fix" = a fix for a bug of the game (per world, own
+// tab, "On in all worlds" box, never makes a world "Modded" in the Load list filters), "feature" = a launcher mod (on for
+// every world, never in a world's mod set). See ../NOTES.md "Fixes" and "Launcher features vs game mods".
 // A module may export `int dsl_world_check_skip(void)`: 1 = the world check (mods per world) lets the current load
 // through (multiplayer guest loading the host's world).
+// A module may export `int dsl_world_temporary(const char *guid)`: 1 = a temporary world of the mod (multiplayer: the
+// Foreign Expedition hub, made new for each session), never registered in worlds.json.
+// The loader exports `int dsl_world_copy_mods(const char *from, const char *to)` (kit 0.1.27): world `to` (a copy the mod
+// wrote, e.g. multiplayer's single-player copy) plays with the mods of `from`. 0 ok.
 // A module that hides world rows of the stock Load list itself may export `int dsl_loadlist_hidden(int *kind)`: the
 // number of world rows it hides in the open list now; *kind 1 = multiplayer worlds, 2 = single-player worlds, else 0.
 // The loader writes one line under the list ("5 multiplayer worlds are hidden ...") so a player knows they are not lost.
+// The loader's filter panel on the right of the Load list (kit v0.1.23: Vanilla & Vanilla+, Modded, Multiplayer, Latest
+// save only) asks two more optional exports: `int dsl_loadlist_world_mp(const char *guid)` 1 = a multiplayer world (the
+// panel's Multiplayer kind; no module with it = no Multiplayer box), and `int dsl_loadlist_own(void)` 1 = this module
+// filters the open list itself now, so the panel stays away. The loader exports `int dsl_loadlist_panel(void)` (1).
 //
 // Log: <log dir>/dsload.log (DSL_LOG_DIR, else ~/Library/Application Support/CanOpener/Dungeon Settlers).
 #pragma once
@@ -129,7 +140,19 @@ typedef struct DSLUi {
                      dsl_ui_cb change, void *ud);
     int (*slider_get)(DSLObj s);
     void (*slider_set)(DSLObj s, int value);  /* no change callback */
+    /* appended (check size, or use the wrappers below; kit 0.1.28): the Escape key. The kit owns it: one press closes
+       the top-most open window of the ones pushed here (the last pushed that is still shown), and the game does not see
+       that press (no pause menu, a stock window under it stays). With none of them shown, Escape goes to the game as
+       before. close(ud) runs on the main thread between frames; it does exactly what the window's own Close / Cancel /
+       X does, cleanup included, and calls esc_drop (or destroys `win`). A notice box of this kit is pushed by the kit
+       itself (Escape = its Cancel; OK when it has one button). A text field with the keyboard: that Escape only leaves
+       the field (the game's field drops the typed text); flags DSL_ESC_EDIT = the window is an edit row or box whose
+       Cancel drops the edit, so that same Escape also closes it. Push a window again when it shows again (it goes on
+       top). 0 = ok. */
+    int (*esc_push)(DSLObj win, void (*close)(void *ud), void *ud, int flags);
+    void (*esc_drop)(DSLObj win);            /* the window closed (or hid) another way */
 } DSLUi;
+enum { DSL_ESC_EDIT = 1 };
 
 typedef struct DSLHost {
     /* ---- API 1 (layout frozen) */
@@ -295,6 +318,11 @@ static inline const char *dsl_mod_data_dir(const DSLHost *h, DSLPlugin *self) {
     return DSL_HAS(h, mod_data_dir) ? h->mod_data_dir(self) : NULL; }
 static inline int dsl_on_setting_change(const DSLHost *h, DSLPlugin *self, void (*changed)(void *ud, const char *id), void *ud) {
     return DSL_HAS(h, settings_on_change) ? h->settings_on_change(self, changed, ud) : -1; }
+/* Escape wrappers (kit 0.1.28): -1 / nothing with an older kit, whose Escape does nothing for these windows */
+#define DSL_UI_HAS(ui, field) ((ui) && (ui)->size >= offsetof(DSLUi, field) + sizeof((ui)->field) && (ui)->field)
+static inline int dsl_esc_push(const DSLUi *ui, DSLObj win, void (*close)(void *ud), void *ud, int flags) {
+    return DSL_UI_HAS(ui, esc_push) ? ui->esc_push(win, close, ud, flags) : -1; }
+static inline void dsl_esc_drop(const DSLUi *ui, DSLObj win) { if (DSL_UI_HAS(ui, esc_drop)) ui->esc_drop(win); }
 
 #ifdef __cplusplus
 }

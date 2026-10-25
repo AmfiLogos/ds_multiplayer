@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "fe_json.h"
+#include "mp_esc.h"
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -85,6 +86,9 @@ static void refresh(void);
 static void bar_update(void);
 static int build_ui(void);
 static void tick_fn(void);
+static void finish(int ok);
+static void esc_cancel(void *ud) { (void)ud; finish(0); }               /* the kit's Escape = the Cancel button */
+static mpesc_win esc_bring = { .name = "the Bring Units window", .close = esc_cancel };
 
 int mu_bring_available(void) { return mu_kit() != NULL; }
 
@@ -176,6 +180,7 @@ static void load_lib(void) {                                         /* E3: My U
 static void close_win(void) {
     if (!B.open) return;
     B.open = 0;
+    mpesc_drop(&esc_bring);
     if (U && B.win) U->destroy(B.win);
     B.win = B.left = B.right = NULL; B.ncard = B.nleft = 0;
     mu_save_cache_clear();
@@ -206,7 +211,10 @@ static void tick_fn(void) {
             refresh();
         }
     }
-    if (B.open) {                                                     /* Escape = Cancel (edge: pressed now, not before) */
+    /* Escape = Cancel. The window is on the loader kit's Escape stack while it shows (mp_esc.h): one press closes it (or a
+       window over it first, e.g. the Unit Builder) and the game does not see that press (no Esc menu opens or closes
+       under it). Without that kit: its own key check (edge: pressed now, not before), and the game also got the press. */
+    if (B.open && !mpesc_sync(&esc_bring, B.win, B.win != NULL, 0)) {
         static cm_m k; if (!k.fn) k = cm_il_method("UnityEngine", "Input", "GetKey", 1, "UnityEngine.KeyCode");
         int on = k.fn ? (int)CM_CALL(k, bool, int, const void *)(27, k.mi) : 0;
         int edge = on && !B.esc_prev; B.esc_prev = on;
@@ -395,6 +403,7 @@ int mu_bring_open(const mu_bring_req *req) {
     if (build_ui()) { mu_log("bring units: kit not ready"); return -1; }
     load_saves();
     B.esc_prev = 1;                                                   /* a key already down does not count */
+    mpesc_sync(&esc_bring, B.win, 1, 0);                             /* on the kit's Escape stack from the first frame */
     mu_tick_add(tick_fn);
     refresh();
     mu_log("bring units: open (max %d, %d saves, %d ticked; %.0fx%.0f on a %.0fx%.0f layer)", B.max, B.nsaves, B.npicks, B.w, B.h, B.lw, B.lh);
