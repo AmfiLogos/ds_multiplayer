@@ -268,7 +268,9 @@ static int dsmc_set_diff(const char *host_set, const char *my_set, dsmc_buf *b) 
  * The loader's dsl_hostmods_plan answers JSON {"rows":[{"id","name","host_ver","my_ver","my_on","official","action",
  * "host_set","my_set"}...],"can_fix":0|1,"downloads":N,"names_pending":0|1}; the box text is built from it here (pure C, unit-tested).
  * Mod settings are their own lines (`<mod>/<setting>@<value>`, lane modsettings) in the lines given to the loader. */
-typedef struct { char id[64], name[96], host_ver[32], my_ver[32], action[16], host_set[256], my_set[256]; int my_on, official; } dsmc_prow;
+typedef struct { char id[64], name[96], host_ver[32], my_ver[32], action[16], host_set[256], my_set[256], why[300]; int my_on, official; } dsmc_prow;
+/* why: for action "not_running" (loaders that send it), the loader's reason in the player's language: the mod has the host's
+ * version and is on, but it did not start on this computer (crash guard, failed start, other build) */
 typedef struct { int n, can_fix, downloads, names_pending; dsmc_prow row[DSMC_MAX_MODS]; } dsmc_plan;   /* names_pending: the loader still
                                      fetches the name of a mod this copy does not have (ask again shortly) */
 
@@ -371,12 +373,14 @@ __attribute__((unused)) static int dsmc_plan_parse(const char *json, dsmc_plan *
         dsmc_j_str(dsmc_j_get(p, "action"), w->action, sizeof w->action);
         dsmc_j_str(dsmc_j_get(p, "host_set"), w->host_set, sizeof w->host_set);
         dsmc_j_str(dsmc_j_get(p, "my_set"), w->my_set, sizeof w->my_set);
+        dsmc_j_str(dsmc_j_get(p, "why"), w->why, sizeof w->why);
         w->my_on = dsmc_j_int(dsmc_j_get(p, "my_on"), 0);
         w->official = dsmc_j_int(dsmc_j_get(p, "official"), 1);
         p = dsmc_j_after(p); if (!p) return -1;
         p = dsmc_j_ws(p); if (*p == ',') p = dsmc_j_ws(p + 1);
     }
-    for (int i = 0; i < pl->n; i++) if (!strcmp(pl->row[i].action, "not_official")) pl->can_fix = 0;   /* never a button then */
+    for (int i = 0; i < pl->n; i++)                                 /* never a button then */
+        if (!strcmp(pl->row[i].action, "not_official") || !strcmp(pl->row[i].action, "not_running")) pl->can_fix = 0;
     return pl->n;
 }
 /* what a row's action means for the player (status words, not what the button does) */
@@ -396,8 +400,9 @@ __attribute__((unused)) static const char *dsmc_action_text(const char *a) {
  * before "More differences: N" (the stock box is small). Returns the number of differing rows. */
 __attribute__((unused)) static int dsmc_hostmods_text(const dsmc_plan *pl, int vanilla, char *out, size_t n, int max_rows) {
     dsmc_buf b = {out, n, 0}; if (n) out[0] = 0;
-    int diff = 0, same = 0, shown = 0, older = 0;
-    for (int i = 0; i < pl->n; i++) { if (strcmp(pl->row[i].action, "same")) diff++; else same++; if (!strcmp(pl->row[i].action, "host_older")) older++; }
+    int diff = 0, same = 0, shown = 0, older = 0, broken = 0;
+    for (int i = 0; i < pl->n; i++) { if (strcmp(pl->row[i].action, "same")) diff++; else same++; if (!strcmp(pl->row[i].action, "host_older")) older++;
+                                      if (!strcmp(pl->row[i].action, "not_running")) broken++; }
     dsmc_put(&b, "<size=130%%>%s</size>\n%s", DSMC_TR(TR_NOOP("Could not join")),
              vanilla ? DSMC_TR(TR_NOOP("This host allows no gameplay mods. Client mods (comfort mods) are fine."))
                      : DSMC_TR(TR_NOOP("Your gameplay mods are not the same as the host's.")));
@@ -413,6 +418,10 @@ __attribute__((unused)) static int dsmc_hostmods_text(const dsmc_plan *pl, int v
         else snprintf(mine, sizeof mine, "%s", w->my_ver);
         char nm[140]; snprintf(nm, sizeof nm, "<color=#E8A23A>%s</color>", w->name);
         dsmc_put(&b, "\n");
+        if (!strcmp(w->action, "not_running")) {                     /* the host's version, on, but it does not run here */
+            dsmc_put(&b, DSMC_TR(TR_NOOP("%s is on but did not start on this computer: %s")), nm, w->why[0] ? w->why : DSMC_TR(TR_NOOP("did not load")));
+            continue;
+        }
         dsmc_put(&b, DSMC_TR(TR_NOOP("%s (host %s, you %s)")), nm, w->host_ver[0] ? w->host_ver : "-", mine);
         const char *st = dsmc_action_text(w->action);
         if (*st) dsmc_put(&b, ": %s", st);
@@ -432,7 +441,9 @@ __attribute__((unused)) static int dsmc_hostmods_text(const dsmc_plan *pl, int v
     if (pl->can_fix) {
         dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("\"Get the host's mods\" downloads what is missing from our official releases, sets your gameplay mods like the host's, then joins the host again.")));
         if (older) dsmc_put(&b, " %s", DSMC_TR(TR_NOOP("Where the host has an older version, you get the host's version.")));
-    } else
+    } else if (broken)                                               /* a restart would leave it off: no button */
+        dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("\"Get the host's mods\" cannot fix a mod that does not start on this computer. Update or reinstall it, or ask the host to turn it off.")));
+    else
         dsmc_put(&b, "%s", DSMC_TR(TR_NOOP("The host uses a mod that is not one of our official mods, so the game cannot get the host's mods for you. Ask the host for it, or ask the host to turn it off.")));
     return diff;
 }
