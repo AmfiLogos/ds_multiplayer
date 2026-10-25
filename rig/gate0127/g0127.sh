@@ -62,7 +62,8 @@ play_lock() { local n=0; while owner_plays; do
     kill -0 "$(cat $PLOCK/pid 2>/dev/null)" 2>/dev/null || { mv $PLOCK $OUT/old_play_lock.$(date +%H%M%S) 2>/dev/null; continue; }
     (( n++ == 0 )) && print "$(date '+%T') owner's game runs: $1 waits for the one-copy lock" | tee -a $SUM; sleep 15; done; return 1; }
 play_unlock() { [[ "$(cat $PLOCK/pid 2>/dev/null)" == $$ ]] && mv $PLOCK $OUT/old_play_lock.$$.$(date +%H%M%S) 2>/dev/null; true; }
-chk() { if [[ $NOHOST == *" $1 "* ]]; then local held=0 rc; play_lock $1 && held=1; chk_lib "$@"; rc=$?; (( held )) && play_unlock; return $rc; fi
+chk() { if [[ -n ${GATE_ONLY:-} && " $GATE_ONLY " != *" $1 "* ]]; then chk_lib "$@"; return; fi   # not in this run: no wait
+  if [[ $NOHOST == *" $1 "* ]]; then local held=0 rc; play_lock $1 && held=1; chk_lib "$@"; rc=$?; (( held )) && play_unlock; return $rc; fi
   owner_wait; chk_lib "$@"; }
 # held wine lock (Windows section): python tests via held_lock_run.py, wine_lease.py users (shell tests) on a private lock
 WH=($H/held_lock_run.py); WE=(WINE_LEASE_LOCK=$HOME/ds_multiplayer/rig/wine.lock.gate13-inner)
