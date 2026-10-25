@@ -296,7 +296,7 @@ chk g027_locked_slots 'RESULT PASS' $LD/loader python3 test/locked_slots_test.py
 chk g027_locked_slots_pair 'RESULT PASS' $LD/loader python3 test/locked_slots_pair.py $OUT/g027_locked_slots_pair   # host / guest locks on both players, dungeon trip, 0 desyncs
 chk g027_weapon_slot 'RESULT PASS' $LD/loader env WS_E1_SAVE=$HOME/ds_weaponslot/fixtures/elven_5slot_0.1.1_2026-10-25.json python3 test/weapon_slot_test.py run $OUT/g027_weapon_slot   # weapon-slot 0.1.2: stock 4-slot saves both ways
 chk g027_weapon_slot_pair 'RESULT PASS' $LD/loader python3 test/weapon_slot_pair.py $OUT/g027_weapon_slot_pair   # weapon slot in multiplayer, 0 desyncs
-chk g027_worlds 'RESULT PASS' $CMR env HM_BUILD=$LD/loader/build LD_ROOT=$LD WT_OUT=$OUT/g027_worlds python3 units/test/worlds_test.py   # Units Laboratory 0.1.16: team delete box, World units, snapshots
+chk g027_worlds 'RESULT PASS' $CMR env HM_BUILD=$OUT/hm_build LD_ROOT=$LD WT_OUT=$OUT/g027_worlds python3 units/test/worlds_test.py   # Units Laboratory 0.1.16: team delete box, World units, snapshots (hm_build: dev-key loader of g027_look / g027_hostmods)
 chk g027_hub_nosave 'RESULT PASS' $WT python3 ext/dsmpsave/hub_nosave_test.py --dylib $D   # Foreign Expedition hub: no local save
 chk g027_solo_copy 'RESULT PASS' $WT python3 ext/dsmpsave/solo_copy_test.py --dylib $D   # solo copy box of a multiplayer world
 chk g027_selnotice 'RESULT PASS' $WT python3 ext/dsmpfix/selnotice_pair.py --dylib $D   # unit clicks never force a full resync (SkillLearnNotices)
