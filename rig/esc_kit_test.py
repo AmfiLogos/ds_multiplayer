@@ -325,6 +325,9 @@ def main():
         stop.set()
         for f in ('dsload.log', 'player.log', 'rig.log'):
             if os.path.exists(os.path.join(I, f)): shutil.copy2(os.path.join(I, f), os.path.join(OUT, f))
+    lg = os.path.join(OUT, 'dsload.log')
+    miss = [l for l in open(lg, errors='replace').read().splitlines() if 'ESC-MISSING' in l] if os.path.exists(lg) else ['no dsload.log']
+    check('sweep: no ESC-MISSING line (every window of ours has its Escape registration; loader NOTES "Escape")', not miss, miss[:3])
     fails = [c for c in checks if not c['ok']]
     check('copy never on screen / frontmost', not violations, violations)
     json.dump({'tree': TREE, 'checks': checks, 'violations': violations}, open(os.path.join(OUT, 'summary.json'), 'w'), indent=1)

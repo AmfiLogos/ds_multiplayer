@@ -132,6 +132,14 @@ Not done here: the magnifier icon on the cloned fields (review #16 extra), bold 
   KeyInputDispatcher.IsTextInputFocused (0xD42BBC) hooked true while typing (no hotkeys). Idle lines bottom-left, fade
   after chat_fade s. Right-click drag, position in mp_menu.json. ui lane: mpmenu_chat_config(fade, join_lines, on) /
   mpmenu_chat_config_get. Test: build_ux/chat.py (8/8).
+- Chat move / resize (owner 2026-10-25): the open box also moves with a LEFT drag on its title band or frame, and resizes
+  with a left drag on its bottom-right corner (6-dot grip: width + height) or its bottom edge (height); the top-left
+  corner stays. 470 x 270 to 80 % of the canvas width x 90 % of its height (972), 4 free on each side, 34 at the top.
+  Two clear raycast strips (6 units) under the bottom edge and right of the corner widen the grab and keep the press a
+  UI click. chat_x / chat_y = the box's bottom-left offset, chat_w / chat_h its size (mp_menu.json, saved at the
+  release). History lines fill the height (60 line objects), widths follow the box (box - 24, idle text - 60, plates
+  - 40). Test hooks (control channel only): mpm_chat {local} adds a chat_local line; mpm_chat {drag, x0, y0, x1, y1,
+  button, frames} plays press / move / release through the same drag code. Test: ext/dsdps/chat_drag_test.py.
 
 ## lan_v10 menu + teams lane (2026-10-14; research/ux_flow_v10.md)
 Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_menu.py` (menu); build `build_ux/build_v10.sh`
