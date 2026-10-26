@@ -319,6 +319,8 @@ static void fv_input_frame(void) {                                    /* once pe
         rig_log("mpmenu: view lookups %s", anykey ? "throttled while absent (every 2 s, one per frame; immediate after input / a popup)" : "immediate (Input.anyKeyDown not available)");
         if (anykey) fv_free_until = 0;
     }
+    static int kit_was = -1; int kit_now = kit_has_view();                /* the kit comes once il2cpp names are up */
+    if (kit_now != kit_was) { kit_was = kit_now; rig_log("mpmenu: view lookups: %s", kit_now ? "the loader kit's view_find (its cache, the game's records, one search a frame)" : "own search (no loader kit with view_find)"); }
     if (anykey && anykey()) fv_kick_n(3);
     fv_now_depth = 0;                                                 /* no action runs here: a depth an exception left does not stick */
     static int was_scene = -2, was_busy = -1;                         /* a new scene / the end of a load: its views are due */
