@@ -541,3 +541,28 @@ multiplayer tag next to the name of the save and then just put the players that 
 - Tests: Units Laboratory dps_test 47/47 (size_checks: chat "+" 110 % / "-" 100 %, meter 110 % / 90 %), chat_pair PASS
   (session chat on the new layout, rig dylib with no kit), chat_drag_test 25/25 at 100 %; at a kept 120 % 23/25 (its two
   fixed unit sizes; drawn box 80 % / 90 %, clamp at the screen bottom, as meant). Windows: compiled, not run on the VM.
+
+## fpsmp: the multiplayer mod's frame costs in single player (2026-10-26)
+- ext/fpsaudit/mp.md rows 1, 3, 5, 8-11 (fpsmac proved row 1: +30.4 ms MainFlow.Update per key press, MP off 0.5 ms).
+  Details and tables: ext/fpsmp/NOTES.md.
+- Row 1 (mpmenu.c fv_*): one real view search per frame for all polls, kicked frames included; a class that missed in
+  this frame answers NULL to the rest of the frame; in a kicked frame the class searched longest ago goes first. Actions
+  and rig commands (rig_exec -> mpmenu_fv_now) still search at once. esc_view (SystemMenuView, the last single-player
+  poll) searches only while the popup container has popup 1 open (active-only search: it could only hit then).
+  perf: poll_frames [most poll searches in one frame, frames with 2+].
+- Row 9: quick_frame (QuickSlotUI greying) only with a session (restore path kept). Row 10: tooltip_view on find_view_x.
+  Row 11: lbox_view already on find_view_x (gets the memo). Row 8: NOT gated (a host's world is loaded before the
+  session starts; reserved units' tags and see-through need these HUDs): slot by address, then a never-used one, then a
+  dead one. Row 5: rig_det_disarm clears det_on (also when not locked). Row 3 (Windows): FILT entries 0-3 compare the
+  class pointer taken at the first MainFlow.Update (names unique in the dump, no subclasses); the thunk's register
+  save stays (follow-up: a pointer test inside the thunk).
+- fpsscan's kit view helper and SCAN-RULE guard were not merged: mpmenu_find_any stays the one path. sp_scan_test
+  applies the guard's limit (6 a minute) to MP's own counters per steady phase; the real guard run waits for fpsscan.
+- Numbers (sp_scan_test, Mac, base = main 03ec427): single-player scene searches title 16 -> 0 / Load list 11 -> 0 / world
+  idle 128/min -> 0 / world with one key press a second 885/min -> 0; extra MainFlow.Update per key press 29-31 ms ->
+  0.03 ms; per stock popup 42 searches -> 0; Esc-menu clones still in the frame the menu opens. sp_scan_test 9/0 (fails on
+  main: per press, per popup, title, the 6-a-minute limit).
+- Tests on the lane dylib: rig smoke 3/3, mp2_test 19/0, left_prompt_pair --start 16/0, autorejoin_pair PASS, prefs
+  identical; seethrough_pair fails the same way on main (its max alpha counts disabled EmotionBubble icons; not fixed
+  here). MP units 6/6 (pvp / guard suites need ~/ds_custommodes files that are gone). Windows module build ok,
+  win/inline_audit.py the same 10 as main; Windows not run. Not published, not installed.
