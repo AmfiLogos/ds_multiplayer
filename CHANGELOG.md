@@ -10,6 +10,8 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
   temporary worlds in your Saves folder. They are only hidden: no file is moved or deleted.
 - Bring Units: a click anywhere on a unit's row, also around its check box, ticks or unticks the unit, as in Units
   Laboratory.
+- The chat has "-" and "+" buttons in its title bar, left of the X. Each click makes the whole chat and its text 10 %
+  smaller or bigger, from 60 % to 150 %. The chat keeps that size for your next game.
 
 ### 0.1.27 (2026-10-25)
 

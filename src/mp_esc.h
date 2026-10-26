@@ -39,3 +39,10 @@ int  mpesc_box_over(void);         /* 1 = one of our stock boxes (or the ui lane
    call nor .nox. */
 void *mpesc_close_x(mpesc_win *w, void *parent, float x, float y, float size, void *win);
 char *mpesc_dump(void);            /* test (mpm_esc): the windows that show: name, on the kit's stack, held, red X + its screen rect */
+/* SIZE RULE (owner 2026-10-25: "allow to both make the chat and the DPS check window smaller or bigger with a plus or
+   minus"; the kit's template dsl_panel_size, kit 0.1.29): "-" and "+" in `panel`'s top-right corner, x / y units in from
+   it; a click = 10 % smaller / bigger (60 % .. 150 %), kept by the kit under `key` ("multiplayer.<panel>") across game
+   starts. The panel applies the size itself (DSL_SIZE_OWN): read mpesc_size_get(panel) every frame. Returns the buttons'
+   holder (a child of panel), the same one on a second call; NULL = older kit or the rig's own dylib (no "-" / "+", 1). */
+void *mpesc_size(void *panel, const char *key, float x, float y);
+float mpesc_size_get(void *panel);

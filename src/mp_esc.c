@@ -84,6 +84,8 @@ void *mpesc_close_x(mpesc_win *w, void *parent, float x, float y, float size, vo
     rig_log("esc: red X on %s: %s", w->name ? w->name : "a window", xb ? "the game's" : "none (older kit: its text close stays)");
     return xb;
 }
+void *mpesc_size(void *panel, const char *key, float x, float y) { return panel ? dsl_panel_size(mu_kit(), panel, key, x, y, DSL_SIZE_OWN) : NULL; }
+float mpesc_size_get(void *panel) { return panel ? dsl_panel_size_get(mu_kit(), panel) : 1.0f; }
 char *mpesc_dump(void) {
     size_t cap = 4096, n = 0; char *b = malloc(cap); if (!b) return NULL;
     n += (size_t)snprintf(b + n, cap - n, "{\"ok\":true,\"kit\":%d,\"windows\":[", DSL_UI_HAS(mu_kit(), close_x) ? 1 : 0);

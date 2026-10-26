@@ -21,6 +21,12 @@ Nothing was run in the game. Everything below "Verify in game" is unproven.
   keys (Space pauses); only a focused text field holds them. Its buttons are plain Images whose clicks we read, never a
   Unity Selectable (a selected Button takes Space / Enter as Submit). Guard: the chat tests check `hotkeys_blocked` 0 and
   that Space pauses with the box open (ext/dsdps/chat_drag_test.py).
+- Size (owner 2026-10-25: "allow to both make the chat and the DPS check window smaller or bigger with a plus or minus"):
+  the chat has the kit's "-" / "+" (src/mp_esc.c `mpesc_size`, the loader kit's dsl_panel_size, key "multiplayer.chat") in
+  the open box's title band, left of the X; the chat's root sits at its bottom-left corner and is drawn at that size, the
+  box keeps its own units (chat_w x chat_h, drags in box units). A new in-game panel of ours starts from dsl_movable +
+  dsl_panel_size (ds_modloader loader/NOTES.md "New in-game panel? dsl_movable + dsl_panel_size"); the kit drops the
+  buttons' selection after a click, so Space still pauses.
 
 ## Files
 - `ui_model.h/.c`: the rules, with no game code: claims, order permission, vote view, status line, popup routing, story vote tally, address parsing.
