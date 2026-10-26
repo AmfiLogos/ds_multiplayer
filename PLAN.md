@@ -520,3 +520,12 @@ multiplayer tag next to the name of the save and then just put the players that 
 - `rig.py check-prefs` in a new process takes a snapshot and prints identical (gates keep parsing it); the protection is in
   each test process's start/end pair.
 - Test: rig/prefs_guard_test.py [rig.py|lrig.py] on fake owner files (DSRIG_PREFS_TEST_ROOT, DSRIG_PREFS_FAKE_GAME): 12/12 on both.
+
+## dsbringcard: Bring Units cards on the kit's card template (2026-10-26)
+- Owner rule TEMPLATES + GUARDS: src/mu_bring.c draws each tick + unit card in one holder and calls dsl_card_toggle (kit
+  template, ds_modloader bb5e8a9); the own row button under each card (the game's DASButton) is gone. Older kit (-1): only
+  the tick selects. The window declares dsl_rules_own DSL_RULE_SCALE (mu_window applies UI Scale itself).
+- Main showed no block in Bring Units (the old row button sat exactly under the card); the kit's guard logged UI-RULE card
+  and UI-RULE ui-scale for it. Guard: ext/dsuxmp/bring_test.py CARD_look (game-frame pixels left of card 0 after hover /
+  clicks) + UI_RULE (any UI-RULE / ESC-MISSING line while the window is open). main 7/1 (UI_RULE), branch 8/0 (en 960x540
+  UI 1.4, de 1728x1000 UI 1.0), branch on the kit before bb5e8a9: CARD_look FAIL (1.0 bright, the white block).

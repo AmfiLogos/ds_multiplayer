@@ -8,6 +8,8 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 
 - The game's Load list no longer shows "Foreign Expedition Hub" and "PvP Base" worlds. Versions before 0.1.26 left these
   temporary worlds in your Saves folder. They are only hidden: no file is moved or deleted.
+- Bring Units: a click anywhere on a unit's row, also around its check box, ticks or unticks the unit, as in Units
+  Laboratory.
 
 ### 0.1.27 (2026-10-25)
 

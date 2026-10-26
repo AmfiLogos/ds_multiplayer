@@ -65,7 +65,7 @@ static struct {
     mu_bring_req req; char title[128], sub[300];
     DSLObj win, t_sub, hdr, status, t_picked, left, right, b_prev, b_next, t_page, b_cancel, b_bring, x;   /* x: the red X (NULL: Cancel) */
     DSLObj left_btn[SMAX]; int nleft;
-    DSLObj tick[16], card[16], row[16]; int card_item[16], ncard;
+    DSLObj tick[16], card[16], row[16]; int card_item[16], ncard;   /* row: the holder of a tick + its card (kit card template) */
     float w, h, rx, ry, rw, rh;
     mu_save_ref saves[SMAX]; int nsaves, sel_save;
     mu_save_unit su[NMAX]; int nsu; char su_err[400]; int su_for;   /* units of saves[su_for] (-1 none loaded) */
@@ -276,12 +276,6 @@ static void on_build(void *ud, DSLObj w) {
     mu_log("bring units: Build a unit: rc %d", rc);
     if (rc) set_msg(TR("The Unit Builder could not open."), MU_C_BAD);
 }
-/* a click anywhere on a card (owner 2026-10-20: not only the small tick): the row button under the card flips the tick */
-static void on_card(void *ud, DSLObj w) {
-    (void)w; int c = (int)(intptr_t)ud; if (c < 0 || c >= B.ncard || !B.tick[c]) return;
-    U->toggle_set(B.tick[c], !U->toggle_get(B.tick[c]));
-    on_tick(ud, B.tick[c]);
-}
 static void on_page(void *ud, DSLObj w) {
     (void)w; B.page += (int)(intptr_t)ud;
     if (B.page >= B.pages) B.page = B.pages - 1;
@@ -339,10 +333,13 @@ static void draw_cards(void) {
         float y = 8 + s * (MU_CARD_CH + CARD_GAP);
         char e[300] = ""; DSLObj card = NULL;
         B.card_item[B.ncard] = k;
-        /* the card is a button: one under the card's rect, hidden by it (the card and its icons let clicks through) */
-        B.row[B.ncard] = U->button(B.right, 52, y, B.rw - 60, MU_CARD_CH, "", on_card, (void *)(intptr_t)B.ncard);
+        /* CARD RULE (owner 2026-10-25): the tick and the card sit in one holder, the kit's card template (dsl_card_toggle,
+           below) makes a click anywhere on it flip the tick. Our own button under each card is gone: the game's button
+           painted a white / grey block on hover and click (kit bb5e8a9). No holder: both on the list, only the tick selects. */
+        DSLObj hd = mu_plate(B.right, 2, y, B.rw - 10, MU_CARD_CH, 0), cp = hd ? hd : B.right; float hx = hd ? 0 : 2, hy = hd ? 0 : y;
+        B.row[B.ncard] = hd;
         /* the kit's toggle puts its box 24 from its right end: 48 wide = the box in the middle of its frame (36 wide: left) */
-        B.tick[B.ncard] = U->toggle(B.right, 2, y + (MU_CARD_CH - 36) / 2, 48, "", item_pick(k) >= 0, on_tick, (void *)(intptr_t)B.ncard);
+        B.tick[B.ncard] = U->toggle(cp, hx, hy + (MU_CARD_CH - 36) / 2, 48, "", item_pick(k) >= 0, on_tick, (void *)(intptr_t)B.ncard);
         /* the game's check box sprite draws its square 1 px up and left of its middle: its 20 x 20 box one step right / down */
         for (int q = 0, nq = B.tick[B.ncard] ? cm_child_count(B.tick[B.ncard]) : 0; q < nq; q++) {
             Obj ch = cm_child(B.tick[B.ncard], q); float cw = 0, chh = 0;
@@ -351,16 +348,21 @@ static void draw_cards(void) {
         if (lib) {                                                    /* E3: the card from the unit's builder JSON */
             const ul_bring_api *a = ul_api(); char *js = a ? a->build_json(B.lu[k].guid) : NULL;
             jv *bj = js ? jparse(js, strlen(js), e, sizeof e) : NULL; if (a && js) a->free_str(js);
-            if (bj && !wk_from_json(bj, &b, e, sizeof e) && !mu_card_of(&b, &c)) card = mu_card_draw_compact(B.right, 52, y, B.rw - 60, &c, B.lu[k].name, B.lu[k].level, B.lu[k].portrait, c.bar, c.nbar);
+            if (bj && !wk_from_json(bj, &b, e, sizeof e) && !mu_card_of(&b, &c)) card = mu_card_draw_compact(cp, hx + 50, hy, B.rw - 60, &c, B.lu[k].name, B.lu[k].level, B.lu[k].portrait, c.bar, c.nbar);
             jfree(bj);
         } else if (!mu_save_build_ex(B.saves[B.sel_save].path, B.su[k].guid, &b, &x, e, sizeof e) && !mu_card_of(&b, &c)) {
             const char *bar[8]; for (int i = 0; i < x.nbar && i < 8; i++) bar[i] = x.bar[i];
-            card = mu_card_draw_compact(B.right, 52, y, B.rw - 60, &c, B.su[k].name, B.su[k].level, B.su[k].portrait, bar, x.nbar);
+            card = mu_card_draw_compact(cp, hx + 50, hy, B.rw - 60, &c, B.su[k].name, B.su[k].level, B.su[k].portrait, bar, x.nbar);
         }
         if (!card) {
-            card = U->panel(B.right, 52, y, B.rw - 60, MU_CARD_CH, MU_C_ROW);
+            card = U->panel(cp, hx + 50, hy, B.rw - 60, MU_CARD_CH, MU_C_ROW);
             if (card) cm_raycast(card, false);
             if (card) mu_text(card, 12, 6, B.rw - 84, MU_CARD_CH - 12, e[0] ? e : TR("This unit cannot be shown."), 14, DSL_TXT_WRAP, MU_C_BAD);
+        }
+        /* after the card's content (its texts and icons stop taking clicks; the game's hover cards are polled, they still
+           show). An older kit (-1): only the tick selects */
+        if (hd && B.tick[B.ncard] && dsl_card_toggle(U, hd, B.tick[B.ncard], NULL, NULL)) {
+            static int said; if (!said++) mu_log("bring units: the kit has no card template (dsl_card_toggle): only the tick selects a card");
         }
         B.card[B.ncard++] = card;
     }
@@ -417,6 +419,7 @@ static int build_ui(void) {
     float w, h;
     B.win = mu_window(B.title, 1100, 720, &w, &h);
     if (!B.win) return -1;
+    dsl_rules_own(U, B.win, DSL_RULE_SCALE);                         /* mu_window applies the game's UI Scale itself */
     B.open = 1; B.w = w; B.h = h;
     B.lw = B.lh = 0; cm_rect_size(cm_parent(B.win), &B.lw, &B.lh);
     B.left = B.right = NULL; B.nleft = B.ncard = 0;
