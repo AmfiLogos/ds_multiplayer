@@ -3918,6 +3918,11 @@ static int ch_over_now, ch_wheel_blocked;                                     /*
 static float ch_line_w[2] = { CH_W0 - 60, CH_W0 - 24 };                      /* text width now: idle lines, open-box lines (test read-back) */
 enum { CHD_NONE, CHD_MOVE, CHD_SIZE, CHD_HEIGHT, CHD_THUMB };
 static int ch_drag, ch_drag_btn, ch_held[2]; static V3 ch_d0; static float ch_dsc;   /* a move / resize / thumb drag in progress: kind, button, start */
+/* SIZE RULE (owner 2026-10-25: "allow to both make the chat and the DPS check window smaller or bigger with a plus or
+   minus"): the kit's "-" / "+" (mpesc_size, key multiplayer.chat) in the open box's title band, left of its X. The whole
+   chat (box, idle lines, "is typing") is drawn ch_z times its size around its bottom-left corner (the root's place); the
+   box keeps its own size (chat_w x chat_h) in its units, so its layout and the resize drags stay as they were. */
+static float ch_z = 1; static uintptr_t h_ch_size; static int64_t ch_size_try = -1000;
 static unsigned ch_drags[5];                                                  /* test read-back: drags ended, per kind */
 /* test only: a scripted pointer for the drag code above (set by the rig control channel's mpm_chat {drag}, which opens only in
    DSRIG_CTL=1 test copies; a player's game never sets it): 2 frames resting at (x0, y0), the press, n frames moving to (x1, y1),
@@ -4097,7 +4102,8 @@ static void ch_layout(float W, float H, int ro) {
     CH_P(CL_TBAND, 0, hh - 16, W - 4, 30);
     CH_P(CL_TLINE, 0, hh - 31, W - 4, 1);
     CH_P(CL_TITLE, -hw + 12 + 60, hh - 16, 120, 26);
-    { Obj hi = u_gc_get(h_ch_hint); if (hi) place(hi, hw - 32 - 120, hh - 16, 240, 22); }   /* right-aligned, left of the X */
+    { Obj hi = u_gc_get(h_ch_hint); float hx = u_alive(u_gc_get(h_ch_size)) ? 52 : 0;   /* right-aligned, left of the X (and of "-" / "+") */
+      if (hi) place(hi, hw - 32 - hx - 120, hh - 16, 240, 22); }
     { Obj cx = u_gc_get(h_ch_lay[CL_CLOSE]); if (cx) place(cx, hw - 17, hh - 16, n_ch_icon[3] ? 22 : 32, n_ch_icon[3] ? 22 : 32); }   /* the game's X: 32 at scale 0.75 */
     CH_P(CL_ILINE, 0, -hh + 46, W - 4, 1);
     CH_P(CL_SAY, -hw + 12 + sw / 2, -hh + 23, sw, 24);
@@ -4122,16 +4128,17 @@ static void ch_layout(float W, float H, int ro) {
 /* where the open box is (canvas units: left, bottom, width, height; the canvas is 1080 high, 2 * hw wide): the remembered
    place and size, inside the screen. Size: 470 x 270 at least, 80 % of the canvas width and 90 % of its height at most.
    Place: 4 free on each side, 34 at the top for the "is typing" line over the open box. A place / size remembered on a
-   bigger window shows clamped here and stays remembered until the next drag. */
+   bigger window shows clamped here and stays remembered until the next drag. The "-" / "+" size ch_z: l, b stay canvas
+   units; w, h are the box's own units, drawn ch_z times (the limits above are for the drawn box). */
 typedef struct { float l, b, w, h; } ch_rect;
-static float ch_max_w(float hw) { float m = 0.8f * 2 * hw; return m < CH_W0 ? CH_W0 : m; }
+static float ch_max_w(float hw) { float m = 0.8f * 2 * hw / ch_z; return m < CH_W0 ? CH_W0 : m; }
 #define CH_MAX_H (0.9f * 1080)
 static ch_rect ch_clamp(ch_rect g, float hw) {
-    float mw = ch_max_w(hw);
+    float mw = ch_max_w(hw), mh = CH_MAX_H / ch_z < CH_H0 ? CH_H0 : CH_MAX_H / ch_z, z = ch_z;
     if (g.w > mw) g.w = mw; if (g.w < CH_W0) g.w = CH_W0;
-    if (g.h > CH_MAX_H) g.h = CH_MAX_H; if (g.h < CH_H0) g.h = CH_H0;
-    if (g.l > hw - 4 - g.w) g.l = hw - 4 - g.w; if (g.l < -hw + 4) g.l = -hw + 4;
-    if (g.b > 540 - 34 - g.h) g.b = 540 - 34 - g.h; if (g.b < -540 + 4) g.b = -540 + 4;
+    if (g.h > mh) g.h = mh; if (g.h < CH_H0) g.h = CH_H0;
+    if (g.l > hw - 4 - g.w * z) g.l = hw - 4 - g.w * z; if (g.l < -hw + 4) g.l = -hw + 4;
+    if (g.b > 540 - 34 * z - g.h * z) g.b = 540 - 34 * z - g.h * z; if (g.b < -540 + 4) g.b = -540 + 4;
     return g;
 }
 static ch_rect ch_geo(float hw) { return ch_clamp((ch_rect){ -hw + 130 + chat_x, -540 + 130 + chat_y, chat_w, chat_h }, hw); }
@@ -4352,9 +4359,24 @@ static void chat_frame(const mpm_obs *o) {
     static void *msw, *msh; if (!msw) { msw = mth("UnityEngine", "Screen", "get_width", 0); msh = mth("UnityEngine", "Screen", "get_height", 0); }
     int sw = msw ? MCALL(msw, int, const void *)(msw) : 0, shh = msh ? MCALL(msh, int, const void *)(msh) : 0;
     float hw = sw > 0 && shh > 0 ? 540.0f * sw / shh : 831;
-    /* inside the screen (a place dragged on a wider window, or off the edge): ch_geo. bx / by = the box's centre */
+    /* the "-" / "+" size (SIZE RULE): the kit's buttons on the box (tried again while the kit's templates are not ready), at
+       most what fits the screen at the box's smallest size */
+    { Obj b0 = u_gc_get(h_ch_box);
+      if (b0 && !u_alive(u_gc_get(h_ch_size)) && frames - ch_size_try >= 60) {
+          ch_size_try = frames; void *hs = mpesc_size(b0, "multiplayer.chat", 35, 5);
+          u_gc_free(h_ch_size); h_ch_size = hs ? u_gc_new(hs) : 0;
+          if (hs) { ch_lay_w = 0; rig_log("mpmenu: chat: \"-\" / \"+\" in its title band, size %.0f %%", mpesc_size_get(b0) * 100); } }
+      float z = b0 ? mpesc_size_get(b0) : 1, fit = (2 * hw - 8) / CH_W0;
+      if ((1080.0f - 38) / CH_H0 < fit) fit = (1080.0f - 38) / CH_H0;
+      if (z > fit) z = fit;
+      if (z != ch_z) { rig_log("mpmenu: chat size %.0f %% -> %.0f %%", ch_z * 100, z * 100); ch_z = z; } }
+    /* inside the screen (a place dragged on a wider window, or off the edge): ch_geo. The root sits at the chat's
+       bottom-left corner, drawn ch_z times: every part below is placed from that corner in the chat's own units.
+       bx / by = the box's centre */
     ch_rect g = ch_geo(hw);
-    float bx = g.l + g.w / 2, by = g.b + g.h / 2, bw = g.w - CH_LINE_DW, iw = g.w - 60, pw = g.w - 40;   /* box lines / idle text / idle plates */
+    place(root, g.l, g.b, 10, 10);
+    { V3 ls = tr_lscale(u_tr(root)); if (ls.x != ch_z || ls.y != ch_z) F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(root), (V3){ ch_z, ch_z, 1 }, NULL); }   /* localScale, when it differs */
+    float bx = g.w / 2, by = g.h / 2, bw = g.w - CH_LINE_DW, iw = g.w - 60, pw = g.w - 40;   /* box lines / idle text / idle plates */
     /* heights measured at another width (the box was resized): measured again when shown */
     static float ch_hb_w = CH_W0 - CH_LINE_DW, ch_hi_w = CH_W0 - 60;
     if (bw != ch_hb_w) { for (int i = 0; i < nch; i++) chist[i].hb = 0; ch_hb_w = bw; }
@@ -4428,14 +4450,14 @@ static void chat_frame(const mpm_obs *o) {
               int fi = ch_pick(tmp, 1, NULL); if (fi >= 0 && fi != ch_typing_font) { ch_font_set(t, fi, 0); ch_typing_font = fi; }
               tmp_set(t, tmp); place(t, bx, 0, iw, 22); th = ch_measure(t, iw); tw = iw; }
           float ph = th + 6 > 22 ? th + 6 : 22;
-          float y = box_open ? g.b + g.h + 4 + ph / 2 : g.b + ph / 2;
+          float y = box_open ? g.h + 4 + ph / 2 : ph / 2;
           place(t, bx, y, iw, th); place(bg, bx, y, pw, ph);
           if (!box_open) lift = ph + 4;
       }
     }
     /* idle lines: the newest at the bottom, each plate as high as its wrapped text (A1 / A2), fading after chat_fade_s */
     double now = mono_s();
-    { float y = g.b + lift;                                                 /* bottom of the next plate */
+    { float y = lift;                                                       /* bottom of the next plate */
       for (int i = CH_IDLE - 1; i >= 0; i--) {
         int k = nch - CH_IDLE + i; Obj t = u_gc_get(h_ch_idle[i]), bg = u_gc_get(h_ch_idlebg[i]);
         float a = 0;
@@ -4531,8 +4553,8 @@ static void chat_frame(const mpm_obs *o) {
     if (have_ptr && box) {
         if (!ch_drag && sc > 0 && !consumed) {
             int kind = 0, btn = 0;
-            float ux = (mp.x - br[0]) / sc, uy = (mp.y - br[1]) / sc;         /* canvas units from the box's bottom-left */
-            if (down0 && box_open && u_on(box)) {
+            float ux = (mp.x - br[0]) / sc, uy = (mp.y - br[1]) / sc;         /* the box's units from its bottom-left */
+            if (down0 && box_open && u_on(box) && !pt_in(u_gc_get(h_ch_size), mp)) {   /* "-" / "+" are the kit's buttons: their click only */
                 int in = ux >= 0 && ux <= g.w && uy >= 0 && uy <= g.h;
                 if (in || pt_in(u_gc_get(h_ch_lay[CL_STRIPB]), mp) || pt_in(u_gc_get(h_ch_lay[CL_STRIPR]), mp)) {
                     if (ux >= g.w - 15 && uy <= 16) kind = CHD_SIZE;        /* the grip corner (right of / under the field) */
@@ -4560,15 +4582,15 @@ static void chat_frame(const mpm_obs *o) {
                 chat_scroll = s < 0 ? 0 : s > ch_sb.S ? ch_sb.S : s;
             } else if (!held[0]) { ch_drags[CHD_THUMB]++; ch_drag = 0; rig_log("mpmenu: chat: thumb released at scroll %d of %d", chat_scroll, ch_sb.S); }
         } else if (ch_drag && held[ch_drag_btn]) {
-            float dx = (mp.x - ch_d0.x) / ch_dsc, dy = (mp.y - ch_d0.y) / ch_dsc, top = ch_g0.b + ch_g0.h;
+            float dx = (mp.x - ch_d0.x) / ch_dsc, dy = (mp.y - ch_d0.y) / ch_dsc, z = ch_z, top = ch_g0.b + ch_g0.h * z;   /* dx, dy: the box's units */
             ch_rect n = ch_g0;
-            if (ch_drag == CHD_MOVE) { n.l += dx; n.b += dy; n = ch_clamp(n, hw); }
+            if (ch_drag == CHD_MOVE) { n.l += dx * z; n.b += dy * z; n = ch_clamp(n, hw); }
             else {                                                          /* the top-left corner stays; never past the screen */
-                if (ch_drag == CHD_SIZE) { float mw = ch_max_w(hw), room = hw - 4 - n.l; n.w = ch_g0.w + dx;
+                if (ch_drag == CHD_SIZE) { float mw = ch_max_w(hw), room = (hw - 4 - n.l) / z; n.w = ch_g0.w + dx;
                     if (n.w > mw) n.w = mw; if (n.w > room) n.w = room; if (n.w < CH_W0) n.w = CH_W0; }
-                float roomh = top - (-540 + 4); n.h = ch_g0.h - dy;
-                if (n.h > CH_MAX_H) n.h = CH_MAX_H; if (n.h > roomh) n.h = roomh; if (n.h < CH_H0) n.h = CH_H0;
-                n.b = top - n.h;
+                float roomh = (top - (-540 + 4)) / z, mh = CH_MAX_H / z; n.h = ch_g0.h - dy;
+                if (n.h > mh) n.h = mh; if (n.h > roomh) n.h = roomh; if (n.h < CH_H0) n.h = CH_H0;
+                n.b = top - n.h * z;
             }
             chat_x = n.l - (-hw + 130); chat_y = n.b - (-540 + 130); chat_w = n.w; chat_h = n.h;
         } else if (ch_drag) {
@@ -6328,6 +6350,8 @@ char *mpmenu_exec(const char *cmd, const char *line) {
             bput(&b, ",\"cam_ortho\":%.3f", u_alive(cam) ? F(0x50804FC, float (*)(Obj, void *))(cam, NULL) : -1.0f); }
           bput(&b, ",\"size\":[%.0f,%.0f],\"drag\":%d,\"fake\":%d,\"drags\":[%u,%u,%u],\"line_w\":[%.0f,%.0f]", chat_w, chat_h, ch_drag, ch_fk.on,
                ch_drags[CHD_MOVE], ch_drags[CHD_SIZE], ch_drags[CHD_HEIGHT], ch_line_w[0], ch_line_w[1]);
+          { Obj zb = u_gc_get(h_ch_size); float q[4] = { 0 }; int on = u_alive(zb) && u_on(zb) && rect_of(zb, q);   /* "-" / "+" (SIZE RULE): px, y up */
+            bput(&b, ",\"zoom\":%.3f,\"zoom_btns\":", ch_z); if (on) bput(&b, "[%.1f,%.1f,%.1f,%.1f]", q[0], q[1], q[2], q[3]); else bput(&b, "null"); }
           { mp_session *rs = mp_game_session();                             /* read state (owner 2026-10-25): screen rects of its parts, px, y up */
             bput(&b, ",\"read\":%d,\"ro\":%d,\"clears\":%u,\"thumb_drags\":%u,\"esc_reg\":%d,\"sb\":{\"S\":%d,\"vis\":%d", chat_read, rs ? 0 : 1, ch_clears,
                  ch_drags[CHD_THUMB], esc_chat.id != NULL, ch_sb.S, ch_sb.vis);
