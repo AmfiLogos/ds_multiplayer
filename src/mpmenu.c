@@ -8,6 +8,7 @@
 // Clicks: two hooks, SubUI_SystemMenuButton.OnPressButton (Esc-menu clones) and SubUI_TitleMenuButton.OnPointerClick
 // (title clones; the ui lane gave the title screen to this file). Views are found with FindObjectOfType (no Init hooks).
 #include "mpmenu_kit.h"
+#include "dsl_sdk.h"                                     /* the loader kit: view_find (kit_view) */
 #include "mpmenu.h"
 #include "mp_fog.h"
 #include "mp_game.h"
@@ -234,9 +235,35 @@ const char *mpmenu_fv_counts(void) {
     for (int i = 0; i < fv_ncnt && k < sizeof o - 120; i++) k += (size_t)snprintf(o + k, sizeof o - k, "%s[\"%s\",%ld,%.1f]", i ? "," : "", fv_cnt[i].key, fv_cnt[i].n, fv_cnt[i].ms);
     return o;
 }
+/* fpsmp (template rule, lead 2026-10-26): with the loader kit's view_find (ds_modloader 6fc71e6, kit 0.1.29) every view
+   lookup of this module asks the kit: its handle cache, the game's own view records (presenters, the popup container),
+   then at most one search a frame for all modules, 2 s .. 60 s back-off after a miss, and its SCAN-RULE guard. The
+   search below (throttle, miss memo) is only for a kit without view_find and for the rig's own dylib (no loader).
+   *out = the kit's answer (NULL: absent now); returns 0 when there is no such kit. */
+const DSLUi *mu_kit(void);                                        /* mu_ui.c: NULL = the rig's own dylib (no loader) */
+static int kit_view(void *klass, int flags, Obj *out) {
+    const DSLUi *U = mu_kit();
+    if (!DSL_UI_HAS(U, view_find)) return 0;
+    *out = klass ? (Obj)dsl_view_find(U, klass, flags | (fv_now_depth ? DSL_VIEW_NOW : 0)) : NULL;
+    if (!u_alive(*out)) *out = NULL;
+    return 1;
+}
+static int kit_has_view(void) { const DSLUi *U = mu_kit(); return DSL_UI_HAS(U, view_find); }
+static bool kit_shown(Obj v) {                                    /* GameObject.activeInHierarchy (FindObjectOfType(t, false)) */
+    Obj g = u_go(v);
+    return g && mm_is(g, K_GO) && F(0x50F3724, bool (*)(Obj, void *))(g, NULL);
+}
 Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
+    if (kit_has_view()) {
+        if (!*kcache) *kcache = class_by_name(ns, name);
+        kit_view(*kcache, inactive ? DSL_VIEW_INACTIVE : 0, &v);
+        if (v && !inactive && !kit_shown(v)) v = NULL;                 /* active views only, as this search was: the kit's
+                                                                          records also hold hidden ones */
+        u_gc_free(*h); *h = v ? u_gc_new(v) : 0;
+        return v;
+    }
     char key[96]; int i = fv_slot(ns, name, inactive ? 'i' : 'a', key, sizeof key);
     if (!fv_may_search(i, key)) return NULL;                           /* retried later */
     v = find_view_lookup(h, kcache, ns, name, inactive);
@@ -252,6 +279,20 @@ Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, b
 Obj mpmenu_find_any(uintptr_t *h, const char *ns, const char *name) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
+    if (kit_has_view()) {   /* the kit first (kit_view): a shown one first, as below, else a hidden one */
+        static struct { char ns[40], name[56]; void *k; } kc[48]; static int nkc;   /* found classes (class_by_name walks every image) */
+        void *k = NULL; int j;
+        for (j = 0; j < nkc && (strcmp(kc[j].name, name) || strcmp(kc[j].ns, ns)); j++) {}
+        if (j < nkc) k = kc[j].k;
+        else if ((k = class_by_name(ns, name)) && nkc < 48 && strlen(ns) < 40 && strlen(name) < 56) {
+            snprintf(kc[nkc].ns, 40, "%s", ns); snprintf(kc[nkc].name, 56, "%s", name); kc[nkc++].k = k;
+        }
+        if (kit_view(k, 0, &v)) {
+            if (!v || !kit_shown(v)) { Obj w; kit_view(k, DSL_VIEW_INACTIVE, &w); if (w) v = w; }
+            u_gc_free(*h); *h = v ? u_gc_new(v) : 0;
+            return v;
+        }
+    }
     char key[96]; int i = fv_slot(ns, name, '*', key, sizeof key);
     if (!fv_may_search(i, key)) return NULL;                           /* retried later */
     double t0 = fv_clock();
@@ -270,6 +311,7 @@ static double fv_clock(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC
 static Obj find_view_now(uintptr_t *h, void **k, const char *ns, const char *name, bool inactive) {
     fv_now_depth++; Obj v = find_view_x(h, k, ns, name, inactive); fv_now_depth--; return v;
 }
+Obj mpmenu_view_now(uintptr_t *h, void **k, const char *ns, const char *name, bool inactive) { return find_view_now(h, k, ns, name, inactive); }   /* mp_game.c: an action's lookup */
 static void fv_input_frame(void) {                                    /* once per frame: a key / mouse press opens views */
     static bool (*anykey)(void); static int looked;
     if (!looked) {
@@ -277,6 +319,8 @@ static void fv_input_frame(void) {                                    /* once pe
         rig_log("mpmenu: view lookups %s", anykey ? "throttled while absent (every 2 s, one per frame; immediate after input / a popup)" : "immediate (Input.anyKeyDown not available)");
         if (anykey) fv_free_until = 0;
     }
+    static int kit_was = -1; int kit_now = kit_has_view();                /* the kit comes once il2cpp names are up */
+    if (kit_now != kit_was) { kit_was = kit_now; rig_log("mpmenu: view lookups: %s", kit_now ? "the loader kit's view_find (its cache, the game's records, one search a frame)" : "own search (no loader kit with view_find)"); }
     if (anykey && anykey()) fv_kick_n(3);
     fv_now_depth = 0;                                                 /* no action runs here: a depth an exception left does not stick */
     static int was_scene = -2, was_busy = -1;                         /* a new scene / the end of a load: its views are due */

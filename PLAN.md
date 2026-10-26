@@ -566,3 +566,11 @@ multiplayer tag next to the name of the save and then just put the players that 
   identical; seethrough_pair fails the same way on main (its max alpha counts disabled EmotionBubble icons; not fixed
   here). MP units 6/6 (pvp / guard suites need ~/ds_custommodes files that are gone). Windows module build ok,
   win/inline_audit.py the same 10 as main; Windows not run. Not published, not installed.
+- Task 2 (lead 13:15): sdk/dsl_sdk.h synced to ds_modloader 6fc71e6 (merge 1c369a0, header only). Then the template
+  rule: find_view_x / mpmenu_find_any ask the kit's dsl_view_find first (active-only callers stay active-only;
+  '*' = shown first, else hidden); the own throttled search only without that kit (older loader, the rig's own dylib);
+  the quit action's lookup on the same path; rig.log names the path. ds_modloader scan_rate_test --mods default (loader
+  78e6a3a + this pin): multiplayer 0 searches at title / list / world, no SCAN-RULE multiplayer (the run fails on
+  custom-modes only: lane fpsul). kit_esc_test PASS (kit path, Esc clones). Rig dylib: sp_scan_test 9/0, smoke 3/3,
+  mp2 19/0, left_prompt 16/0, autorejoin PASS, prefs identical. Sprite scans (FindObjectsOfTypeAll) not moved: the kit
+  has no module call for assets. Windows compiled, not run.
