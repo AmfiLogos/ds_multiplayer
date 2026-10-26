@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Bring Units card window: CARD RULE + CLOSE RULE (lane dsuxmp2, sub-lane dsuxmp2-bring; owner 2026-10-25).
-One hidden loader test copy UBR (make it once: ext/dsuxmp/bring_make_instance.sh UBR) with the shared loader build
-~/ds_launcher_wt_dsuxmp2/loader/build (dsload.dylib + mods_all/mac, kit with the game's red X) and the multiplayer module
-<dylib> (mod.json sha256 rewritten in the copy only). Hidden, small, windowed, muted, never focused; take a copy slot first
-(~/ToDelete_2026-10-25/dsuxmp2/slot.sh take dsuxmp2-bring 1).
+One hidden loader test copy UBR (make it once: ext/dsuxmp/bring_make_instance.sh UBR) with a loader build BRING_LB
+(default ~/ds_launcher_wt_dsuxmp2/loader; its build/dsload.dylib + build/mods_all/mac, kit with the game's red X; read
+only) and the multiplayer module <dylib> (mod.json sha256 rewritten in the copy only). Hidden, small, windowed, muted, never
+focused. The hub host listens on a port this run leases (rigports.py, LANE_RULES rule 16), never 47777.
 
   bring_test.py <en|de|ru> <W>x<H> <ui scale> <dylib> [--tag NAME]
 
@@ -18,21 +18,27 @@ The hub host lobby (Multiplayer > Hub > Start), then its Bring Units window (FE_
                 the card list).
   X_closes      a click on the red X does not close the window, or acts as Bring (Cancel's effect: nothing sent to the
                 host, fe_status received unchanged; the tick is not kept: the window opened again shows none ticked).
+  CARD_look     (kit card template, ds_modloader bb5e8a9: the game's button under a card painted a white / grey block on
+                hover and click) the column left of card 0 (beside its check box) turns bright in the game frame while
+                the mouse rests on the card after a click (tick, untick), against the frame before any click.
+  UI_RULE       the kit's UI-RULE guard (test copies) logs a line while the window is open: "card" (a check box card
+                that reacts only on its box: no dsl_card_toggle), "card-look" (a template card lights up or zooms), or
+                any other rule / ESC-MISSING. Needs a kit with the guard (bb5e8a9+); an older kit logs none.
 Guards (pass on both; they catch a break of this change): HOVER_card (the game's hover card still shows on a card icon),
 BRING_sends (a ticked card + Bring still sends the unit: received + 1).
-Shots (never committed): ~/ToDelete_2026-10-25/dsuxmp2/shots/dsuxmp2-bring/<lang>_<W>x<H>_ui<s>[_NAME]/.
+Shots (never committed): <BRING_OUT, default ~/ToDelete_2026-10-25/dsuxmp2>/shots/dsuxmp2-bring/<lang>_<W>x<H>_ui<s>[_NAME]/.
 Prints RESULT lines; exit 0 = all PASS."""
 import json, os, sys, time, glob, shutil, subprocess, threading, signal, traceback, hashlib
 HERE = os.path.dirname(os.path.abspath(__file__))
 WT = os.path.dirname(os.path.dirname(HERE))
-LB = os.path.expanduser('~/ds_launcher_wt_dsuxmp2/loader'); LT = os.path.join(LB, 'test')   # shared loader build (read only)
+LB = os.path.expanduser(os.environ.get('BRING_LB') or '~/ds_launcher_wt_dsuxmp2/loader'); LT = os.path.join(LB, 'test')   # loader build (read only)
 LANGS = {'en': 0, 'de': 3, 'ru': 4}
 args = sys.argv[1:]; NAME = ''
 if '--tag' in args: i = args.index('--tag'); NAME = args[i + 1]; del args[i:i + 2]
 LANG, SIZE, SCALE, DYLIB = args[0], args[1], float(args[2]), os.path.abspath(os.path.expanduser(args[3]))
 W, H = (int(v) for v in SIZE.split('x'))
 TAG = f'{LANG}_{W}x{H}_ui{SCALE:.1f}' + (f'_{NAME}' if NAME else '')
-BASE = os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp2')
+BASE = os.path.expanduser(os.environ.get('BRING_OUT') or '~/ToDelete_2026-10-25/dsuxmp2')
 OUT = os.path.join(BASE, 'shots', 'dsuxmp2-bring', TAG); os.makedirs(OUT, exist_ok=True)
 RUN = os.path.join(BASE, 'dsuxmp2-bring', 'runs', TAG + time.strftime('_%H%M%S')); os.makedirs(RUN, exist_ok=True)
 os.environ['DSL_TEST_COPY'] = 'UBR'; os.environ['LRIG_SIZE'] = f'{W}x{H}'
@@ -131,6 +137,8 @@ def start():
            'DSRIG_HIDEWIN': '1', 'DSL_CRASHREP_TEST': os.path.join(I, 'crashrep_test'),
            'DSRIG_EXTADDR_UPNP': '0', 'DSRIG_EXTADDR_WEB_URL': 'file://' + os.path.join(I, 'ux_extip.txt')}
     env.update(r.soft_test_env())
+    sf = r.rigports.loader_settings_file(I, env)                     # rule 16: the hub host listens on this run's port
+    r.rigports.clear_stale_mp(I); r.rigports.set_host_port(I, r.pair_port(X), sf); r.rigports.check_start(I, sf); r.rigports.note_started(I, X)
     r.require_windowed(X)
     a = [os.path.join(I, r.EXE_REL), '-logFile', os.path.join(I, 'player.log'), '-screen-fullscreen', '0',
          '-screen-width', str(W), '-screen-height', str(H)]
@@ -190,6 +198,39 @@ def shot(name, settle=0.8):
     log('shot', name, 'ok' if os.path.exists(p) else f'MISSING {a}')
 
 
+def frame(name):
+    """the game frame of shot `name` (RGB), None when it is missing"""
+    try:
+        from PIL import Image
+        return Image.open(os.path.join(OUT, name + '.png')).convert('RGB')
+    except Exception as e:
+        log('frame', name, repr(e)); return None
+
+
+def bright_left(img, card, tick):
+    """share of bright pixels (luminance > 150) in the column left of `card` (screen pixels, y up; the frame's rows go
+    down), as high as the card, from the check box's left edge to the card; the check box itself (+2 px) left out"""
+    if img is None or not card or not tick: return None
+    px, n, hi = img.load(), 0, 0
+    for y in range(int(card[1]) + 1, int(card[3]) - 1):
+        for x in range(int(tick[0]), int(card[0]) - 1):
+            if tick[0] - 2 <= x <= tick[2] + 2 and tick[1] - 2 <= y <= tick[3] + 2: continue
+            fy = img.height - 1 - y
+            if not (0 <= x < img.width and 0 <= fy < img.height): continue
+            r_, g_, b_ = px[x, fy]; n += 1; hi += 0.299 * r_ + 0.587 * g_ + 0.114 * b_ > 150
+    return round(hi / n, 3) if n else None
+
+
+def ui_rule_lines(pos):
+    """the kit's UI-RULE / ESC-MISSING lines in the copy's dsload.log after byte `pos`"""
+    try:
+        with open(os.path.join(I, 'dsload.log'), 'rb') as f:
+            f.seek(pos); t = f.read().decode('utf-8', 'replace')
+    except OSError:
+        return []
+    return [l.strip() for l in t.splitlines() if 'UI-RULE' in l or 'ESC-MISSING' in l]
+
+
 def safe(name, fn):
     try:
         fn()
@@ -212,6 +253,8 @@ def run():
     press('HOST_START', 2.0)
     wait('hub loaded + host session', lambda: (lambda s: s if s.get('det', {}).get('locked') and s.get('mp', {}).get('started') else None)(st()), 900, 2)
     wait('hub lobby', state_is('lobby'), 120, 1); time.sleep(3)
+    r.rigports.players_guard(r.send, [X], 1, 'start')                 # rule 16: no other lane's copy in this session
+    lp = os.path.getsize(os.path.join(I, 'dsload.log')) if os.path.exists(os.path.join(I, 'dsload.log')) else 0
     s = open_bring(); shot('01_bring_open')
     tp = s.get('tgt_px', {})
     log('bring state', json.dumps(s)[:1500])
@@ -220,7 +263,8 @@ def run():
     def card_middle():
         r0, tk = tp['row0'], tp.get('tick0')
         x, y = centre(r0)
-        p0 = bs().get('picked'); fake_click(x, y); p1 = bs().get('picked'); fake_click(x, y); p2 = bs().get('picked')
+        p0 = bs().get('picked'); fake_click(x, y); p1 = bs().get('picked'); shot('02a_card_ticked', 0.0)
+        fake_click(x, y); p2 = bs().get('picked'); shot('02b_card_unticked', 0.0)
         off_box = tk is None or x > tk[2] + 4
         result('CARD_middle', off_box and (p1, p2) == (p0 + 1, p0),
                f'click at ({x:.0f},{y:.0f}), the middle of card 0 {r0} (check box {tk}): picked {p0} -> {p1} -> {p2} (want {p0 + 1} then {p0})')
@@ -237,6 +281,16 @@ def run():
         result('HOVER_card', bool(t1.get('shown')) or bool(t2.get('shown')),
                f'the game\'s hover card with the mouse on that icon: shown "{t1.get("shown")}" / "{t2.get("shown")}" (tip state {t1})')
     safe('CARD_icon', card_icon)
+
+    def card_look():
+        cd, tk = tp.get('card0'), tp.get('tick0')
+        f = {n: bright_left(frame(n), cd, tk) for n in ('01_bring_open', '02a_card_ticked', '02b_card_unticked', '02_icon_hover')}
+        base, after = f['01_bring_open'], [v for k, v in f.items() if k != '01_bring_open']
+        ok = base is not None and None not in after and max(after) - base <= 0.10 and max(after) <= 0.25
+        result('CARD_look', ok, f'bright share of the column left of card 0 {cd} (check box {tk} left out): before any click {base}; '
+                                f'mouse on the card after the tick click {f["02a_card_ticked"]}, after the untick click {f["02b_card_unticked"]}, '
+                                f'on its icon after a click {f["02_icon_hover"]} (want at most 0.25 and no rise over 0.10)')
+    safe('CARD_look', card_look)
 
     def x_close():
         q = bs(); win, r0 = q.get('win_px'), q.get('tgt_px', {}).get('row0')
@@ -274,6 +328,9 @@ def run():
         result('BRING_sends', bs().get('open') == 0 and n1 == (n0 or 0) + 1, f'tick + Bring: window open {bs().get("open")}, units received {n0} -> {n1}')
     safe('BRING_sends', bring_sends)
 
+    ls = ui_rule_lines(lp)
+    result('UI_RULE', not ls, f'{len(ls)} UI-RULE / ESC-MISSING line(s) while the window was open' + (': ' + ' | '.join(l[-200:] for l in ls[:4]) if ls else ''))
+
 
 def main():
     g = threading.Thread(target=T.guard, daemon=True)
@@ -290,6 +347,8 @@ def main():
             try: shot('zz_fail', 0.3)
             except Exception: pass
     finally:
+        try: r.rigports.end_check(r.send, X, I)                       # rule 16: at most this copy in its session
+        except Exception as e: log('end_check', repr(e))
         T.stop_guard.set()
         if T.violations: result('guard', False, str(T.violations))
         for p in T.game_pids():
