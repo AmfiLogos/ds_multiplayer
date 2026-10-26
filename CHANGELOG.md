@@ -12,6 +12,11 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
   Laboratory.
 - The chat has "-" and "+" buttons in its title bar, left of the X. Each click makes the whole chat and its text 10 %
   smaller or bigger, from 60 % to 150 %. The chat keeps that size for your next game.
+- Single player runs smoother with the multiplayer mod. After a key press or a game popup, the mod looked for a
+  missing game window many times in a row; each key press cost about 30 ms of game time on a test Mac (now about
+  8 ms). On the title screen and in the Load list the mod no longer looks at all.
+- After a multiplayer game ends, the game's random numbers no longer go through the mod's extra multiplayer checks,
+  so single player in the same game run is as fast as before you joined.
 
 ### 0.1.27 (2026-10-25)
 

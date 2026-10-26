@@ -8,14 +8,16 @@ popup, in every world where the Esc menu was not opened yet), and a slower picku
 
 Each copy: the fpsaudit probe (ext/fpsaudit/mac/fpsprobe.c, inserted after the module; FPSPROBE_KEYS=1 answers MP's
 Input.anyKeyDown with one fake key press per second while `keys N` runs), DSRIG_CUSTOM=0 (Units Laboratory's own scans
-are lane fpsul's), 120 fps cap, batchmode, hidden. Phases: title idle; Load list; world (the rig save) idle; world with one
-key press per second; world with a stock popup (type 10) opened and closed N times; then the Esc menu (popup 1) opened
-once: MP's Esc-menu clones must show up as fast as on base.
+are lane fpsul's), 120 fps cap, batchmode, hidden. Phases: title idle; Load list; world (the rig save) idle; world with
+one key press per second; world with a stock popup (type 10) opened and closed N times; then the Esc menu opened the way
+the game opens it (PopUpViewContainer.ActivateView(1)): MP's Esc-menu clones must show up as fast as on base (the new
+code searches for the Esc menu only while the popup container says it is open).
 Counts from the rig `perf` command (view_lookups, poll_frames = most poll walks in one frame / frames with 2+, new only; actions such as a click's own lookup are not polls);
 frame times from the probe's frames.bin (MainFlow.Update holds the module's frame work).
 FAIL (new): more than 3.5 walks per key press, more than 10.5 per popup, any frame with 2+ poll walks, more walks at the idle
-title than base, Esc clones later than max(0.3 s, base + 0.1 s). Frame-time numbers are printed, not judged (noise).
-Output: ext/fpsmp/out/<time>/ (run.json, per-copy probe folders, summary.txt). Exit 1 on a FAIL."""
+title than base, more than 6 scene searches (walks + sprite scans) in a steady single-player phase (the loader's
+SCAN-RULE limit), Esc clones later than max(0.3 s, base + 0.1 s). Frame-time numbers are printed, not judged (noise).
+"""
 import datetime, json, os, shutil, statistics, struct, subprocess, sys, time
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig, rigports
@@ -68,6 +70,7 @@ class Copy:
         c0 = {k: n for k, n, _ in d['p0']['view_lookups']}
         d['classes'] = {k: n - c0.get(k, 0) for k, n, _ in p['view_lookups'] if n - c0.get(k, 0)}
         d['poll_frames'] = s1.get('poll_frames')
+        d['sprite_scans'] = s1['assets'][0] + s1['portrait'][0] - s0['assets'][0] - s0['portrait'][0]   # Resources.FindObjectsOfTypeAll
         d['frames'] = p['frames']
 
     def state(self):
@@ -147,6 +150,8 @@ try:
         both(lambda c: c.cmd('popup 10')); time.sleep(1.5); both(lambda c: c.cmd('unpopup 10')); both(lambda c: c.cmd('speed 1')); time.sleep(1.5)
     both(lambda c: c.end('world_popups'))
     off = {c.label: os.path.getsize(os.path.join(rig.idir(c.x), 'rig.log')) for c in copies}
+    # the Esc menu as the game opens it: PopUpViewContainer.ActivateView(SystemMenu 1) (the owner's logs: "popup 1 requested,
+    # caller ViewObjectLoader.Update" after Escape). A hidden copy gets no real key (background app, no key window).
     t_esc = {c.label: c.cmd('popup 1') for c in copies}; time.sleep(3)
     tc = {c.label: esc_clone_time(c, t_esc[c.label], off[c.label]) if t_esc[c.label] else None for c in copies}
     esc = {k: (tc[k] - t_esc[k]) if tc[k] else None for k in tc}
@@ -163,7 +168,7 @@ try:
             mf2 = sum(1 for r in F if r[2] > 2.0); mfmax = max((r[2] for r in F), default=0)
             dts = sorted(r[1] for r in F); p99 = dts[int(len(dts) * 0.99)] if dts else 0
             d['per_min'] = d['lookups'] * 60 / secs
-            lines.append(f"{c.label:4s} {name:12s} {secs:5.1f} s frames {len(F):5d} | walks {d['lookups']:4d} ({d['per_min']:6.1f}/min) "
+            lines.append(f"{c.label:4s} {name:12s} {secs:5.1f} s frames {len(F):5d} | walks {d['lookups']:4d} ({d['per_min']:6.1f}/min) sprite scans {d['sprite_scans']} "
                          f"{d['classes']} | poll_frames {d['poll_frames']} | MainFlow.Update > 2 ms {mf2 * 60 / secs:6.1f}/min, max {mfmax:5.1f} ms | dt p99 {p99:5.2f} ms")
         idle, keys = c.ph['world_idle'], c.ph['world_keys']
         kt = []
@@ -178,7 +183,7 @@ try:
         pp = c.ph['world_popups']; c.per_popup = (pp['lookups'] - idle['per_min'] * (pp['t1'] - pp['t0']) / 60) / POPUPS
         c.press_ms = statistics.mean(ex) if ex else float('nan')
         lines.append(f"{c.label}: {len(kt)} presses: walks per press {c.per_press:.2f}, per popup {c.per_popup:.2f}; extra MainFlow.Update per press "
-                     f"(3 frames) mean {c.press_ms:.2f} ms, max {max(ex) if ex else float('nan'):.2f} ms; Esc clones after the popup: "
+                     f"(3 frames) mean {c.press_ms:.2f} ms, max {max(ex) if ex else float('nan'):.2f} ms; Esc clones after the Esc menu opens: "
                      f"{'%.3f s' % esc[c.label] if esc[c.label] is not None else 'not seen'}")
     for l in lines: print(l, flush=True)
     b, n = copies
@@ -187,6 +192,11 @@ try:
     lf = n.ph['world_popups']['poll_frames']
     result(bool(lf) and lf[0] <= 1 and lf[1] == 0, f"most poll walks in one frame, frames with 2+ (whole run, new): {lf}")
     result(n.ph['title']['lookups'] <= b.ph['title']['lookups'], f"walks at the idle title: new {n.ph['title']['lookups']}, base {b.ph['title']['lookups']}")
+    # SCAN-RULE (loader guard, lane fpsscan: more than 6 scene searches of one module within 60 s in a steady state fails):
+    # the same limit on this module's own counters (view walks + sprite scans) per steady phase (each 20-33 s)
+    for ph in ('title', 'loadlist', 'world_idle', 'world_keys'):
+        d = n.ph[ph]; k = d['lookups'] + d['sprite_scans']
+        result(k <= 6, f"single player {ph}: scene searches {k} in {d['t1'] - d['t0']:.0f} s (max 6: SCAN-RULE), base {b.ph[ph]['lookups'] + b.ph[ph]['sprite_scans']}")
     if esc['base'] is None: result(esc['new'] is not None, f"Esc clones shown (base did not log them): new {esc['new']}")
     else: result(esc['new'] is not None and esc['new'] <= max(0.3, esc['base'] + 0.1), f"Esc menu pickup: new {esc['new'] if esc['new'] is None else round(esc['new'], 3)} s, base {esc['base']:.3f} s")
     print(f"INFO world walks per minute with one key press per second: base {b.ph['world_keys']['per_min']:.1f}, new {n.ph['world_keys']['per_min']:.1f}; "

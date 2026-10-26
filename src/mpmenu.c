@@ -967,12 +967,25 @@ static const int esc_ids[] = { MPB_ESC_INVITE, MPB_LEAVE };   /* in game; the lo
 #define NE (int)(sizeof esc_ids / sizeof esc_ids[0])
 
 Obj title_view(void) { return find_view(&h_title, &k_title, "Refactor.UI", "TitleMenuView"); }
-Obj esc_view(void) { return find_view(&h_esc, &k_esc, "Refactor.UI", "SystemMenuView"); }
+static int popup_state(int type);
+/* fpsmp (SCAN-RULE: no poll in single player): the Esc menu is a popup (PopUpType SystemMenu 1) the container makes when
+   it first opens, and this search takes active views only, so it can find it only while it shows. While the container
+   says it is not open, no search (it was every 2 s and after each key press in every world before the first Esc).
+   A container this code cannot read (-1): searched as before. */
+Obj esc_view(void) {
+    if (!u_alive(u_gc_get(h_esc)) && popup_state(1) == 0) return NULL;
+    return find_view(&h_esc, &k_esc, "Refactor.UI", "SystemMenuView");
+}
 static Obj popups(void) {                               /* MainFlow._eventHandler -> CampaignLoadingEventHandler -> _popUpUIs */
     Obj eh = mf ? AT(mf, 0x50, Obj) : NULL, cl = eh ? AT(eh, 0x28, Obj) : NULL;
     return cl ? AT(cl, 0xF0, Obj) : NULL;
 }
-static bool popup_open(int type) { Obj p = popups(); return p && !strcmp(cls_name(p), "PopUpViewContainer") && F(0xF62D64, bool (*)(Obj, int, void *))(p, type, NULL); }
+static int popup_state(int type) {                      /* 1 open, 0 closed, -1 no popup container here */
+    Obj p = popups();
+    if (!p || strcmp(cls_name(p), "PopUpViewContainer")) return -1;
+    return F(0xF62D64, bool (*)(Obj, int, void *))(p, type, NULL) ? 1 : 0;
+}
+static bool popup_open(int type) { return popup_state(type) == 1; }
 void popup_activate(int type) { Obj p = popups(); if (p && !strcmp(cls_name(p), "PopUpViewContainer")) F(0xF62554, void (*)(Obj, int, void *))(p, type, NULL); }
 
 /* ---------------------------------------------------------------- observations */
