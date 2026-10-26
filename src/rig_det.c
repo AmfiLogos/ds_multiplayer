@@ -670,6 +670,12 @@ void rig_det_arm(void) {
    let the game's own clock run again. Locked without a session, nothing moved the target and the world stood still
    (Foctopus 2026-10-20: "cancelling multiplayer doesn't actually cancel the game"). Same as the "unlock" command. */
 void rig_det_disarm(void) {
+    /* fpsmp (ext/fpsaudit/mp.md row 5): det_on was never cleared, so after one host / join every main-thread
+       Random / Guid / new Random() of the rest of the process walked the stack for its caller (Windows: the x64
+       unwinder) and swapped the Unity random state, in single player too. Off here, before the early return (a
+       session that left the campaign is unlocked already); rig_det_arm / a det load switch it on again. Outside a
+       session the draws then use the game's own streams, as stock. */
+    det_on = 0;
     if (!locked && !hold) return;
     locked = 0; hold = 0; load_left = 0; target = -1;
     Obj th = mf ? AT(mf, 0x40, Obj) : NULL; if (th) AT(th, 0x44, float) = 0.0f;   /* no burst of saved-up time */

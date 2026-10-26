@@ -48,13 +48,16 @@ typedef struct { uintptr_t rva; void *orig; const char *who; } HookRec;
 /* Class-filtered hooks for bodies MSVC folded with other methods. The filter is an asm thunk: it saves the
    argument registers (rcx rdx r8 r9 xmm0-3), asks filt_pick() whether `this` (rcx) is of the expected class,
    restores them and tail-jumps to our detour or to the original, so any signature (stack args too) passes through. */
-typedef struct { const char *who, *cls; void *fn, *repl, *orig; const char *ns; void *volatile klass; volatile int tried; } Filt;
+typedef struct { const char *who, *cls; void *fn, *repl, *orig; const char *ns; void *volatile klass; volatile int tried; int late; } Filt;
 static Filt FILT[];
 __attribute__((used)) void *filt_pick(uintptr_t self, int i) {
     void *k = self ? *(void **)self : NULL;                 /* Il2CppObject.klass; Il2CppClass.name at +0x10 */
+    /* late entries (fpsmp 2026-10-26, mp.md row 3: the UnitObject.SetHUD body is shared by 158 setters, every call paid
+       a class-NAME compare): once filt_resolve found the class (first MainFlow.Update), pointers are compared only */
+    if (FILT[i].late) { void *kk = FILT[i].klass; if (kk) return k == kk ? FILT[i].repl : FILT[i].orig; }
     /* entries with a namespace: the class pointer was resolved at install, compare pointers only. Their bodies are
        also shared by value-type methods, whose `this` is raw struct data: never dereference it */
-    if (FILT[i].ns) {                                     /* resolved at the first call (managed code runs: il2cpp is up) */
+    else if (FILT[i].ns) {                                /* resolved at the first call (managed code runs: il2cpp is up) */
         extern void *ord_debug_class(const char *, const char *);
         if (!FILT[i].tried) { FILT[i].klass = ord_debug_class(FILT[i].ns, FILT[i].cls); FILT[i].tried = 1;
                               rig_log("filter %s: class %s.%s = %p", FILT[i].who, FILT[i].ns, FILT[i].cls, FILT[i].klass); }
@@ -73,10 +76,11 @@ __attribute__((used)) void *filt_pick(uintptr_t self, int i) {
     "add $0x68, %rsp\n pop %r9\n pop %r8\n pop %rdx\n pop %rcx\n jmp *%r11\n"); }
 FILTFN(0) FILTFN(1) FILTFN(2) FILTFN(3) FILTFN(4) FILTFN(5) FILTFN(6)
 static Filt FILT[] = {
-    { "QuitToTitleSceneRequested..ctor", "QuitToTitleSceneRequested", (void *)filt0, 0, 0 },   /* 18 methods share it */
-    { "CombatInfoComponent.SetCombatTarget", "CombatInfoComponent", (void *)filt1, 0, 0 },    /* 253 */
-    { "CombatTargetApplyData..ctor", "CombatTargetApplyData", (void *)filt2, 0, 0 },          /* 137 */
-    { "ui UnitObject.SetHUD", "UnitObject", (void *)filt3, 0, 0 },                             /* 158 */
+    /* late (1): namespace from win/25846389/dump (one class of each name, no subclasses); name compare until it is found */
+    { "QuitToTitleSceneRequested..ctor", "QuitToTitleSceneRequested", (void *)filt0, 0, 0, "Refactor.Main.Event", 0, 0, 1 },   /* 18 methods share it */
+    { "CombatInfoComponent.SetCombatTarget", "CombatInfoComponent", (void *)filt1, 0, 0, "Refactor.Component", 0, 0, 1 },    /* 253 */
+    { "CombatTargetApplyData..ctor", "CombatTargetApplyData", (void *)filt2, 0, 0, "Refactor", 0, 0, 1 },                    /* 137 */
+    { "ui UnitObject.SetHUD", "UnitObject", (void *)filt3, 0, 0, "Refactor.View", 0, 0, 1 },                                 /* 158 */
     /* lan_v8 population getters: plain field getters, shared with value-type getters too (pointer compare) */
     { "ui ClanDataContainer.get_CurrentPopulation", "ClanDataContainer", (void *)filt4, 0, 0, "Refactor", 0, 0 },   /* 65 */
     { "ui ClanDataContainer.get_MaxPopulation", "ClanDataContainer", (void *)filt5, 0, 0, "Refactor", 0, 0 },       /* 29 */
@@ -85,6 +89,15 @@ static Filt FILT[] = {
     { "WaitUntilGameStabilizes.MoveNext", "<WaitUntilGameStabilizes>d__103", (void *)filt6, 0, 0 },                /* 3 */
 };
 #define NFILT 7
+/* main thread, first MainFlow.Update (il2cpp is up, managed code runs): the late entries' class pointers. Not at their
+   first call: a folded body can run before that, in il2cpp's own start or on another thread */
+static void filt_resolve(void) {
+    extern void *ord_debug_class(const char *, const char *);
+    for (int i = 0; i < NFILT; i++) if (FILT[i].late && !FILT[i].klass) {
+        FILT[i].klass = ord_debug_class(FILT[i].ns, FILT[i].cls);
+        rig_log("filter %s: class %s.%s = %p (%s)", FILT[i].who, FILT[i].ns, FILT[i].cls, FILT[i].klass, FILT[i].klass ? "pointer compare" : "not found: name compare");
+    }
+}
 static HookRec hooks[512]; static int nhooks;
 /* one site: MinHook (own baselib.dll) or the loader's engine (module); 0 = ok */
 static int hook_raw(uintptr_t rva, void *repl, void **orig, const char *who) {
@@ -141,7 +154,7 @@ static void (*o_update)(void *, void *);
 int rig_hooks_late;                     /* Mac: late stub page; MinHook needs no such split */
 static void zero_fma3_flag(const char *when);
 static void my_update(void *self, void *mi) {
-    if (!rig_main_tid) { rig_main_tid = GetCurrentThreadId(); zero_fma3_flag("first MainFlow.Update"); }
+    if (!rig_main_tid) { rig_main_tid = GetCurrentThreadId(); zero_fma3_flag("first MainFlow.Update"); filt_resolve(); }
     rig_hooks_late = 1;
     rig_frame(self);
     { extern void win_kit_frame(void); win_kit_frame(); }

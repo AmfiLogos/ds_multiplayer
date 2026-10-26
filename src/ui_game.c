@@ -666,7 +666,8 @@ static int ui_hit(Obj g, float mx, float my) {
 
 /* World name above units: UnitEntityHUD._nameText +0x68 (DASText_GameObject), _entity +0x118 */
 #define MAX_HUD 256
-static struct { uintptr_t hud; uint8_t guid[16]; char base[64]; } hud[MAX_HUD];
+static struct { uintptr_t hud; uint8_t guid[16]; char base[64]; Obj at; } hud[MAX_HUD];   /* at: its address (a lookup key, never read) */
+static int hud_used;                                         /* slots below this were taken once */
 static void (*o_hud_init)(Obj, Obj, void *);
 /* a mod's unit tag (mp_api register_unit_tag; PvP: a flag carrier's world name gets the flag); its state goes into the re-tag signature */
 static void hud_apply(int i) {
@@ -724,14 +725,16 @@ static void hud_apply(int i) {
 static void hud_track(Obj h) {
     Obj e = AT(h, 0x118, Obj);
     if (!is_unit(e)) return;
+    /* fpsmp (mp.md row 8): the slot by address, else a never-used one, else a dead one. It read the handle and the alive
+       check of up to all 256 slots per call, single player too. Kept without a session: a host's world is loaded before
+       the session starts and is not loaded again until a guest joins (reserved units' tags need these HUDs) */
     int slot = -1;
-    for (int i = 0; i < MAX_HUD; i++) {
-        Obj x = u_gc_get(hud[i].hud);
-        if (x == h) { slot = i; break; }
-        if (slot < 0 && (!hud[i].hud || !u_alive(x))) slot = i;
-    }
+    for (int i = 0; i < hud_used && slot < 0; i++) if (hud[i].at == h && u_gc_get(hud[i].hud) == h) slot = i;
+    if (slot < 0 && hud_used < MAX_HUD) slot = hud_used++;
+    for (int i = 0; i < hud_used && slot < 0; i++) if (!hud[i].hud || !u_alive(u_gc_get(hud[i].hud))) slot = i;
     if (slot < 0) return;
     if (u_gc_get(hud[slot].hud) != h) { u_gc_free(hud[slot].hud); hud[slot].hud = u_gc_new(h); }
+    hud[slot].at = h;
     memcpy(hud[slot].guid, (const uint8_t *)e + UNIT_GUID, 16);
     str_utf8(tmp_get(AT(h, 0x68, Obj)), hud[slot].base, sizeof hud[slot].base);   /* stock just set the plain name */
     if (on()) hud_apply(slot);
@@ -3334,19 +3337,19 @@ static Guid local_order[MAX_LOCAL]; static int local_n;
 /* 7c. World: units you do not control are see-through (SpriteRenderer alpha 0.55; own units 1.0).
    UnitObject.SetHUD 0xE26CFC pairs the unit's object with its HUD (UnitEntityHUD._entity +0x118). */
 #define MAX_UO 256
-static struct { uintptr_t uo, hud, eg; int shown, ol_sig, other; } uo[MAX_UO];   /* other: a player unit you do not control */
+static struct { uintptr_t uo, hud, eg; int shown, ol_sig, other; Obj at; } uo[MAX_UO];   /* other: a player unit you do not control; at: lookup key */
+static int uo_used;                                  /* slots below this were taken once */
 static uintptr_t h_srtype;                           /* UnityEngine.SpriteRenderer type */
 static void (*o_uo_sethud)(Obj, Obj, void *);
 static void hk_uo_sethud(Obj o, Obj h, void *mi) {
     o_uo_sethud(o, h, mi);
-    int slot = -1;
-    for (int i = 0; i < MAX_UO; i++) {
-        Obj x = u_gc_get(uo[i].uo);
-        if (x == o) { slot = i; break; }
-        if (slot < 0 && (!uo[i].uo || !u_alive(x))) slot = i;
-    }
+    int slot = -1;                                   /* fpsmp: as hud_track (by address, never used, dead; no full handle scan) */
+    for (int i = 0; i < uo_used && slot < 0; i++) if (uo[i].at == o && u_gc_get(uo[i].uo) == o) slot = i;
+    if (slot < 0 && uo_used < MAX_UO) slot = uo_used++;
+    for (int i = 0; i < uo_used && slot < 0; i++) if (!uo[i].uo || !u_alive(u_gc_get(uo[i].uo))) slot = i;
     if (slot < 0) return;
     if (u_gc_get(uo[slot].uo) != o) { u_gc_free(uo[slot].uo); uo[slot].uo = u_gc_new(o); }
+    uo[slot].at = o;
     u_gc_free(uo[slot].hud); uo[slot].hud = u_gc_new(h); uo[slot].shown = -1;
     u_gc_free(uo[slot].eg); uo[slot].eg = 0; uo[slot].ol_sig = 0;
 }
@@ -5522,6 +5525,7 @@ static int qs_selected_foreign(Obj v, char *who, size_t cap) {
     return 1;
 }
 static void quick_frame(void) {
+    if (!on() && !qs_foreign) return;                        /* fpsmp: greying is a session feature (no QuickSlotUI scans in single player) */
     Obj v = find_view(&h_quick, "Refactor.UI", "QuickSlotUI");
     char who[256] = "";
     int f = qs_selected_foreign(v, who, sizeof who);

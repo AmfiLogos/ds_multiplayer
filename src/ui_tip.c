@@ -59,10 +59,14 @@ static int str_is(Obj s, const char *lit) {                  /* il2cpp String ==
     for (int32_t i = 0; i < n; i++) if (!lit[i] || c[i] != (uint8_t)lit[i]) return 0;
     return lit[n] == 0;
 }
+Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive) __attribute__((weak_import));   /* mpmenu.c */
 static Obj tooltip_view(void) {                              /* the scene's TooltipUI (Object.FindObjectOfType(Type, inactive)) */
-    static uintptr_t h;
+    static uintptr_t h; static void *kc;
     Obj v = u_gc_get(h);
     if (u_alive(v)) return v;
+    /* fpsmp (mp.md row 10): asked every frame (game_tip_ready); without TooltipUI in the scene that was one scan per frame.
+       mpmenu's lookup: absent views every 2 s, one search per frame for the whole module */
+    if (find_view_x) return find_view_x(&h, &kc, "Refactor.UI", "TooltipUI", true);
     void *k = ord_debug_class ? ord_debug_class("Refactor.UI", "TooltipUI") : NULL;
     if (!k) return NULL;
     Obj t = F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k));

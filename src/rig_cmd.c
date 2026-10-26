@@ -488,7 +488,11 @@ static char *c_screenshot(const char *line) {
 }
 
 char *mp_bridge_exec(const char *cmd, const char *line);  /* mp_bridge.c (BepInEx bridge) */
-char *rig_exec(const char *line) {
+static char *rig_exec_cmd(const char *line);
+/* fpsmp: a command's own view lookups are an action: they search at once (mpmenu.c fv_may_search); the kick lets the next
+   10 frames' lookups find what the command opened */
+char *rig_exec(const char *line) { mpmenu_fv_now(1); char *r = rig_exec_cmd(line); mpmenu_fv_now(0); return r; }
+static char *rig_exec_cmd(const char *line) {
     char cmd[64] = "";
     if (!jstr(line, "cmd", cmd, sizeof cmd)) return err("no cmd");
     mpmenu_fv_kick();                                              /* views a command opens are found at once */

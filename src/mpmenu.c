@@ -157,39 +157,67 @@ void *class_by_name(const char *ns, const char *name) {
    UI only: no sim state. */
 #define FV_RETRY_MS 2000.0    /* fpsfix 2026-10-20: was 15 frames (14 lookups/s per absent view at 210 fps, 2.5-4 ms each) */
 #define FV_SITES 64
-static int64_t fv_free_until = INT64_MAX;                         /* immediate lookups while rig_frames < this */
+static int64_t fv_free_until = INT64_MAX;                         /* kicked (immediate) lookups while rig_frames < this */
 static int fv_now_depth;
 static long fv_kicks[2];
 static void fv_kick_n(int n) { fv_kicks[n == 10]++; if (fv_free_until != INT64_MAX && fv_free_until < rig_frames + n) fv_free_until = rig_frames + n; }
 void mpmenu_fv_kick(void) { fv_kick_n(10); }
-/* fpsfix: an absent view is looked up again after FV_RETRY_MS (wall clock, not frames), and at most one throttled
-   lookup runs per frame (the others wait a frame): no frame pays for several FindObjectOfType walks. Immediate lookups
-   (a kick): 10 frames after a rig command or a stock popup opening (ui_game hk_activate_view), 3 frames after a key /
-   mouse press. A new scene or the end of a load only makes every absent view due again (still one per frame). */
-static int64_t fv_budget_frame = -1;
+void mpmenu_fv_now(int on) { fv_now_depth += on ? 1 : -1; }      /* rig_exec: a test command's own lookups are an action */
+/* fpsfix: an absent view is looked up again after FV_RETRY_MS (wall clock, not frames). Immediate lookups (a kick):
+   10 frames after a rig command or a stock popup opening (ui_game hk_activate_view), 3 frames after a key / mouse press.
+   A new scene or the end of a load makes every absent view due again.
+   fpsmp (2026-10-26, ext/fpsaudit/mp.md row 1): a kicked frame also skipped the one-per-frame budget, so each key press
+   (3 frames) and each stock popup (10 frames) let all 5 per-frame esc_view() callers walk the scene for the absent
+   SystemMenuView: 15 / 50 FindObjectOfType per press / popup in every world where the Esc menu was not opened yet. Now:
+   - one real search per frame for all polls together, kicked or not (a found view still answers from its handle);
+   - a class that missed in this frame answers NULL to every later poll in this frame (miss memo);
+   - in a kicked frame the asked-for absent class searched longest ago goes first: one class cannot starve the others;
+   - actions (find_view_now, rig commands) still search at once; their search uses up the frame's budget. */
+static int64_t fv_budget_frame = -1;                              /* frame of the last real search */
+static long fv_in_frame, fv_frame_max, fv_frames_multi;           /* perf: polls' searches in this frame, most in one frame, frames with 2+ */
 static double fv_clock(void);
-static int fv_kicked(void) { return rig_frames < fv_free_until || fv_now_depth; }
-static int fv_may_retry(double next) {                             /* 1 = look it up now */
-    if (fv_kicked()) return 1;
-    if (fv_clock() < next || fv_budget_frame == rig_frames) return 0;
-    fv_budget_frame = rig_frames; return 1;
-}
+static int fv_kicked(void) { return rig_frames < fv_free_until; }
 /* absent views by class name + mode ('a' active only, 'i' with inactive, '*' active then inactive): an absent class is
-   absent for every caller (some callers pass a handle on the stack, several handles look for one class) */
-static struct { char key[96]; double next; } fv_miss[FV_SITES];
+   absent for every caller (some callers pass a handle on the stack, several handles look for one class).
+   ask: frame of the last poll for it; look: frame of its last search (-1: none yet, waiting for a free frame) */
+static struct { char key[96]; double next; int64_t ask, look; } fv_miss[FV_SITES];
 static int fv_rr;
 static int fv_slot(const char *ns, const char *name, char mode, char *key, size_t cap) {   /* index or -1 */
     snprintf(key, cap, "%s.%s/%c", ns, name, mode);
     for (int i = 0; i < FV_SITES; i++) if (fv_miss[i].key[0] && !strcmp(fv_miss[i].key, key)) return i;
     return -1;
 }
-static void fv_missed(int i, const char *key) {
-    if (i < 0) {                                                       /* a free slot, else round robin */
-        for (i = 0; i < FV_SITES && fv_miss[i].key[0]; i++) {}
-        if (i == FV_SITES) { i = fv_rr; fv_rr = (fv_rr + 1) % FV_SITES; }
-        snprintf(fv_miss[i].key, sizeof fv_miss[i].key, "%s", key);
+static int fv_slot_new(const char *key) {                         /* a free slot, else round robin; due at once */
+    int i; for (i = 0; i < FV_SITES && fv_miss[i].key[0]; i++) {}
+    if (i == FV_SITES) { i = fv_rr; fv_rr = (fv_rr + 1) % FV_SITES; }
+    snprintf(fv_miss[i].key, sizeof fv_miss[i].key, "%s", key);
+    fv_miss[i].next = 0; fv_miss[i].ask = rig_frames; fv_miss[i].look = -1;
+    return i;
+}
+static void fv_missed(int i, const char *key) {                   /* a search (or the class lookup) found nothing */
+    if (i < 0) i = fv_slot_new(key);
+    fv_miss[i].next = fv_clock() + FV_RETRY_MS; fv_miss[i].look = rig_frames;
+}
+static void fv_searched(void) {                                   /* every real FindObjectOfType walk */
+    if (fv_budget_frame != rig_frames) { fv_budget_frame = rig_frames; fv_in_frame = 0; }
+    if (fv_now_depth) return;                                      /* an action's walk: not a poll (perf counts polls) */
+    if (++fv_in_frame > fv_frame_max) fv_frame_max = fv_in_frame;
+    if (fv_in_frame == 2) fv_frames_multi++;
+}
+static int fv_first_in_line(int i) {      /* of the classes asked for in this or the last frame, the one searched longest ago */
+    for (int j = 0; j < FV_SITES; j++)
+        if (j != i && fv_miss[j].key[0] && fv_miss[j].ask >= rig_frames - 1 && fv_miss[j].look < fv_miss[i].look) return 0;
+    return 1;
+}
+static int fv_may_search(int i, const char *key) {                /* 1 = search now; i = the class's absent slot or -1 */
+    if (fv_now_depth) return 1;                                    /* an action / a test command */
+    if (i >= 0) {
+        fv_miss[i].ask = rig_frames;
+        if (fv_miss[i].look == rig_frames) return 0;               /* missed in this frame already: the same answer */
     }
-    fv_miss[i].next = fv_clock() + FV_RETRY_MS;
+    if (fv_budget_frame == rig_frames) { if (i < 0) fv_slot_new(key); return 0; }   /* this frame searched once: next frame */
+    if (i < 0) return 1;
+    return fv_kicked() ? fv_first_in_line(i) : fv_clock() >= fv_miss[i].next;
 }
 static Obj find_view_lookup(uintptr_t *h, void **kcache, const char *ns, const char *name, bool inactive);
 static double fv_clock(void);
@@ -210,7 +238,7 @@ Obj find_view_x(uintptr_t *h, void **kcache, const char *ns, const char *name, b
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
     char key[96]; int i = fv_slot(ns, name, inactive ? 'i' : 'a', key, sizeof key);
-    if (i >= 0 && !fv_may_retry(fv_miss[i].next)) return NULL;       /* retried later */
+    if (!fv_may_search(i, key)) return NULL;                           /* retried later */
     v = find_view_lookup(h, kcache, ns, name, inactive);
     if (v) { if (i >= 0) fv_miss[i].key[0] = 0; }
     else fv_missed(i, key);
@@ -225,10 +253,11 @@ Obj mpmenu_find_any(uintptr_t *h, const char *ns, const char *name) {
     Obj v = u_gc_get(*h);
     if (u_alive(v)) return v;
     char key[96]; int i = fv_slot(ns, name, '*', key, sizeof key);
-    if (i >= 0 && !fv_may_retry(fv_miss[i].next)) return NULL;       /* retried later */
+    if (!fv_may_search(i, key)) return NULL;                           /* retried later */
     double t0 = fv_clock();
     void *k = class_by_name(ns, name);
     Obj tobj = k ? F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(k)) : NULL;
+    if (tobj) fv_searched();
     v = tobj ? F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, false, NULL) : NULL;   /* an active one first (scene copies) */
     if (tobj && !u_alive(v)) v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, true, NULL);
     double d = fv_clock() - t0; fv_ms_sum += d; fv_lookups++; if (d > fv_ms_max) fv_ms_max = d; fv_count(ns, name, d);
@@ -249,6 +278,7 @@ static void fv_input_frame(void) {                                    /* once pe
         if (anykey) fv_free_until = 0;
     }
     if (anykey && anykey()) fv_kick_n(3);
+    fv_now_depth = 0;                                                 /* no action runs here: a depth an exception left does not stick */
     static int was_scene = -2, was_busy = -1;                         /* a new scene / the end of a load: its views are due */
     int sc = mf ? scene() : -1, bz = mf ? busy() : 1;
     if (sc != was_scene || (was_busy == 1 && !bz)) for (int i = 0; i < FV_SITES; i++) fv_miss[i].next = 0;
@@ -259,6 +289,7 @@ static Obj find_view_lookup(uintptr_t *h, void **kcache, const char *ns, const c
     if (!*kcache) return NULL;
     Obj tobj = F(0x6F97AC, Obj (*)(void *))(F(0x6F8C9C, void *(*)(void *))(*kcache));   /* class -> Type object */
     double t0 = fv_clock();
+    fv_searched();
     Obj v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, inactive, NULL);
     { double d = fv_clock() - t0; fv_ms_sum += d; fv_lookups++; if (d > fv_ms_max) fv_ms_max = d; fv_count(ns, name, d); }
     u_gc_free(*h); *h = u_alive(v) ? u_gc_new(v) : 0;
@@ -363,8 +394,8 @@ static void assets_scan(void) {
 static double scan_ms_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec * 1000.0 + ts.tv_nsec / 1e6; }
 static double scan_ms_sum, scan_ms_max, pscan_ms_sum, pscan_ms_max; static int pscans;
 const char *mpmenu_scan_stats(void) {
-    static char o[300];
-    snprintf(o, sizeof o, "{\"assets\":[%d,%.1f,%.1f],\"portrait\":[%d,%.1f,%.1f],\"done\":%d,\"view_lookups\":[%ld,%.1f,%.1f],\"kicks\":[%ld,%ld]}", scans, scan_ms_sum, scan_ms_max, pscans, pscan_ms_sum, pscan_ms_max, scan_done, fv_lookups, fv_ms_sum, fv_ms_max, fv_kicks[0], fv_kicks[1]);
+    static char o[400];
+    snprintf(o, sizeof o, "{\"assets\":[%d,%.1f,%.1f],\"portrait\":[%d,%.1f,%.1f],\"done\":%d,\"view_lookups\":[%ld,%.1f,%.1f],\"kicks\":[%ld,%ld],\"poll_frames\":[%ld,%ld]}", scans, scan_ms_sum, scan_ms_max, pscans, pscan_ms_sum, pscan_ms_max, scan_done, fv_lookups, fv_ms_sum, fv_ms_max, fv_kicks[0], fv_kicks[1], fv_frame_max, fv_frames_multi);
     return o;
 }
 static void assets_scan_body(void);
