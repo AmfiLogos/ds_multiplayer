@@ -38,7 +38,6 @@ enum { PS_ROLLBACK = 0, PS_ABSOLUTE = 1 };   /* SwitchPauseState */
 #define VA_STEAM_GETNEXT 0x1141AAC  /* bool (HSteamPipe pipe, IntPtr pCallbackMsg) */
 /* SystemMenuView.QuitToTitleSceneCallback: the confirmed "Quit to title" (UIInput 0x5c on the view's stream +0x28) */
 #define VA_QUIT_TO_TITLE 0xF2F234
-void *ord_debug_class(const char *ns, const char *name);    /* ord_game.c */
 
 static mp_config cfg;
 static int cfg_ok, start_failed;
@@ -1074,12 +1073,10 @@ static void quit_to_title(void) {
     stock_quit_title();
 }
 /* the system menu's own confirmed "Quit to title" (UIInput 0x5C -> QuitToTitleSceneRequested); 0 ok, -1 no menu view */
+Obj mpmenu_view_now(uintptr_t *h, void **k, const char *ns, const char *name, bool inactive);   /* mpmenu.c: the kit's view_find (NOW), else one search */
 static int stock_quit_title(void) {
-    void *k = ord_debug_class("Refactor.UI", "SystemMenuView");
-    if (!k) { rig_log("mp: SystemMenuView class not found"); return -1; }
-    void *type = F(0x6F8C9C, void *(*)(void *))(k);                       /* il2cpp_class_get_type */
-    Obj tobj = F(0x6F97AC, Obj (*)(void *))(type);                         /* il2cpp_type_get_object */
-    Obj v = F(0x50FD97C, Obj (*)(Obj, bool, void *))(tobj, true, NULL);     /* Object.FindObjectOfType(type, includeInactive) */
+    static uintptr_t h_sm; static void *k_sm;
+    Obj v = mpmenu_view_now(&h_sm, &k_sm, "Refactor.UI", "SystemMenuView", true);   /* shown or hidden (was FindObjectOfType(t, true)) */
     if (!v || !AT(v, 0x28, Obj)) { rig_log("mp: no SystemMenuView / input stream: cannot quit to title"); return -1; }
     rig_log("mp: quit to title (system menu)");
     F(VA_QUIT_TO_TITLE, void (*)(Obj, void *))(v, NULL);
