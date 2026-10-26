@@ -4,7 +4,7 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 
 ## Multiplayer (multiplayer)
 
-### Unreleased (0.1.28)
+### 0.1.28 (2026-10-26)
 
 - The game's Load list no longer shows "Foreign Expedition Hub" and "PvP Base" worlds. Versions before 0.1.26 left these
   temporary worlds in your Saves folder. They are only hidden: no file is moved or deleted.
