@@ -290,12 +290,43 @@ class Win:
                 self.write(p, json.dumps(us, indent=1))
                 print(f'winrig: edge scrolling turned off in {p}', flush=True)
 
+    def disk_care(self):
+        """owner 2026-10-26 ("yes"): lanes may DELETE old entries of the VM's C:\dsm\to_delete directly (moving them to the
+        Mac ran at ~2 MB/s and blocked releases). At most once an hour per Mac: removes entries older than one day, then
+        refuses when C: still has under 3 GB free (a full C: made Setup /S fail with rc 1 at v0.1.28).
+        WINRIG_LOW_DISK_OK=1 turns the refusal into a warning."""
+        stamp = os.path.join(os.environ.get('TMPDIR', '/tmp'), 'winrig_disk_care.stamp')
+        if self.target != 'vm' or (os.path.exists(stamp) and time.time() - os.path.getmtime(stamp) < 3600):
+            return
+        open(stamp, 'w').close()
+        ps = ("$t=(Get-Date).AddDays(-1); $n=0; "
+              "Get-ChildItem -LiteralPath '" + WORK + "\\to_delete' -Force -ErrorAction SilentlyContinue | "
+              "Where-Object { $_.LastWriteTime -lt $t } | ForEach-Object { $n++; "
+              "Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }; "
+              "'{0} {1}' -f $n, [math]::Round((Get-PSDrive C).Free/1GB,1)")
+        try:
+            r = self.a('run', exe=r'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe',
+                       args='-NoProfile -Command "' + ps + '"', wait_ms=600000, cwd=WORK, capture=True)
+            n, free = r.get('out', '').split()[-2:]
+            n, free = int(n), float(free)
+        except Exception as e:                               # never block a run on the clean-up itself
+            print(f'winrig: disk care skipped ({e})', flush=True)
+            return
+        print(f'winrig: removed {n} entries older than 1 day from {WORK}\\to_delete; C: {free} GB free', flush=True)
+        if free < 3:
+            msg = f'C: has only {free} GB free after the to_delete clean-up: free space before an install or a run'
+            if os.environ.get('WINRIG_LOW_DISK_OK') == '1':
+                print('winrig: WARNING ' + msg, flush=True)
+            else:
+                raise GameError(msg)
+
     def up(self, timeout=30):
         """hub + agent; starts the agent in the guest when none is connected"""
         hub_start()
         if hub_req({'op': 'hub_status'}).get('agents'):
             r = hub_req({'op': 'ping'})
             if r.get('ok'):
+                self.disk_care()
                 return r
         tok, host = _token(), hub_host()
         args = f'{host}:{HUB_PORT} {tok} 4 720'
@@ -316,7 +347,9 @@ class Win:
         t = time.time()
         while time.time() - t < timeout:
             if hub_req({'op': 'hub_status'}).get('agents'):
-                return self.a('ping')
+                r = self.a('ping')
+                self.disk_care()
+                return r
             time.sleep(0.2)
         raise SystemExit('the agent did not connect within %d s (guest %%TEMP%%\\winagent.log)' % timeout)
 
