@@ -24,7 +24,10 @@ AppKit key events (`mpm_key`). Fails when (the breaks this catches):
   - Escape does not close the box, or opens the game's Esc menu as well;
   - place or size are lost after the game restarts (mp_menu.json).
 Usage: HM_BUILD=<kit: dsload.dylib (dev key, silent) + mods/multiplayer> LD_ROOT=<ds_modloader checkout> python3 chat_drag_test.py
-       CD_OUT = output folder (results.json, shots, logs); CD_X = the copy's name (default CDR); CD_LOCK = a mkdir lock."""
+       CD_OUT = output folder (results.json, shots, logs); CD_X = the copy's name (default CDR); CD_LOCK = a mkdir lock;
+       CD_SIZE = the chat's kept "-" / "+" size for the run (the kit's panel_size, 0.6 .. 1.5, default 1): written into the
+       copy's ui_places.tsv before the start. The box keeps its own units; the screen limits are for the drawn box, so the
+       size and clamp checks expect the 100 % numbers / the size, and the drawn box at 80 % / 90 % of the screen."""
 import json, os, shutil, sys, threading, time, traceback
 
 LD = os.path.expanduser(os.environ.get('LD_ROOT', '~/ds_launcher'))
@@ -33,6 +36,7 @@ import hostmods_pair as HP  # noqa: E402  (copies, kits, start/stop, owner scree
 from hostmods_pair import lrig, log, check, c  # noqa: E402
 
 X = os.environ.get('CD_X', 'CDR'); HP.H = HP.G = X
+SIZE = float(os.environ.get('CD_SIZE', '1'))
 OUT = os.path.abspath(os.environ.get('CD_OUT') or os.path.join(os.path.dirname(HP.BUILD), 'chatdrag', time.strftime('%Y%m%d-%H%M%S')))
 os.makedirs(OUT, exist_ok=True)
 HP.SHOTS = OUT
@@ -181,7 +185,8 @@ def run(extra):
     r, sc = ch['rect'], (ch['rect'][2] - ch['rect'][0]) / ch['size'][0]
     cw = 1080.0 * ch['screen'][0] / ch['screen'][1]                # canvas width (the canvas is 1080 high)
     log('open box', json.dumps(info['default']), 'px per unit', round(sc, 3), 'canvas width', round(cw))
-    check('the open box starts at the default size 470 x 270', size_is(ch, W0, H0) and near([r[2] - r[0], r[3] - r[1]], [W0 * sc, H0 * sc], 2), ch['size'])
+    check(f'the open box starts at the default size 470 x 270, drawn at the kept size {SIZE:.0%}', size_is(ch, W0, H0) and near([r[2] - r[0], r[3] - r[1]], [W0 * sc, H0 * sc], 2)
+          and abs(ch.get('zoom', 1.0) - SIZE) < 0.001, (ch['size'], ch.get('zoom')))
     rows0 = len(box_rows(ch))
     HP.shot(X, 'chat_1_default.png')
 
@@ -204,11 +209,14 @@ def run(extra):
           and abs(lw - (W0 + 200 - LINE_DW) * sc) <= 2, json.dumps({'line_w': ch2.get('line_w'), 'widest_row_px': lw}))
     HP.shot(X, 'chat_2_corner.png')
 
-    # 3. bottom edge drag: +60 tall only
+    # 3. bottom edge drag: +60 tall only, at most down to the screen's bottom (4 canvas units above it; a bigger kept size
+    #    draws the box lower)
     ch3 = drag((r2[0] + r2[2]) / 2, r2[1] + 2, (r2[0] + r2[2]) / 2 + 50 * sc, r2[1] + 2 - 60 * sc)
-    r3 = ch3['rect']
-    check('bottom edge drag makes the box taller only (+60), top and width stay (no typing)', size_is(ch3, W0 + 200, H0 + 210)
-          and near([r3[0], r3[2], r3[3]], [r2[0], r2[2], r2[3]], 1.5) and reading(ch3), json.dumps({'before': r2, 'after': r3, 'size': ch3['size']}))
+    r3 = ch3['rect']; lim = 4 * ch3['screen'][1] / 1080.0
+    eh = H0 + 210 if r2[1] - 60 * sc >= lim else (r2[3] - lim) / sc
+    check('bottom edge drag makes the box taller only (+60, or down to the screen\'s bottom), top and width stay (no typing)',
+          near(ch3.get('size'), [W0 + 200, eh], 1) and near([r3[0], r3[2], r3[3]], [r2[0], r2[2], r2[3]], 1.5) and r3[1] >= lim - 1.5 and reading(ch3),
+          json.dumps({'before': r2, 'after': r3, 'size': ch3['size'], 'want_h': round(eh, 1), 'bottom_limit': round(lim, 1)}))
 
     # 4. minimum: the corner pushed far up-left -> 470 x 270
     ch4 = drag(r3[2] - 3, r3[1] + 3, r3[2] - 3 - 2000 * sc, r3[1] + 3 + 2000 * sc)
@@ -220,10 +228,11 @@ def run(extra):
     r5 = ch5['rect']
     ch6 = drag(r5[2] - 3, r5[1] + 3, r5[2] - 3 + 5000 * sc, r5[1] + 3 - 5000 * sc)
     r6, sw, sh = ch6['rect'], ch6['screen'][0], ch6['screen'][1]
-    mw = round(0.8 * cw)
-    check('never over 80 % of the screen width and 90 % of its height (972), and fully on the screen',
-          abs(ch6['size'][0] - mw) <= 1 and abs(ch6['size'][1] - 972) <= 1 and r6[0] >= 0 and r6[1] >= 0 and r6[2] <= sw and r6[3] <= sh,
-          json.dumps({'size': ch6['size'], 'max_w': mw, 'rect': r6, 'screen': [sw, sh]}))
+    z = ch6.get('zoom', 1.0); mw = max(W0, 0.8 * cw / z); mh = max(H0, 972 / z)   # the box's units at the kept size
+    check('never over 80 % of the screen width and 90 % of its height (972 at 100 %), drawn so at any size, fully on the screen',
+          abs(ch6['size'][0] - mw) <= 1 and abs(ch6['size'][1] - mh) <= 1 and abs((r6[2] - r6[0]) - 0.8 * sw) <= 2 and abs((r6[3] - r6[1]) - 0.9 * sh) <= 2
+          and r6[0] >= 0 and r6[1] >= 0 and r6[2] <= sw and r6[3] <= sh,
+          json.dumps({'size': ch6['size'], 'max': [round(mw, 1), round(mh, 1)], 'zoom': z, 'rect': r6, 'screen': [sw, sh]}))
     HP.shot(X, 'chat_3_max.png')
 
     # 6. right-click drag still moves it (anywhere on the open box); then a middle size + place for the restart
@@ -293,6 +302,9 @@ def main():
         HP.make_copy(X)
         HP.kit(X, {}, [], ['multiplayer'])
         HP.park(os.path.join(lrig.idir(X), 'mp_menu.json'))       # the chat starts at its default place and size
+        places = os.path.join(lrig.idir(X), 'data', 'Mods', 'ui_places.tsv')   # and at the asked "-" / "+" size (CD_SIZE)
+        HP.park(places); os.makedirs(os.path.dirname(places), exist_ok=True)
+        open(places, 'w').write(f'multiplayer.chat@size\t{SIZE:.1f}\t0.0\n')
         crash = os.path.join(OUT, 'crash'); os.makedirs(crash, exist_ok=True); open(os.path.join(crash, 'answer'), 'w').write('no')
         wd = lrig.ctl_env()['DSRIG_WRITE_DIRS'] + ':' + OUT          # the shots go to OUT
         run({'DSL_CRASHREP_TEST': crash, 'DSRIG_WRITE_DIRS': wd})
