@@ -51,3 +51,19 @@ makes and keeps (ActiveUIs / InactiveUIs). A hidden copy gets no real key press,
   change keeps one slot per live HUD as before, only the search order differs. Results in PLAN.md.
 - Windows: module build ok; win/inline_audit.py: the same 10 "inlined" methods as main (no hook site changed).
   Windows runtime not run (no VM in this lane).
+
+## Task 2b (lead 13:15): the lookups on the loader kit's view_find (template rule)
+- sdk/dsl_sdk.h = ds_modloader 6fc71e6 (merge 1c369a0). find_view_x and mpmenu_find_any ask dsl_view_find first when
+  the kit has view_find: active-only callers stay active-only (the kit's records also hold hidden views:
+  GameObject.activeInHierarchy check), '*' callers get a shown one first, else a hidden one. The own throttled search
+  runs only without that kit (an older loader, the rig's own dylib). The quit action's SystemMenuView lookup
+  (mp_game.c stock_quit_title) goes through mpmenu_view_now (kit NOW). rig.log says which path runs:
+  "mpmenu: view lookups: the loader kit's view_find ..." or "own search ...".
+- Not moved (no module call for them in the kit; dsl_view_assets is loader-only): the Resources.FindObjectsOfTypeAll
+  sprite scans (mpmenu assets, max 3 per scene; portraits on the Multiplayer page; ui_game sprite_get every 3 s while a
+  sprite is missing, session panels only). Test commands (ui_shot, mpm_slots, ui_texts, ui_tip view) stay direct.
+- ds_modloader scan_rate_test.py --mods default (loader 78e6a3a + this pin, own copy FMP): multiplayer 0 searches at
+  the title, the Load list and in the world (8 while loading, not judged); no SCAN-RULE multiplayer line. The run still
+  FAILS on custom-modes (about 120 searches per 30 s, TitleMenuView: lane fpsul).
+- ext/fpsmp/kit_esc_test.py <ds_launcher tree> <out>: the same driver under the loader, the Esc menu opened the game's
+  way: kit path on, Esc-menu clones added. PASS.
