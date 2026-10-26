@@ -38,6 +38,8 @@ WINE = os.path.expanduser('~/Applications/CrossOver.app/Contents/SharedSupport/C
 ROOT = r'%LOCALAPPDATA%\Dungeon Settlers Modded'
 PROF = ROOT + r'\profiles\modded'
 DATA = PROF + r'\data'
+GAME_EXES = ('dungeonsettlers.exe', 'dungeon settlers modded.exe')
+LOW = r'%USERPROFILE%\AppData\LocalLow\CanOpener\Dungeon Settlers'   # the stock game's profile
 GAME = ROOT + r'\game'
 WORK = r'C:\dsm'
 UITEST = WORK + r'\uitest'
@@ -271,10 +273,22 @@ class Win:
 
     # -- agent
     def a(self, op, **k):
+        if op == 'run' and k.get('exe', '').replace('/', '\\').rsplit('\\', 1)[-1].lower() in GAME_EXES:
+            self.edge_scroll_off()
         r = hub_req(dict(op=op, **k))
         if not r.get('ok'):
             raise GameError(f'{op}: {r.get("err")}')
         return r
+
+    def edge_scroll_off(self):
+        """owner 2026-10-26: no edge scrolling in any test game (the camera crawls while the mouse rests at the window
+        edge). Runs before every game start through a(), so scripts that write their own UserSetting.json are covered."""
+        for p in (DATA + r'\UserSetting.json', LOW + r'\UserSetting.json'):
+            us = self.json_file(p)
+            if us and us.get('GeneralSettingData', {}).get('MoveScreenByEdgeScreen') is not False:
+                us.setdefault('GeneralSettingData', {})['MoveScreenByEdgeScreen'] = False
+                self.write(p, json.dumps(us, indent=1))
+                print(f'winrig: edge scrolling turned off in {p}', flush=True)
 
     def up(self, timeout=30):
         """hub + agent; starts the agent in the guest when none is connected"""

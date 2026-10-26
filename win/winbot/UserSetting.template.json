@@ -5,7 +5,7 @@
     "AutoSaveIntervalType": 12,
     "IsCollectingInitialized": true,
     "IsToggleCollectingLog": false,
-    "MoveScreenByEdgeScreen": true,
+    "MoveScreenByEdgeScreen": false,
     "CameraMovementSpeedScale": 1.0,
     "HiddenUpdateNoticeVersion": -1,
     "IsKeyboardEnvironmentNoticeAcknowledged": true
