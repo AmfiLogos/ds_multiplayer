@@ -529,3 +529,15 @@ multiplayer tag next to the name of the save and then just put the players that 
   and UI-RULE ui-scale for it. Guard: ext/dsuxmp/bring_test.py CARD_look (game-frame pixels left of card 0 after hover /
   clicks) + UI_RULE (any UI-RULE / ESC-MISSING line while the window is open). main 7/1 (UI_RULE), branch 8/0 (en 960x540
   UI 1.4, de 1728x1000 UI 1.0), branch on the kit before bb5e8a9: CARD_look FAIL (1.0 bright, the white block).
+
+## dspanelzoom: chat "-" / "+" size (2026-10-26)
+- Owner 2026-10-25: "allow to both make the chat and the DPS check window smaller or bigger with a plus or minus". Kit
+  template dsl_panel_size (ds_modloader 0207859, kit 0.1.29) through src/mp_esc.c mpesc_size (key multiplayer.chat,
+  DSL_SIZE_OWN): "-" / "+" in the open box's title band left of its X, 10 % a click, 60 % .. 150 %, kept in the kit's
+  ui_places.tsv. The chat root sits at the chat's bottom-left corner and is drawn at the size; the box keeps its units
+  (chat_w / chat_h, drags converted; the 80 % / 90 % limits and the screen clamp are for the drawn box).
+- Round 1 found blank buttons: made while the box was closed, the kit's title-button clones lost their labels when they
+  first showed; the kit now writes them again each time they show (panelsize_test hidden case fails without it).
+- Tests: Units Laboratory dps_test 47/47 (size_checks: chat "+" 110 % / "-" 100 %, meter 110 % / 90 %), chat_pair PASS
+  (session chat on the new layout, rig dylib with no kit), chat_drag_test 25/25 at 100 %; at a kept 120 % 23/25 (its two
+  fixed unit sizes; drawn box 80 % / 90 %, clamp at the screen bottom, as meant). Windows: compiled, not run on the VM.
