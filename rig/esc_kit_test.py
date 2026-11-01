@@ -126,7 +126,7 @@ def start():
     shutil.copy2(os.path.join(r.SEED_DATA, 'Saves', SAVE + '.json'), os.path.join(I, 'data', 'Saves', SAVE + '.json'))
     mods = os.path.join(I, 'data', 'Mods'); os.makedirs(mods, exist_ok=True); aside(os.path.join(mods, 'worlds.json'))
     aside(os.path.join(mods, 'loadlist.json'))                         # the loader's Load list panel: Multiplayer worlds shown (the seed world is tagged)
-    open(os.path.join(mods, 'loadlist.json'), 'w').write('{"vanilla": true, "modded": true, "multiplayer": true, "latest_only": false, "show_tags": true}\n')
+    open(os.path.join(mods, 'loadlist.json'), 'w').write('{"filters_v": 2, "vanilla": true, "modded": true, "multiplayer": true, "latest_only": false, "show_tags": true}\n')
     # the multiplayer mod's files in the copy (rig_dir = DSRIG_DIR = I): the seed world has the Multiplayer tag, one FE result
     aside(os.path.join(I, 'mp_tags.txt')); open(os.path.join(I, 'mp_tags.txt'), 'w').write(f'{GUID}\tAlex\tSam\n')
     res = os.path.join(I, 'data', 'fe', 'results'); os.makedirs(res, exist_ok=True)
