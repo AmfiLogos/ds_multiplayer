@@ -46,3 +46,9 @@ char *mpesc_dump(void);            /* test (mpm_esc): the windows that show: nam
    holder (a child of panel), the same one on a second call; NULL = older kit or the rig's own dylib (no "-" / "+", 1). */
 void *mpesc_size(void *panel, const char *key, float x, float y);
 float mpesc_size_get(void *panel);
+/* TOP RULE (kit 0.1.30): a panel with its own right-drag code joins the kit's top-window choice. mpesc_drag_reg: register
+   `panel` (dsl_movable_own, key "multiplayer.<panel>") when *h does not hold it yet (call it each frame; cheap).
+   mpesc_drag_ok: 1 = this right press belongs to a or b (the top window under the mouse), or the kit is older. Arm a
+   right-drag only when it says 1. */
+void mpesc_drag_reg(uintptr_t *h, void *panel, const char *key);
+int mpesc_drag_ok(void *a, void *b);

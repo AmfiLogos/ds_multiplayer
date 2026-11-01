@@ -3224,7 +3224,11 @@ static void plist_mouse(void) {
     float mx = m3.x, my = m3.y;
     /* tooltips (connection bars, header): tips_frame, the game's tooltip window (lan_v9) */
     /* move the panel: RIGHT-click + drag on its header (owner, lan_v8); left click keeps its normal action */
-    if (!pl_drag_arm && !pl_in_band && F(0x51ACDD0, bool (*)(int, void *))(1, NULL) && (ui_hit(hdr, mx, my) || ui_hit(u_gc_get(h_hdrbg), mx, my))) {
+    /* TOP RULE (kit 0.1.30; owner: windows under a right-drag "all move at the same time"): the header joins the kit's choice
+       of the top window under the mouse; the drag arms only when the panel is that window */
+    static uintptr_t h_dreg[2]; mpesc_drag_reg(&h_dreg[0], hdr, "multiplayer.players"); mpesc_drag_reg(&h_dreg[1], u_gc_get(h_hdrbg), "multiplayer.players_band");
+    if (!pl_drag_arm && !pl_in_band && F(0x51ACDD0, bool (*)(int, void *))(1, NULL) && (ui_hit(hdr, mx, my) || ui_hit(u_gc_get(h_hdrbg), mx, my))
+        && mpesc_drag_ok(hdr, u_gc_get(h_hdrbg))) {
         pl_drag_arm = 1; pl_dragging = 0; pl_drag_mx = mx; pl_drag_my = my; pl_drag_L = pl_cur_L; pl_drag_Y = pl_cur_Y;
         return;
     }
