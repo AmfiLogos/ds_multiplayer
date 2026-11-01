@@ -46,6 +46,10 @@ char *mpesc_dump(void);            /* test (mpm_esc): the windows that show: nam
    holder (a child of panel), the same one on a second call; NULL = older kit or the rig's own dylib (no "-" / "+", 1). */
 void *mpesc_size(void *panel, const char *key, float x, float y);
 float mpesc_size_get(void *panel);
+/* ANCHOR (kit 0.1.30; owner 2026-11-01: "the - + should stay in the same place so i can click multiple time"): after a
+   "-" / "+" click, the screen pixels (y up) to add to the panel's own place so the clicked button stays under the mouse;
+   1 = there is one (handed once), 0 = none / older kit. Call it each frame for a panel that places itself. */
+int mpesc_size_shift(void *panel, float *dx, float *dy);
 /* TOP RULE (kit 0.1.30): a panel with its own right-drag code joins the kit's top-window choice. mpesc_drag_reg: register
    `panel` (dsl_movable_own, key "multiplayer.<panel>") when *h does not hold it yet (call it each frame; cheap).
    mpesc_drag_ok: 1 = this right press belongs to a or b (the top window under the mouse), or the kit is older. Arm a

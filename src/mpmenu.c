@@ -4462,6 +4462,13 @@ static void chat_frame(const mpm_obs *o) {
     /* inside the screen (a place dragged on a wider window, or off the edge): ch_geo. The root sits at the chat's
        bottom-left corner, drawn ch_z times: every part below is placed from that corner in the chat's own units.
        bx / by = the box's centre */
+    /* ANCHOR (owner 2026-11-01: "the - + should stay in the same place so i can click multiple time"): the kit hands the
+       move that keeps the clicked "-" / "+" under the mouse (screen px); the box moves by it, stays on the screen, is kept */
+    { Obj b0 = u_gc_get(h_ch_box); float sx = 0, sy = 0;
+      if (b0 && shh > 0 && mpesc_size_shift(b0, &sx, &sy)) {
+          ch_rect n = ch_geo(hw); n.l += sx * 1080.0f / shh; n.b += sy * 1080.0f / shh; n = ch_clamp(n, hw);
+          chat_x = n.l - (-hw + 130); chat_y = n.b - (-540 + 130); prefs_save();
+          rig_log("mpmenu: chat: \"-\" / \"+\" kept under the mouse: moved %.1f, %.1f px, place %.0f,%.0f", sx, sy, chat_x, chat_y); } }
     ch_rect g = ch_geo(hw);
     place(root, g.l, g.b, 10, 10);
     { V3 ls = tr_lscale(u_tr(root)); if (ls.x != ch_z || ls.y != ch_z) F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(root), (V3){ ch_z, ch_z, 1 }, NULL); }   /* localScale, when it differs */
