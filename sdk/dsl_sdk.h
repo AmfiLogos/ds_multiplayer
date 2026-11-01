@@ -1,4 +1,4 @@
-// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_modloader a739871: red X, UI Scale, move, window templates, card_toggle, rules_own, panel_size, view_find, movable_own, drag_owner, section; 2026-11-01) for builds without the loader tree:
+// Copy of ~/ds_launcher/loader/sdk/dsl_sdk.h (ds_modloader nvanchor: red X, UI Scale, move, window templates, card_toggle, rules_own, panel_size, view_find, movable_own, drag_owner, section, panel_size_shift; 2026-11-01) for builds without the loader tree:
 // the rig host of Units Laboratory (src/rig_main.c) and the Bring Units card window (src/mu_*.c). The loader build passes its own SDK=<loader>/sdk.
 // dsl_sdk.h - module SDK for the Dungeon Settlers mod loader (dsload.dylib), API version 6.
 // API 6 = API 5 + mod_data_dir (appended to DSLHost): <game data>/ModData/<mod id>/, a folder of this mod that a mod
@@ -263,6 +263,13 @@ typedef struct DSLUi {
        opens it the first time. NULL = not built (an older kit: draw your own title, body always open). */
     DSLObj (*section)(DSLObj parent, float x, float y, float w, const char *title, const char *key, int flags, dsl_section_cb cb, void *ud);
     int (*section_open)(const char *key, int dflt);   /* 1 open, 0 folded; dflt when never toggled */
+    /* appended (kit 0.1.30): ANCHOR of the SIZE RULE (owner 2026-11-01: "the - + should stay in the same place so i can
+       click multiple time"). After a "-" / "+" click the kit moves the panel so the clicked button's centre stays on the
+       same screen point (then keeps it on the screen and keeps the new place). A panel that places ITSELF (registered with
+       movable_own, e.g. the multiplayer chat) is never moved by the kit: call panel_size_shift(panel, &dx, &dy) each frame;
+       1 = add dx, dy SCREEN pixels (y up, as Input.mousePosition) to your place, keep it on the screen and save it. Each
+       move is handed once. 0 = nothing to do (also on an older kit: wrapper dsl_panel_size_shift). */
+    int (*panel_size_shift)(DSLObj panel, float *dx, float *dy);
 } DSLUi;
 enum { DSL_SECTION_H = 32, DSL_SEC_FOLDED = 1 };             /* section: header height; flags */
 enum { DSL_SIZE_OWN = 1 };                                    /* panel_size flags: the panel applies the size itself */
@@ -478,6 +485,8 @@ static inline DSLObj dsl_panel_size(const DSLUi *ui, DSLObj panel, const char *k
 /* game-view lookups (view_find above); NULL on an older kit: the module's own fallback must then not poll either */
 static inline void *dsl_view_find(const DSLUi *ui, void *klass, int flags) { return DSL_UI_HAS(ui, view_find) ? ui->view_find(klass, flags) : NULL; }
 static inline float dsl_panel_size_get(const DSLUi *ui, DSLObj panel) { return DSL_UI_HAS(ui, panel_size_get) ? ui->panel_size_get(panel) : 1.0f; }
+static inline int dsl_panel_size_shift(const DSLUi *ui, DSLObj panel, float *dx, float *dy) {
+    return DSL_UI_HAS(ui, panel_size_shift) ? ui->panel_size_shift(panel, dx, dy) : 0; }
 /* the top rule + the section template (kit 0.1.30): -1 / NULL / dflt with an older kit */
 static inline int dsl_movable_own(const DSLUi *ui, DSLObj panel, const char *key) { return DSL_UI_HAS(ui, movable_own) ? ui->movable_own(panel, key) : -1; }
 static inline DSLObj dsl_drag_owner(const DSLUi *ui) { return DSL_UI_HAS(ui, drag_owner) ? ui->drag_owner() : NULL; }

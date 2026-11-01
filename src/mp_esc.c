@@ -86,6 +86,7 @@ void *mpesc_close_x(mpesc_win *w, void *parent, float x, float y, float size, vo
 }
 void *mpesc_size(void *panel, const char *key, float x, float y) { return panel ? dsl_panel_size(mu_kit(), panel, key, x, y, DSL_SIZE_OWN) : NULL; }
 float mpesc_size_get(void *panel) { return panel ? dsl_panel_size_get(mu_kit(), panel) : 1.0f; }
+int mpesc_size_shift(void *panel, float *dx, float *dy) { return panel ? dsl_panel_size_shift(mu_kit(), panel, dx, dy) : 0; }
 /* TOP RULE (kit 0.1.30, owner: "all of the windows that are under the right click irrespective of whether it's on top or
    below they all move at the same time"): our own right-drags (chat, Players panel) join the kit's top-window choice */
 void mpesc_drag_reg(uintptr_t *h, void *panel, const char *key) {
