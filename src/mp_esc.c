@@ -86,6 +86,19 @@ void *mpesc_close_x(mpesc_win *w, void *parent, float x, float y, float size, vo
 }
 void *mpesc_size(void *panel, const char *key, float x, float y) { return panel ? dsl_panel_size(mu_kit(), panel, key, x, y, DSL_SIZE_OWN) : NULL; }
 float mpesc_size_get(void *panel) { return panel ? dsl_panel_size_get(mu_kit(), panel) : 1.0f; }
+/* TOP RULE (kit 0.1.30, owner: "all of the windows that are under the right click irrespective of whether it's on top or
+   below they all move at the same time"): our own right-drags (chat, Players panel) join the kit's top-window choice */
+void mpesc_drag_reg(uintptr_t *h, void *panel, const char *key) {
+    if (!panel) return;
+    Obj o = u_gc_get(*h); if (o == panel && u_alive(o)) return;    /* registered already */
+    u_gc_free(*h); *h = 0;
+    if (dsl_movable_own(mu_kit(), panel, key) == 0) *h = u_gc_new(panel);
+}
+int mpesc_drag_ok(void *a, void *b) {
+    if (!DSL_UI_HAS(mu_kit(), drag_owner)) return 1;               /* older kit: as before */
+    void *o = dsl_drag_owner(mu_kit());
+    return o && (o == a || o == b);
+}
 char *mpesc_dump(void) {
     size_t cap = 4096, n = 0; char *b = malloc(cap); if (!b) return NULL;
     n += (size_t)snprintf(b + n, cap - n, "{\"ok\":true,\"kit\":%d,\"windows\":[", DSL_UI_HAS(mu_kit(), close_x) ? 1 : 0);

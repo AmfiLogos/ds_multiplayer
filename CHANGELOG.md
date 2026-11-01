@@ -4,6 +4,11 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 
 ## Multiplayer (multiplayer)
 
+### Unreleased (0.1.29)
+
+- When the chat or the Players panel overlaps another mod window, a right-click drag now moves only the window on top.
+  Before, both moved at the same time. <!-- roadmap: right-drag-top-window -->
+
 ### 0.1.28 (2026-10-26)
 
 - The game's Load list no longer shows "Foreign Expedition Hub" and "PvP Base" worlds. Versions before 0.1.26 left these
