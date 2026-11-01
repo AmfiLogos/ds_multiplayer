@@ -4012,6 +4012,7 @@ static int ch_drag, ch_drag_btn, ch_held[2]; static V3 ch_d0; static float ch_ds
    box keeps its own size (chat_w x chat_h) in its units, so its layout and the resize drags stay as they were. */
 static float ch_z = 1; static uintptr_t h_ch_size; static int64_t ch_size_try = -1000;
 static unsigned ch_drags[5];                                                  /* test read-back: drags ended, per kind */
+static uintptr_t h_ch_dreg[2]; static unsigned ch_drag_yield;               /* TOP RULE: registered with the kit; right presses left to a window above */
 /* test only: a scripted pointer for the drag code above (set by the rig control channel's mpm_chat {drag}, which opens only in
    DSRIG_CTL=1 test copies; a player's game never sets it): 2 frames resting at (x0, y0), the press, n frames moving to (x1, y1),
    the release; screen pixels, y up, as Input.mousePosition. button -1: no press (a hover / the wheel only); roll: the wheel's
@@ -4578,10 +4579,14 @@ static void chat_frame(const mpm_obs *o) {
         if (ch_fk.button >= 0) held[ch_fk.button] = i >= 2 && i < 3 + n;
         if (i >= 3 && i < 3 + n) wy = ch_fk.wheel;
         if (i >= 3 + n) ch_fk.on = 0;
-    } else if (have_ptr) { mpos(&mp); held[0] = mb(0); held[1] = mb(1); wy = ch_wheel_y(wheel); }
+    } else if (have_ptr) {   /* Input.mousePosition / GetMouseButton: the same methods the kit and the Players panel read (TOP RULE) */
+        mp = F(0x51AD4DC, V3 (*)(void *))(NULL); held[0] = F(0x51ACD80, bool (*)(int, void *))(0, NULL); held[1] = F(0x51ACD80, bool (*)(int, void *))(1, NULL);
+        wy = ch_wheel_y(wheel); }
     int down0 = held[0] && !ch_held[0], down1 = held[1] && !ch_held[1], consumed = 0;
     ch_held[0] = held[0]; ch_held[1] = held[1];
     if (box) rect_of(box, br);                                              /* placed every frame, shown or not */
+    if (box) mpesc_drag_reg(&h_ch_dreg[0], box, "multiplayer.chat");       /* TOP RULE: the open box and the newest idle line */
+    { Obj t0 = u_gc_get(h_ch_idlebg[CH_IDLE - 1]); if (t0) mpesc_drag_reg(&h_ch_dreg[1], t0, "multiplayer.chat_line"); }
     float sc = br[2] > br[0] ? (br[2] - br[0]) / g.w : 0;                   /* screen px per canvas unit */
     int over_box = box_open && u_on(box) && mp.x >= br[0] && mp.x <= br[2] && mp.y >= br[1] && mp.y <= br[3], over_idle = 0;
     if (!box_open) for (int i = 0; i < CH_IDLE; i++) over_idle |= pt_in(u_gc_get(h_ch_idlebg[i]), mp);
@@ -4654,9 +4659,11 @@ static void chat_frame(const mpm_obs *o) {
                     }
                 }
             } else if (down1) {
-                float q[4] = { 0 }; int ok = 0;
-                if (box_open) ok = u_on(box) && rect_of(box, q); else { Obj t0 = u_gc_get(h_ch_idlebg[CH_IDLE - 1]); ok = u_on(t0) && rect_of(t0, q); }
-                if (ok && mp.x >= q[0] && mp.x <= q[2] && mp.y >= q[1] && mp.y <= q[3]) { kind = CHD_MOVE; btn = 1; }
+                float q[4] = { 0 }; int ok = 0; Obj t0 = u_gc_get(h_ch_idlebg[CH_IDLE - 1]);
+                if (box_open) ok = u_on(box) && rect_of(box, q); else ok = u_on(t0) && rect_of(t0, q);
+                /* TOP RULE (kit 0.1.30): only when the chat is the top window under the mouse (a scripted test pointer: as before) */
+                if (ok && mp.x >= q[0] && mp.x <= q[2] && mp.y >= q[1] && mp.y <= q[3] && (scripted || mpesc_drag_ok(box, t0))) { kind = CHD_MOVE; btn = 1; }
+                else if (ok && mp.x >= q[0] && mp.x <= q[2] && mp.y >= q[1] && mp.y <= q[3]) { ch_drag_yield++; rig_log("mpmenu: chat: right press: a window above the chat takes it"); }
             } else if (down0 && !box_open) {                                /* a left click on a chat line (not a local one: those let clicks through) */
                 for (int i = 0; i < CH_IDLE; i++) { int k = nch - CH_IDLE + i;
                     if (k >= 0 && k < nch && !chist[k].local && !chist[k].link && pt_in(u_gc_get(h_ch_idlebg[i]), mp)) {
@@ -6439,7 +6446,8 @@ char *mpmenu_exec(const char *cmd, const char *line) {
           bput(&b, ",\"size\":[%.0f,%.0f],\"drag\":%d,\"fake\":%d,\"drags\":[%u,%u,%u],\"line_w\":[%.0f,%.0f]", chat_w, chat_h, ch_drag, ch_fk.on,
                ch_drags[CHD_MOVE], ch_drags[CHD_SIZE], ch_drags[CHD_HEIGHT], ch_line_w[0], ch_line_w[1]);
           { Obj zb = u_gc_get(h_ch_size); float q[4] = { 0 }; int on = u_alive(zb) && u_on(zb) && rect_of(zb, q);   /* "-" / "+" (SIZE RULE): px, y up */
-            bput(&b, ",\"zoom\":%.3f,\"zoom_btns\":", ch_z); if (on) bput(&b, "[%.1f,%.1f,%.1f,%.1f]", q[0], q[1], q[2], q[3]); else bput(&b, "null"); }
+            { Obj bx = u_gc_get(h_ch_box); float bq[4] = { 0 }; int bon = u_alive(bx) && u_on(bx) && rect_of(bx, bq);   /* TOP RULE test: the open box, px, y up */
+              bput(&b, ",\"drag_yield\":%u,\"chat_xy\":[%.0f,%.0f],\"box_rect\":[%d,%.0f,%.0f,%.0f,%.0f]", ch_drag_yield, chat_x, chat_y, bon, bq[0], bq[1], bq[2], bq[3]); } bput(&b, ",\"zoom\":%.3f,\"zoom_btns\":", ch_z); if (on) bput(&b, "[%.1f,%.1f,%.1f,%.1f]", q[0], q[1], q[2], q[3]); else bput(&b, "null"); }
           { mp_session *rs = mp_game_session();                             /* read state (owner 2026-10-25): screen rects of its parts, px, y up */
             bput(&b, ",\"read\":%d,\"ro\":%d,\"clears\":%u,\"thumb_drags\":%u,\"esc_reg\":%d,\"sb\":{\"S\":%d,\"vis\":%d", chat_read, rs ? 0 : 1, ch_clears,
                  ch_drags[CHD_THUMB], esc_chat.id != NULL, ch_sb.S, ch_sb.vis);
