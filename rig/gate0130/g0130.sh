@@ -407,4 +407,6 @@ chk g030_setup_hover 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env TS_OUT=$OUT/g
 chk g030_dps_solo 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_solo python3 fights/test/dps_test.py --solo   # 1 unit: meter + 1 row, empty-list status centred
 chk g030_dps_world 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_world DPS_PATH=world python3 fights/test/dps_test.py   # world unit DPS Check path: meter + row, refold, Restart Test Floor
 chk g030_dps_custom 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_custom DPS_PATH=custom python3 fights/test/dps_test.py   # Custom fight path
+chk g030_dps_hold 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_hold DPS_HOLD=1 python3 fights/test/dps_test.py   # 60 s hold: fixture units keep hitting (repeat order, ds_custommodes b0410f0)
+chk g030_dps_hold_world 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_hold_world DPS_PATH=world DPS_HOLD_WORLD=1 python3 fights/test/dps_test.py   # world unit w0 (Mariela, staff, no torch) keeps hitting (before b0410f0: 1 hit then 0)
 chk g030_export 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env WT_OUT=$OUT/g030_export python3 units/test/export_test.py   # Open in Wiki Builder: the wiki builder reads exactly the ticked units; stale wiki data re-mapped; new format refused
