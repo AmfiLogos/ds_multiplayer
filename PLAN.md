@@ -574,3 +574,8 @@ multiplayer tag next to the name of the save and then just put the players that 
   custom-modes only: lane fpsul). kit_esc_test PASS (kit path, Esc clones). Rig dylib: sp_scan_test 9/0, smoke 3/3,
   mp2 19/0, left_prompt 16/0, autorejoin PASS, prefs identical. Sprite scans (FindObjectsOfTypeAll) not moved: the kit
   has no module call for assets. Windows compiled, not run.
+
+## mpapidoc: C# System.Random is not re-seeded (2026-11-02)
+- Doc only (src/MP_API.md section 1). The old text said a mod's `new System.Random()` goes through our hooks. True for
+  a C module (the game's constructor in GameAssembly, rig_det.c); false for a BepInEx plugin, whose `System.Random` is
+  the .NET runtime's class. Found while reading a third-party mod. No code change, no build.
