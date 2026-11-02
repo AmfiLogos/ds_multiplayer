@@ -75,7 +75,12 @@ A run of 6000 ticks takes about 5 minutes wall time on a quiet machine (copies r
    process. Two equidistant enemies were picked in a different order on A and B (about half of the runs
    diverged at tick +593). Fix: `GenerateGlobalSeed` (0x425B62C) hooked to a constant, and the static
    `s_seed` (TypeInfo 0x664E378, static+0x0) forced to 0x9E3779B9 every frame in det mode (the cctor
-   inlines the generator, so the hook alone is not enough).
+   inlines the generator, so the hook alone is not enough). Windows (PLAN_v013 item 23, 2026-11-02): the hook is NOT
+   installed (rig_main_win.c WIN_SKIP_SHARED): there the body is folded with System.Random.GenerateGlobalSeed, so the
+   constant was also System.Random's global seed, the root of every unseeded `new System.Random()` (single player
+   too; at the title the draws still differed per launch, as the draw count varies). hashcode_seed_fix
+   runs HashCode's cctor (il2cpp_runtime_class_init) before its first pin, so the cctor never runs later inside a
+   step; then it pins s_seed as on the Mac. Test: ext/nvchat2/win_sysrand.py (probe: 2 launches differ; pair: 0 desyncs).
 7. **Exception guard**: if a cycle does not return (managed exception), the next frame restores the view
    stream and counts `exc_recovered` (0 in all runs).
 

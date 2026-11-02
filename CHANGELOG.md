@@ -9,6 +9,9 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 - The chat's newest line now stays at the same height when you press Enter to open the chat and when you close it, and
   the text keeps the same size in both. The closed chat lines now sit a little higher, where the open chat shows them,
   and "... is typing" shows under them, so the lines no longer move.
+- Windows: the game's random rolls that do not use a world's seed (for example the weather and some item drops) start
+  from a random seed again, as on the Mac. On Windows only, a fixed seed that the mod sets for multiplayer was also
+  their starting point, in single player too. Multiplayer games stay in sync as before.
 
 ### 0.1.29 (2026-11-02)
 

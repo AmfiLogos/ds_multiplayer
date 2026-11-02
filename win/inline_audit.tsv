@@ -161,7 +161,7 @@ Edgar.GraphBasedGenerator.Grid2D.GraphBasedGeneratorGrid2D<object>$$.ctor	0x15b5
 Refactor.UI.ViewObjectLoader<Int32Enum>$$EnqueueActivatePool	0x21e5880	0x355e84c	mac_callers=0	win_callers=0
 System.Numerics.Hashing.HashHelpers$$.cctor	0x29fb000	0x4187188	mac_callers=0	win_callers=0
 System.Guid$$NewGuid	0x2ad1340	0x425803c	mac_callers=115	win_callers=110
-System.HashCode$$GenerateGlobalSeed	0x2ad43a0	0x425b62c	mac_callers=0	win_callers=0
+System.Random$$GenerateGlobalSeed	0x2ad43a0	0x42767a0	mac_callers=0	win_callers=0
 System.Random$$Next	0x2af4a00	0x427696c	mac_callers=0	win_callers=0
 System.Random$$Next	0x2af4b40	0x4276aa0	mac_callers=0	win_callers=0
 System.Random$$Next	0x2af4c00	0x42767d0	mac_callers=0	win_callers=0

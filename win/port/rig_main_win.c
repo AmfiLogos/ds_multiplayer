@@ -133,6 +133,15 @@ int rig_hook(uintptr_t rva, void *repl, void **orig, const char *who) {
         rig_log("hook %s: not installed on Windows (arm64-only argument layout, trace only)", who);
         return 0;
     }
+    /* shared code (PLAN_v013 item 23, ext/sharedaudit/REPORT.md row 9): MSVC folded HashCode.GenerateGlobalSeed with
+       System.Random.GenerateGlobalSeed; its constant seeded the root of every unseeded new System.Random().
+       Not installed: rig_det.c hashcode_seed_fix runs HashCode's cctor, then pins its seed (det on, the lock, each frame). */
+    static const char *const WIN_SKIP_SHARED[] = { "System.HashCode.GenerateGlobalSeed", NULL };
+    for (int i = 0; WIN_SKIP_SHARED[i]; i++) if (!strcmp(who, WIN_SKIP_SHARED[i])) {
+        *orig = (void *)(ds_base + rva);
+        rig_log("hook %s: not installed on Windows (code shared with System.Random.GenerateGlobalSeed; seed pinned by hashcode_seed_fix)", who);
+        return 0;
+    }
     /* MSVC folded these bodies with other methods (QuitToTitleSceneRequested..ctor shares its code with
        TickRequested..ctor and 16 others). The detour only runs when `this` is of the expected class; every
        other caller goes straight to the original. All three take only integer/pointer arguments. */

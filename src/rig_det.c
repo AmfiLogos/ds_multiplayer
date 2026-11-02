@@ -418,10 +418,16 @@ static int hashhelpers_pin(void) {                    /* returns how many were c
 #define HH_CCTOR(N) static void (*o_hh_cctor##N)(void *); \
     static void h_hh_cctor##N(void *mi) { o_hh_cctor##N(mi); hashhelpers_pin(); }
 HH_CCTOR(0) HH_CCTOR(1) HH_CCTOR(2)
+/* Not installed on Windows (PLAN_v013 item 23, ext/sharedaudit/REPORT.md row 9; win/port/rig_main_win.c WIN_SKIP_SHARED):
+   there MSVC folded this body with System.Random.GenerateGlobalSeed, so the constant also seeded System.Random's global
+   instance, the root of every unseeded new System.Random() (single player too; VM probe 2026-11-02). On Windows
+   hashcode_seed_fix alone keeps HashCode's seed: it runs the cctor first, then pins s_seed (det on, the lock, each frame). */
 static uint32_t (*o_hc_seed)(void *);
 static uint32_t h_hc_seed(void *mi) { (void)mi; (void)o_hc_seed; return 0x9E3779B9u; }
 static uint32_t hashcode_seed_fix(void) {        /* also force the static itself (the cctor may have run already) */
     Obj k = md(0x664E378);                       /* System.HashCode TypeInfo; static s_seed @ static+0x0 */
+    static int cctor_done;                       /* the cctor (s_seed = GenerateGlobalSeed()) runs NOW, never later inside a step */
+    if (k && !cctor_done) { cctor_done = 1; F(0x6F9720, void (*)(void *))(k); }   /* il2cpp_runtime_class_init */
     Obj sf = k ? AT(k, 0xB8, Obj) : NULL;
     if (!sf) return 0;
     uint32_t old = AT(sf, 0x0, uint32_t);
@@ -1234,8 +1240,37 @@ uint64_t rig_deep_hash(void) {
     return h;
 }
 
+void *ord_debug_class(const char *ns, const char *name);   /* ord_game.c */
 char *rig_det_exec(const char *cmd, const char *line) {
     double v;
+    if (!strcmp(cmd, "sysrand_probe")) {                  /* test (item 23), det off. gseed: System.Random.GenerateGlobalSeed twice
+                                                             (seeds s_globalRandom, which seeds each thread's Random; the bug: a
+                                                             constant 9e3779b9 on Windows); g_state: s_globalRandom's state now
+                                                             (fnv of _inext, _inextp, _seedArray); v: 3 x new Random().Next();
+                                                             hc_seed: HashCode.s_seed (det on: always 9e3779b9) */
+        void *k = ord_debug_class("System", "Random"); int r[3] = { 0 }, n = 0; uint32_t gs[2] = { 0 }, gst = 0;
+        for (; n < 3 && k && !det_on; n++) {
+            Obj o = F(0x6F96CC, Obj (*)(void *))(k);    /* il2cpp_object_new */
+            if (!o) break;
+            F(VA_SRAND_CTOR, void (*)(Obj, void *))(o, NULL);
+            r[n] = F(0x42767D0, int (*)(Obj, void *))(o, NULL);   /* System.Random.Next() */
+        }
+        if (k && !det_on) {
+            for (int i = 0; i < 2; i++) gs[i] = (uint32_t)F(0x42767A0, int (*)(void *))(NULL);   /* System.Random.GenerateGlobalSeed */
+            Obj sf = AT(k, 0xB8, Obj), g = sf ? AT(sf, 0x0, Obj) : NULL;   /* static s_globalRandom @ static+0x0 */
+            Obj a = g ? AT(g, 0x18, Obj) : NULL;                            /* _seedArray (int[56]) */
+            if (g && a) {
+                gst = 2166136261u;
+                int32_t hd[2] = { AT(g, 0x10, int32_t), AT(g, 0x14, int32_t) };   /* _inext, _inextp */
+                for (int i = 0; i < 2; i++) { gst ^= (uint32_t)hd[i]; gst *= 16777619u; }
+                for (uint64_t i = 0; i < AT(a, 0x18, uint64_t) && i < 64; i++) { gst ^= ((uint32_t *)((char *)a + 0x20))[i]; gst *= 16777619u; }
+            }
+        }
+        Obj hk = md(0x664E378), hsf = hk ? AT(hk, 0xB8, Obj) : NULL;
+        Buf b = {0}; bput(&b, "{\"ok\":%s,\"det_on\":%d,\"n\":%d,\"v\":[%d,%d,%d],\"gseed\":[\"%08x\",\"%08x\"],\"g_state\":\"%08x\",\"hc_seed\":\"%08x\"",
+                          n == 3 ? "true" : "false", det_on, n, r[0], r[1], r[2], gs[0], gs[1], gst, hsf ? AT(hsf, 0x0, uint32_t) : 0u);
+        return ok_json(&b);
+    }
     if (!strcmp(cmd, "det_seed")) {                       /* before load_save: session seed */
         if (!jnum(line, "seed", &v)) return derr("need seed");
         seed = (uint32_t)v; Buf b = {0}; bput(&b, "{\"ok\":true,\"seed\":%u", seed); return ok_json(&b);
