@@ -379,6 +379,40 @@ def _fail_on_extra():
         os._exit(1)
 
 
+# ---- Window guard (not about ports: this file is the one start helper that rig.py, lrig.py and the tests with their own
+# start all import). 2026-11-02 18:48: a test copied DSRIG_LIVE=1 from a -batchmode test into a window run; the copy's
+# 480x298 window showed on the owner's screen, twice. DSRIG_LIVE turns OFF the rule that hides a test copy's window
+# (ds_modloader loader/start/mac/dsl_start_mac.c tests only that it is SET, so DSRIG_LIVE='' counts too), and a game
+# start without -batchmode makes a window. Both together are refused: rig.start / lrig.start call check_live_window
+# before anything starts, and every subprocess.Popen of the game binary in a process that imported this file runs the
+# same check (the guard process, esc_test.py-style starts). A -batchmode run keeps DSRIG_LIVE (events_test.py,
+# scan_rate_test.py). Test: live_window_guard_test.py [rig.py | lrig.py].
+GAME_BIN = 'Dungeon Settlers'                      # basename of EXE_REL in rig.py / lrig.py
+
+
+def check_live_window(args, env, who):
+    if 'DSRIG_LIVE' in env and '-batchmode' not in [str(a).lower() for a in args]:
+        raise SystemExit(f'refused: {who}: DSRIG_LIVE={env["DSRIG_LIVE"]!r} in a run that shows a window (no -batchmode). '
+                         "DSRIG_LIVE turns off the rule that hides a test copy's window, so this copy would show on the "
+                         "owner's screen. Remove DSRIG_LIVE from this run (start window tests like esc_test.py), or run it "
+                         'without a window (-batchmode keeps DSRIG_LIVE).')
+
+
+class _WindowGuardPopen(subprocess.Popen):
+    """subprocess.Popen + check_live_window for the game binary; any other command is not looked at"""
+    def __init__(self, args, *a, **kw):
+        exe = args[0] if isinstance(args, (list, tuple)) and args else None
+        if isinstance(exe, (str, bytes, os.PathLike)) and os.path.basename(os.fsdecode(exe)) == GAME_BIN:
+            env = kw.get('env')
+            check_live_window(args, os.environ if env is None else env, f'game start {os.fsdecode(exe)}')
+        super().__init__(args, *a, **kw)
+
+
+if not getattr(subprocess.Popen, 'dsrig_window_guard', False):   # once per process (lrig + rig share this module)
+    _WindowGuardPopen.dsrig_window_guard = True
+    subprocess.Popen = _WindowGuardPopen
+
+
 def main():
     a = sys.argv[1:]
     if a[:1] == ['leases']:
