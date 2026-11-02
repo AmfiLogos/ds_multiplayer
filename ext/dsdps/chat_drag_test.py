@@ -41,7 +41,7 @@ OUT = os.path.abspath(os.environ.get('CD_OUT') or os.path.join(os.path.dirname(H
 os.makedirs(OUT, exist_ok=True)
 HP.SHOTS = OUT
 W0, H0 = 470, 270
-LINE_DW = 36                                                    # box lines: box width - 36 (12 left, the scrollbar column right)
+LINE_DW = 36                                                    # every chat line, idle and box (one style, item 31): box width - 36 (12 left, the scrollbar column right)
 
 
 def mstatus():
@@ -205,7 +205,7 @@ def run(extra):
     rows2 = box_rows(ch2)
     check('the taller box shows more history lines', len(rows2) > rows0 + 4, (rows0, len(rows2)))
     lw = max((rw['rect'][2] - rw['rect'][0] for rw in rows2), default=0)
-    check(f'its lines follow the width (box width - {LINE_DW} = {W0 + 200 - LINE_DW} units)', near(ch2.get('line_w'), [W0 + 200 - 60, W0 + 200 - LINE_DW], 1)
+    check(f'its lines follow the width (box width - {LINE_DW} = {W0 + 200 - LINE_DW} units)', near(ch2.get('line_w'), [W0 + 200 - LINE_DW, W0 + 200 - LINE_DW], 1)   # one line style (item 31): idle = box width
           and abs(lw - (W0 + 200 - LINE_DW) * sc) <= 2, json.dumps({'line_w': ch2.get('line_w'), 'widest_row_px': lw}))
     HP.shot(X, 'chat_2_corner.png')
 

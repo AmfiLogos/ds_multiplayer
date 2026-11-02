@@ -4,6 +4,12 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 
 ## Multiplayer (multiplayer)
 
+### Unreleased (0.1.30)
+
+- The chat's newest line now stays at the same height when you press Enter to open the chat and when you close it, and
+  the text keeps the same size in both. The closed chat lines now sit a little higher, where the open chat shows them,
+  and "... is typing" shows under them, so the lines no longer move.
+
 ### 0.1.29 (2026-11-02)
 
 - The chat's "-" and "+" size buttons now stay under your mouse when you click them, so you can click again and again. The chat grows or shrinks around the button and keeps its new place. Needs the mod loader kit 0.1.30 or newer.

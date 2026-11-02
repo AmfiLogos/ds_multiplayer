@@ -153,6 +153,14 @@ Not done here: the magnifier icon on the cloned fields (review #16 extra), bold 
   Submit); clicks are read by chat_frame from the same pointer as the drags. Test hooks: mpm_chat {drag ... button -1,
   roll} (wheel / hover), {clears} (chat_clears through the API table), mpm_key {key: space}. Tests:
   ext/dsdps/chat_drag_test.py (one copy, single player, 25 checks) and ext/dsdps/chat_read_pair.py (a session, 16).
+- RULE: one chat-line style, one bottom anchor (owner 2026-11-02, PLAN_v013 item 31: "the first line of the chat should be
+  at the exact same height as ... when we don't press enter and also the size of the font change which it shouldn't between
+  both modes"). Template: mpmenu.c CH_FS block. Every chat line, closed (fading) or in the open box, is CH_FS (16) and
+  box width - CH_LINE_DW wide from 12 in; the bottom-most shown line's text bottom sits ch_anchor(ro) over the chat's
+  bottom-left corner in both views (49 in a session = over the input line, 27 read only). The open box fills from that
+  anchor up; the closed "is typing" line sits under the lines where the box has its field. Never place or size a chat line
+  outside this block. Guard: ext/nvchat2/chat_line_test.py (gate check chat_line: the newest line's screen rect and font
+  size, closed vs open, single player and a session; > 1 px or another point size = FAIL; fails on 0.1.29).
 
 ## lan_v10 menu + teams lane (2026-10-14; research/ux_flow_v10.md)
 Proof: `src/ui_test/teams_v10_pair.py` (pair, mouse build) and `build_ux/v10_menu.py` (menu); build `build_ux/build_v10.sh`

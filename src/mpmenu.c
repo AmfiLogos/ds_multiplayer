@@ -3631,8 +3631,21 @@ static void hist_del(int k) {
 static struct { char text[CH_TEXT]; double t; int link, id, font, missing, local; unsigned gen; float hi, hb; } chist[CH_HIST]; static int nch, ch_serial;
 /* link: ui_game's id (pings), 0 = plain. id: serial (slots keep what they show). font: index in the chat fonts (-1 not
    chosen yet, gen = the fonts' generation); missing: characters no game font has, shown as '?'. hi / hb: measured text
-   height in the idle lines (box width - 60: 410) / the open box (box width - 24: 446), 0 = not measured (ch_hi_w / ch_hb_w). local: 1 = a mp_api v3 chat_local line
+   height in the idle lines / the open box (both at the box's line width since 2026-11-02, CH_LINE_DW), 0 = not measured (ch_hi_w / ch_hb_w). local: 1 = a mp_api v3 chat_local line
    (never sent; MP_CHATL_CLEAR removes it; in single player the chat shows while one is in the history) */
+/* ONE chat-line style for the closed (idle) lines and the open box (owner 2026-11-02, PLAN_v013 item 31: "the first line
+   of the chat should be at the exact same height as ... when we don't press enter and also the size of the font change
+   which it shouldn't between both modes"). Every chat line, idle or in the box, is drawn at CH_FS, wrapped at the box's
+   line width (box width - CH_LINE_DW) from 12 in (CH_LINE_X from the box's centre), and the bottom-most shown line's text
+   bottom sits ch_anchor(ro) above the chat's bottom-left corner in BOTH modes: the closed lines sit where the open box shows
+   them (over its input line), so Enter only adds the frame and the field around them. Guard: ext/nvchat2/chat_line_test.py
+   (the newest line's screen rect and font size, closed vs open, session and read only: > 1 px apart = FAIL). */
+#define CH_FS 16
+#define CH_HIST_TOP(hh)     ((hh) - 31)                                         /* the history band: under the title line */
+#define CH_HIST_BOT(hh, ro) ((ro) ? -(hh) + 24 : -(hh) + 46)                    /* over the input line / over the bin and grip */
+#define CH_LINE_X  (-6.0f)                                                     /* lines: 12 in from the left, 24 from the right (the box's scrollbar column) */
+#define CH_LINE_DW 36.0f
+static float ch_anchor(int ro) { return CH_HIST_BOT(0, ro) + 3; }          /* 49 in a session, 27 read only (no field) */
 static int ch_nlocal, ch_top_stale; static unsigned ch_local_total;   /* ch_top_stale: lines left the middle of the history (ch_top_count) */                       /* local lines in chist now / ever added (test read-back) */
 static char chat_buf[DSNET_CHAT_MAX + 1];
 static uintptr_t h_ch_view, h_ch_root, h_ch_box, h_ch_idle[CH_IDLE], h_ch_idlebg[CH_IDLE], h_ch_lines[CH_BOX_LINES], h_ch_input, h_ch_hint, h_ch_field, h_ch_typing, h_ch_typingbg;
@@ -4003,7 +4016,7 @@ static void ch_slot_show(Obj t, int *slot_id, int *slot_font, int k) {
 static int ch_idle_id[CH_IDLE], ch_idle_font[CH_IDLE], ch_box_id[CH_BOX_LINES], ch_box_font[CH_BOX_LINES], ch_typing_font = -1, ch_field_font = -1;
 static int ch_box_oldest;                                                     /* the open box shows the oldest line: no more scrolling up */
 static int ch_over_now, ch_wheel_blocked;                                     /* the pointer is over the chat (this frame); wheel reads blocked */
-static float ch_line_w[2] = { CH_W0 - 60, CH_W0 - 24 };                      /* text width now: idle lines, open-box lines (test read-back) */
+static float ch_line_w[2] = { CH_W0 - CH_LINE_DW, CH_W0 - CH_LINE_DW };      /* text width now: idle lines, open-box lines (test read-back; one style: equal) */
 enum { CHD_NONE, CHD_MOVE, CHD_SIZE, CHD_HEIGHT, CHD_THUMB };
 static int ch_drag, ch_drag_btn, ch_held[2]; static V3 ch_d0; static float ch_dsc;   /* a move / resize / thumb drag in progress: kind, button, start */
 /* SIZE RULE (owner 2026-10-25: "allow to both make the chat and the DPS check window smaller or bigger with a plus or
@@ -4057,7 +4070,7 @@ static void chat_build(Obj parent) {
     Obj R = u_tr(root);
     for (int i = 0; i < CH_IDLE; i++) {                                    /* idle lines: a soft plate + the text */
         Obj bg = mk_img(tpl_img, R, -1, (Col){ 0.133f, 0.125f, 0.145f, 0.7f }, 0, 0, 430, 26);
-        Obj t = mk_txt(tpl_txt, R, 0, 16, 513, 1, 0, 0, 410, 26, C_MAIN); ch_text_style(t, 16); ch_idle_id[i] = 0; ch_idle_font[i] = -1;
+        Obj t = mk_txt(tpl_txt, R, 0, CH_FS, 513, 1, 0, 0, CH_W0 - CH_LINE_DW, 26, C_MAIN); ch_text_style(t, CH_FS); ch_idle_id[i] = 0; ch_idle_font[i] = -1;
         u_gc_free(h_ch_idlebg[i]); h_ch_idlebg[i] = bg ? u_gc_new(bg) : 0; u_gc_free(h_ch_idle[i]); h_ch_idle[i] = t ? u_gc_new(t) : 0;
         if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, true, NULL);   /* lead lan_v10: a click on a shown chat line is a UI click
                                                                                                    (IsPointerOverUI sees it), never a world click; the plate is off when the line has faded */
@@ -4085,7 +4098,7 @@ static void chat_build(Obj parent) {
         if (hi) tmp_set(hi, TR("Right-click and drag to move"));
         u_gc_free(h_ch_hint); h_ch_hint = hi ? u_gc_new(hi) : 0;
         for (int i = 0; i < CH_BOX_LINES; i++) {
-            Obj l = mk_txt(tpl_txt, B, 0, 15, 513, 1, 0, 0, CH_W0 - 24, 20, C_MAIN); ch_text_style(l, 15); ch_box_id[i] = 0; ch_box_font[i] = -1;
+            Obj l = mk_txt(tpl_txt, B, 0, CH_FS, 513, 1, 0, 0, CH_W0 - CH_LINE_DW, 20, C_MAIN); ch_text_style(l, CH_FS); ch_box_id[i] = 0; ch_box_font[i] = -1;
             if (l) u_active(l, false);
             u_gc_free(h_ch_lines[i]); h_ch_lines[i] = l ? u_gc_new(l) : 0;
         }
@@ -4176,10 +4189,6 @@ static void chat_build(Obj parent) {
    measured from its edges (title band at the top, "Say:" + field at the bottom, the history between). ro (read only: the
    player cannot send, single player): no "Say:", no field, the history goes down to the bin and the grip. Right of the
    history: the scrollbar column (Top button, track, Bottom button); the X right in the title band. */
-#define CH_HIST_TOP(hh)     ((hh) - 31)                                         /* the history band: under the title line */
-#define CH_HIST_BOT(hh, ro) ((ro) ? -(hh) + 24 : -(hh) + 46)                    /* over the input line / over the bin and grip */
-#define CH_LINE_X  (-6.0f)                                                     /* box lines: 12 in from the left, 24 from the right (the column) */
-#define CH_LINE_DW 36.0f
 static void ch_layout(float W, float H, int ro) {
     float hw = W / 2, hh = H / 2, sw = ch_say_w, ht = CH_HIST_TOP(hh), hb = CH_HIST_BOT(hh, ro);
     Obj o;
@@ -4472,9 +4481,10 @@ static void chat_frame(const mpm_obs *o) {
     ch_rect g = ch_geo(hw);
     place(root, g.l, g.b, 10, 10);
     { V3 ls = tr_lscale(u_tr(root)); if (ls.x != ch_z || ls.y != ch_z) F(0x510AFF8, void (*)(Obj, V3, void *))(u_tr(root), (V3){ ch_z, ch_z, 1 }, NULL); }   /* localScale, when it differs */
-    float bx = g.w / 2, by = g.h / 2, bw = g.w - CH_LINE_DW, iw = g.w - 60, pw = g.w - 40;   /* box lines / idle text / idle plates */
+    /* one line style (CH_FS block): every line, idle or in the box, is bw wide at lx (root units); an idle plate is 8 wider on each side */
+    float bx = g.w / 2, by = g.h / 2, bw = g.w - CH_LINE_DW, iw = bw, pw = bw + 16, lx = bx + CH_LINE_X, A = ch_anchor(ro);
     /* heights measured at another width (the box was resized): measured again when shown */
-    static float ch_hb_w = CH_W0 - CH_LINE_DW, ch_hi_w = CH_W0 - 60;
+    static float ch_hb_w = CH_W0 - CH_LINE_DW, ch_hi_w = CH_W0 - CH_LINE_DW;
     if (bw != ch_hb_w) { for (int i = 0; i < nch; i++) chist[i].hb = 0; ch_hb_w = bw; }
     if (iw != ch_hi_w) { for (int i = 0; i < nch; i++) chist[i].hi = 0; ch_hi_w = iw; }
     ch_line_w[0] = iw; ch_line_w[1] = bw;
@@ -4485,11 +4495,11 @@ static void chat_frame(const mpm_obs *o) {
         place(box, bx, by, g.w, g.h);
         if (g.w != ch_lay_w || g.h != ch_lay_h || ro != ch_lay_ro) ch_layout(g.w, g.h, ro);
         if (box_open) {
-            /* A1 / A2: the newest lines that fit whole between the title band (top 95) and the input line (bottom -85; read
-               only: -107), each as high as its wrapped text, newest at the bottom; placed from the top down (owner 2026-10-21:
-               no empty band above the rows; what is left over stays under the newest line). One line taller than the space:
-               from the bottom. */
-            float top = g.h / 2 - 40, bot = ro ? -g.h / 2 + 28 : -g.h / 2 + 50;
+            /* A1 / A2: the newest lines that fit whole between the title band (top 95) and the anchor (CH_FS block: the
+               bottom-most shown line's text bottom, as in the closed view), each as high as its wrapped text, newest at the
+               bottom, placed from the anchor up (owner 2026-11-02, item 31: the newest line at the exact same height open and
+               closed; what is left over stays above the oldest shown line). */
+            float top = g.h / 2 - 40, bot = A - g.h / 2;
             float used = 0, avail = top - bot, hs[CH_BOX_LINES];
             int S = nch - ch_top_count(bw, avail); if (S < 0) S = 0;               /* the scroll that shows the oldest line at the top */
             if (ch_want_top) { chat_scroll = S; ch_want_top = 0; rig_log("mpmenu: chat: Top (scroll %d of %d lines)", S, nch); }
@@ -4505,8 +4515,8 @@ static void chat_frame(const mpm_obs *o) {
                 u_active(l, true); hs[j] = h; used += h + 2;
                 if (nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_lines[j]; }
             }
-            { float y = used - 2 > avail ? bot + used - 2 : top;              /* top of the oldest shown line */
-              for (int i = j - 1; i >= 0; i--) { place(u_gc_get(h_ch_lines[i]), CH_LINE_X, y - hs[i] / 2, bw, hs[i]); y -= hs[i] + 2; } }
+            { float y = bot;                                                  /* text bottom of the newest shown line: the anchor */
+              for (int i = 0; i < j; i++) { place(u_gc_get(h_ch_lines[i]), CH_LINE_X, y + hs[i] / 2, bw, hs[i]); y += hs[i] + 2; } }
             if (k < 0) ch_box_oldest = 1;
             for (int i = j; i < CH_BOX_LINES; i++) { Obj l = u_gc_get(h_ch_lines[i]); if (l) u_active(l, false); }
             /* the scrollbar: the thumb is as long as the shown part of the history, at its place (the newest at the bottom) */
@@ -4523,9 +4533,9 @@ static void chat_frame(const mpm_obs *o) {
             }
         }
     }
-    /* "<Name> is typing..." for the others (owner 2026-10-14): one line in their colours; it takes the lowest idle slot
-     * (the idle lines move up one) or sits above the open box */
-    int me = c ? dsnet_player_id(c) : -1; float lift = 0;
+    /* "<Name> is typing..." for the others (owner 2026-10-14): one line in their colours, above the open box; closed, it sits
+     * under the lines where the open box has its field (ch_layout: -hh + 23), so the lines never move (item 31) */
+    int me = c ? dsnet_player_id(c) : -1;
     { char line[200] = ""; int k = 0, more = 0; size_t o = 0;
       for (int p = 0; c && p < DSNET_MAX_PLAYERS; p++) {                   /* no session: nobody else types */
           if (p == me || !dsnet_chat_typing_of(c, p)) continue;
@@ -4544,16 +4554,16 @@ static void chat_frame(const mpm_obs *o) {
           static char shown[200]; static float th = 18, tw;
           if (strcmp(shown, line) || ch_typing_font < 0 || tw != iw) { snprintf(shown, sizeof shown, "%s", line); char tmp[CH_TEXT]; snprintf(tmp, sizeof tmp, "%s", line);
               int fi = ch_pick(tmp, 1, NULL); if (fi >= 0 && fi != ch_typing_font) { ch_font_set(t, fi, 0); ch_typing_font = fi; }
-              tmp_set(t, tmp); place(t, bx, 0, iw, 22); th = ch_measure(t, iw); tw = iw; }
+              tmp_set(t, tmp); place(t, lx, 0, iw, 22); th = ch_measure(t, iw); tw = iw; }
           float ph = th + 6 > 22 ? th + 6 : 22;
-          float y = box_open ? g.h + 4 + ph / 2 : ph / 2;
-          place(t, bx, y, iw, th); place(bg, bx, y, pw, ph);
-          if (!box_open) lift = ph + 4;
+          float y = box_open ? g.h + 4 + ph / 2 : 23;
+          place(t, lx, y, iw, th); place(bg, lx, y, pw, ph);
       }
     }
-    /* idle lines: the newest at the bottom, each plate as high as its wrapped text (A1 / A2), fading after chat_fade_s */
+    /* idle lines: the newest at the bottom, its text bottom at the anchor A (the open box's place for it: CH_FS block), each
+       plate as high as its wrapped text (A1 / A2: 3 under the text, the rest above), fading after chat_fade_s */
     double now = mono_s();
-    { float y = lift;                                                       /* bottom of the next plate */
+    { float y = A;                                                          /* text bottom of the next line */
       for (int i = CH_IDLE - 1; i >= 0; i--) {
         int k = nch - CH_IDLE + i; Obj t = u_gc_get(h_ch_idle[i]), bg = u_gc_get(h_ch_idlebg[i]);
         float a = 0;
@@ -4565,9 +4575,9 @@ static void chat_frame(const mpm_obs *o) {
             if (bg && mm_is(bg, K_GR)) F(0x5260348, void (*)(Obj, bool, void *))(bg, !chist[k].local || chist[k].link, NULL);
             ch_prepare(k);
             ch_slot_show(t, &ch_idle_id[i], &ch_idle_font[i], k);
-            if (chist[k].hi <= 0) { place(t, bx, 0, iw, 26); chist[k].hi = ch_measure(t, iw); }
+            if (chist[k].hi <= 0) { place(t, lx, 0, iw, 26); chist[k].hi = ch_measure(t, iw); }
             float th = chist[k].hi, ph = th + 6 > 26 ? th + 6 : 26;
-            place(t, bx, y + ph / 2, iw, th); place(bg, bx, y + ph / 2, pw, ph);
+            place(t, lx, y + th / 2, iw, th); place(bg, lx, y - 3 + ph / 2, pw, ph);
             y += ph + 4;
             if (nchat_shown < CH_IDLE + CH_BOX_LINES) { chat_shown_k[nchat_shown] = k; chat_shown_h[nchat_shown++] = &h_ch_idle[i]; }
             if (mm_is(t, K_GR)) F(0x52602F8, void (*)(Obj, Col, void *))(t, (Col){ C_MAIN.r, C_MAIN.g, C_MAIN.b, a }, NULL);
@@ -6441,8 +6451,9 @@ char *mpmenu_exec(const char *cmd, const char *line) {
               if (idle) rect_of(u_gc_get(h_ch_idlebg[chat_shown_h[i] - &h_ch_idle[0]]), pr);
               float pv = 0; if (fit_methods() && u_on(t)) pv = fit_pref(t, ch_line_w[idle ? 0 : 1]).y;
               char tx[CH_TEXT] = ""; str_utf8(tmp_get(t), tx, sizeof tx);
-              bput(&b, "%s{\"k\":%d,\"idle\":%d,\"rect\":[%.0f,%.0f,%.0f,%.0f],\"plate\":[%.0f,%.0f,%.0f,%.0f],\"h\":%.1f,\"pref_h\":%.1f,\"font\":%d,\"missing\":%d,\"text\":",
-                   i ? "," : "", k, idle, r[0], r[1], r[2], r[3], pr[0], pr[1], pr[2], pr[3], idle ? chist[k].hi : chist[k].hb, pv, chist[k].font, chist[k].missing); bstr(&b, tx); bput(&b, "}"); }
+              float hu = idle ? chist[k].hi : chist[k].hb, fs = mm_is(t, K_TMP) ? F(0x4F0B338, float (*)(Obj, void *))(t, NULL) : 0;   /* TMP_Text.fontSize (item 31 guard) */
+              bput(&b, "%s{\"k\":%d,\"idle\":%d,\"rect\":[%.1f,%.1f,%.1f,%.1f],\"plate\":[%.0f,%.0f,%.0f,%.0f],\"h\":%.1f,\"pref_h\":%.1f,\"font\":%d,\"missing\":%d,\"fs\":%.2f,\"fs_px\":%.2f,\"text\":",
+                   i ? "," : "", k, idle, r[0], r[1], r[2], r[3], pr[0], pr[1], pr[2], pr[3], hu, pv, chist[k].font, chist[k].missing, fs, hu > 0 ? fs * (r[3] - r[1]) / hu : 0); bstr(&b, tx); bput(&b, "}"); }
           bput(&b, "],\"fonts\":[");
           for (int i = 0; i < nchf; i++) { bput(&b, "%s", i ? "," : ""); bstr(&b, chf_names[i]); }
           { Obj cv = u_gc_get(h_ch_cv); static void *mgo; if (!mgo) mgo = mth("UnityEngine", "Canvas", "get_sortingOrder", 0);
