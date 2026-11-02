@@ -6,6 +6,9 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 
 ### Unreleased (0.1.30)
 
+- Your friends' units stay theirs after you play the world alone. Before, any single-player play of a multiplayer world
+  between two sessions (with the mod on or off) reset every claimed, lent and reserved unit, so everybody had to claim
+  their units again. The host now gets back the claims saved with the last session of that world.
 - The chat's newest line now stays at the same height when you press Enter to open the chat and when you close it, and
   the text keeps the same size in both. The closed chat lines now sit a little higher, where the open chat shows them,
   and "... is typing" shows under them, so the lines no longer move.
