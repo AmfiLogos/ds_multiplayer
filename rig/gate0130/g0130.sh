@@ -1,6 +1,6 @@
 #!/bin/zsh
 # g0130.sh - the v0.1.30 Mac gate (lane nvrel, 2026-11-01): copy of gate0129 (g029_ -> g030_) + the gate0127 changes on main
-# (g027_roadmap, weapon-slot 0.2.0 both ways) + the v0.1.30 section at the end. (g0129 header:)
+# (g027_roadmap) + the v0.1.30 section at the end. Lead task 7/8: weapon-slot 0.2.0 HELD, the 0.1.2 package ships (v0.1.29 tests *_012.py). (g0129 header:)
 # g0129.sh - the v0.1.29 Mac gate (lane fpsrel, 2026-10-26): copy of gate0128 (g028_ -> g029_) + the v0.1.29 section at the end
 # (frame-time fixes: SCAN-RULE guard + dsl_view lookups, VSync kept, panel size, Multi-unit view 0.1.1, cloud skips mod worlds,
 # hub/PvP worlds hidden, Bring Units cards, single-player scans in multiplayer). (g0128 header:)
@@ -310,9 +310,8 @@ chk g030_hell_toggle 'RESULT PASS ([0-9]+)/\1' $LD/loader python3 $LR hell_toggl
 chk g030_hell_join 'RESULT PASS' $LD/loader python3 test/hell_join_pair.py   # a guest with Hell loaded joins a host on a Hell world, no refusal, no restart
 chk g030_locked_slots 'RESULT PASS' $LD/loader python3 test/locked_slots_test.py run $OUT/g030_locked_slots   # Locked Slots: menu, order, icon, file, Sort, return to base, save form
 chk g030_locked_slots_pair 'RESULT PASS' $LD/loader python3 test/locked_slots_pair.py $OUT/g030_locked_slots_pair   # host / guest locks on both players, dungeon trip, 0 desyncs
-chk g030_weapon_slot 'RESULT PASS' $LD/loader python3 test/weapon_slot_test.py run $OUT/g030_weapon_slot   # weapon-slot 0.2.0 client only: button shows + uses the weapon skill, saves stock
-chk g030_weapon_slot_pair 'RESULT PASS' $LD/loader env WS_OWNER_PLAY_OK=1 python3 test/weapon_slot_pair.py --mod host $OUT/g030_weapon_slot_pair   # host with weapon-slot, guest stock: 0 desyncs
-chk g030_weapon_slot_pair_rev 'RESULT PASS' $LD/loader env WS_OWNER_PLAY_OK=1 python3 test/weapon_slot_pair.py --mod guest $OUT/g030_weapon_slot_pair_rev   # the reverse
+chk g030_weapon_slot 'RESULT PASS ([0-9]+)/\1' $LD/loader env WS_MODS=$LD/loader/build/mods_all/mac python3 test/weapon_slot_test_012.py run $OUT/g030_weapon_slot   # weapon-slot 0.2.0 HELD (lead task 7): the shipped 0.1.2 package with the v0.1.29 test
+chk g030_weapon_slot_pair 'RESULT PASS ([0-9]+)/\1' $LD/loader env WS_MODS=$LD/loader/build/mods_all/mac WS_OWNER_PLAY_OK=1 python3 test/weapon_slot_pair_012.py $OUT/g030_weapon_slot_pair   # 0.1.2 host + guest both with the mod: 0 desyncs (v0.1.29 test)
 chk g030_worlds 'RESULT PASS' $CMR env HM_BUILD=$HMB LD_ROOT=$LD WT_OUT=$OUT/g030_worlds python3 units/test/worlds_test.py   # Units Laboratory 0.1.16: team delete box, World units, snapshots (hm_build: dev-key loader of g030_look / g030_hostmods)
 chk g030_hub_nosave 'RESULT PASS' $WT python3 ext/dsmpsave/hub_nosave_test.py --dylib $D   # Foreign Expedition hub: no local save
 chk g030_solo_copy 'RESULT PASS' $WT python3 ext/dsmpsave/solo_copy_test.py --dylib $D   # solo copy box of a multiplayer world
@@ -409,4 +408,6 @@ chk g030_dps_world 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g0
 chk g030_dps_custom 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_custom DPS_PATH=custom python3 fights/test/dps_test.py   # Custom fight path
 chk g030_dps_hold 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_hold DPS_HOLD=1 python3 fights/test/dps_test.py   # 60 s hold: fixture units keep hitting (repeat order, ds_custommodes b0410f0)
 chk g030_dps_hold_world 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_hold_world DPS_PATH=world DPS_HOLD_WORLD=1 python3 fights/test/dps_test.py   # world unit w0 (Mariela, staff, no torch) keeps hitting (before b0410f0: 1 hit then 0)
+chk g030_chat_anchor 'RESULT chat_anchor_test: [1-9][0-9]* PASS, 0 FAIL' $LD/loader env LD_TEST=$LD/loader/test MP_PIN=$(head -1 $LD/loader/mp_pin.txt) python3 $LR $WT/ext/nvanchor/chat_anchor_test.py $OUT/g030_chat_anchor --no-build   # task 8 (nvanchor): the chat's "-" / "+" stay under the mouse
+chk g030_dps_meter_on 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OUT/g030_dps_meter_on DPS_PATH=custom DPS_ARENA_METER=1 python3 fights/test/dps_test.py   # task 8 (nvulmeter 24): Advanced > DPS Meter on in a Custom fight
 chk g030_export 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env WT_OUT=$OUT/g030_export python3 units/test/export_test.py   # Open in Wiki Builder: the wiki builder reads exactly the ticked units; stale wiki data re-mapped; new format refused
