@@ -26,6 +26,7 @@ Dungeon Settlers Modded is made of three repos. Each item below is listed once, 
 
 ## Done
 
+- **0.1.30 (2026-11-02, kit v0.1.31).** The chat's newest line keeps its height and text size when the chat opens and closes. Windows: the game's random rolls that do not use a world's seed start from a random seed again.
 - **0.1.29 (2026-11-02, kit v0.1.30).** The chat's "-" and "+" buttons stay under your mouse when you click them. A right-click drag on the chat or the Players panel moves only the window on top.
 - **0.1.28 (2026-10-26, kit v0.1.29).** Single player runs smoother with the multiplayer mod. The old "Foreign Expedition Hub" and "PvP Base" worlds no longer show in the Load list. A click anywhere on a Bring Units row ticks the unit. The chat has "-" and "+" size buttons.
 - **0.1.27 (2026-10-25, kit v0.1.28).** You can move, resize and read the chat without typing. The multiplayer windows close with the game's red X or Escape and follow the game's UI Scale. Without Steam, your player name is never your computer account's name.

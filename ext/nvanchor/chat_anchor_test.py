@@ -78,6 +78,10 @@ def main():
     E.install()
     mm = os.path.join(E.I, 'mp_menu.json')                           # a fresh chat place (the kept one may be at a screen edge)
     if os.path.exists(mm): os.makedirs(os.path.join(out, 'old'), exist_ok=True); os.replace(mm, os.path.join(out, 'old', 'mp_menu.%d.json' % time.time()))
+    up = os.path.join(E.I, 'data', 'Mods', 'ui_places.tsv')             # a fresh chat SIZE: the kit keeps it here (multiplayer.chat@size);
+    if os.path.exists(up):                                             # each run's EDGE "+" left it 0.1 bigger, so a later run hit the 1.5 cap
+        rows = open(up).read().splitlines(True); keep = [l for l in rows if not l.startswith('multiplayer.chat@')]
+        if keep != rows: open(up + '.tmp', 'w').writelines(keep); os.replace(up + '.tmp', up)
     g = threading.Thread(target=E.guard, daemon=True); g.start()
     try:
         E.start()

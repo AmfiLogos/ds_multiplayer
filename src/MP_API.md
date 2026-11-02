@@ -34,8 +34,14 @@ With no multiplayer mod installed, every call below still works: random draws ar
   different number of times on one player (for example only when a window is open there).
 
 ### UnityEngine.Random and System.Random in a mod
-- Our determinism layer already routes the game's `UnityEngine.Random` (Range, value) inside the step to its sim
-  stream, and `new System.Random()` (no seed) to a counter seed. A mod's call goes through the same hooks.
+- Our determinism layer routes the game's `UnityEngine.Random` (Range, value) inside the step to its sim stream,
+  and the game's own `System.Random` constructor (no seed) to a counter seed. Both hooks sit on game code in
+  GameAssembly (`src/rig_det.c`), so they only see calls that reach the game: a C module, or `UnityEngine.Random`
+  from C#.
+- A C# (BepInEx) mod's `new System.Random()` is NOT re-seeded. In a plugin, `System.Random` is the .NET runtime's
+  own class, not the game's, so it never reaches our hook: each player rolls other numbers, and a roll that changes
+  game state is a desync. Use `Rand` (section 1), or `UnityEngine.Random` inside the step. Seen 2026-11-02 in a
+  third-party mod (static `System.Random` fields for hit effects and wound rolls); found by reading the code.
 - Proven on a hidden Mac pair, both players with BepInEx (section 5): `UnityEngine.Random.Range` / `.value` called
   from C# inside the step (a bridge handler, a Harmony postfix on `TickFlow.Tick`) went to the sim stream and gave the
   same values on both players. So the rule is the same as for `Rand`: inside the step it is shared, outside it is not.

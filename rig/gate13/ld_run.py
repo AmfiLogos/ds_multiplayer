@@ -40,6 +40,7 @@ try:
         runpy.run_path(os.path.join(T, test), run_name='__main__')
 except SystemExit as e:
     rc = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+    if e.code is not None and not isinstance(e.code, int): print('test stopped:', e.code, flush=True)   # e.g. 'load over 20: no test copy now' (v0.1.31 gate: a silent FAIL)
 finally:
     if lease: subprocess.run([sys.executable, RIG, 'release', lease, 'gate13'])
 sys.exit(rc)

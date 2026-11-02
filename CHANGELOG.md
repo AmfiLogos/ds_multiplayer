@@ -4,7 +4,7 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 
 ## Multiplayer (multiplayer)
 
-### Unreleased (0.1.30)
+### 0.1.30 (2026-11-02)
 
 - Your friends' units stay theirs after you play the world alone. Before, any single-player play of a multiplayer world
   between two sessions (with the mod on or off) reset every claimed, lent and reserved unit, so everybody had to claim
