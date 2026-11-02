@@ -12,6 +12,7 @@
 #define DSMC_TR(s) TR(s)                             /* ds_modcheck.h: the guest's mod-mismatch text in the player's language */
 #include "net/ds_modcheck.h"                         /* wrong-modset text (launcher lane, header only) */
 #include "mpmenu.h"                                  /* MPM_END_* (why a session ended, for the menu's logic) */
+#include "mp_owners_pick.h"                          /* which saved owner table goes with the hosted world */
 #include <time.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -259,24 +260,19 @@ static void owners_restore(void) {
     if (owners_restored || !S || !cfg.host) return;
     owners_restored = 1;
     /* The loaded world's tick: the menu loads the save without det, so the campaign runs freely for a moment (about
-       60-70 ticks seen) before the session locks it. Take the table saved at the highest tick <= now within 1200 ticks;
-       a table from a LATER save of the campaign (the 2026-10-13 bug) has a higher tick and is never taken. */
+       60-70 ticks seen) before the session locks it. The table saved at the highest tick <= now, however old
+       (mp_owners_pick.h: claims come back after single-player play); a table from a LATER save of the campaign (the
+       2026-10-13 bug) has a higher tick and is never taken. */
     int64_t now = tick();
     char p[1400]; if (!owners_path(p, sizeof p, 0)) return;
-    char *us = strrchr(p, '_'); if (!us) return;
-    size_t pre = (size_t)(us - p) + 1;                       /* ".../mp_owners/<guid>_" */
+    char *us = strrchr(p, '_'), *sl = strrchr(p, '/'); if (!us || !sl || us < sl) return;
+    char gs[64]; snprintf(gs, sizeof gs, "%.*s", (int)(us - sl - 1), sl + 1);            /* ".../mp_owners/<guid>_0.bin" */
     char dir[1400]; snprintf(dir, sizeof dir, "%s/data/mp_owners", rig_dir);
-    const char *base = p + strlen(dir) + 1; size_t bl = pre - strlen(dir) - 1;
-    int64_t best = -1;
-    DIR *d = opendir(dir);
-    for (struct dirent *e; d && (e = readdir(d)); ) {
-        if (strncmp(e->d_name, base, bl)) continue;
-        char *end; long long t = strtoll(e->d_name + bl, &end, 10);
-        if (end == e->d_name + bl || strcmp(end, ".bin")) continue;
-        if (t <= now && now - t <= 1200 && t > best) best = t;
-    }
-    if (d) closedir(d);
+    int64_t best = mp_owners_pick(dir, gs, now);
     if (best < 0) { rig_log("mp: no saved owners for this world (now tick %lld)", (long long)now); return; }
+    if (now - best > 1200)
+        rig_log("mp: owners saved at tick %lld: the world was played %lld ticks without a session since; the claims come back",
+                (long long)best, (long long)(now - best));
     owners_path(p, sizeof p, best);
     FILE *f = fopen(p, "rb"); if (!f) return;
     rig_log("mp: owners saved at tick %lld match this world (now %lld)", (long long)best, (long long)now);

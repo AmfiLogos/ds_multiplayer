@@ -14,7 +14,15 @@ build/test_mp: test_mp.c $(MP) $(NET) $(HDR)
 test: build/test_mp
 	nice -n 19 ./build/test_mp
 
+# the saved owner table that goes with a hosted world (../mp_owners_pick.h); no network, no game
+build/owners_pick_test: owners_pick_test.c ../mp_owners_pick.h
+	@mkdir -p build
+	nice -n 19 $(CC) $(CFLAGS) owners_pick_test.c -o $@
+
+owners: build/owners_pick_test
+	./build/owners_pick_test
+
 clean:
 	rm -rf build
 
-.PHONY: all test clean
+.PHONY: all test owners clean
