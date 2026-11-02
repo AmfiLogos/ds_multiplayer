@@ -6,7 +6,9 @@ ONE hidden loader test copy (ds_modloader loader/test/esc_test.py start: loader 
 whose fake mouse clicks the kit's buttons; never the owner's game or screen), single player world, local chat lines, the
 read-only box open. "+" 3 times then "-" 3 times, each at ONE screen point with the mouse held there. Fails when a click
 misses (the size does not change by 10 %) or the clicked button's centre moves 2 px or more, or the new place is not
-kept in mp_menu.json.
+kept in mp_menu.json. Starts from a FRESH chat place (the copy's mp_menu.json moved aside: a copy that kept the chat at
+the screen edge made the clamp move the button, as designed). EDGE: the chat dragged past the left edge, then "+": the
+whole box stays on the screen (the screen wins over the anchor).
 Usage: DSL_TEST_COPY=<copy> MP_PIN=<ds_multiplayer commit> python3 chat_anchor_test.py [out] [--no-build]
        (run with the ds_modloader worktree's loader/test on PYTHONPATH: LD_TEST=<that folder>)"""
 import json, os, signal, sys, threading, time
@@ -51,12 +53,31 @@ def cases():
     check('chat: the place after the clicks is kept (mp_menu.json)', abs(kept.get('chat_x', 1e9) - xy[0]) <= 1 and abs(kept.get('chat_y', 1e9) - xy[1]) <= 1, (kept.get('chat_x'), kept.get('chat_y'), xy))
 
 
+def edge_case():
+    ch = chat(); b = (ch.get('box_rect') or [0, 0, 0, 0, 0])[1:]
+    if not ch.get('box') or b[2] <= b[0]: check('edge: the chat box is open', False, b); return
+    cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+    j = ctl({'cmd': 'mpm_chat', 'drag': 1, 'x0': cx, 'y0': cy, 'x1': cx - b[2] - 200, 'y1': cy, 'button': 1, 'frames': 20}, 5) or {}
+    time.sleep(2.5); ch = chat(); b1 = (ch.get('box_rect') or [0, 0, 0, 0, 0])[1:]
+    ui('api', op='move_xy', x=(b1[0] + b1[2]) / 2, y=(b1[1] + b1[3]) / 2); time.sleep(0.8)
+    ch = wait_for(lambda: (lambda c: c if c.get('zoom_btns') else None)(chat()), 10, 0.3) or {}
+    if not ch.get('zoom_btns'): check('edge: "-" / "+" show at the left edge', False, (j, b1)); return
+    z = ch.get('zoom', 0); bx, by = centre(part(ch['zoom_btns'], 'plus'))
+    ui('api', op='click_xy', x=bx, y=by); time.sleep(1.5); ch = chat(); b2 = (ch.get('box_rect') or [0, 0, 0, 0, 0])[1:]
+    sw = ((E.st().get('w') or {}).get('screen') or [0, 0])[0]
+    check('edge: chat dragged past the left edge, then "+": 10 % bigger and the whole box on the screen (x >= 0)',
+          j.get('ok') and abs(ch.get('zoom', 0) - z - 0.1) < 0.001 and -1 <= b1[0] <= 8 and b2[0] >= -1 and (not sw or b2[2] <= sw + 1),
+          (j, b, b1, b2, z, ch.get('zoom'), sw))
+
+
 def main():
     out = os.path.abspath([a for a in sys.argv[1:] if not a.startswith('--')][0]) if [a for a in sys.argv[1:] if not a.startswith('--')] else E.OUT
     if E.game_pids(): raise SystemExit(f'copy {E.X} already running')
     if os.getloadavg()[0] > 20: raise SystemExit('load over 20: no test copy now')
     if '--no-build' not in sys.argv: E.build()
     E.install()
+    mm = os.path.join(E.I, 'mp_menu.json')                           # a fresh chat place (the kept one may be at a screen edge)
+    if os.path.exists(mm): os.makedirs(os.path.join(out, 'old'), exist_ok=True); os.replace(mm, os.path.join(out, 'old', 'mp_menu.%d.json' % time.time()))
     g = threading.Thread(target=E.guard, daemon=True); g.start()
     try:
         E.start()
@@ -67,6 +88,7 @@ def main():
         check('world loaded', bool(t), t)
         time.sleep(8)
         cases()
+        edge_case()
         ui('capture', name='chat_anchor')
     except Exception as e:
         check('run finished', False, repr(e))
