@@ -86,7 +86,9 @@ def main():
         wait('S watching', lambda: (lambda s: s.get('det', {}).get('locked') and s.get('mp', {}).get('spectator') and s.get('mp', {}).get('loads', 0) >= 1
                                     and not s.get('mp', {}).get('needs_state'))(st(S)), timeout=900, every=1)
         time.sleep(5)
-        if not mini().get('shown'): c(S, cmd='ui_mini', action='o'); time.sleep(1.5)
+        if not mini().get('shown'): c(S, cmd='ui_mini', action='o')
+        try: wait('the mini overview shown', lambda: mini().get('shown') == 1, timeout=20, every=0.5)   # built a few frames later: 2.3 s under load (v0.1.31 gate), a fixed 1.5 s was too short
+        except RuntimeError as ex: log('mini overview:', ex)
         m = mini(); e = esc()
         check('S is a spectator with the mini overview shown, no Esc menu', st(S).get('mp', {}).get('spectator') and m.get('shown') == 1 and e.get('esc_menu') == 0, (m.get('shown'), e))
         up = m.get('shown') == 1
