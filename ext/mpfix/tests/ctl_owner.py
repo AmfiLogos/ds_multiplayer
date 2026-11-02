@@ -9,6 +9,11 @@ One leased pair, its first copy X (hidden, batchmode):
  4. A second copy waits, X stops: the second copy takes the socket over and answers.
 Owner prefs checked before / after."""
 import json, os, signal, subprocess, sys, time
+
+def _soft_nice(n):                                         # preexec_fn: never fail the launch (runner fault SubprocessError(preexec_fn): a driver already near nice 20, e.g. zsh background jobs at +5 each; lead task 12)
+    try: os.nice(n)
+    except Exception: pass
+
 sys.path.insert(0, os.path.expanduser('~/ds_multiplayer/rig')); import rig
 A = sys.argv
 rig.DYLIB = os.path.abspath(A[A.index('--dylib') + 1])
@@ -27,7 +32,7 @@ def second(x, extra=None):
     if '-batchmode' not in args: args.append('-batchmode')
     env['DSRIG_BATCH'] = '1'
     return subprocess.Popen(args, env=env, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            preexec_fn=lambda: os.nice(10), start_new_session=True)
+                            preexec_fn=lambda: _soft_nice(10), start_new_session=True)
 def kill(p):
     try: os.kill(p.pid, signal.SIGKILL)
     except OSError: pass

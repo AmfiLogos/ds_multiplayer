@@ -25,6 +25,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 L = os.path.join(os.path.expanduser(os.environ.get('LD', '~/ds_launcher')), 'loader')
 sys.path.insert(0, os.path.join(L, 'test'))
 import lrig as r
+
+def _soft_nice(n):                                         # preexec_fn: never fail the launch (runner fault SubprocessError(preexec_fn): a driver already near nice 20, e.g. zsh background jobs at +5 each; lead task 12)
+    try: os.nice(n)
+    except Exception: pass
+
 A = sys.argv[1:]
 TREE = os.path.abspath(os.path.expanduser(A[A.index('--mp-tree') + 1])) if '--mp-tree' in A else ROOT
 POS = [a for i, a in enumerate(A) if not a.startswith('--') and (i == 0 or A[i - 1] != '--mp-tree')]
@@ -148,7 +153,7 @@ def start():
     env.update(r.soft_test_env())
     a = [os.path.join(I, r.EXE_REL), '-logFile', os.path.join(I, 'player.log'), '-screen-fullscreen', '0', '-screen-width', '960', '-screen-height', '540']
     p = subprocess.Popen(a, env=env, cwd=I, stdin=subprocess.DEVNULL, stdout=open(os.path.join(I, 'stdout.log'), 'ab'),
-                         stderr=subprocess.STDOUT, preexec_fn=lambda: os.nice(5), start_new_session=True)
+                         stderr=subprocess.STDOUT, preexec_fn=lambda: _soft_nice(5), start_new_session=True)
     open(r.pidfile(X), 'w').write(f'{p.pid}\n'); log('started', p.pid)
     return p.pid
 

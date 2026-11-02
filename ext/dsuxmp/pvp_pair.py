@@ -46,6 +46,11 @@ sys.path.insert(0, LT)
 import lrig as r                                           # noqa: E402  (instances, prefs, guard helpers; read only)
 sys.path.insert(1, os.path.expanduser('~/ds_multiplayer/rig'))
 import rig as realrig                                      # noqa: E402  leases only
+
+def _soft_nice(n):                                         # preexec_fn: never fail the launch (runner fault SubprocessError(preexec_fn): a driver already near nice 20, e.g. zsh background jobs at +5 each; lead task 12)
+    try: os.nice(n)
+    except Exception: pass
+
 HOST, GUEST = 'UPA', 'UPB'
 LANE = 'dsuxmp2-pvp'
 SLOTSH = os.path.expanduser('~/ToDelete_2026-10-25/dsuxmp2/slot.sh')
@@ -169,7 +174,7 @@ def start(x):
     args = [os.path.join(I, r.EXE_REL), '-logFile', os.path.join(I, 'player.log'), '-screen-fullscreen', '0',
             '-screen-width', str(W), '-screen-height', str(H_)]
     p = subprocess.Popen(args, env=env, cwd=I, stdin=subprocess.DEVNULL, stdout=open(os.path.join(I, 'stdout.log'), 'ab'),
-                         stderr=subprocess.STDOUT, preexec_fn=lambda: os.nice(19), start_new_session=True)
+                         stderr=subprocess.STDOUT, preexec_fn=lambda: _soft_nice(19), start_new_session=True)
     open(r.pidfile(x), 'w').write(f'{p.pid}\n'); MYPIDS[x] = p.pid; log('copy started', x, 'pid', p.pid, TAG)
 
 

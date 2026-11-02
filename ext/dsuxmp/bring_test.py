@@ -45,6 +45,11 @@ os.environ['DSL_TEST_COPY'] = 'UBR'; os.environ['LRIG_SIZE'] = f'{W}x{H}'
 sys.argv[1:] = [RUN]
 sys.path.insert(0, LT)
 import l1_saves_test as S  # noqa: E402  (loader test harness: hidden copy, guard, lrig)
+
+def _soft_nice(n):                                         # preexec_fn: never fail the launch (runner fault SubprocessError(preexec_fn): a driver already near nice 20, e.g. zsh background jobs at +5 each; lead task 12)
+    try: os.nice(n)
+    except Exception: pass
+
 T, r = S.T, S.r
 X, I = S.X, S.I
 assert X == 'UBR' and I.endswith('/UBR'), (X, I)
@@ -144,7 +149,7 @@ def start():
          '-screen-width', str(W), '-screen-height', str(H)]
     os.makedirs(S.GSAVES, exist_ok=True)
     p = subprocess.Popen(a, env=env, cwd=I, stdin=subprocess.DEVNULL, stdout=open(os.path.join(I, 'stdout.log'), 'ab'),
-                         stderr=subprocess.STDOUT, preexec_fn=lambda: os.nice(19), start_new_session=True)
+                         stderr=subprocess.STDOUT, preexec_fn=lambda: _soft_nice(19), start_new_session=True)
     open(r.pidfile(X), 'w').write(f'{p.pid}\n'); log('copy started pid', p.pid, TAG)
     T.wait(lambda s: s.get('scene') == 1 and not s.get('busy'), 'title', 900)
     return p.pid
