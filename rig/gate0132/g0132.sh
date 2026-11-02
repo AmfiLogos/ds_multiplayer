@@ -437,7 +437,7 @@ chk g032_dps_start_own 'RESULT PASS ([0-9]+)/\1' $CMR hmrun $CMR env DPS_OUT=$OU
 # loader (stream ld)
 chk g032_pack ' PASS ([0-9]+)/\1$' $LD/loader python3 $LR pack_test.py $OUT/g032_pack --no-build   # mod packs: Share code, Import window + plan + group, Escape, switch rule (requires on / off question)
 chk g032_names 'RESULT names PASS 0' $LD/loader python3 $LR --no-lease names_test.py $OUT/g032_names   # name check: a mod that needs a game name this version lacks is off at start (NAME-MISS), a good one runs
-chk g032_safety 'RESULT safety PASS 0' $LD/loader python3 $LR --no-lease safety_test.py $OUT/g032_safety --lane gate13   # boot guard: mods off + Mods window opens by itself with the reason; crash notice names the mod; requires cascade
+chk g032_start_safety 'RESULT safety PASS 0' $LD/loader python3 $LR --no-lease safety_test.py $OUT/g032_start_safety --lane gate13   # boot guard: mods off + Mods window opens by itself with the reason; crash notice names the mod; requires cascade
 # multiplayer (stream mp)
 chk g032_owners_pick 'owners_pick: all passed' $WT make -C src/mp_test owners   # claims, lends, reserved units come back after single-player play between sessions
 chk g032_live_window_rig 'RESULT live_window_guard PASS ([0-9]+)/\1' $WT/rig python3 live_window_guard_test.py rig.py   # rig refuses DSRIG_LIVE in a run that shows a window
