@@ -2,7 +2,7 @@
 
 What we are working on, what comes next, and where you can help.
 
-Updated: 2026-11-01
+Updated: 2026-11-02
 
 Dungeon Settlers Modded is made of three repos. Each item below is listed once, in the repo that does the work:
 
@@ -12,11 +12,11 @@ Dungeon Settlers Modded is made of three repos. Each item below is listed once, 
 
 ## Now
 
-- Nothing for the multiplayer mod itself. The chat gets two changes from the [mod loader roadmap](https://github.com/AmfiLogos/ds_modloader/blob/main/ROADMAP.md): its "-" and "+" buttons show only while the mouse is over it, and a right-drag moves only the window on top. The weapon skill slot becomes a mod for your own screen, so friends in your game will not need it.
+- Nothing is being built for the multiplayer mod right now.
 
 ## Next
 
-- Nothing is planned yet. The Now list comes first.
+- Nothing is planned yet.
 
 ## Later / ideas
 
@@ -26,6 +26,7 @@ Dungeon Settlers Modded is made of three repos. Each item below is listed once, 
 
 ## Done
 
+- **0.1.29 (2026-11-02, kit v0.1.30).** The chat's "-" and "+" buttons stay under your mouse when you click them. A right-click drag on the chat or the Players panel moves only the window on top.
 - **0.1.28 (2026-10-26, kit v0.1.29).** Single player runs smoother with the multiplayer mod. The old "Foreign Expedition Hub" and "PvP Base" worlds no longer show in the Load list. A click anywhere on a Bring Units row ticks the unit. The chat has "-" and "+" size buttons.
 - **0.1.27 (2026-10-25, kit v0.1.28).** You can move, resize and read the chat without typing. The multiplayer windows close with the game's red X or Escape and follow the game's UI Scale. Without Steam, your player name is never your computer account's name.
 - **0.1.22 to 0.1.26 (2026-10-24 to 2026-10-25).** The hub leaves no save behind. A world new to multiplayer offers a single-player copy. A guest with Hell difficulty joins a Hell world with no restart. The multiplayer windows use the game's text look. Bring Units shows skill trees in your language.

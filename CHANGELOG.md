@@ -4,7 +4,7 @@ What changed in each version, newest first. Downloads: the GitHub releases of th
 
 ## Multiplayer (multiplayer)
 
-### Unreleased (0.1.29)
+### 0.1.29 (2026-11-02)
 
 - The chat's "-" and "+" size buttons now stay under your mouse when you click them, so you can click again and again. The chat grows or shrinks around the button and keeps its new place. Needs the mod loader kit 0.1.30 or newer.
 - When the chat or the Players panel overlaps another mod window, a right-click drag now moves only the window on top.
