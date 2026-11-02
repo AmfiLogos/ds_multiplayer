@@ -579,3 +579,21 @@ multiplayer tag next to the name of the save and then just put the players that 
 - Doc only (src/MP_API.md section 1). The old text said a mod's `new System.Random()` goes through our hooks. True for
   a C module (the game's constructor in GameAssembly, rig_det.c); false for a BepInEx plugin, whose `System.Random` is
   the .NET runtime's class. Found while reading a third-party mod. No code change, no build.
+
+## nvsavekeep: multiplayer claims come back after single-player play (2026-11-02, owner item 37)
+- Owner item 37: keep a removed or turned-off mod's save data (tModLoader keeps a missing mod's world data and gives it
+  back with the mod). Audit of the 10 shipped mods: ext/nvsavekeep/AUDIT.md (git-ignored). One loss: the host took a
+  saved owner table (data/mp_owners/<guid>_<tick>.bin) only within 1200 ticks of the loaded save, so ANY single-player
+  play between two sessions (multiplayer off, uninstalled, or on without a session) reset every claim, lend and reserved
+  unit. Now the table at the highest tick at or before the loaded save, however old (src/mp_owners_pick.h); never a
+  later one (the 2026-10-13 bug). rig.log: "owners saved at tick T: the world was played N ticks without a session
+  since; the claims come back".
+- Guard: `make -C src/mp_test owners` (owners_pick_test.c: fails on the old rule, "picked -1, want 9000"; also an older
+  save never takes a later table, another world's or a half-written table never). Not in a release gate yet.
+- Proof (ext/nvsavekeep/owners_pair_run.py, a leased pair, demo save): guest claims 2 units, host saves, host plays
+  alone ~2950 ticks and saves, hosts again. Main dylib: "no saved owners for this world", units free (-1). This merge:
+  RESERVED for the guest (-2, his name). Merge dylib: smoke 3/3, mp2 19/0, left_prompt 16/0, prefs identical; unit
+  net/mp_test/mpmenu/trn/ui/teams pass (pvp and guard suites need ~/ds_custommodes files that moved, as before);
+  Windows: the header compiles with llvm-mingw; Windows not run.
+- Rig trap found: `set_speed 3` (VeryFast) is not in this game build: KeyNotFoundException every frame and the world's
+  ticks stop for good. Use 1 or 2.
